@@ -653,8 +653,9 @@ fun BlinkDropsRoute(
                             giver = giver,
                             rank = index + 1,
                             formatter = formatter,
-                            onFollow = if (giver.following) null else {
+                            onFollow = if (giver.following || followBusyId != null) null else {
                                 {
+                                    followBusyId = giver.creatorId
                                     scope.launch {
                                         service.followCreator(giver.creatorId)
                                             .onSuccess {
@@ -664,6 +665,7 @@ fun BlinkDropsRoute(
                                             .onFailure {
                                                 error = it.message ?: "Unable to follow this creator."
                                             }
+                                        followBusyId = null
                                     }
                                 }
                             }
@@ -775,7 +777,8 @@ fun BlinkDropsRoute(
     commentDrop?.let { drop ->
         CommentDropDialog(
             reward = drop.rewardPerUser,
-            onDismiss = { commentDrop = null },
+            busy = busyDropId != null,
+            onDismiss = { if (busyDropId == null) commentDrop = null },
             onSubmit = { complete(drop, it) }
         )
     }
@@ -887,13 +890,20 @@ private fun DropCard(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            drop.creatorName.trim().firstOrNull()?.uppercase()
-                                ?: drop.creatorUsername.trim().firstOrNull()?.uppercase() ?: "B",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Black,
+                    if (drop.creatorAvatar.startsWith("https://")) {
+                        AsyncImage(
+                            model = drop.creatorAvatar, contentDescription = "Creator profile",
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                         )
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                drop.creatorName.trim().firstOrNull()?.uppercase()
+                                    ?: drop.creatorUsername.trim().firstOrNull()?.uppercase() ?: "B",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.width(8.dp))
@@ -919,6 +929,14 @@ private fun DropCard(
                 }
             }
 
+            if (drop.previewUrl.startsWith("https://")) {
+                AsyncImage(
+                    model = drop.previewUrl,
+                    contentDescription = "Drop content preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(132.dp),
+                )
+            }
             Text(
                 "${formatter.format(drop.rewardPerUser)} coins each · ${drop.winnerCount} people",
                 style = MaterialTheme.typography.titleMedium,
@@ -1228,7 +1246,7 @@ private fun OrganizeDropDialog(
 
     Dialog(onDismissRequest = { if (!creating) onDismiss() }) {
         Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(.90f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(.94f).imePadding(),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
@@ -1569,16 +1587,18 @@ private fun OrganizeDropDialog(
 @Composable
 private fun CommentDropDialog(
     reward: Int,
+    busy: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text("Comment to earn $reward coins") },
         text = {
             OutlinedTextField(
                 value = text,
+                enabled = !busy,
                 onValueChange = { if (it.length <= 2000) text = it },
                 label = { Text("Your comment") },
                 minLines = 3,
@@ -1586,11 +1606,11 @@ private fun CommentDropDialog(
             )
         },
         confirmButton = {
-            Button(onClick = { onSubmit(text.trim()) }, enabled = text.isNotBlank()) {
+            Button(onClick = { onSubmit(text.trim()) }, enabled = !busy && text.isNotBlank()) {
                 Text("Comment & claim")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }
 
