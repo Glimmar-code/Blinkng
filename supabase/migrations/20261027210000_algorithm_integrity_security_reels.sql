@@ -263,6 +263,15 @@ begin
       and fp.is_active = true
       and fp.is_flagged = false
       and fp.user_id <> v_viewer
+      and lower(coalesce(fp.audience,'everyone'))='everyone'
+      and (fp.expires_at is null or fp.expires_at>now())
+      and not exists (select 1 from public.user_settings settings
+        where settings.user_id=fp.user_id and settings.private_account=true)
+      and not exists (select 1 from public.blocks blocked
+        where (blocked.blocker_id=v_viewer and blocked.blocked_id=fp.user_id)
+           or (blocked.blocker_id=fp.user_id and blocked.blocked_id=v_viewer))
+      and not exists (select 1 from public.muted_users muted
+        where muted.user_id=v_viewer and muted.muted_id=fp.user_id)
   ) then
     raise exception 'INVALID_REEL';
   end if;
