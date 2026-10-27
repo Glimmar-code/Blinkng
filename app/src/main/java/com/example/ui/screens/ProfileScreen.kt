@@ -68,6 +68,7 @@ import coil.compose.AsyncImage
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.ProfileCompletionPolicy
+import com.blinkng.shared.ProfileContentMetrics
 import com.blinkng.shared.profileRankLabel
 import com.blinkng.shared.xpProgress
 import com.blinkng.shared.canViewProfileField
@@ -341,6 +342,13 @@ fun ProfileScreen(
             .toList()
     }
 
+    var accountMetrics by remember(profile.id) { mutableStateOf<ProfileContentMetrics?>(null) }
+    LaunchedEffect(profile.id, isProfileRefreshing) {
+        if (profile.id.isNotBlank() && !isProfileRefreshing) {
+            accountMetrics = profileService.getProfileContentMetrics(profile.id)
+        }
+    }
+
     val profileCompletion = remember(profile) {
         ProfileCompletionPolicy.calculate(profile.fullName, profile.username, profile.avatarUrl,
             profile.professionalHeadline, profile.bio, profile.university, profile.faculty,
@@ -498,10 +506,14 @@ fun ProfileScreen(
                         isDark = isDark,
                         isFollowing = isFollowing,
                         followBusy = followBusy,
-                        postCount = userPosts.count { !it.isReel },
-                        totalLoadedViews = userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
-                        totalLoadedLikes = userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
+                        postCount = (accountMetrics?.posts?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+                            ?: userPosts.count { !it.isReel }),
+                        totalLoadedViews = accountMetrics?.views
+                            ?: userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
+                        totalLoadedLikes = accountMetrics?.likes
+                            ?: userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
                         profileCompletion = profileCompletion,
+                        metricsComplete = accountMetrics != null,
                         onAvatarClick = { showAvatarViewer = true },
                         hasActiveStory = storyForProfile != null,
                         onStoryClick = { storyForProfile?.let(onOpenProfileStory) },
