@@ -33,7 +33,7 @@ production SQL until the corresponding acceptance gates below pass.
 | Chat media studio (#595) | Merged partial editor, gallery, vault candidate | Native interactive polls, live location consent, video transitions, audio processing, PDF/OCR, vault device and privacy tests, exact reference screenshots |
 | Private photo delivery (#571/#578) | Merged album/retry/view-once code | Two-account Android↔Windows tests, app-exit/reconnect/cancellation, delivery receipts, private RLS, signed APK |
 | Phone and contacts (#606) | Clients merged, OTP enforcement off | Stage private matching schema/function, configure SMS provider and HMAC secret, consent/delete/opt-out/push E2E |
-| Market-only Feed (#588) | Clients merged, SQL candidate only | Disposable-DB tests of category/sales-ad trigger, server sponsored approvals, media-only moderation, controlled deploy |
+| Market-only Feed (#588) | Clients merged; **production `blink_feed_market_category_guard` trigger was independently observed on 27 Oct** | Real-account negative tests for spoofed categories/ads and existing posts, legitimate discussions, image-only moderation, bypass/rollback checks |
 | WhatsApp Channels (#601) | UI and backend merged | Physical-client media, offline, visual fidelity, follower FCM end-to-end and retry |
 | Coins, HP, Wallet (#586/#591) | Core screens and reward rules merged | SSV verified awards, phone/emulator wallet UX, ledger/mission/transfer live parity, expiry and refund tests |
 | Refer & Grow (#572/#573) | Invite/analytics/discovery staged | Fraud-reviewed reward activation, signup attribution, worker/push/analytics live tests |
@@ -50,13 +50,16 @@ production SQL until the corresponding acceptance gates below pass.
 | iOS | Unreleased | Plan independent cross-platform parity/TestFlight release; do not claim builds exist |
 | Whole-app performance/accessibility | Partial tests | 320–412dp/200% fonts, low-end Android 15 device, Windows parity, lifecycle and offline; do not alter #609 gesture/startup implementation |
 
+## Current confirmed integration evidence
+
+- Production `public.feed_posts` already has trigger `blink_feed_market_category_guard` (read-only inspection, 27 October 2026). Do **not** deploy another competing policy merely because PR #588's old description said otherwise. The trigger's behavior still needs server-side negative tests with isolated accounts. No production writes were performed in this audit.
+- Contact discovery still needs independent backend integration; a merged UI/PR is not evidence of live phone-number matching.
+
 ## This Testlab increment (2026-10-27)
 
-- Add a shared Android/Windows native chat poll input/choice policy with
-  focused JVM regression tests.
-- Add a **STAGING-ONLY** SQL candidate with server-authoritative, single-choice
-  vote idempotency, authenticated participant checks, privacy-safe aggregates,
-  poll closure, deleted message handling and old-client text fallback.
+- Added a shared Android/Windows chat poll input/choice policy and unit tests.
+- Added Android text-poll validation and Windows text-poll draft composer, both using the same bounded 2–8 option policy and consistent fallback formatting. Interactive native votes remain unavailable until client RPC/UI/backend integration is verified.
+- Added a **STAGING-ONLY** SQL candidate with server-authoritative, single-choice vote idempotency, authenticated participant checks, direct-chat block-denial, privacy-safe aggregates, poll closure and deleted-message safeguards. No production deployment.
 - Do **not** deploy SQL or present polls as available to users. Android/Windows
   UI + actual transport integration, disposable PostgreSQL security fixture and
   full end-to-end testing remain required.
