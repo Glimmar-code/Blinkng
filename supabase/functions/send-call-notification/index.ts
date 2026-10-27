@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { verifiedNotificationActor, pushPreferenceDecision } from "../send-activity-notification/push-gates.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -8,18 +9,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 let firebaseTokenCache: { token: string; projectId: string; expiresAt: number } | null = null;
 
-function jwtSubject(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
-    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-    return JSON.parse(atob(padded)).sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function base64Url(input: string): string {
   return btoa(input).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
@@ -91,8 +80,6 @@ function isUnregisteredFcmToken(status: number, responseText: string): boolean {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
   const auth = req.headers.get("Authorization") ?? "";
-  const senderId = jwtSubject(auth);
-  if (!senderId) return json({ error: "Unauthorized" }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -117,6 +104,10 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  // The claimed sub in a JWT is attacker-controlled until Supabase Auth
+  // validates its signature, issuer and expiry. Never trust decode-only IDs.
+  const senderId = await verifiedNotificationActor(auth, token => admin.auth.getUser(token));
+  if (!senderId) return json({ error: "Unauthorized" }, 401);
 
   const { data: call, error: callError } = await admin
     .from("calls")
@@ -157,24 +148,25 @@ Deno.serve(async (req) => {
     p_user_id: targetUserId,
     p_type: pushType,
   });
-  if (!allowedError && allowed === false) {
-    return json({ ok: true, skipped: "recipient_preferences" });
-  }
+  const preference = pushPreferenceDecision(allowed, allowedError);
+  if (preference === "retry") return json({ error: "notification_preferences_unavailable", retryable: true }, 503);
+  if (preference === "skip") return json({ ok: true, skipped: "recipient_preferences" });
 
-  const { data: prior } = await admin
+  const { data: prior, error: priorError } = await admin
     .from("call_push_dispatches")
     .select("status,attempts,updated_at")
     .eq("call_id", callId)
     .eq("event", event)
     .eq("target_user_id", targetUserId)
     .maybeSingle();
+  if (priorError) return json({ error: "call_dispatch_ledger_unavailable", retryable: true }, 503);
   if (prior?.status === "sent") return json({ ok: true, skipped: "already_sent" });
   if (prior?.status === "sending") {
     const ageMs = Date.now() - Date.parse(String(prior.updated_at ?? ""));
     if (Number.isFinite(ageMs) && ageMs < 90_000) return json({ ok: true, skipped: "already_sending" });
   }
   const attempts = Number(prior?.attempts ?? 0) + 1;
-  await admin.from("call_push_dispatches").upsert({
+  const { error: dispatchError } = await admin.from("call_push_dispatches").upsert({
     call_id: callId,
     event,
     target_user_id: targetUserId,
@@ -183,6 +175,7 @@ Deno.serve(async (req) => {
     last_error: null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "call_id,event,target_user_id" });
+  if (dispatchError) return json({ error: "call_dispatch_ledger_unavailable", retryable: true }, 503);
 
   const [{ data: sender }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
     admin.from("profiles").select("username,full_name,avatar_url").eq("id", senderId).maybeSingle(),
