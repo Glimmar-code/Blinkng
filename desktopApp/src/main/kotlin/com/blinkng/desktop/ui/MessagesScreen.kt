@@ -555,6 +555,31 @@ fun MessagesScreen(state: DesktopAppState) {
                 )
             }
 
+            if (chatSearchVisible && chatQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "${visibleMessages.size} loaded matches",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                    if (hasMoreOlder) {
+                        TextButton(
+                            onClick = { loadOlderMessages() },
+                            enabled = !olderLoading
+                        ) {
+                            Text(if (olderLoading) "Searching older…" else "Search older messages")
+                        }
+                    } else {
+                        Text("Entire history loaded", fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
             error?.let {
                 Text(
                     it,
