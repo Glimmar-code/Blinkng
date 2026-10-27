@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 
 enum class BlinkInAppNotificationDestination {
     CHAT,
+    CHANNEL,
     POST,
     PROFILE,
     MARKET,

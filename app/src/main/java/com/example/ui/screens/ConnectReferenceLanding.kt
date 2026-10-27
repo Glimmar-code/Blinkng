@@ -77,6 +77,7 @@ import com.example.data.models.VerificationBadge
 import com.example.data.repository.BlinkCommunity
 import com.example.data.repository.BlinkCommunityRepository
 import com.example.data.repository.FollowStateStore
+import com.example.ui.components.BlinkContactDiscoveryCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkOnlineGreen
 import kotlinx.coroutines.launch
@@ -271,6 +272,11 @@ internal fun ConnectReferenceLanding(
                 }
             }
         } else {
+            item(key = "blink_contact_discovery") {
+                BlinkContactDiscoveryCard(accountId = accountId,
+                    onProfile = onProfile,
+                    onFollow = { toggleFollow(it) })
+            }
             item {
                 ConnectReferenceSectionTitle(headerTitle, "See all", { showAllPeople = true })
             }

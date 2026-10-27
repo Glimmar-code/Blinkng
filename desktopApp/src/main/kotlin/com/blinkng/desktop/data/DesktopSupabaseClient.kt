@@ -598,7 +598,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -652,9 +652,46 @@ class DesktopSupabaseClient(
         ))
     }
 
+    /** Windows uses the same server-held, permission-gated contact matches as Android.
+     * It never reads another device's address book or downloads raw numbers. */
+    suspend fun contactDiscovery(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "get")) as JSONObject
+    }
+
+    suspend fun setContactDiscovery(syncEnabled: Boolean, discoverable: Boolean, joinAlerts: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "settings")
+            .put("sync_enabled", syncEnabled).put("discoverable", discoverable)
+            .put("join_alerts", joinAlerts)) as JSONObject
+    }
+
+    suspend fun deleteContactDiscovery(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "delete")) as JSONObject
+    }
+
+    suspend fun requestOnboardingPhoneCode(raw: String) = withContext(Dispatchers.IO) {
+        val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Enter a valid phone number." }
+        execute(authenticatedRequest("/auth/v1/user")
+            .put(JSONObject().put("phone", number).toString().toRequestBody(jsonMedia)).build())
+    }
+
+    suspend fun verifyOnboardingPhoneCode(raw: String, code: String): Boolean = withContext(Dispatchers.IO) {
+        val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Invalid phone number." }
+        require(com.blinkng.shared.BlinkPhonePolicy.otpIsValid(code)) { "Enter a six-digit code." }
+        val rawReply = execute(authenticatedRequest("/auth/v1/verify")
+            .post(JSONObject().put("phone", number).put("token", code).put("type", "phone_change")
+                .toString().toRequestBody(jsonMedia)).build())
+        val reply = JSONObject(rawReply)
+        if (reply.optString("access_token").isNotBlank() && reply.optString("refresh_token").isNotBlank()) {
+            saveAuthResponseBlocking(reply, requireSession().email)
+        }
+        val user = JSONObject(execute(authenticatedRequest("/auth/v1/user").get().build()))
+        user.optString("phone") == number && user.optString("phone_confirmed_at").isNotBlank()
+    }
+
     suspend fun saveOnboardingProfile(
         username: String? = null,
         university: String? = null,
+        accountType: String? = null,
         department: String? = null,
         academicLevel: String? = null,
         gender: String? = null,
@@ -672,6 +709,7 @@ class DesktopSupabaseClient(
             body.put("username", clean)
         }
         university?.let { body.put("university", it.trim()) }
+        accountType?.let { body.put("account_type", it) }
         department?.let { body.put("department", it.trim()) }
         academicLevel?.let {
             val clean = it.trim()
@@ -1206,6 +1244,26 @@ class DesktopSupabaseClient(
             ?: error("Community creation was not confirmed by Supabase."))
     }
 
+    suspend fun updateChannelInfo(
+        id: String, name: String, description: String, coverUrl: String?
+    ): DesktopCommunity = withContext(Dispatchers.IO) {
+        val uuid = UUID.fromString(id).toString()
+        val cover = coverUrl?.trim().orEmpty()
+        require(cover.isEmpty() || (cover.length <= 500 &&
+            cover.startsWith("https://", ignoreCase = true))) {
+            "Channel picture must be an HTTPS URL."
+        }
+        val body = JSONObject()
+            .put("name", com.blinkng.shared.BlinkCommunityPolicy.validatedName(name))
+            .put("description", com.blinkng.shared.BlinkCommunityPolicy.validatedDescription(description))
+            .put("cover_url", if (cover.isEmpty()) JSONObject.NULL else cover)
+        val raw = execute(authenticatedRequest("/rest/v1/blink_communities?id=eq.$uuid&select=*")
+            .header("Prefer", "return=representation")
+            .patch(body.toString().toRequestBody(jsonMedia)).build())
+        parseCommunity(JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
+            ?: error("Only Channel owners can edit their Channel."))
+    }
+
     private suspend fun communityRpc(name: String, args: JSONObject): String = withContext(Dispatchers.IO) {
         (postObject("/rest/v1/rpc/" + name, args) as? JSONObject)
             ?.optString("value").orEmpty().removeSurrounding("\"")
@@ -1249,6 +1307,366 @@ class DesktopSupabaseClient(
         return communityRpc("blink_community_moderate",
             JSONObject().put("p_community_id", id)
                 .put("p_target", userId).put("p_action", action)).equals("true", ignoreCase = true)
+    }
+
+
+    /** Public followers never receive other followers' IDs, only aggregate counts. */
+    suspend fun channelRole(id: String): String =
+        communityRpc("blink_channel_my_role", JSONObject().put("p_channel_id", id))
+
+    suspend fun channelFollowerCount(id: String): Int =
+        communityRpc("blink_channel_follower_count", JSONObject().put("p_channel_id", id))
+            .toIntOrNull() ?: 0
+
+    suspend fun channelUpdates(id: String): List<com.blinkng.shared.BlinkChannelUpdate> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_channel_updates_page",
+                JSONObject().put("p_channel_id", id).put("p_limit", 100),
+                prefer = "return=representation")
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                val reactions = row.optJSONObject("reactions") ?: JSONObject()
+                val counts = mutableMapOf<String, Int>()
+                reactions.keys().forEach { emoji -> counts[emoji] = reactions.optInt(emoji) }
+                com.blinkng.shared.BlinkChannelUpdate(
+                    id = row.optString("id"),
+                    channelId = row.optString("channel_id"),
+                    authorId = row.optString("author_id"),
+                    body = row.optString("body"),
+                    createdAt = row.optString("created_at"),
+                    reactions = counts,
+                    myReaction = row.optNullableString("my_reaction"),
+                    mediaKind = row.optString("media_kind").ifBlank { "text" },
+                    mediaPath = row.optNullableString("media_path"),
+                    pollQuestion = row.optNullableString("poll_question"),
+                    pollOptions = row.optJSONArray("poll_options")?.let { poll ->
+                        (0 until poll.length()).map { index -> poll.optString(index) }
+                    }.orEmpty(),
+                    pollCounts = row.optJSONObject("poll_counts")?.let { counts ->
+                        buildMap<Int, Int> {
+                            counts.keys().forEach { key ->
+                                key.toIntOrNull()?.let { put(it, counts.optInt(key)) }
+                            }
+                        }
+                    }.orEmpty(),
+                    myVote = if (row.isNull("my_vote")) null else row.optInt("my_vote"),
+                    pinned = row.optBoolean("pinned", false),
+                    viewCount = row.optLong("view_count", 0)
+                )
+            }.reversed()
+        }
+
+    suspend fun publishChannelUpdate(id: String, body: String): String =
+        communityRpc("blink_channel_publish",
+            JSONObject().put("p_channel_id", id)
+                .put("p_body", com.blinkng.shared.BlinkChannelPolicy.validatedUpdate(body)))
+
+    suspend fun reactToChannelUpdate(updateId: String, emoji: String): String =
+        communityRpc("blink_channel_react",
+            JSONObject().put("p_update_id", updateId)
+                .put("p_emoji", com.blinkng.shared.BlinkChannelPolicy.validatedReaction(emoji)))
+
+
+    suspend fun publishRichChannelUpdate(
+        id: String, body: String, kind: String = "text",
+        mediaPath: String? = null, pollQuestion: String? = null,
+        options: List<String> = emptyList(), scheduledAt: String? = null,
+        forwardedFrom: String? = null
+    ): String {
+        com.blinkng.shared.BlinkChannelPolicy.validatedMediaKind(kind)
+        val poll = if (kind == "poll")
+            com.blinkng.shared.BlinkChannelPolicy.validatedPoll(pollQuestion.orEmpty(), options)
+            else null
+        return communityRpc("blink_channel_publish_rich",
+            JSONObject().put("p_channel_id", id)
+                .put("p_body", body.trim().take(com.blinkng.shared.BlinkChannelPolicy.MAX_UPDATE_LENGTH))
+                .put("p_media_kind", kind)
+                .put("p_media_path", mediaPath ?: JSONObject.NULL)
+                .put("p_poll_question", poll?.first ?: JSONObject.NULL)
+                .put("p_poll_options", poll?.second?.let { JSONArray(it) } ?: JSONObject.NULL)
+                .put("p_scheduled_at", scheduledAt ?: JSONObject.NULL)
+                .put("p_forwarded_from", forwardedFrom ?: JSONObject.NULL))
+    }
+
+    suspend fun voteChannelPoll(updateId: String, option: Int): Boolean =
+        communityRpc("blink_channel_poll_vote", JSONObject()
+            .put("p_update_id", updateId).put("p_option", option)) == "true"
+
+    suspend fun recordChannelView(updateId: String): Boolean =
+        communityRpc("blink_channel_view", JSONObject()
+            .put("p_update_id", updateId)) == "true"
+
+    suspend fun reportChannelUpdate(updateId: String, reason: String): Boolean =
+        communityRpc("blink_channel_report", JSONObject()
+            .put("p_update_id", updateId).put("p_reason", reason.trim().take(280))) == "true"
+
+    suspend fun moderateChannelUpdate(updateId: String, action: String): Boolean {
+        require(action in setOf("pin", "unpin", "remove"))
+        return communityRpc("blink_channel_manage_update", JSONObject()
+            .put("p_update_id", updateId).put("p_action", action)) == "true"
+    }
+
+    suspend fun channelStats(id: String): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/blink_channel_statistics",
+            JSONObject().put("p_channel_id", id)) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun muteChannel(id: String, muted: Boolean): Boolean =
+        communityRpc("blink_channel_mute", JSONObject()
+            .put("p_channel_id", id).put("p_muted", muted)) == "true"
+
+    suspend fun isChannelMuted(id: String): Boolean =
+        communityRpc("blink_channel_is_muted", JSONObject()
+            .put("p_channel_id", id)) == "true"
+
+
+    /** Uploads only allowlisted local files to the PRIVATE channel bucket. */
+    suspend fun uploadChannelMedia(channelId: String, file: File): Pair<String, String> =
+        withContext(Dispatchers.IO) {
+            require(file.isFile && file.length() in 1..(25L * 1024 * 1024)) {
+                "Channel files must be no larger than 25 MB."
+            }
+            val extension = file.extension.lowercase()
+            val (kind, mime) = when (extension) {
+                "jpg", "jpeg" -> "image" to "image/jpeg"
+                "png" -> "image" to "image/png"
+                "webp" -> "image" to "image/webp"
+                "mp4" -> "video" to "video/mp4"
+                "mp3" -> "audio" to "audio/mpeg"
+                "m4a" -> "audio" to "audio/mp4"
+                "pdf" -> "document" to "application/pdf"
+                else -> error("Please select JPG, PNG, WebP, MP4, MP3, M4A or PDF.")
+            }
+            val userId = requireSession().userId
+            val folder = "${UUID.fromString(channelId)}/$userId"
+            val path = "$folder/${UUID.randomUUID()}.$extension"
+            val escaped = path.split('/').joinToString("/") {
+                URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+            }
+            execute(authenticatedRequest("/storage/v1/object/blink-channel-media/$escaped")
+                .header("Content-Type", mime)
+                .header("x-upsert", "false")
+                .post(file.asRequestBody(mime.toMediaType())).build())
+            kind to path
+        }
+
+    /** Copy an allowed channel attachment into a channel the sender administers.
+     * The source read and destination upload are independently authorized by Storage RLS.
+     * Never reuse the source private object path or a short-lived signed URL in another channel.
+     */
+    suspend fun forwardChannelMediaToChannel(
+        source: com.blinkng.shared.BlinkChannelUpdate,
+        destinationChannelId: String
+    ): Pair<String, String>? = withContext(Dispatchers.IO) {
+        val sourcePath = source.mediaPath ?: return@withContext null
+        require(source.mediaKind in setOf("image", "video", "audio", "document"))
+        require(channelRole(destinationChannelId) in setOf("owner", "moderator")) {
+            "Only administrators can forward media to this Channel."
+        }
+        val url = signedChannelMedia(sourcePath) ?: error("Source media is no longer accessible.")
+        require(url.startsWith("$baseUrl/storage/v1/")) { "Invalid Channel media URL." }
+        val extension = sourcePath.substringAfterLast('.').lowercase()
+        require(extension in setOf("jpg", "jpeg", "png", "webp", "mp4", "mp3", "m4a", "pdf"))
+        val tmp = File.createTempFile("blink_channel_forward_", ".$extension")
+        try {
+            http.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                check(response.isSuccessful) { "Could not read source Channel media." }
+                val stream = response.body?.byteStream() ?: error("Missing media.")
+                stream.use { input ->
+                    tmp.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val length = input.read(buffer)
+                            if (length < 0) break
+                            total += length
+                            require(total <= 25L * 1024L * 1024L) { "Channel media exceeds 25 MB." }
+                            output.write(buffer, 0, length)
+                        }
+                        require(total > 0) { "Source media is empty." }
+                    }
+                }
+            }
+            uploadChannelMedia(destinationChannelId, tmp)
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /** User-initiated attribution card for the existing BLINK Stories/Status backend.
+     * No channel-private attachment or follower identities are included.
+     */
+    suspend fun shareChannelUpdateToStatus(
+        channelName: String,
+        update: com.blinkng.shared.BlinkChannelUpdate
+    ): Boolean = withContext(Dispatchers.IO) {
+        val userId = requireSession().userId
+        val canvas = BufferedImage(720, 1280, BufferedImage.TYPE_INT_RGB)
+        val graphics = canvas.createGraphics()
+        try {
+            graphics.color = java.awt.Color(16, 13, 32)
+            graphics.fillRect(0, 0, 720, 1280)
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+                java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            graphics.color = java.awt.Color(194, 176, 255)
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.BOLD, 26)
+            graphics.drawString("BLINK · CHANNEL", 52, 130)
+            graphics.color = java.awt.Color.WHITE
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.BOLD, 43)
+            graphics.drawString(channelName.take(26), 52, 210)
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.PLAIN, 31)
+            val message = update.body.trim().ifBlank {
+                if (update.mediaKind == "poll") update.pollQuestion.orEmpty()
+                else "Shared a ${update.mediaKind} Channel update"
+            }.take(600)
+            var y = 335
+            var current = ""
+            for (word in message.split(Regex("\\s+"))) {
+                val combined = if (current.isEmpty()) word else "$current $word"
+                if (graphics.fontMetrics.stringWidth(combined) > 610 && current.isNotBlank()) {
+                    graphics.drawString(current, 52, y)
+                    y += 42
+                    current = word
+                    if (y > 1085) break
+                } else current = combined
+            }
+            if (y <= 1100 && current.isNotBlank()) graphics.drawString(current.take(72), 52, y)
+            graphics.color = java.awt.Color(194, 176, 255)
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.PLAIN, 24)
+            graphics.drawString("Open the original announcement on BLINK", 52, 1190)
+        } finally { graphics.dispose() }
+        val bytes = ByteArrayOutputStream().use {
+            check(ImageIO.write(canvas, "png", it)) { "Unable to render Status card." }
+            it.toByteArray()
+        }
+        val path = "$userId/${UUID.randomUUID()}.png"
+        val mediaType = "image/png".toMediaType()
+        execute(authenticatedRequest("/storage/v1/object/story-media/$path")
+            .header("Content-Type", "image/png")
+            .post(bytes.toRequestBody(mediaType)).build())
+        val mediaUrl = "$baseUrl/storage/v1/object/public/story-media/$path"
+        val channelLink = "https://blink.com.ng/channel/${update.channelId}/update/${update.id}"
+        val story = JSONObject()
+            .put("id", UUID.randomUUID().toString())
+            .put("user_id", userId)
+            .put("active", true)
+            .put("media_url", mediaUrl)
+            .put("media_type", "image")
+            .put("image_url", mediaUrl)
+            .put("caption", "Forwarded from $channelName · $channelLink")
+            .put("likes_count", 0)
+        execute(authenticatedRequest("/rest/v1/stories")
+            .header("Prefer", "return=minimal")
+            .post(story.toString().toRequestBody(jsonMedia)).build())
+        true
+    }
+
+    suspend fun signedChannelMedia(path: String): String? = withContext(Dispatchers.IO) {
+        val escaped = path.split('/').joinToString("/") {
+            URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+        }
+        val payload = JSONObject().put("expiresIn", 1200)
+        val raw = execute(authenticatedRequest("/storage/v1/object/sign/blink-channel-media/$escaped")
+            .post(payload.toString().toRequestBody(jsonMedia)).build())
+        val obj = JSONObject(raw.ifBlank { "{}" })
+        val signed = obj.optString("signedURL").ifBlank { obj.optString("signedUrl") }
+        when {
+            signed.startsWith("$baseUrl/storage/v1/") -> signed
+            signed.startsWith("/storage/v1/") -> baseUrl + signed
+            signed.startsWith("/object/") -> "$baseUrl/storage/v1$signed"
+            else -> null
+        }
+    }
+
+
+    suspend fun channelUnreadCount(id: String): Int =
+        communityRpc("blink_channel_unread_count", JSONObject().put("p_channel_id", id))
+            .toIntOrNull() ?: 0
+
+    suspend fun markChannelSeen(id: String): Boolean =
+        communityRpc("blink_channel_mark_seen", JSONObject().put("p_channel_id", id)) == "true"
+
+    suspend fun scheduledChannelUpdates(id: String): List<Pair<String, String>> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_channel_scheduled_page",
+                JSONObject().put("p_channel_id", id), prefer = "return=representation")
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { it.optString("id") to
+                    (it.optString("scheduled_at") + " — " + it.optString("body")) }
+            }
+        }
+
+    suspend fun cancelScheduledChannelUpdate(id: String): Boolean =
+        communityRpc("blink_channel_cancel_scheduled",
+            JSONObject().put("p_update_id", id)) == "true"
+
+
+    suspend fun channelReports(channelId: String): List<com.blinkng.shared.BlinkChannelReport> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_channel_reports_page",
+                JSONObject().put("p_channel_id", channelId), prefer = "return=representation")
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    com.blinkng.shared.BlinkChannelReport(row.optString("id"),
+                        row.optString("update_id"), row.optString("reason"),
+                        row.optBoolean("reviewed", false))
+                }
+            }
+        }
+
+    suspend fun reviewChannelReport(reportId: String, remove: Boolean): Boolean =
+        communityRpc("blink_channel_review_report",
+            JSONObject().put("p_report_id", reportId).put("p_remove", remove)) == "true"
+
+    suspend fun forwardChannelUpdateToChat(
+        username: String,
+        channelName: String,
+        source: com.blinkng.shared.BlinkChannelUpdate
+    ): Boolean = withContext(Dispatchers.IO) {
+        val recipient = username.trim().removePrefix("@")
+        require(recipient.isNotEmpty()) { "Choose a BLINK account." }
+        val url = "https://blink.com.ng/channel/${source.channelId}/update/${source.id}"
+        val content = "Forwarded from $channelName: ${source.body.take(900)}\n$url"
+        if (source.mediaKind == "image" && source.mediaPath != null) {
+            val signed = signedChannelMedia(source.mediaPath)
+                ?: throw IllegalStateException("Source image is not accessible.")
+            require(signed.startsWith("$baseUrl/storage/v1/")) { "Unexpected private image host." }
+            val ext = source.mediaPath.substringAfterLast('.').lowercase()
+            require(ext in setOf("jpg", "jpeg", "png", "webp"))
+            val file = File.createTempFile("blink_channel_dm_", ".$ext")
+            try {
+                http.newCall(Request.Builder().url(signed).get().build()).execute().use { response ->
+                    check(response.isSuccessful) { "Unable to download Channel image." }
+                    val sourceStream = response.body?.byteStream() ?: error("Missing Channel picture.")
+                    sourceStream.use { input ->
+                        file.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            var total = 0L
+                            while (true) {
+                                val size = input.read(buffer)
+                                if (size < 0) break
+                                total += size
+                                require(total <= 15L * 1024L * 1024L) {
+                                    "Image is too large for private messaging."
+                                }
+                                output.write(buffer, 0, size)
+                            }
+                            require(total > 0) { "Empty Channel image." }
+                        }
+                    }
+                }
+                val conversationId = getOrCreateDirectConversationForShare(recipient)
+                sendChatImage(
+                    conversationId, file, content.take(1024),
+                    BlinkChatImageQuality.STANDARD
+                )
+                return@withContext true
+            } finally { file.delete() }
+        }
+        val result = communityRpc("send_message", JSONObject()
+            .put("p_receiver_username", recipient)
+            .put("p_content", content))
+        runCatching { UUID.fromString(result) }.isSuccess
     }
 
     suspend fun searchMentionProfiles(
@@ -2971,6 +3389,7 @@ class DesktopSupabaseClient(
         professionalHeadline = row.optNullableString("professional_headline"),
         dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
+        accountType = row.optString("account_type"),
         faculty = row.optNullableString("faculty"),
         department = row.optNullableString("department"),
         academicLevel = row.optNullableString("academic_level"),

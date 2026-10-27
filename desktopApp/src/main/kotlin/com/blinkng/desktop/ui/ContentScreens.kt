@@ -1982,14 +1982,14 @@ private fun DesktopConnectCampusOverview(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Campus Communities", fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            Text("Campus Channels", fontSize = 17.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f))
             TextButton(onClick = { showAllCommunities = !showAllCommunities }) {
                 Text(if (showAllCommunities) "Show less" else "See all ›")
             }
         }
         if (communities.isEmpty()) {
-            Text("No public communities on this campus yet. Explore Communities in the sidebar.",
+            Text("No public channels on this campus yet. Explore Channels in the sidebar.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -2099,7 +2099,47 @@ fun ConnectScreen(state: DesktopAppState) {
     var liveActivityAvailable by remember { mutableStateOf(false) }
     var pulseImpressionRecorded by remember { mutableStateOf(false) }
     var selectedStudentProfile by remember { mutableStateOf<DesktopProfile?>(null) }
+    var contactSync by remember(state.profile?.id) { mutableStateOf(false) }
+    var contactDiscoverable by remember(state.profile?.id) { mutableStateOf(false) }
+    var contactAlerts by remember(state.profile?.id) { mutableStateOf(false) }
+    var contactMatches by remember(state.profile?.id) { mutableStateOf<List<Pair<String,String>>>(emptyList()) }
+    var contactBusy by remember(state.profile?.id) { mutableStateOf(false) }
+    var contactError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    fun loadContactSnapshot(reply: JSONObject) {
+        val settings = reply.optJSONObject("settings")
+        contactSync = settings?.optBoolean("sync_enabled") == true
+        contactDiscoverable = settings?.optBoolean("discoverable") == true
+        contactAlerts = settings?.optBoolean("join_alerts") == true
+        val matches = reply.optJSONArray("matches")
+        contactMatches = if (matches == null) emptyList() else (0 until matches.length()).mapNotNull { n ->
+            matches.optJSONObject(n)?.let { item ->
+                item.optString("username").takeIf(String::isNotBlank)?.let { username ->
+                    username to item.optString("full_name").ifBlank { username }
+                }
+            }
+        }
+    }
+
+    fun changeContacts(syncEnabled: Boolean, discoverable: Boolean, alerts: Boolean) {
+        scope.launch {
+            contactBusy = true
+            runCatching { state.client.setContactDiscovery(syncEnabled, discoverable, alerts) }
+                .onSuccess { reply -> loadContactSnapshot(JSONObject().put("settings", reply.optJSONObject("settings")))
+                    if (!syncEnabled) contactMatches = emptyList()
+                    contactError = null }
+                .onFailure { contactError = it.message ?: "Contact preferences could not be updated." }
+            contactBusy = false
+        }
+    }
+
+    LaunchedEffect(state.profile?.id) {
+        if (state.profile == null) return@LaunchedEffect
+        runCatching { state.client.contactDiscovery() }
+            .onSuccess { loadContactSnapshot(it) }
+            .onFailure { contactError = "Contact discovery is unavailable." }
+    }
 
     val directoryOptions = remember { listOf(
         "all" to "All", "roommates" to "Roommates", "mentors" to "Mentors",
@@ -2108,7 +2148,7 @@ fun ConnectScreen(state: DesktopAppState) {
         "project_teammates" to "Project Teammates", "skill_exchange" to "Skill Exchange",
         "career_guidance" to "Career Guidance", "internship_network" to "Internships",
         "research_partners" to "Research Partners", "founders_builders" to "Founders & Builders",
-        "freelance_collaborators" to "Freelancers", "campus_communities" to "Communities",
+        "freelance_collaborators" to "Freelancers", "campus_communities" to "Channels",
         "event_partners" to "Event Partners", "accountability_partners" to "Accountability",
         "alumni_network" to "Alumni & Seniors", "course_tutors" to "Course Tutors",
         "relocation_support" to "Relocation Support", "game_challenges" to "Game Challenges"
@@ -2167,7 +2207,7 @@ fun ConnectScreen(state: DesktopAppState) {
             studentsResult.exceptionOrNull()?.let { "Student discovery" },
             followingResult.exceptionOrNull()?.let { "Following" },
             inboxResult.exceptionOrNull()?.let { "Connect inbox" },
-            communityResult.exceptionOrNull()?.let { "Campus communities" },
+            communityResult.exceptionOrNull()?.let { "Campus channels" },
             postsResult.exceptionOrNull()?.let { "Campus posts" },
         ).takeIf { it.isNotEmpty() }?.joinToString(", ")
         loading = false
@@ -2329,6 +2369,55 @@ fun ConnectScreen(state: DesktopAppState) {
                     ScreenHeader("Connect", "Find students, study partners, housing and challenges")
                     if (selectedPane == 0) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
+                    }
+                }
+            }
+
+            item(key = "connect_contact_discovery") {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("People from your contacts", fontWeight = FontWeight.Bold)
+                        Text("Sync your phone contacts on Android, then discover the same matches here. Contact access is optional.",
+                            fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = contactSync, enabled = !contactBusy,
+                                onCheckedChange = { changeContacts(it, contactDiscoverable, contactAlerts && it) })
+                            Text("Contact sync", modifier = Modifier.padding(start = 9.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = contactDiscoverable, enabled = !contactBusy,
+                                onCheckedChange = { changeContacts(contactSync, it, contactAlerts) })
+                            Text("Let my contacts find me", modifier = Modifier.padding(start = 9.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = contactAlerts, enabled = !contactBusy && contactSync,
+                                onCheckedChange = { changeContacts(contactSync, contactDiscoverable, it) })
+                            Text("Notify me when contacts join", modifier = Modifier.padding(start = 9.dp))
+                        }
+                        contactMatches.take(8).forEach { (username, name) ->
+                            TextButton(onClick = { scope.launch {
+                                selectedStudentProfile = runCatching { state.client.fetchProfileDetail(username) }.getOrNull()
+                            } }) { Text(name + "  @" + username) }
+                        }
+                        Row {
+                            TextButton(onClick = { scope.launch {
+                                contactBusy = true
+                                runCatching { state.client.contactDiscovery() }
+                                    .onSuccess { loadContactSnapshot(it); contactError = null }
+                                    .onFailure { contactError = it.message }
+                                contactBusy = false
+                            } }, enabled = !contactBusy) { Text("Refresh matches") }
+                            TextButton(onClick = { scope.launch {
+                                contactBusy = true
+                                runCatching { state.client.deleteContactDiscovery() }
+                                    .onSuccess { contactSync = false; contactDiscoverable = false
+                                        contactAlerts = false; contactMatches = emptyList(); contactError = null }
+                                    .onFailure { contactError = it.message }
+                                contactBusy = false
+                            } }, enabled = !contactBusy) { Text("Delete synced contacts") }
+                        }
+                        contactError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
                 }
             }

@@ -111,9 +111,14 @@ class ProfessionalCenterActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SupabaseService.initialize(applicationContext)
         val section = intent.getStringExtra("section") ?: "privacy"
+        val initialChannelId = intent.getStringExtra("channel_id").orEmpty()
+            .takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+        val initialUpdateId = intent.getStringExtra("update_id").orEmpty()
+            .takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
         setContent {
             BlinkTheme(darkTheme = true) {
-                ProfessionalCenterScreen(initialSection = section, onBack = ::finish)
+                ProfessionalCenterScreen(initialSection = section, initialChannelId = initialChannelId,
+                    initialUpdateId = initialUpdateId, onBack = ::finish)
             }
         }
     }
@@ -125,19 +130,21 @@ private enum class ProfessionalSection(val key: String, val label: String) {
     SAFETY("safety", "Safety"),
     MARKET("market", "Orders"),
     GROUPS("groups", "Groups"),
-    COMMUNITIES("communities", "Communities"),
+    COMMUNITIES("communities", "Channels"),
     ACCOUNT("account", "Account")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit) {
+private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: String?,
+    initialUpdateId: String?, onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { ProfessionalRepository() }
     val scheduledRepository = remember { ScheduledPostRepository() }
     val service = remember { SupabaseService() }
 
+    var channelOpen by remember { mutableStateOf(false) }
     var section by rememberSaveable {
         mutableStateOf(ProfessionalSection.entries.firstOrNull { it.key == initialSection } ?: ProfessionalSection.PRIVACY)
     }
@@ -167,7 +174,7 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!channelOpen) TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BlinkMark(size = 32.dp, showText = false)
@@ -202,7 +209,7 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                     )
                 )
         ) {
-            Row(
+            if (!channelOpen) Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -218,13 +225,13 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                 }
             }
 
-            AnimatedVisibility(loading) {
+            AnimatedVisibility(loading && !channelOpen) {
                 Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
             }
 
-            errorText?.let {
+            errorText?.takeIf { !channelOpen }?.let {
                 Surface(
                     modifier = Modifier.padding(horizontal = 14.dp),
                     shape = RoundedCornerShape(14.dp),
@@ -358,7 +365,10 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                     ProfessionalSection.COMMUNITIES -> BlinkCommunitiesPanel(
                         searchProfiles = { query, limit, afterUsername, afterId ->
                             service.searchProfilesPage(query, limit, afterUsername, afterId)
-                        }
+                        },
+                        onChannelOpenChange = { channelOpen = it },
+                        initialChannelId = initialChannelId,
+                        initialUpdateId = initialUpdateId
                     )
 
                     ProfessionalSection.ACCOUNT -> AccountSection(
