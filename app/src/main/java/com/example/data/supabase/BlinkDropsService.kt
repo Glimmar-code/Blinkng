@@ -73,6 +73,21 @@ class BlinkDropsService {
         rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", limit.coerceIn(1, 50)))
     }
 
+    /** Server-authoritative pages: MINE is owner-only, AVAILABLE requires a saved eligibility snapshot. */
+    suspend fun page(scope: String, offset: Int, limit: Int = 30) = runCatching {
+        require(scope in setOf("MINE", "AVAILABLE")) { "Unknown Drop list." }
+        rpc("get_blink_drop_page", JSONObject()
+            .put("p_scope", scope)
+            .put("p_offset", offset.coerceAtLeast(0))
+            .put("p_limit", limit.coerceIn(1, 50)))
+    }
+
+    /** Exact item lookup supports older, claimed, cancelled and expired notification targets. */
+    suspend fun detail(dropId: String) = runCatching {
+        require(runCatching { java.util.UUID.fromString(dropId) }.isSuccess) { "Invalid Drop identifier." }
+        rpc("get_blink_drop_by_id", JSONObject().put("p_drop_id", dropId))
+    }
+
     suspend fun discovery(limit: Int = 3): Result<List<BlinkDropDiscovery>> = runCatching {
         val root = rpc(
             "get_blink_drop_discovery",
