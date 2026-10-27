@@ -3,7 +3,6 @@ package com.example.call
 import android.content.Context
 import android.net.ConnectivityManager
 import android.media.AudioAttributes
-import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
@@ -35,7 +34,6 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
-import java.util.concurrent.atomic.AtomicBoolean
 
 class WebRtcCallClient(
     context: Context,
@@ -56,7 +54,7 @@ class WebRtcCallClient(
         private const val STREAM_ID = "blink_call"
         private const val AUDIO_TRACK_ID = "blink_audio"
         private const val VIDEO_TRACK_ID = "blink_video"
-        private val factoryInitialized = AtomicBoolean(false)
+        @Volatile private var factoryInitialized = false
     }
 
     private val appContext = context.applicationContext
@@ -250,24 +248,22 @@ class WebRtcCallClient(
     }
 
     fun setSpeakerEnabled(enabled: Boolean): Boolean {
-        speakerEnabled = enabled
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val targetType = if (enabled) {
-                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                } else {
-                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                }
-                val target = audioManager.availableCommunicationDevices.firstOrNull { it.type == targetType }
-                if (target != null) audioManager.setCommunicationDevice(target)
-            } else {
-                @Suppress("DEPRECATION")
-                run { audioManager.isSpeakerphoneOn = enabled }
-            }
+        // Android 8+ is owned by BlinkTelecomManager / Core-Telecom.
+        // setCommunicationDevice() here would race the system call endpoint,
+        // bypass connected Bluetooth/headsets, and report false success.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return speakerEnabled
+
+        return try {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = enabled
+            @Suppress("DEPRECATION")
+            val actuallyEnabled = audioManager.isSpeakerphoneOn
+            speakerEnabled = actuallyEnabled
+            actuallyEnabled
         } catch (error: Exception) {
-            Log.w(TAG, "Audio route update failed", error)
+            Log.w(TAG, "Legacy call audio route update failed", error)
+            speakerEnabled
         }
-        return speakerEnabled
     }
 
     fun toggleSpeaker(): Boolean = setSpeakerEnabled(!speakerEnabled)
@@ -294,9 +290,10 @@ class WebRtcCallClient(
         runCatching { factory.dispose() }
         runCatching { audioDeviceModule.release() }
         runCatching { eglBase.release() }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            runCatching { audioManager.clearCommunicationDevice() }
-        } else {
+        // On Android 8+ Core-Telecom owns endpoint selection. Clearing the
+        // communication device here can override Telecom/Bluetooth routing while
+        // its call session is still being disconnected.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             @Suppress("DEPRECATION")
             runCatching { audioManager.isSpeakerphoneOn = false }
         }
@@ -343,12 +340,17 @@ class WebRtcCallClient(
     }
 
     private fun initializeFactoryOnce() {
-        if (factoryInitialized.compareAndSet(false, true)) {
+        // A failed initialization must NOT permanently mark WebRTC as initialized.
+        // Synchronize on the class, not this call instance: incoming and outgoing
+        // calls may race to create separate WebRtcCallClients.
+        synchronized(WebRtcCallClient::class.java) {
+            if (factoryInitialized) return
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(appContext)
                     .setEnableInternalTracer(false)
                     .createInitializationOptions()
             )
+            factoryInitialized = true
         }
     }
 
