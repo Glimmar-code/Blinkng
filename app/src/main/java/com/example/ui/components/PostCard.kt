@@ -75,6 +75,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -216,6 +220,9 @@ fun PostCard(
     var imagePage by remember(post.id) { mutableIntStateOf(0) }
     var expandedText by remember(post.id, post.text) { mutableStateOf(false) }
     var textCanExpand by remember(post.id, post.text) { mutableStateOf(false) }
+    var followingMenuExpanded by remember(post.id) { mutableStateOf(false) }
+    var coinGiftDialogOpen by remember(post.id) { mutableStateOf(false) }
+    var selectedGiftAmount by remember(post.id) { mutableIntStateOf(20) }
     val likeScale = remember(post.id) { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val likedTint by animateColorAsState(
@@ -245,14 +252,14 @@ fun PostCard(
             .then(exposureModifier)
             .fillMaxWidth()
             .padding(
-                horizontal = 12.dp,
-                vertical = 7.dp
+                horizontal = if (xFeedStyle) 10.dp else 12.dp,
+                vertical = if (xFeedStyle) 5.dp else 7.dp
             ),
-        shape = RoundedCornerShape(if (xFeedStyle) 18.dp else 16.dp),
+        shape = RoundedCornerShape(if (xFeedStyle) 14.dp else 16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
-        shadowElevation = if (xFeedStyle) 2.dp else 0.dp,
-        border = BorderStroke(if (xFeedStyle) 0.7.dp else 1.dp, dividerColor.copy(alpha = if (xFeedStyle) 0.27f else 0.52f))
+        shadowElevation = 0.dp,
+        border = BorderStroke(if (xFeedStyle) 0.6.dp else 1.dp, dividerColor.copy(alpha = if (xFeedStyle) 0.27f else 0.52f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
@@ -357,39 +364,103 @@ fun PostCard(
                         ) {
                             Text(
                                 authorUniversity.trim().ifBlank { "@$resolvedAuthorUsername" },
-                                color = secondaryText, fontSize = 11.sp,
+                                color = secondaryText, fontSize = 12.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                             if (post.timeAgo.isNotBlank()) {
                                 Text(
                                     " · ${BlinkPostFormat.age(post.timeAgo)}",
-                                    color = secondaryText, fontSize = 11.sp, maxLines = 1
+                                    color = secondaryText, fontSize = 12.sp, maxLines = 1
                                 )
                             }
                         }
                     }
                     if (!isAuthor && authorProfileId.isNotBlank()) {
                         Spacer(Modifier.width(5.dp))
-                        Surface(
-                            shape = RoundedCornerShape(9.dp),
-                            color = if (isFollowingAuthor) MaterialTheme.colorScheme.surfaceVariant
-                                else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.clickable(enabled = !isFollowMutationPending, role = Role.Button) {
-                                if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
-                                else onFollowAuthor(authorProfileId)
-                            }
-                        ) {
-                            Box(
-                                modifier = Modifier.heightIn(min = 36.dp).padding(horizontal = 12.dp),
-                                contentAlignment = Alignment.Center
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(9.dp),
+                                color = if (isFollowingAuthor) MaterialTheme.colorScheme.surfaceVariant
+                                    else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clickable(enabled = !isFollowMutationPending, role = Role.Button) {
+                                        if (isFollowingAuthor) followingMenuExpanded = true
+                                        else onFollowAuthor(authorProfileId)
+                                    }
                             ) {
-                                Text(
-                                    if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
-                                    color = if (isFollowingAuthor) primaryText else MaterialTheme.colorScheme.surface,
-                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        if (isFollowMutationPending) "Updating…" else if (isFollowingAuthor) "Interact" else "Follow",
+                                        color = if (isFollowingAuthor) primaryText else MaterialTheme.colorScheme.surface,
+                                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = followingMenuExpanded && isFollowingAuthor,
+                                onDismissRequest = { followingMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Message") },
+                                    onClick = {
+                                        followingMenuExpanded = false
+                                        onMessageAuthor()
+                                    }
+                                )
+                                if (coinGiftingEnabled) {
+                                    DropdownMenuItem(
+                                        text = { Text("Send BLINK Coins") },
+                                        onClick = {
+                                            followingMenuExpanded = false
+                                            coinGiftDialogOpen = true
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("View profile") },
+                                    onClick = {
+                                        followingMenuExpanded = false
+                                        onProfileClick(profileTarget)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("I follow · Unfollow") },
+                                    onClick = {
+                                        followingMenuExpanded = false
+                                        onUnfollowAuthor(authorProfileId)
+                                    }
                                 )
                             }
+                        }
+                        if (coinGiftDialogOpen) {
+                            AlertDialog(
+                                onDismissRequest = { coinGiftDialogOpen = false },
+                                title = { Text("Send BLINK Coins") },
+                                text = {
+                                    Column {
+                                        Text("Choose how many coins to send.")
+                                        listOf(20, 50, 100).forEach { amount ->
+                                            TextButton(onClick = { selectedGiftAmount = amount }) {
+                                                Text(if (selectedGiftAmount == amount) "✓ $amount coins" else "$amount coins")
+                                            }
+                                        }
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        coinGiftDialogOpen = false
+                                        onGiftCoinsAuthor(authorProfileId, selectedGiftAmount)
+                                    }) { Text("Send coins") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { coinGiftDialogOpen = false }) { Text("Cancel") }
+                                }
+                            )
                         }
                     }
                     IconButton(onClick = onOptionsClick, modifier = Modifier.size(36.dp)) {
@@ -399,7 +470,7 @@ fun PostCard(
                 }
                 if (post.audience.isNotBlank() && !post.audience.equals("Everyone", ignoreCase = true)) {
                     Text(
-                        "Audience: ${post.audience}", color = secondaryText, fontSize = 11.sp,
+                        "Audience: ${post.audience}", color = secondaryText, fontSize = 12.sp,
                         modifier = Modifier.padding(start = 14.dp, bottom = 4.dp)
                     )
                 }
@@ -652,8 +723,8 @@ fun PostCard(
                             text = post.text,
                             color = primaryText,
                             style = if (xFeedStyle) MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp
+                                fontSize = 16.sp,
+                                lineHeight = 22.sp
                             ) else MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp)
                                 .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
@@ -717,7 +788,7 @@ fun PostCard(
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
                             cropToFrame = false,
                             deferAspectChanges = isFeedScrolling,
-                            onDoubleTapLike = if (xFeedStyle) onLike else null,
+                            onDoubleTapLike = if (xFeedStyle) ({ if (!post.isLiked) onLike() }) else null,
                             onClick = {
                                 imagePage = 0
                                 showImageFullscreen = true
@@ -742,7 +813,7 @@ fun PostCard(
                                     modifier = Modifier.fillParentMaxWidth(),
                                     cropToFrame = false,
                                     deferAspectChanges = isFeedScrolling,
-                                    onDoubleTapLike = if (xFeedStyle) onLike else null,
+                                    onDoubleTapLike = if (xFeedStyle) ({ if (!post.isLiked) onLike() }) else null,
                                     onClick = {
                                         imagePage = index
                                         showImageFullscreen = true
