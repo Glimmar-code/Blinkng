@@ -12,12 +12,16 @@ declare
   v_function text := pg_get_functiondef('public.blink_public_leaderboard_rows()'::regprocedure);
   v_old text := 'ORDER BY COALESCE(p.points, 0) DESC, p.created_at ASC, p.id ASC';
 begin
-  if v_function is null or
-     (length(v_function)-length(replace(v_function,v_old,'')))/length(v_old) <> 2 then
+  if v_function is null then raise exception 'LEADERBOARD_RANK_MISSING'; end if;
+  if (length(v_function)-length(replace(v_function,v_old,'')))/length(v_old) = 2 then
+    v_function := replace(v_function,v_old,'ORDER BY COALESCE(p.points, 0) DESC');
+    execute v_function;
+  elsif position('ORDER BY COALESCE(p.points, 0) DESC' in v_function)>0
+    and position(v_old in v_function)=0 then
+    null; -- Already migrated; safe to reapply.
+  else
     raise exception 'LEADERBOARD_RANK_SOURCE_DRIFT';
   end if;
-  v_function := replace(v_function,v_old,'ORDER BY COALESCE(p.points, 0) DESC');
-  execute v_function;
 end;
 $leaderboard$;
 
@@ -31,10 +35,16 @@ declare
   v_filter text := 'where p.id <> v.id and p.onboarding_completed is true';
   v_seed text := 'md5(c.id::text || (select viewer.id::text from viewer) || (now() at time zone ''UTC'')::date::text)';
 begin
-  if v_function is null
-     or position(v_filter in v_function)=0
-     or position('order by id' in v_function)=0
-     or position('order by visibility_points desc, id' in v_function)=0 then
+  if v_function is null or position(v_filter in v_function)=0 then
+    raise exception 'REFERRAL_RECOMMENDATIONS_SOURCE_DRIFT';
+  end if;
+  if position('order by id' in v_function)=0
+    and position('order by md5(c.id::text ||' in v_function)>0
+    and position('current_follow.follower_id=v.id' in v_function)>0 then
+    return; -- Already migrated; do not overwrite changes.
+  end if;
+  if position('order by id' in v_function)=0
+    or position('order by visibility_points desc, id' in v_function)=0 then
     raise exception 'REFERRAL_RECOMMENDATIONS_SOURCE_DRIFT';
   end if;
   v_function := replace(v_function,v_filter, v_filter || $filter$
