@@ -2,8 +2,25 @@
 
 **Scope authorized by owner:** Complete the unfinished functionality and
 verification listed under Sections **2, 3 and 4** of the 2026-10-27
-conversation audit, **excluding BLINK LIFE 3D**. Do not equate a merged PR
-with an operational or released feature. Preserve newer main behavior.
+conversation audit, **excluding BLINK LIFE 3D** and the three independently
+managed pull requests described below. Do not equate a merged PR with an
+operational or released feature. Preserve newer main behavior.
+
+## Owner-managed work — STRICTLY OUT OF SCOPE
+
+- **PR #609:** Telegram-style navigation, elastic page switching, seamless
+  Beyond LINK startup. Do not edit its branch, port its motion/launch changes,
+  modify its checks or merge it as part of this work.
+- **PR #608:** Cloudflare R2 storage migration. Do not modify migration tooling,
+  the R2 gateway, bucket configurations, CORS or private-media cutover, and do
+  not merge its branch.
+- **PR #566:** GitHub Actions manual management. Do not change workflow triggers,
+  permissions, scheduled workers, CI ownership or that PR's branch.
+- **BLINK LIFE 3D:** excluded by the owner. No game-engine/asset/map/multiplayer
+  changes in this consolidation.
+
+These tasks are being handled separately by the owner. Changes in unrelated
+areas must preserve their work rather than silently replace or absorb it.
 
 **Release state:** This Testlab branch is a FIRST INCREMENT, not completion.
 Do not publish the APK, turn on paid features, copy private media, or run
@@ -16,13 +33,12 @@ production SQL until the corresponding acceptance gates below pass.
 | Chat media studio (#595) | Merged partial editor, gallery, vault candidate | Native interactive polls, live location consent, video transitions, audio processing, PDF/OCR, vault device and privacy tests, exact reference screenshots |
 | Private photo delivery (#571/#578) | Merged album/retry/view-once code | Two-account Android↔Windows tests, app-exit/reconnect/cancellation, delivery receipts, private RLS, signed APK |
 | Phone and contacts (#606) | Clients merged, OTP enforcement off | Stage private matching schema/function, configure SMS provider and HMAC secret, consent/delete/opt-out/push E2E |
-| Cloudflare R2 (#608) | Open draft on diverged branch | Account/buckets, credentials, CORS, safety tests, copy-first verification, rollback, private Stories/Channels/media cutover |
 | Market-only Feed (#588) | Clients merged, SQL candidate only | Disposable-DB tests of category/sales-ad trigger, server sponsored approvals, media-only moderation, controlled deploy |
 | WhatsApp Channels (#601) | UI and backend merged | Physical-client media, offline, visual fidelity, follower FCM end-to-end and retry |
 | Coins, HP, Wallet (#586/#591) | Core screens and reward rules merged | SSV verified awards, phone/emulator wallet UX, ledger/mission/transfer live parity, expiry and refund tests |
 | Refer & Grow (#572/#573) | Invite/analytics/discovery staged | Fraud-reviewed reward activation, signup attribution, worker/push/analytics live tests |
 | Paystack / subscriptions | Payment Edge Functions present | Opt-in renewals, expiry/cancel, duplicate/refund security, boosts, seller payout acceptance |
-| Feed + Reels | Extensive screens merged | Freshness, pagination, views, gestures, fullscreen continuity, edit/publish/privacy parity, device frame timing |
+| Feed + Reels | Extensive screens merged | Freshness, pagination, views, media edit/publish/privacy parity and device frame timing; navigation/swipe/startup changes are reserved for PR #609 |
 | Profiles + Stories | Theme/story code merged | Cross-client theme persistence, Story privacy/playback/replies, screenshot and font-scale acceptance |
 | Search + Connect | Redesigned screens merged | Exact five tags / three users, true 30-day ranking, autocomplete, consent-based recommendations, Discover/housing/mentor tests |
 | Messages + groups | Chat and invitation foundation merged | Delivery/reading/drafts, member permissions, offline recovery, moderation and UI exactness |
@@ -32,7 +48,7 @@ production SQL until the corresponding acceptance gates below pass.
 | Admin & reporting | Mobile admin code present | Protected role switches, bug reports and auditable rewards, remotely managed announcements |
 | University Battle | Mini-game proposal | Separately scope 1v1 game and fair online results; do not bundle BLINK LIFE 3D |
 | iOS | Unreleased | Plan independent cross-platform parity/TestFlight release; do not claim builds exist |
-| Whole-app performance/accessibility | Partial tests | 320–412dp/200% fonts, low-end Android 15 device, Windows parity, lifecycle and offline |
+| Whole-app performance/accessibility | Partial tests | 320–412dp/200% fonts, low-end Android 15 device, Windows parity, lifecycle and offline; do not alter #609 gesture/startup implementation |
 
 ## This Testlab increment (2026-10-27)
 
