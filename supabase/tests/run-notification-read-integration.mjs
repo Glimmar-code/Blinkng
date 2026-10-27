@@ -18,7 +18,7 @@ try {
     grant execute on function auth.uid() to authenticated;
     create table public.notifications (
       id uuid primary key, user_id uuid not null, is_read boolean not null default false,
-      text text not null default ''
+      read_at timestamptz, text text not null default ''
     );
     create table public.activities (
       id uuid primary key, recipient_id uuid not null, is_read boolean not null default false
@@ -69,6 +69,9 @@ try {
   const all = (await db.query("select user_id::text as uid, is_read from public.notifications order by user_id")).rows;
   const activities = (await db.query("select recipient_id::text as uid, is_read from public.activities order by recipient_id")).rows;
   assert.deepEqual(all.map(row => row.is_read), [true, false]);
+  const timestamps = (await db.query("select user_id::text as uid, read_at from public.notifications order by user_id")).rows;
+  assert.ok(timestamps[0].read_at, 'read state should set timestamp for account A');
+  assert.equal(timestamps[1].read_at, null, 'account B should stay unread');
   assert.deepEqual(activities.map(row => row.is_read), [true, false]);
 
   await db.exec("set role anon");
