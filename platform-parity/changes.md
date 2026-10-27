@@ -4,7 +4,8 @@
 - **Content views:** Suppress repeated server-side view events within 60 seconds per viewer and content, preserving the existing normal/Blue/Gold weighting. This is abuse throttling, **not** proof of a full 60-second dwell; a separate qualified-watch session protocol remains necessary.
 - **Reels:** Restore missing server-side session and aggregation RPCs used by Android, ignore client-supplied completion/rewatch booleans, and limit rapid per-viewer repeated samples. The Windows client must also use the same RPC if it reports Reel viewing events; no Windows-only award logic is introduced.
 - **Rewards:** Only a Google-signed AdMob SSV event can settle rewarded coins. The Edge worker invokes the server-only settle RPC; Android's existing pending-claim retry behavior is retained. No cash price, milestones, existing balance, verification or HP progression changes.
-- **Validation:** Draft Testlab branch only until PostgreSQL runtime tests, backend/Edge integration, Android and Windows parity checks and release gates pass. The live database was read-only during this work. Rollback requires restoring backed-up RPC definitions and handling pending signed callbacks without dropping credited ledger rows.
+- **Validation:** Draft Testlab branch only until PostgreSQL runtime tests, backend/Edge integration, Android and Windows parity checks and release gates pass.
+- **Main reconciliation:** Branch includes the latest reviewed main baseline (03d62c17) without replacing the concurrent Feed, UI, or desktop fixes. New merged-tree SHA must pass its own complete CI checks. The live database was read-only during this work. Rollback requires restoring backed-up RPC definitions and handling pending signed callbacks without dropping credited ledger rows.
 
 ## 2026-10-27 — WebRTC Android 15 JNI call-crash repair (passed Testlab, main promotion pending)
 
