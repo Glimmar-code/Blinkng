@@ -158,3 +158,19 @@ end;
 $$;
 revoke all on function public.get_my_blink_boostable_content_page(text,integer,integer) from public,anon;
 grant execute on function public.get_my_blink_boostable_content_page(text,integer,integer) to authenticated;
+
+-- Cash-funded Boost is separately gated from ordinary Paystack coin purchases.
+-- Unknown or unset states stay OFF; this read endpoint does not accept changes.
+create or replace function public.get_blink_cash_boost_availability()
+returns jsonb language sql stable security definer set search_path=''
+as $$
+select jsonb_build_object(
+  'enabled',coalesce((
+    select c.numeric_value > 0
+    from private.blink_boost_growth_config c
+    where c.key='cash_boost_enabled'
+  ),false)
+);
+$$;
+revoke all on function public.get_blink_cash_boost_availability() from public,anon;
+grant execute on function public.get_blink_cash_boost_availability() to authenticated;
