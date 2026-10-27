@@ -5,6 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.ui.Modifier
 import com.example.ui.screens.BlinkDropsRoute
 import com.example.ui.theme.BlinkTheme
 
@@ -22,7 +26,8 @@ class BlinkDropsActivity : ComponentActivity() {
         val dropId = intent?.getStringExtra(EXTRA_DROP_ID)
         setContent {
             BlinkTheme {
-                Surface {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     BlinkDropsRoute(
                         onClose = { finish() },
                         initialDropId = dropId,
@@ -35,6 +40,7 @@ class BlinkDropsActivity : ComponentActivity() {
                             )
                         },
                     )
+                    }
                 }
             }
         }
