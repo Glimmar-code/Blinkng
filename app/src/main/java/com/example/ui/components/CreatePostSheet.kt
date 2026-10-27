@@ -11,6 +11,9 @@ import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkPostGrowthTips
 import com.example.data.repository.SearchDiscoveryRepository
 import com.example.ui.screens.BlinkUniversalPhotoEditor
+import com.example.media.BlinkReelPoster
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
@@ -83,6 +86,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -210,6 +214,10 @@ fun CreatePostSheet(
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCoverUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var coverFrameIndex by rememberSaveable { mutableStateOf(-1) }
+    var coverRendering by remember { mutableStateOf(false) }
+    var coverError by remember { mutableStateOf<String?>(null) }
     var reelExporting by remember { mutableStateOf(false) }
     var reelHasPendingEdits by remember { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf(if (startInReelMode) "reel" else "post") }
@@ -296,6 +304,8 @@ fun CreatePostSheet(
                 )
             }
             selectedVideo = uri.toString()
+            selectedCoverUri = null
+            coverFrameIndex = -1
             selectedImages = emptyList()
             reelEditorStage = true
             mode = "reel"
@@ -339,6 +349,8 @@ fun CreatePostSheet(
         selectedTags = emptyList()
         pollQuestion = ""
         pollOptions = listOf("", "")
+        selectedCoverUri = null
+        coverFrameIndex = -1
         activeDraftId = null
         PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
@@ -364,6 +376,9 @@ fun CreatePostSheet(
         if (!raw.isNullOrBlank()) {
             runCatching { JSONObject(raw) }.getOrNull()?.let { value ->
                 selectedImages = parseDraftImages(value.optString("image_uri"))
+                selectedCoverUri = value.optString("cover_uri")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                coverFrameIndex = value.optInt("cover_frame_index", -1)
                 selectedVideo = value.optString("video_uri")
                     .takeIf { it.isNotBlank() && it != "null" }
                 if (!startInReelMode) mode = value.optString(
@@ -403,6 +418,8 @@ fun CreatePostSheet(
         text,
         selectedImages,
         selectedVideo,
+        selectedCoverUri,
+        coverFrameIndex,
         mode,
         pollQuestion,
         pollOptions,
@@ -444,6 +461,8 @@ fun CreatePostSheet(
             val snapshot = JSONObject().apply {
                 put("image_uri", imagePayload(selectedImages) ?: JSONObject.NULL)
                 put("video_uri", selectedVideo ?: JSONObject.NULL)
+                put("cover_uri", selectedCoverUri ?: JSONObject.NULL)
+                put("cover_frame_index", coverFrameIndex)
                 put("mode", mode)
                 put("audience", audience)
                 put("category", category)
@@ -468,6 +487,27 @@ fun CreatePostSheet(
                 composerScope,
                 snapshot.toString()
             )
+        }
+    }
+
+    LaunchedEffect(selectedVideo, coverFrameIndex) {
+        val video = selectedVideo
+        if (video == null || coverFrameIndex < 0) return@LaunchedEffect
+        coverRendering = true
+        coverError = null
+        selectedCoverUri = null
+        val choice = floatArrayOf(0.02f, 0.25f, 0.5f, 0.75f, 0.95f)
+            .getOrElse(coverFrameIndex) { 0.25f }
+        try {
+            val created = withContext(Dispatchers.IO) {
+                BlinkReelPoster.saveCover(context, Uri.parse(video), choice)
+            }
+            if (created == null) {
+                coverError = "Couldn't generate that cover. The automatic cover is still available."
+            }
+            selectedCoverUri = created
+        } finally {
+            coverRendering = false
         }
     }
 
@@ -516,7 +556,7 @@ fun CreatePostSheet(
         pollSelected = showPoll,
         pollValid = pollValid,
         allowedInFeed = marketOnlyWarning == null,
-        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits,
+        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits || coverRendering,
         isSubmitting = isSubmitting
     )
 
@@ -541,7 +581,7 @@ fun CreatePostSheet(
             facultyTag = profile.faculty,
             timeAgo = "Scheduled",
             text = cleanText,
-            images = selectedImages,
+            images = if (selectedVideo != null) listOfNotNull(selectedCoverUri) else selectedImages,
             likes = 0,
             commentsCount = 0,
             sharesCount = 0,
@@ -669,7 +709,7 @@ fun CreatePostSheet(
         onSubmitPost(
             cleanText,
             profile.faculty,
-            imagePayload(selectedImages),
+            imagePayload(if (selectedVideo != null) listOfNotNull(selectedCoverUri) else selectedImages),
             selectedVideo,
             effectiveTags,
             extractedMentions(cleanText),
@@ -712,7 +752,7 @@ fun CreatePostSheet(
                 id = draftId,
                 text = text,
                 faculty = profile.faculty,
-                imageUri = imagePayload(selectedImages),
+                imageUri = imagePayload(if (selectedVideo != null) listOfNotNull(selectedCoverUri) else selectedImages),
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
                 tags = effectiveTags,
@@ -1113,6 +1153,44 @@ fun CreatePostSheet(
                 }
 
                 if (selectedVideo != null) {
+                    Text("Reel cover", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Choose the frame people see before your Reel plays.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        listOf("Automatic", "Start", "25%", "50%", "75%", "End").forEachIndexed { option, label ->
+                            FilterChip(
+                                selected = coverFrameIndex == option - 1,
+                                enabled = !isSubmitting && !coverRendering,
+                                onClick = {
+                                    coverFrameIndex = option - 1
+                                    if (option == 0) { selectedCoverUri = null; coverError = null }
+                                },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    if (coverRendering) {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        )
+                    }
+                    if (selectedCoverUri != null) {
+                        AsyncImage(
+                            model = selectedCoverUri,
+                            contentDescription = "Selected Reel cover frame",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.padding(horizontal = 16.dp).size(width = 108.dp, height = 168.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    }
+                    coverError?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(16.dp),
@@ -1476,7 +1554,9 @@ fun CreatePostSheet(
                                     activeDraftId = draft.id
                                     text = draft.text
                                     selectedTags = draft.tags
-                                    selectedImages = parseDraftImages(draft.imageUri)
+                                    selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
+                                    selectedCoverUri = if (draft.videoUri.isNullOrBlank()) null else draft.imageUri
+                                    coverFrameIndex = -1
                                     selectedVideo = draft.videoUri
                                     reelEditorStage = !draft.videoUri.isNullOrBlank()
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
