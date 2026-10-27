@@ -191,19 +191,18 @@ internal object BlinkPrivateMediaVault {
      * Clear decrypted preview bytes when the viewer closes. The on-disk original
      * stays encrypted; paths are strictly limited to our own scoped cache.
      */
-    suspend fun clearTemporaryPreview(context: Context, preview: Uri): Boolean =
-        withContext(Dispatchers.IO) {
+    fun clearTemporaryPreview(context: Context, preview: Uri): Boolean {
             if (preview.authority != "${context.packageName}.chatfiles") {
-                return@withContext false
+                return false
             }
-            val filename = preview.lastPathSegment ?: return@withContext false
+            val filename = preview.lastPathSegment ?: return false
             if (!filename.matches(Regex("blink-vault-view-[A-Za-z0-9_-]+\\.jpg"))) {
-                return@withContext false
+                return false
             }
             val folder = File(context.cacheDir, "blink-share").canonicalFile
             val file = File(folder, filename).canonicalFile
-            file.parentFile == folder && file.delete()
-        }
+            return file.parentFile == folder && file.delete()
+    }
 
     suspend fun remove(context: Context, itemId: String): Boolean =
         withContext(Dispatchers.IO) {
