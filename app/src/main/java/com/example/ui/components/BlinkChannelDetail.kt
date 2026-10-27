@@ -4,6 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
@@ -172,7 +179,9 @@ fun BlinkChannelDetail(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(onClick = onBack) { Text("‹") }
+            IconButton(onClick = onBack) {
+                Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to Channels")
+            }
             AsyncImage(model = channel.coverUrl, contentDescription = "Channel picture",
                 modifier = Modifier.size(40.dp).clip(CircleShape))
             Column(Modifier.weight(1f).padding(top = 4.dp)) {
@@ -190,9 +199,14 @@ fun BlinkChannelDetail(
                         finally { saving = false }
                     }
                 }, enabled = !loading && !saving
-            ) { Text(if (muted) "🔕" else "🔔") }
+            ) {
+                Icon(if (muted) Icons.Rounded.NotificationsOff else Icons.Rounded.NotificationsActive,
+                    contentDescription = if (muted) "Unmute Channel" else "Mute Channel")
+            }
             Box {
-                TextButton(onClick = { menuOpen = true }) { Text("⋮") }
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "Channel options")
+                }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(text = { Text("Refresh updates") }, onClick = {
                         menuOpen = false
