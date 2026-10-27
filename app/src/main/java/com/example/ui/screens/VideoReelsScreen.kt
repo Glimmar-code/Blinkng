@@ -211,7 +211,7 @@ fun VideoReelsScreen(
             label = "reelsUiState"
         ) { state ->
             when (state) {
-                ReelsUiState.Loading -> ReelsLoadingSkeleton()
+                ReelsUiState.Loading -> ReelsLoadingSkeleton(isDark)
                 ReelsUiState.Content -> ReelsContent(
                     reels = reels,
                     followingReels = followingReels,
@@ -937,7 +937,7 @@ private fun ReelsContent(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        if (launchLookupTimedOut) "Reel not found in this feed" else "Opening reel...",
+                        if (launchLookupTimedOut) "This reel is not available yet" else "Opening reel...",
                         color = Color.White,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -1085,60 +1085,75 @@ private fun ReelsTopTabs(
 }
 
 @Composable
-private fun ReelsLoadingSkeleton() {
+private fun ReelsLoadingSkeleton(isDark: Boolean) {
+    val surface = if (isDark) Color(0xFF121214) else Color.White
     val base = Color(BlinkDesignTokens.Dark.Surface)
     val highlight = Color(BlinkDesignTokens.Dark.SurfaceHighest)
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .shimmerBackground(RoundedCornerShape(0.dp), base, highlight)
-        )
+    // Match the non-fullscreen Reels layout while content loads: no jump from a
+    // full-bleed skeleton to a framed preview when the first response arrives.
+    Column(
+        Modifier.fillMaxSize().background(surface).statusBarsPadding()
+    ) {
         Row(
-            Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 10.dp),
+            Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.width(58.dp).height(13.dp).shimmerBackground(RoundedCornerShape(6.dp), base, highlight))
-            Spacer(Modifier.width(20.dp))
-            Box(Modifier.width(48.dp).height(15.dp).shimmerBackground(RoundedCornerShape(6.dp), base, highlight))
+            Box(Modifier.size(36.dp).shimmerBackground(CircleShape, base, highlight))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "BLINK",
+                color = if (isDark) Color.White else Color.Black,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(Modifier.weight(1f))
+            repeat(3) {
+                Box(Modifier.size(32.dp).shimmerBackground(CircleShape, base, highlight))
+                Spacer(Modifier.width(10.dp))
+            }
         }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 16.dp, end = 100.dp, bottom = 30.dp)
+        Row(
+            Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.width(112.dp).height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
-            Spacer(Modifier.height(10.dp))
-            Box(Modifier.fillMaxWidth(.82f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
-            Spacer(Modifier.height(7.dp))
-            Box(Modifier.fillMaxWidth(.58f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
-        }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 12.dp, bottom = 34.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(Modifier.size(52.dp).shimmerBackground(CircleShape, base, highlight))
-            Spacer(Modifier.height(20.dp))
-            repeat(4) {
-                Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
-                Spacer(Modifier.height(18.dp))
+            repeat(3) {
+                Box(
+                    Modifier.width(64.dp).height(14.dp)
+                        .shimmerBackground(RoundedCornerShape(7.dp), base, highlight)
+                )
             }
         }
         Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(base)
-        )
+            Modifier.weight(1f).fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, bottom = 92.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.Black)
+        ) {
+            Column(
+                Modifier.align(Alignment.BottomStart)
+                    .padding(start = 16.dp, end = 100.dp, bottom = 35.dp)
+            ) {
+                Box(Modifier.width(125.dp).height(15.dp)
+                    .shimmerBackground(RoundedCornerShape(7.dp), base, highlight))
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.fillMaxWidth().height(12.dp)
+                    .shimmerBackground(RoundedCornerShape(7.dp), base, highlight))
+                Spacer(Modifier.height(7.dp))
+                Box(Modifier.fillMaxWidth(.65f).height(12.dp)
+                    .shimmerBackground(RoundedCornerShape(7.dp), base, highlight))
+            }
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 42.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                repeat(4) {
+                    Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        }
     }
 }
 
