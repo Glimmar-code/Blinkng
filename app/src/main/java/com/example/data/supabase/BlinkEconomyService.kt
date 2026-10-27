@@ -91,6 +91,10 @@ class BlinkEconomyService {
 
 
     suspend fun boostGrowthState() = runCatching { rpc("get_blink_boost_growth_state_v2") }
+    suspend fun cashBoostAvailability() = runCatching {
+        rpc("get_blink_cash_boost_availability")
+    }
+
 
     suspend fun boostMissions(limit: Int = 12) = runCatching {
         rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
