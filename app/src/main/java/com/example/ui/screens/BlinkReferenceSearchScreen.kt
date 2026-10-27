@@ -123,12 +123,19 @@ internal fun BlinkReferenceSearchScreen(
     var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var searchedPeople by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var referralCount by remember(accountKey) { mutableStateOf<Long?>(null) }
-    // Backend-only trends: never invent or cache fake hashtags if unavailable.
+    // A backend that still serves only seven-day tags must be labelled truthfully.
+    // Ranked people are only shown when the authenticated 30-day RPC exists.
     var trendingTags by remember(accountKey) { mutableStateOf<List<String>>(emptyList()) }
+    var trendingDays by remember(accountKey) { mutableIntStateOf(7) }
+    var trendingCreators by remember(accountKey) {
+        mutableStateOf<List<com.blinkng.shared.BlinkTrendingCreator>>(emptyList())
+    }
     LaunchedEffect(accountKey, myProfile.university) {
-        trendingTags = SearchDiscoveryRepository()
-            .trendingTags(university = myProfile.university, limit = 5)
-            .take(5)
+        val repository = SearchDiscoveryRepository()
+        val snapshot = repository.trendingTagsWithPeriod(myProfile.university, limit = 5)
+        trendingTags = snapshot.tags
+        trendingDays = snapshot.windowDays
+        trendingCreators = repository.trendingCreators30Days(myProfile.university, limit = 3)
     }
     LaunchedEffect(accountKey, query) {
         val clean = BlinkReferralPolicy.normalizedQuery(query)
@@ -409,7 +416,7 @@ internal fun BlinkReferenceSearchScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 if (trendingTags.isNotEmpty()) {
-                    Text("Trending hashtags · 7 days", color = fg,
+                    Text("Trending hashtags · $trendingDays days", color = fg,
                         fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(7.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -431,6 +438,27 @@ internal fun BlinkReferenceSearchScreen(
                                     fontSize = 12.sp, color = fg, maxLines = 1)
                             }
                         }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+                if (trendingCreators.isNotEmpty()) {
+                    Text("Trending people · 30 days", color = fg, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp)
+                    Spacer(Modifier.height(4.dp))
+                    trendingCreators.forEach { person ->
+                        ReferencePersonRow(
+                            title = person.fullName.ifBlank { person.username },
+                            subtitle = listOf("@${person.username}",person.university)
+                                .filter(String::isNotBlank).joinToString(" · "),
+                            avatar = person.avatarUrl,
+                            verified = person.isVerified, online = false,
+                            fg = fg, muted = muted, line = line,
+                            followable = person.id != currentProfile?.id,
+                            following = person.id in followingIds,
+                            isBusy = busyFollowId == person.id,
+                            onFollow = { toggleFollow(person.id) },
+                            onClick = { openProfileFromDiscovery(person.id, person.username, "search") },
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                 }
