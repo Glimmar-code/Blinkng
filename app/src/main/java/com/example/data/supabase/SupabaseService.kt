@@ -5200,6 +5200,18 @@ suspend fun uploadPostMedia(
     suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            // New backend applies both tables atomically, with auth.uid() ownership and RLS.
+            // Keep an older-server fallback until the versioned migration is deployed.
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/mark_all_my_notifications_read_atomic", true)
+                    .post("{}".toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (response.isSuccessful) return@withContext true
+                val raw = response.body?.string().orEmpty()
+                if (!(response.code == 404 && raw.contains("PGRST202"))) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not mark all notifications read."))
+                }
+            }
             val body = JSONObject().put("is_read", true)
             val targets = listOf(
                 "activities" to "recipient_id",
