@@ -644,6 +644,28 @@ class DesktopSupabaseClient(
     }
 
 
+    /** Native desktop file picker validates owner identity, file types and size before uploading. */
+    private fun uploadOwnerProfilePicture(image: File, avatar: Boolean): String {
+        val id = requireSession().userId
+        require(image.isFile && image.length() in 1..8L * 1024 * 1024) {
+            "Profile images must be between 1 byte and 8 MB."
+        }
+        val ext = image.extension.lowercase()
+        val mime = when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> throw IllegalArgumentException("Choose JPEG, PNG or WebP.")
+        }
+        val folder = if (avatar) "avatar" else "cover"
+        val key = "users/$id/$folder/${UUID.randomUUID()}.$ext"
+        execute(authenticatedRequest("/storage/v1/object/profile-media/$key")
+            .header("Content-Type", mime)
+            .header("x-upsert", "false")
+            .post(image.readBytes().toRequestBody(mime.toMediaType())).build())
+        return "$baseUrl/storage/v1/object/public/profile-media/$key"
+    }
+
     /** Owner-only basic profile editor; no identity, wallet or privacy-policy bypass. */
     suspend fun saveProfileDetails(
         fullName: String,
@@ -656,6 +678,17 @@ class DesktopSupabaseClient(
         course: String,
         academicLevel: String,
         graduationYear: String,
+        website: String = "",
+        linkedin: String = "",
+        twitter: String = "",
+        instagram: String = "",
+        featuredLink: String = "",
+        featuredLinkLabel: String = "",
+        phoneVisibility: String = "PRIVATE",
+        whatsappVisibility: String = "PRIVATE",
+        emailVisibility: String = "PRIVATE",
+        avatarImage: File? = null,
+        coverImage: File? = null,
     ): DesktopProfile = withContext(Dispatchers.IO) {
         val ownerId = requireSession().userId
         val prior = fetchProfile(ownerId)
@@ -672,11 +705,34 @@ class DesktopSupabaseClient(
         require(error == null) { error ?: "Invalid profile details." }
         val isNonStudent = prior.accountType.equals("NON_STUDENT", ignoreCase = true)
         val cleanBio = bio.trim()
+        val publicLinks = listOf(website, linkedin, twitter, instagram, featuredLink)
+        publicLinks.forEach { link ->
+            require(link.length <= 500 && (link.isBlank() ||
+                (link.startsWith("https://") || link.startsWith("http://")))) {
+                "Use full HTTPS/HTTP URLs for profile links."
+            }
+        }
+        val visibility = setOf("PRIVATE", "FOLLOWERS", "PUBLIC")
+        require(listOf(phoneVisibility, whatsappVisibility, emailVisibility)
+            .all { it in visibility }) { "Invalid contact privacy selection." }
+        val avatarUrl = avatarImage?.let { uploadOwnerProfilePicture(it, true) }
+        val coverUrl = coverImage?.let { uploadOwnerProfilePicture(it, false) }
         val body = JSONObject().apply {
             put("full_name", name)
             put("professional_headline", headline.trim())
             put("current_job_title", currentRole.trim())
             put("bio", cleanBio)
+            put("website", website.trim())
+            put("linkedin", linkedin.trim())
+            put("twitter", twitter.trim())
+            put("instagram", instagram.trim())
+            put("featured_link", featuredLink.trim())
+            put("featured_link_label", featuredLinkLabel.trim())
+            put("phone_visibility", phoneVisibility)
+            put("whatsapp_visibility", whatsappVisibility)
+            put("email_visibility", emailVisibility)
+            if (avatarUrl != null) put("avatar_url", avatarUrl)
+            if (coverUrl != null) put("cover_photo_url", coverUrl)
             put("university", if (isNonStudent) "" else university.trim())
             put("faculty", if (isNonStudent) "" else faculty.trim())
             put("department", if (isNonStudent) "" else department.trim())
@@ -3502,6 +3558,15 @@ class DesktopSupabaseClient(
         courseOfStudy = row.optNullableString("course_of_study"),
         graduationYear = row.optNullableString("graduation_year"),
         relationshipStatus = row.optNullableString("relationship_status"),
+        phoneVisibility = row.optString("phone_visibility").ifBlank { "PRIVATE" },
+        whatsappVisibility = row.optString("whatsapp_visibility").ifBlank { "PRIVATE" },
+        emailVisibility = row.optString("email_visibility").ifBlank { "PRIVATE" },
+        website = row.optNullableString("website"),
+        linkedin = row.optNullableString("linkedin"),
+        twitter = row.optNullableString("twitter"),
+        instagram = row.optNullableString("instagram"),
+        featuredLink = row.optNullableString("featured_link"),
+        featuredLinkLabel = row.optNullableString("featured_link_label"),
         dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
         accountType = row.optString("account_type"),
