@@ -144,4 +144,35 @@ end; $$;
 
 revoke all on function public.get_profile_detail(text) from public, anon;
 grant execute on function public.get_profile_detail(text) to authenticated;
+
+-- Account-wide counts are calculated on the server, independent of which
+-- timeline page the mobile or desktop client has currently loaded.
+create or replace function public.get_profile_content_metrics(p_profile_id uuid)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $
+declare
+  v_viewer uuid := auth.uid();
+begin
+  if v_viewer is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if p_profile_id is null then return null; end if;
+  if not exists(select 1 from public.profiles p where p.id=p_profile_id) then return null; end if;
+  if exists(select 1 from public.blocks b
+    where (b.blocker_id=v_viewer and b.blocked_id=p_profile_id)
+       or (b.blocker_id=p_profile_id and b.blocked_id=v_viewer)) then
+    return null;
+  end if;
+  return (
+    select jsonb_build_object(
+      'posts', count(*) filter(where not coalesce(f.is_reel,false)),
+      'reels', count(*) filter(where coalesce(f.is_reel,false)),
+      'views', coalesce(sum(greatest(f.view_count,0)),0),
+      'likes', coalesce(sum(greatest(f.like_count,0)),0),
+      'comments', coalesce(sum(greatest(f.comment_count,0)),0),
+      'shares', coalesce(sum(greatest(f.share_count,0)),0))
+    from public.feed_posts f where f.user_id = p_profile_id
+      and f.is_active = true and coalesce(f.is_flagged,false) = false
+  );
+end; $;
+revoke all on function public.get_profile_content_metrics(uuid) from public, anon;
+grant execute on function public.get_profile_content_metrics(uuid) to authenticated;
 commit;
