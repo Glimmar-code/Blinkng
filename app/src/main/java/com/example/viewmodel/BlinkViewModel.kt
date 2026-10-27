@@ -31,6 +31,7 @@ import com.example.call.IncomingCallNotification
 import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.local.BlinkTextOutboxWorker
+import com.example.data.local.BlinkPostOutbox
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
@@ -4067,7 +4068,42 @@ private suspend fun restoreSupabaseSession() {
         val profile = _uiState.value.myProfile
         val userId = supabaseService.getCurrentUserId()
             ?: profile.id.takeIf { it.isNotBlank() }
-            ?: "user_${profile.username}"
+            ?: run {
+                showToast("Please sign in again before publishing.")
+                return
+            }
+        val requestId = clientRequestId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+            ?: UUID.randomUUID().toString()
+        val outboxPayload = JSONObject().apply {
+            put("author", profile.username)
+            put("avatar", profile.avatarUrl)
+            put("faculty", faculty)
+            put("text", text)
+            put("images", JSONArray(parseImagePayload(imageUri)))
+            put("video", videoUri ?: JSONObject.NULL)
+            put("tags", JSONArray(tags))
+            put("mentions", JSONArray(mentions))
+            poll?.let { value ->
+                put("poll", JSONObject().put("question", value.question)
+                    .put("options", JSONArray(value.options.map { it.text })))
+            }
+            put("audience", audience)
+            put("category", category)
+            put("location", location ?: JSONObject.NULL)
+            put("link", linkUrl ?: JSONObject.NULL)
+            put("comments", allowComments)
+            put("hide_likes", hideLikes)
+            put("pinned", isPinned)
+            put("disappearing", isDisappearing)
+            put("audio", audioTitle ?: JSONObject.NULL)
+            put("alt", altText ?: JSONObject.NULL)
+            put("style", textStyle ?: JSONObject.NULL)
+        }
+        val outboxQueued = BlinkPostOutbox.enqueue(appContext, userId, requestId, outboxPayload)
+        if (!BlinkPostOutbox.begin(requestId)) {
+            showToast("This post is already being uploaded.")
+            return
+        }
 
         _uiState.value = _uiState.value.copy(isCreatingPost = true, postUploadProgress = 0)
 
@@ -4156,7 +4192,7 @@ private suspend fun restoreSupabaseSession() {
                     audioTitle,
                     altText,
                     textStyle,
-                    clientRequestId
+                    requestId
                 ) ?: throw IllegalStateException("The server did not save the post.")
 
                 withContext(Dispatchers.Main) {
@@ -4177,6 +4213,7 @@ private suspend fun restoreSupabaseSession() {
                     )
                     persistCurrentFeed()
                     clearCreatePostPersistentState(profile)
+                    if (outboxQueued) BlinkPostOutbox.complete(appContext, userId, requestId)
                     cleanupPublishedEditorMedia(videoUri)
                     imageInputs.forEach(::cleanupPublishedEditorMedia)
                     showToast(if (finalIsReel) "Reel published." else "Post published.")
@@ -4188,10 +4225,13 @@ private suspend fun restoreSupabaseSession() {
                         e is java.io.IOException -> "Connection interrupted. Your draft is safe; try again."
                         e.message.orEmpty().contains("upload", ignoreCase = true) ->
                             "Media upload failed. Check your connection and try again."
-                        else -> "Couldn't publish. Your draft is safe; try again."
+                        else -> if (outboxQueued)
+                            "Upload interrupted. BLINK will retry when connected."
+                        else "Couldn't publish. Your draft is safe; try again."
                     }
                 )
             } finally {
+                BlinkPostOutbox.end(requestId)
                 _uiState.value = _uiState.value.copy(isCreatingPost = false, postUploadProgress = null)
             }
         }
@@ -7734,6 +7774,7 @@ private suspend fun restoreSupabaseSession() {
         // Account-scoped, queued private picture drafts must never be sent by the
         // next user who signs in on this device.
         WorkManager.getInstance(appContext).cancelAllWorkByTag("blink_chat_picture")
+        BlinkPostOutbox.cancelAll(appContext)
         pendingAttachments.values.forEach { attachment ->
             cleanupPrivatePictureSource(attachment.uri)
         }
