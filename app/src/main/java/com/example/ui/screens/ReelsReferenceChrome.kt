@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Visibility
@@ -83,6 +84,7 @@ internal fun ReelsReferenceChrome(
     featuredReels: List<BlinkFeaturedReel> = emptyList(),
     onFeaturedReelClick: (String) -> Unit = {},
     onRefresh: () -> Unit = {},
+    onCreateReel: () -> Unit = {},
     isRefreshing: Boolean = false,
     autoSlideEnabled: Boolean = true,
     modifier: Modifier = Modifier
@@ -305,6 +307,9 @@ internal fun ReelsReferenceChrome(
                             .clip(CircleShape).background(foreground)
                     )
                 }
+            }
+            IconButton(onClick = onCreateReel, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.CameraAlt, contentDescription = "Create reel", tint = foreground)
             }
             IconButton(onClick = onRefresh, enabled = !isRefreshing, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh reels", tint = foreground)
