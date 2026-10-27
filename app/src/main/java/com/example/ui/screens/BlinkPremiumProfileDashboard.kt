@@ -76,6 +76,7 @@ internal fun BlinkPremiumProfileDashboard(
     onStudyMateRequest: () -> Unit = {},
     onViewProfile: () -> Unit = {},
     onOpenConnectHub: () -> Unit = {},
+    onCreatorStudio: () -> Unit = {},
 ) {
     val theme = BlinkProfileThemes.resolve(profile.profileTheme)
     val ink = Color.White
@@ -251,6 +252,18 @@ internal fun BlinkPremiumProfileDashboard(
                         modifier = Modifier.weight(1f), onClick = onVerify
                     )
                 }
+            }
+        }
+
+        if (isMe) {
+            OutlinedButton(
+                onClick = onCreatorStudio,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Insights, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Creator Studio · Content insights", fontWeight = FontWeight.SemiBold)
             }
         }
 
