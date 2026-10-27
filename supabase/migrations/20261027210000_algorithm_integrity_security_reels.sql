@@ -62,6 +62,12 @@ begin
     raise exception 'ALGORITHM_FEED_SOURCE_DRIFT';
   end if;
   v_feed := replace(v_feed, 'private.is_blink_owner_id(fp.user_id)', 'false');
+  if position('AND fp.is_active = true' in v_feed)=0 then
+    raise exception 'ALGORITHM_FEED_VISIBILITY_SOURCE_DRIFT';
+  end if;
+  v_feed := replace(v_feed,'AND fp.is_active = true',
+    'AND fp.is_active = true' || E'\n    AND (fp.user_id=(select auth.uid()) OR NOT EXISTS (SELECT 1 FROM public.user_settings privacy WHERE privacy.user_id=fp.user_id AND privacy.private_account=true) OR EXISTS (SELECT 1 FROM public.follows private_follow WHERE private_follow.follower_id=(select auth.uid()) AND private_follow.following_id=fp.user_id))'
+  );
   execute v_feed;
 end;
 $algorithm$;
