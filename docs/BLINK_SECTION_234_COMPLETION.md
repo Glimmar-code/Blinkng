@@ -40,7 +40,7 @@ production SQL until the corresponding acceptance gates below pass.
 | Paystack / subscriptions | Payment Edge Functions present | Opt-in renewals, expiry/cancel, duplicate/refund security, boosts, seller payout acceptance |
 | Feed + Reels | Extensive screens merged | Freshness, pagination, views, media edit/publish/privacy parity and device frame timing; navigation/swipe/startup changes are reserved for PR #609 |
 | Profiles + Stories | Theme/story code merged | Cross-client theme persistence, Story privacy/playback/replies, screenshot and font-scale acceptance |
-| Search + Connect | Redesigned screens merged | Exact five tags / three users, true 30-day ranking, autocomplete, consent-based recommendations, Discover/housing/mentor tests |
+| Search + Connect | Redesigned screens merged; Search landing now requests 5 genuine server hashtags and correctly labels the existing **7-day** backend window | The requested **30-day** ranking, 3 properly ranked trending users, autocomplete, consent-based recommendations and housing/mentor E2E are still pending |
 | Messages + groups | Chat and invitation foundation merged | Delivery/reading/drafts, member permissions, offline recovery, moderation and UI exactness |
 | Notifications | Production `notification_preferences` table has quiet-hours fields and Android `NotificationPreferenceStore` already implements local quiet-hour/category controls; Phase-two tracker remains open | Archive, digests, quiet-hour user experience verification, cross-device read, verified FCM/worker retries |
 | Website | Cloudflare route PRs merged | Real deployed deep links, Android-app parity, SEO smoke, safe public metadata |
@@ -60,7 +60,8 @@ production SQL until the corresponding acceptance gates below pass.
 ## This Testlab increment (2026-10-27)
 
 - Added a shared Android/Windows chat poll input/choice policy and unit tests.
-- Added Android text-poll validation and Windows text-poll draft composer, both using the same bounded 2–8 option policy and consistent fallback formatting. Interactive native votes remain unavailable until client RPC/UI/backend integration is verified.
+- Added Android text-poll validation and Windows text-poll draft composer, both using the same bounded 2–8 option policy and consistent fallback formatting.
+- Added a reference Search landing component to render up to 5 **real server-sourced** trending hashtags (backend currently uses 7 days, not the owner's requested 30); tap enters the searched hashtag. No fake data. The proper 30-day/3-user ranking still needs a separately validated server migration. Interactive native votes remain unavailable until client RPC/UI/backend integration is verified.
 - Added a **STAGING-ONLY** SQL candidate with server-authoritative, single-choice vote idempotency, authenticated participant checks, direct-chat block-denial, privacy-safe aggregates, poll closure and deleted-message safeguards. No production deployment.
 - Do **not** deploy SQL or present polls as available to users. Android/Windows
   UI + actual transport integration, disposable PostgreSQL security fixture and
