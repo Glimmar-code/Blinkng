@@ -119,7 +119,9 @@ internal fun BlinkChatExtrasDialog(
         isArticle && details.startsWith("https://", ignoreCase=true) ->
             "📰 ${title.trim()}\n${details.trim()}"
         isContact && contact != null ->
-            BlinkChatContactCardPolicy.encode(contact.first, contact.second)
+            runCatching {
+                BlinkChatContactCardPolicy.encode(contact.first, contact.second)
+            }.getOrDefault("")
         isPoll && pollDraft != null -> {
             // Until the server/native clients are deployed, send an honest text
             // fallback, never silently drop duplicate or ninth poll options.
