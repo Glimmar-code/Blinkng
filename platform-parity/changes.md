@@ -1,3 +1,10 @@
+## 2026-10-27 — Messages & Chat route and inbox professionalism repair (Testlab candidate)
+
+- **Shared experience:** Conversation actions are now bound from one Android action factory for both Messages-tab chats and chats opened through Feed, Profile or Connect. Forwarding, replies, message editing, deletion, mute, moderation, pinned/starred state and requests preserve the same server handlers. No RPC, Storage bucket or permission changes.
+- **Android:** Outside-tab chat passes real attachment/photo-album/view-once, cancel/retry and loading handlers rather than default no-op placeholders. Calls are discoverable in the chat header; the selected message appearance controls inbox/chats; search spans all folders; folder chips are exposed; message composer and bubble typography are more readable. Previously working delivery receipt/realtime/offline behavior is unchanged.
+- **Windows:** Default inbox shows all categories and exposes filter chips on initial load, and searching finds messages across archived/request/primary folders regardless of active filter. The desktop app already has native message actions and desktop-style controls; Android's window/insets and OS media-picker routing are platform-specific UI and have no Windows equivalent.
+- **Verification hold:** Android unit/assemble and the inbox visual instrumentation test, Windows compilation, reply/forward/media integration tests, 320dp and large-font Android screenshots, low-end gesture/device acceptance, and real account delivery receipts remain required. No build, merge or signed APK publication is claimed by this candidate entry.
+
 ## 2026-10-27 — WebRTC Android 15 JNI call-crash repair (passed Testlab, main promotion pending)
 
 - **Observed failure:** Redmi/Android 15 SIGABRT during `libjingle_peerconnection_so.so` `JNI_OnLoad` inside `PeerConnectionFactory.initialize`; this is a native Java-class lookup failure and cannot be recovered by catching Kotlin exceptions.
