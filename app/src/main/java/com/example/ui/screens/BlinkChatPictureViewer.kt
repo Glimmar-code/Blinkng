@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import com.blinkng.shared.BlinkChatDownloadPolicy
 import com.blinkng.shared.BlinkChatMediaGesturePolicy
 import com.blinkng.shared.BlinkChatMediaSwipe
 import androidx.compose.ui.layout.ContentScale
@@ -717,7 +718,7 @@ private suspend fun saveLocalChatPhotoToGallery(context: Context, localUri: Uri)
 private suspend fun preparePrivateChatPhoto(
     context: Context, remoteUrl: String, onProgress: (Int) -> Unit
 ): Uri = withContext(Dispatchers.IO) {
-    require(remoteUrl.startsWith("https://", ignoreCase = true)) {
+    require(BlinkChatDownloadPolicy.acceptsSource(remoteUrl)) {
         "A secure picture URL is required."
     }
     val privateDir = File(context.cacheDir, "blink-share").apply {
@@ -733,15 +734,16 @@ private suspend fun preparePrivateChatPhoto(
     try {
         val req = Request.Builder().url(remoteUrl).get().build()
         OkHttpClient().newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Image unavailable (${response.code})")
+            if (!response.isSuccessful || !response.request.url.isHttps) {
+                throw IOException("Image unavailable or redirected insecurely (${response.code})")
+            }
             val mime = response.header("Content-Type")?.substringBefore(';')?.trim()
                 ?.lowercase()
-            if (mime != null && mime != "application/octet-stream" &&
-                !mime.startsWith("image/")) throw IOException("Not an image.")
+            if (!BlinkChatDownloadPolicy.acceptsMime(mime)) throw IOException("Not an image.")
             val body = response.body ?: throw IOException("Image response was empty.")
-            val maxBytes = 30L * 1024 * 1024
+            val maxBytes = BlinkChatDownloadPolicy.MAX_IMAGE_BYTES
             val total = body.contentLength()
-            if (total > maxBytes) throw IOException("Image is too large.")
+            if (!BlinkChatDownloadPolicy.acceptsLength(total)) throw IOException("Image is too large.")
             var received = 0L
             local.outputStream().use { output ->
                 body.byteStream().use { input ->
@@ -772,7 +774,7 @@ private suspend fun preparePrivateChatPhoto(
 private suspend fun saveChatPhotoToGallery(
     context: Context, remoteUrl: String, onProgress: (Int) -> Unit
 ): Uri = withContext(Dispatchers.IO) {
-    require(remoteUrl.startsWith("https://")) { "An HTTPS photo URL is required." }
+    require(BlinkChatDownloadPolicy.acceptsSource(remoteUrl)) { "An HTTPS photo URL is required." }
     // Never create an orphan MediaStore item on legacy Android versions.
     require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         "Saving to gallery needs Android 10 or newer."
@@ -791,11 +793,15 @@ private suspend fun saveChatPhotoToGallery(
     try {
         val req = Request.Builder().url(remoteUrl).get().build()
         OkHttpClient().newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Image unavailable (${response.code})")
+            if (!response.isSuccessful || !response.request.url.isHttps) {
+                throw IOException("Image unavailable or redirected insecurely (${response.code})")
+            }
+            val mime = response.header("Content-Type")
+            if (!BlinkChatDownloadPolicy.acceptsMime(mime)) throw IOException("Not an image.")
             val body = response.body ?: throw IOException("Image response was empty.")
             val total = body.contentLength()
-            val maxBytes = 30L * 1024 * 1024
-            if (total > maxBytes) throw IOException("Image is too large.")
+            val maxBytes = BlinkChatDownloadPolicy.MAX_IMAGE_BYTES
+            if (!BlinkChatDownloadPolicy.acceptsLength(total)) throw IOException("Image is too large.")
             resolver.openOutputStream(uri)?.use { output ->
                 body.byteStream().use { stream ->
                     val buffer = ByteArray(16_384)
