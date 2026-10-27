@@ -162,7 +162,7 @@ fun GetVerifiedSheet(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Unlock BLINK Verified status with Blink Coins or a secure cash checkout when available.",
+                        text = "Get real creator insights with Blue, and advanced content reports with Gold. Choose a plan that fits your needs.",
                         fontSize = 13.sp,
                         color = textSecondary,
                         textAlign = TextAlign.Center,
@@ -324,6 +324,11 @@ fun GetVerifiedSheet(
                         VerificationFeatureItem(
                             icon = Icons.Default.Person,
                             text = "Premium verified profile treatment and status card",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Insights,
+                            text = "Creator Studio: content performance, interaction breakdowns and top posts",
                             isDark = isDark
                         )
                         VerificationFeatureItem(
@@ -551,6 +556,11 @@ fun GetVerifiedSheet(
                         VerificationFeatureItem(
                             icon = Icons.Default.Bolt,
                             text = "Gold creator cosmetics and supported premium surfaces",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Analytics,
+                            text = "Gold Creator Studio: strongest hashtags and shareable content reports",
                             isDark = isDark
                         )
                         VerificationFeatureItem(
