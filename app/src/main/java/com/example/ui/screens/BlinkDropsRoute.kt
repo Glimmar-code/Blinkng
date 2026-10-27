@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.ui.graphics.graphicsLayer
@@ -543,9 +544,10 @@ fun BlinkDropsRoute(
                 if (topGivers.isEmpty()) {
                     item { EmptyCard("Top Givers will appear after completed Drops.") }
                 } else {
-                    items(topGivers, key = { "giver-${it.creatorId}" }) { giver ->
+                    itemsIndexed(topGivers, key = { _, giver -> "giver-${giver.creatorId}" }) { index, giver ->
                         TopGiverCard(
                             giver = giver,
+                            rank = index + 1,
                             formatter = formatter,
                             onFollow = if (giver.following) null else {
                                 {
@@ -776,7 +778,20 @@ private fun DropCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CardGiftcard, null, tint = MaterialTheme.colorScheme.onSurface)
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            drop.creatorName.trim().firstOrNull()?.uppercase()
+                                ?: drop.creatorUsername.trim().firstOrNull()?.uppercase() ?: "B",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -935,6 +950,7 @@ private fun DropReceiptCard(
 @Composable
 private fun TopGiverCard(
     giver: TopGiver,
+    rank: Int,
     formatter: NumberFormat,
     onFollow: (() -> Unit)?,
 ) {
@@ -949,7 +965,11 @@ private fun TopGiverCard(
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.EmojiEvents, null)
+                    Text(
+                        "#$rank",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
             Spacer(Modifier.width(11.dp))
