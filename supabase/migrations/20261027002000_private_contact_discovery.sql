@@ -1,3 +1,9 @@
+-- destructive-change-reviewed: deletes in replace_imports affect only the invoking user's new
+-- contact HMAC records; named trigger/permission replacements are scoped to BLINK contact objects.
+-- No existing profiles, chats, historical notifications or payment rows are deleted.
+-- rollback-plan: disable blink-contact-discovery Edge Function first; remove the new
+-- blink_contact_* triggers, service-only RPCs, private index/import/alert tables and
+-- owner-only contact settings. This loses only optional contact matching data, not profiles.
 -- Contact discovery is opt-in, based only on verified phone ownership.
 -- No raw contact numbers, names, or phone history are stored. HMAC keys stay in Edge Function env.
 -- Additive release; must be validated against isolated/staging Supabase before production.
