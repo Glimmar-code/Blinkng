@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL("../migrations/20261027210000_algorithm_integrity_security_reels.sql", import.meta.url),
   "utf8",
 );
+const featuredMigration = readFileSync(
+  new URL("../migrations/20261027225000_featured_reels_viewer_preferences.sql", import.meta.url),
+  "utf8"
+);
 const ssvWorker = readFileSync(
   new URL("../functions/admob-reward-ssv/index.ts", import.meta.url),
   "utf8",
@@ -82,4 +86,11 @@ test("Reel exposure is playback-qualified; paused and buffering previews do not 
   assert.match(exposureTracker, /!playbackActive \|\| wasRecorded/);
   assert.match(reelScreen, /!isPausedByUser && !isBuffering/);
   assert.match(reelScreen, /!previewFinished && !isBuffering/);
+});
+
+test("Own content never contributes to view or Featured Reel popularity", () => {
+  assert.match(migration, /public\.feed_posts own/);
+  assert.match(migration, /own\.user_id=v_viewer_id/);
+  assert.match(featuredMigration, /own\.user_id=e\.viewer_id/);
+  assert.match(featuredMigration, /FEATURED_REELS_SELF_VIEW_FILTER_SOURCE_DRIFT/);
 });
