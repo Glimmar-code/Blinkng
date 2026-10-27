@@ -47,7 +47,7 @@ class BlinkElasticSwipeInstrumentedTest {
         rule.onNodeWithTag("count").assertTextEquals("0")
     }
 
-    @Test fun deliberateLongSwipeNavigatesOnlyOnce() {
+    @Test fun quickSwipeNavigatesOnlyOnce() {
         rule.setContent {
             var navigations by remember { mutableIntStateOf(0) }
             Box(Modifier.size(320.dp).blinkElasticSwipeAction(
@@ -59,10 +59,28 @@ class BlinkElasticSwipeInstrumentedTest {
         }
         rule.onNodeWithTag("surface").performTouchInput {
             down(center)
-            moveBy(Offset(center.x * .84f, 0f), delayMillis = 120L)
+            moveBy(Offset(center.x * .84f, 0f), delayMillis = 20L)
             up()
         }
         rule.onNodeWithTag("count").assertTextEquals("1")
+    }
+
+    @Test fun longSlowSwipeBouncesBackWithoutAction() {
+        rule.setContent {
+            var navigations by remember { mutableIntStateOf(0) }
+            Box(Modifier.size(320.dp).blinkElasticSwipeAction(
+                direction = BlinkElasticSwipeDirection.RIGHT,
+                onAction = { navigations++ }
+            ).testTag("surface")) {
+                Text("$navigations", modifier = Modifier.testTag("count"))
+            }
+        }
+        rule.onNodeWithTag("surface").performTouchInput {
+            down(center)
+            moveBy(Offset(center.x * .84f, 0f), delayMillis = 1000L)
+            up()
+        }
+        rule.onNodeWithTag("count").assertTextEquals("0")
     }
 
     @Test fun horizontalCarouselOwnsConsumedSwipe() {
