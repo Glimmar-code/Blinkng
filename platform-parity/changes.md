@@ -1472,3 +1472,6 @@ Android and Windows allow a self-declared `NON_STUDENT` account type. Selecting 
 
 ## October 26, 2026 — Phone OTP signup (Testlab candidate)
 Android and Windows both request a one-time SMS verification when a new user completes onboarding; phone normalization lives in shared Kotlin. This requires a properly configured Supabase Auth SMS provider and must be verified in isolated tests before production. No phonebook/call-log permissions or contact matching are enabled by this change.
+
+## October 27, 2026 — Contact discovery Android permission
+Android asks for READ_CONTACTS only after the user presses Find My Friends in a clearly optional consent card. No READ_CALL_LOG permission is requested. The privacy card is available on Connect and at the end of new-user signup. Windows must provide the server-backed equivalent without reading device contacts.

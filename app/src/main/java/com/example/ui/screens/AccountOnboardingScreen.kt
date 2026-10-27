@@ -91,6 +91,7 @@ import com.example.data.repository.FollowStateStore
 import com.example.data.repository.ProfileRepository
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkContactDiscoveryCard
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
@@ -714,6 +715,9 @@ fun AccountOnboardingScreen(
                 }
 
                 else -> {
+                    item(key = "onboarding_optional_contact_discovery") {
+                        BlinkContactDiscoveryCard(profile.id)
+                    }
                     item {
                         StepHeader(
                             title = "Find your people",
