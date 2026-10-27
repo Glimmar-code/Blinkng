@@ -73,6 +73,8 @@ Deno.serve(async req => {
   const { data: verified, error: verifyError } = await admin.auth.getUser(token);
   const userId = verifyError ? undefined : verified.user?.id;
   if (!userId) return error(401,"INVALID_SESSION",headers);
+  if (Number(req.headers.get("content-length") || 0) > 4096)
+    return error(413,"REQUEST_TOO_LARGE",headers);
   const input = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!input || typeof input.action !== "string") return error(400,"INVALID_REQUEST",headers);
 
@@ -104,8 +106,22 @@ Deno.serve(async req => {
     }
     return true;
   }
+  if (typeof input.purpose !== "string" || !Object.hasOwn(allowed,input.purpose))
+    return error(400,"INVALID_PURPOSE",headers);
+  // Subscribers may read a channel attachment, but only permitted
+  // contributors are allowed to create one.
+  async function mayReadChannel(context: string | null): Promise<boolean> {
+    if (!uuid(context)) return false;
+    const {data:channel,error} = await admin.from("blink_communities")
+      .select("owner_id").eq("id",context).maybeSingle();
+    if (error || !channel) return false;
+    if (channel.owner_id === userId) return true;
+    const {data:member, error:memberError} = await admin.from("blink_community_members")
+      .select("status").eq("community_id",context).eq("user_id",userId)
+      .maybeSingle();
+    return !memberError && member?.status === "active";
+  }
   const purpose = input.purpose as Purpose;
-  if (!(purpose in allowed)) return error(400,"INVALID_PURPOSE",headers);
   const spec = allowed[purpose];
 
   try {
@@ -184,7 +200,7 @@ Deno.serve(async req => {
         const {data:link} = await admin.from("blink_channel_updates").select("id")
           .eq("channel_id",asset.context_id).eq("media_path",`r2:${asset.id}`)
           .is("removed_at",null).limit(1).maybeSingle();
-        if (!link || !await mayAccess("channel",asset.context_id))
+        if (!link || !await mayReadChannel(asset.context_id))
           return error(403,"MEDIA_NOT_SHARED",headers);
       } else if (purpose === "story") {
         // Story viewer entitlement still needs a dedicated privacy gate;
