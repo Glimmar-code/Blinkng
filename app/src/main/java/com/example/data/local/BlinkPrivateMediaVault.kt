@@ -11,7 +11,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
@@ -106,8 +105,10 @@ internal object BlinkPrivateMediaVault {
         val temp = File.createTempFile("writing-", ".tmp", folder)
         try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val iv = ByteArray(12).also(SecureRandom()::nextBytes)
-            cipher.init(Cipher.ENCRYPT_MODE, key(uid), GCMParameterSpec(128, iv))
+            // Android Keystore with randomized encryption must generate its own IV.
+            cipher.init(Cipher.ENCRYPT_MODE, key(uid))
+            val iv = cipher.iv
+            check(iv.size == 12) { "Unsupported vault IV length." }
             val sourceStream = context.contentResolver.openInputStream(source)
                 ?: error("Photo is unavailable.")
             sourceStream.use { input ->
