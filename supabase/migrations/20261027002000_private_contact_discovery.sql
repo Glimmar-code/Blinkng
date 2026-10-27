@@ -188,4 +188,44 @@ $$;
 revoke all on function public.blink_contact_matches_for(uuid) from public,anon,authenticated;
 grant execute on function public.blink_contact_matches_for(uuid) to service_role;
 
+-- Service-role-only cleanup and verified proof for trusted push dispatch.
+create or replace function public.blink_contact_clear_imports(p_owner uuid)
+returns void language plpgsql security definer set search_path=''
+as $
+begin
+ delete from private.blink_contact_imports where owner_id=p_owner;
+end $;
+revoke all on function public.blink_contact_clear_imports(uuid) from public,anon,authenticated;
+grant execute on function public.blink_contact_clear_imports(uuid) to service_role;
+
+create or replace function public.blink_contact_push_is_authorized(p_notification_id uuid)
+returns boolean language sql stable security definer set search_path=''
+as $
+ select exists (
+  select 1 from private.blink_contact_join_alerts a
+  join public.notifications n on n.id=a.notification_id and
+   n.user_id=a.owner_id and n.actor_id=a.joiner_id
+  join public.blink_contact_settings recipient on recipient.user_id=a.owner_id
+  join public.blink_contact_settings joiner on joiner.user_id=a.joiner_id
+  where a.notification_id=p_notification_id and
+   n.metadata->>'kind'='blink_contact_joined' and
+   recipient.sync_enabled=true and recipient.join_alerts=true and
+   joiner.discoverable=true
+ );
+$;
+revoke all on function public.blink_contact_push_is_authorized(uuid) from public,anon,authenticated;
+grant execute on function public.blink_contact_push_is_authorized(uuid) to service_role;
+
+create or replace function public.blink_contact_my_recent_push_ids(p_joiner uuid)
+returns table(notification_id uuid)
+language sql stable security definer set search_path=''
+as $
+ select a.notification_id from private.blink_contact_join_alerts a
+ where a.joiner_id=p_joiner and a.notification_id is not null and
+  a.created_at>now()-interval '15 minutes'
+ order by a.created_at desc limit 100;
+$;
+revoke all on function public.blink_contact_my_recent_push_ids(uuid) from public,anon,authenticated;
+grant execute on function public.blink_contact_my_recent_push_ids(uuid) to service_role;
+
 commit;

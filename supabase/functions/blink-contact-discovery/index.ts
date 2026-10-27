@@ -68,6 +68,24 @@ Deno.serve(async request => {
   const verifiedPhone = canonical(user.phone ?? "") &&
     user.phone_confirmed_at && !!user.phone_confirmed_at;
   const key = await hmacKey(pepper);
+  const dispatchNewContactAlerts = async () => {
+    // This path only runs after server-side phone ownership and privacy consent checks.
+    const { data: ids, error } = await admin.rpc("blink_contact_my_recent_push_ids", { p_joiner: uid });
+    if (error || !Array.isArray(ids)) return;
+    for (const row of ids.slice(0, 100)) {
+      const notificationId = String(row?.notification_id ?? "");
+      if (!isUuid(notificationId)) continue;
+      try {
+        await fetch(url + "/functions/v1/send-activity-notification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": secret, "Authorization": "Bearer " + secret },
+          body: JSON.stringify({ notification_id: notificationId }),
+        });
+      } catch {
+        // Existing dispatch deduplication allows trusted retry by a server worker.
+      }
+    }
+  };
   const freshSettings = async () => {
     const { data: prefs, error } = await admin.from("blink_contact_settings")
       .select("sync_enabled,discoverable,join_alerts,last_synced_at").eq("user_id", uid).maybeSingle();
@@ -112,6 +130,7 @@ Deno.serve(async request => {
         p_hmac: verifiedPhone ? await phoneHash(key, canonical(user.phone)!) : "0".repeat(64),
       });
       if (directoryError) throw directoryError;
+      if (data.discoverable) await dispatchNewContactAlerts();
       return json({ settings: await freshSettings() }, 200, origin);
     }
     if (action === "sync") {
