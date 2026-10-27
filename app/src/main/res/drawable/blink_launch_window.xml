@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Keep the native prelaunch frame visually continuous with the animated intro. -->
+    <!-- Android must draw a startup window before Compose. No static text or logo:
+         the first visible branding is the actual Beyond LINK -> BLINK animation. -->
     <item android:drawable="@color/black" />
-    <item android:drawable="@drawable/blink_intro_wordmark" android:gravity="center" />
 </layer-list>
