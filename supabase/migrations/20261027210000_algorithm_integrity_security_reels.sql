@@ -162,7 +162,7 @@ $visibility$);
   v_source := replace(v_source,
     'and (pv.weighted_view_count + v_view_weight) <= v_max_contribution',
     'and (pv.weighted_view_count + v_view_weight) <= v_max_contribution' ||
-      E'\\n       and (pv.last_viewed_at is null or pv.last_viewed_at <= now() - interval ''60 seconds'')');
+      E'\n       and (pv.last_viewed_at is null or pv.last_viewed_at <= now() - interval ''60 seconds'')');
   if position('ALGORITHM_VIEW_REPLAY_COOLDOWN' in v_source)=0 then
     v_source := replace(v_source,v_anchor,v_anchor || $block$
 
