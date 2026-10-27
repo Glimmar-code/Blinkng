@@ -1012,7 +1012,7 @@ private fun PremiumHomeFeed(
             )
         }
     }
-    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed) {
+    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed, filter) {
         buildPremiumHomeRows(
             filteredPosts,
             if (filter == PremiumFeedFilter.ALL) rankedInlineReels else emptyList(),
