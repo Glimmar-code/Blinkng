@@ -75,6 +75,8 @@ internal fun PremiumReelEditor(
     var overlayStartMs by remember(uri) { mutableLongStateOf(0L) }
     var overlayEndMs by remember(uri) { mutableLongStateOf(0L) }
     var musicUri by remember(uri) { mutableStateOf<String?>(null) }
+    var originalAudioVolume by remember(uri) { mutableFloatStateOf(1f) }
+    var musicVolume by remember(uri) { mutableFloatStateOf(1f) }
     var isExporting by remember(uri) { mutableStateOf(false) }
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
@@ -131,6 +133,8 @@ internal fun PremiumReelEditor(
         overlayText = overlayText.trim(),
         sticker = sticker,
         musicUri = musicUri,
+        originalAudioVolume = originalAudioVolume,
+        musicVolume = musicVolume,
         overlayStartMs = overlayStartMs.coerceAtLeast(0L),
         overlayEndMs = if (overlayEndMs == 0L) Long.MAX_VALUE else overlayEndMs
     )
@@ -248,7 +252,7 @@ internal fun PremiumReelEditor(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = muteOriginal, onClick = {
                         muteOriginal = !muteOriginal
-                        player.volume = if (muteOriginal) 0f else 1f
+                        player.volume = if (muteOriginal) 0f else originalAudioVolume
                     }, label = { Text("Mute", fontSize = 11.sp) }, enabled = !isExporting)
                     FilterChip(selected = grayscale, onClick = { grayscale = !grayscale },
                         label = { Text("B&W", fontSize = 11.sp) }, enabled = !isExporting)
@@ -298,6 +302,26 @@ internal fun PremiumReelEditor(
                         if (musicUri != null) TextButton(onClick = { musicUri = null }) {
                             Text("Remove music")
                         }
+                    }
+                    Text("Original audio ${(originalAudioVolume * 100).toInt()}%",
+                        color = white, fontSize = 12.sp)
+                    Slider(
+                        value = originalAudioVolume,
+                        onValueChange = {
+                            originalAudioVolume = it
+                            player.volume = if (muteOriginal) 0f else it
+                        },
+                        enabled = !isExporting && !muteOriginal
+                    )
+                    if (musicUri != null) {
+                        Text("Added music ${(musicVolume * 100).toInt()}%",
+                            color = white, fontSize = 12.sp)
+                        Slider(
+                            value = musicVolume, onValueChange = { musicVolume = it },
+                            enabled = !isExporting
+                        )
+                        Text("Audio balance is applied to the exported video.",
+                            color = Color.LightGray, fontSize = 12.sp)
                     }
                 }
                 if (grayscale || rotation != 0f) {
