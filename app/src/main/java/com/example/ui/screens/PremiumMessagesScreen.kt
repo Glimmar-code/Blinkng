@@ -352,8 +352,7 @@ fun PremiumMessagesScreen(
                     // Telegram-style interactive back needs the actual previous
                     // conversation list underneath the chat even at full screen.
                     // Do not blank it while the top screen follows the finger.
-                    {
-                        PremiumMessagesHome(
+                    PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
                             myAvatar = myAvatar,
@@ -377,7 +376,6 @@ fun PremiumMessagesScreen(
                                 if (!chatSlideVisible) onVisibleInboxReceipt(id)
                             }
                         )
-                    }
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
