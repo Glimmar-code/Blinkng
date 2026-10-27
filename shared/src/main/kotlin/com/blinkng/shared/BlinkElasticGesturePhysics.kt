@@ -24,6 +24,20 @@ object BlinkElasticGesturePhysics {
     }
 
     /**
+     * VelocityTracker can return near-zero speed for a two-sample fast gesture.
+     * Trust a same-direction average speed over a short completed stroke, but
+     * never override a measured reverse-direction release.
+     */
+    fun resolvedFlickVelocity(distancePx: Float, trackedPxPerSecond: Float, elapsedMillis: Long): Float {
+        if (!distancePx.isFinite() || !trackedPxPerSecond.isFinite() ||
+            elapsedMillis !in 1L..160L) return trackedPxPerSecond
+        if (distancePx * trackedPxPerSecond < 0f) return trackedPxPerSecond
+        val average = distancePx * (1000f / elapsedMillis.toFloat())
+        if (!average.isFinite()) return trackedPxPerSecond
+        return if (abs(average) > abs(trackedPxPerSecond)) average else trackedPxPerSecond
+    }
+
+    /**
      * Quick-action gestures commit only for deliberate, direction-matched fast flicks.
      * Slow releases, even after long drags, spring back without taking the action.
      * Platform-native scrolling and paging retain their own settling policy.
