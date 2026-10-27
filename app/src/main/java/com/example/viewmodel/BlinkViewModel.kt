@@ -3934,10 +3934,29 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(isCreatingPost = true, postUploadProgress = 0)
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val mediaInputs = post.images + listOfNotNull(post.videoUrl)
+                val weights = mediaInputs.map { input ->
+                    if (!input.startsWith("content://")) 0L else
+                        runCatching {
+                            appContext.contentResolver.openAssetFileDescriptor(Uri.parse(input), "r")
+                                ?.use { it.length.coerceAtLeast(1L) } ?: 1L
+                        }.getOrDefault(1L)
+                }
+                val weightSum = weights.sum().coerceAtLeast(1L)
+                fun report(index: Int, sent: Long, length: Long) {
+                    if (length <= 0L || index !in weights.indices) return
+                    val weighted = weights.take(index).sum() +
+                        (weights[index] * sent.coerceIn(0L, length).toDouble() / length).toLong()
+                    _uiState.value = _uiState.value.copy(
+                        postUploadProgress = (weighted * 100.0 / weightSum).toInt().coerceIn(0, 100)
+                    )
+                }
                 val uploadedImages = mutableListOf<String>()
-                for (input in post.images) {
+                for ((index, input) in post.images.withIndex()) {
                     val uploaded = if (input.startsWith("content://")) {
-                        uploadPostUri(userId, input, false)
+                        uploadPostUri(userId, input, false) { sent, length ->
+                            report(index, sent, length)
+                        }
                     } else input
                     if (uploaded.isNullOrBlank()) {
                         throw IllegalStateException("One of the selected images could not be uploaded.")
@@ -3946,8 +3965,13 @@ private suspend fun restoreSupabaseSession() {
                 }
 
                 val uploadedVideo = post.videoUrl?.let { input ->
-                    if (input.startsWith("content://")) uploadPostUri(userId, input, true) else input
+                    if (input.startsWith("content://")) {
+                        uploadPostUri(userId, input, true) { sent, length ->
+                            report(post.images.size, sent, length)
+                        }
+                    } else input
                 }
+                _uiState.value = _uiState.value.copy(postUploadProgress = null)
                 if (!post.videoUrl.isNullOrBlank() && uploadedVideo.isNullOrBlank()) {
                     throw IllegalStateException("The selected video could not be uploaded.")
                 }
