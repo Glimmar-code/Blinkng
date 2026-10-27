@@ -314,7 +314,8 @@ fun CreatePostSheet(
         }
     }
 
-    LaunchedEffect(startInReelMode) {
+    LaunchedEffect(startInReelMode, autosaveRestored) {
+        if (!autosaveRestored) return@LaunchedEffect
         if (startInReelMode && selectedVideo == null) {
             mode = "reel"
             videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
