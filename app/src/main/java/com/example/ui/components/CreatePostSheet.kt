@@ -1247,6 +1247,11 @@ fun CreatePostSheet(
                                 }
                             }, enabled = !isSubmitting) { Text("Add") }
                         }
+                        if (!tagsValid) {
+                            Text("Use no more than 5 unique hashtags, including those in your caption.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                         if (effectiveTags.isNotEmpty()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 items(effectiveTags, key = { it }) { tag ->
@@ -1780,7 +1785,7 @@ private fun PostPreviewDialog(
                             AsyncImage(
                                 model = uri,
                                 contentDescription = post.altText ?: "Post image",
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(156.dp)
                                     .clip(RoundedCornerShape(16.dp))
@@ -1982,18 +1987,14 @@ private fun ComposerTopBar(
     onDismiss: () -> Unit,
     onSubmit: () -> Unit
 ) {
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 60.dp)
             .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick = onDismiss,
-            enabled = !isSubmitting,
-            modifier = Modifier.align(Alignment.CenterStart)
-        ) {
+        IconButton(onClick = onDismiss, enabled = !isSubmitting) {
             Icon(Icons.Default.Close, contentDescription = "Close")
         }
 
@@ -2001,13 +2002,14 @@ private fun ComposerTopBar(
             text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create post",
             fontWeight = FontWeight.Black,
             fontSize = 20.sp,
-            modifier = Modifier.align(Alignment.Center)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 6.dp)
         )
 
         Button(
             onClick = onSubmit,
-            enabled = canSubmit,
-            modifier = Modifier.align(Alignment.CenterEnd)
+            enabled = canSubmit
         ) {
             if (isSubmitting) {
                 CircularProgressIndicator(
@@ -2124,8 +2126,8 @@ private fun SelectedImagePreview(
             onClick = onRemove,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(30.dp)
+                .padding(2.dp)
+                .size(42.dp)
         ) {
             Surface(
                 shape = CircleShape,
@@ -2144,7 +2146,7 @@ private fun SelectedImagePreview(
             color = Color.Black.copy(alpha = .70f),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.align(Alignment.TopStart)
-                .padding(5.dp).clickable(onClick = onEdit)
+                .padding(3.dp).heightIn(min = 42.dp).clickable(onClick = onEdit)
         ) {
             Text("Edit", color = Color.White, fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
@@ -2159,7 +2161,7 @@ private fun SelectedImagePreview(
             if (canMoveLeft) {
                 IconButton(
                     onClick = onMoveLeft,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
                         Icon(
@@ -2174,7 +2176,7 @@ private fun SelectedImagePreview(
             if (canMoveRight) {
                 IconButton(
                     onClick = onMoveRight,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
                         Icon(
