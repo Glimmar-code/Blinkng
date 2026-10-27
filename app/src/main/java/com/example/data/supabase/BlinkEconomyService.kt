@@ -81,6 +81,15 @@ class BlinkEconomyService {
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
 
+    suspend fun boostableContentPage(type: String, offset: Int, limit: Int = 40) = runCatching {
+        require(type in setOf("POST","REEL","LISTING")) { "Choose a valid Boost content type." }
+        rpc("get_my_blink_boostable_content_page",
+            JSONObject().put("p_target_type",type)
+                .put("p_offset",offset.coerceAtLeast(0))
+                .put("p_limit",limit.coerceIn(1,50)))
+    }
+
+
     suspend fun boostGrowthState() = runCatching { rpc("get_blink_boost_growth_state_v2") }
 
     suspend fun boostMissions(limit: Int = 12) = runCatching {
