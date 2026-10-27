@@ -1682,6 +1682,7 @@ private fun PremiumChatDetail(
     var pendingReplyTargetId by remember(conversation.id) { mutableStateOf<String?>(null) }
     var lastRequestedReplyOldestId by remember(conversation.id) { mutableStateOf<String?>(null) }
     var highlightedReplyId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var activeVideoMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
     val isNearLatest by remember(conversation.id) {
         derivedStateOf {
@@ -2242,7 +2243,12 @@ private fun PremiumChatDetail(
                             onOpenImage = { viewedImageMessage = it },
                             onRetry = { onRetry(message) },
                             onCancelAttachment = { onCancelAttachment(message) },
-                            allowLinkPreviews = allowLinkPreviews
+                            allowLinkPreviews = allowLinkPreviews,
+                            activeVideoMessageId = activeVideoMessageId,
+                            onVideoActivate = { activeVideoMessageId = message.id },
+                            onVideoDeactivate = {
+                                if (activeVideoMessageId == message.id) activeVideoMessageId = null
+                            }
                             )
                         }
                     }
@@ -3476,7 +3482,10 @@ private fun MessageBubble(
     onOpenImage: (ChatMessage) -> Unit,
     onRetry: () -> Unit,
     onCancelAttachment: () -> Unit,
-    allowLinkPreviews: Boolean
+    allowLinkPreviews: Boolean,
+    activeVideoMessageId: String?,
+    onVideoActivate: () -> Unit,
+    onVideoDeactivate: () -> Unit
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -3619,7 +3628,10 @@ private fun MessageBubble(
                         palette = palette,
                         allowLinkPreviews = allowLinkPreviews,
                         onCancelAttachment = onCancelAttachment,
-                        onOpenImage = onOpenImage
+                        onOpenImage = onOpenImage,
+                        videoActive = activeVideoMessageId == message.id,
+                        onVideoActivate = onVideoActivate,
+                        onVideoDeactivate = onVideoDeactivate
                     )
                     // Compact inside-bubble timestamp and one overlapping double-check glyph.
                     val metadata = when (message.status) {
@@ -3701,7 +3713,10 @@ private fun MessageContent(
     palette: MessagePalette,
     allowLinkPreviews: Boolean,
     onCancelAttachment: () -> Unit,
-    onOpenImage: (ChatMessage) -> Unit
+    onOpenImage: (ChatMessage) -> Unit,
+    videoActive: Boolean,
+    onVideoActivate: () -> Unit,
+    onVideoDeactivate: () -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -3845,6 +3860,9 @@ private fun MessageContent(
             if (!message.attachedVideoUrl.isNullOrBlank()) {
                 BlinkChatInlineVideo(
                     url = message.attachedVideoUrl,
+                    isActive = videoActive,
+                    onActivate = onVideoActivate,
+                    onDeactivate = onVideoDeactivate,
                     modifier = Modifier.width(240.dp),
                 )
             }
