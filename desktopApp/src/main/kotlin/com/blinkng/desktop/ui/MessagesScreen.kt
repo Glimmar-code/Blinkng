@@ -91,6 +91,7 @@ import com.blinkng.desktop.data.DesktopStickerLibrary
 import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkChatPhotoAlbum
 import com.blinkng.shared.BlinkChatPollPolicy
+import com.blinkng.shared.BlinkChatContactCardPolicy
 import javax.swing.JFileChooser
 import java.util.UUID
 import java.io.File
@@ -678,7 +679,26 @@ fun MessagesScreen(state: DesktopAppState) {
                                                     .clickable { viewedChatPhoto = message }
                                             )
                                         }
-                                        if (message.content.isNotBlank() &&
+                                        val sharedContact = BlinkChatContactCardPolicy.parse(message.content)
+                                        if (sharedContact != null) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.surface.copy(alpha = .7f),
+                                            ) {
+                                                Column(Modifier.padding(12.dp)) {
+                                                    Text("👤 " + sharedContact.displayName,
+                                                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                                    Text(sharedContact.phoneNumber, fontSize = 12.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    TextButton(onClick = {
+                                                        runCatching {
+                                                            Toolkit.getDefaultToolkit().systemClipboard
+                                                                .setContents(StringSelection(sharedContact.phoneNumber), null)
+                                                        }.onFailure { error = "Unable to copy this phone number." }
+                                                    }) { Text("Copy number") }
+                                                }
+                                            }
+                                        } else if (message.content.isNotBlank() &&
                                             !(message.messageType == "image" &&
                                                 message.content in setOf("Image", "Photo"))) {
                                             Text(message.content)
@@ -694,7 +714,9 @@ fun MessagesScreen(state: DesktopAppState) {
                                                     "$emoji $count",
                                                     fontSize = 11.sp,
                                                     fontWeight = if (emoji in message.myReactions) FontWeight.Bold else FontWeight.Normal,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.clickable { actionMessageId = message.id }
+                                                        .padding(horizontal = 6.dp, vertical = 6.dp)
                                                 )
                                             }
                                         }
