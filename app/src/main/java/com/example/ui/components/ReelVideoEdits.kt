@@ -13,6 +13,8 @@ import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.RgbFilter
 import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.effect.TextOverlay
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -37,6 +39,8 @@ internal data class ReelEditSpec(
     val overlayText: String = "",
     val sticker: String = "",
     val musicUri: String? = null,
+    val originalAudioVolume: Float = 1f,
+    val musicVolume: Float = 1f,
     val overlayStartMs: Long = 0L,
     val overlayEndMs: Long = Long.MAX_VALUE
 ) {
@@ -48,6 +52,9 @@ internal data class ReelEditSpec(
         }
         require(rotationDegrees in listOf(0f, 90f, 180f, 270f)) { "Invalid rotation." }
         require(overlayText.length <= 120 && sticker.length <= 16) { "Overlay text too long." }
+        require(originalAudioVolume in 0f..1f && musicVolume in 0f..1f) {
+            "Audio volume must be between 0 and 100%."
+        }
         require(overlayStartMs >= 0L && overlayStartMs <= durationMs) { "Overlay starts outside the Reel." }
         require(overlayEndMs == Long.MAX_VALUE ||
             (overlayEndMs > overlayStartMs && overlayEndMs <= durationMs)) {
@@ -63,7 +70,8 @@ internal data class ReelEditSpec(
     fun hasChanges(durationMs: Long): Boolean =
         startMs > 0 || endMs < durationMs - 100 ||
             muteOriginalAudio || grayscale || rotationDegrees != 0f ||
-            overlayText.isNotBlank() || sticker.isNotBlank() || musicUri != null
+            overlayText.isNotBlank() || sticker.isNotBlank() || musicUri != null ||
+            originalAudioVolume != 1f
 }
 
 /** Creates small filmstrip previews off the UI thread; errors leave an empty timeline, not a crash. */
@@ -143,15 +151,31 @@ internal suspend fun exportEditedReel(
             })
         )
     }
+    fun volumeEffect(level: Float): List<androidx.media3.common.audio.AudioProcessor> {
+        if (level == 1f) return emptyList()
+        val processor = ChannelMixingAudioProcessor()
+        for (channels in 1..6) {
+            processor.putChannelMixingMatrix(
+                ChannelMixingMatrix.createForConstantPower(channels, channels)
+                    .scaleBy(level)
+            )
+        }
+        return listOf(processor)
+    }
     val videoItem = EditedMediaItem.Builder(input)
         .setRemoveAudio(edit.muteOriginalAudio)
-        .setEffects(Effects(emptyList(), videoEffects))
+        .setEffects(Effects(
+            if (edit.muteOriginalAudio) emptyList() else volumeEffect(edit.originalAudioVolume),
+            videoEffects
+        ))
         .build()
     val music = edit.musicUri?.takeIf(String::isNotBlank)
     val composition = if (music != null) {
         // Media3 1.8.0 uses the pre-1.9 sequence constructors.
         val videoSequence = EditedMediaItemSequence(listOf(videoItem))
-        val audioItem = EditedMediaItem.Builder(MediaItem.fromUri(music)).build()
+        val audioItem = EditedMediaItem.Builder(MediaItem.fromUri(music))
+            .setEffects(Effects(volumeEffect(edit.musicVolume), emptyList()))
+            .build()
         val loopMusic = EditedMediaItemSequence(listOf(audioItem), true)
         Composition.Builder(videoSequence, loopMusic).build()
     } else null
