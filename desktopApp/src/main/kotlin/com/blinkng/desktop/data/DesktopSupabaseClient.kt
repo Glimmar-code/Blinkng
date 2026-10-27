@@ -668,6 +668,11 @@ class DesktopSupabaseClient(
         postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "delete")) as JSONObject
     }
 
+    suspend fun isOnboardingPhoneVerified(): Boolean = withContext(Dispatchers.IO) {
+        val user = JSONObject(execute(authenticatedRequest("/auth/v1/user").get().build()))
+        user.optString("phone").isNotBlank() && user.optString("phone_confirmed_at").isNotBlank()
+    }
+
     suspend fun requestOnboardingPhoneCode(raw: String) = withContext(Dispatchers.IO) {
         val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Enter a valid phone number." }
         execute(authenticatedRequest("/auth/v1/user")
