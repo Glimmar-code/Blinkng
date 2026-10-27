@@ -44,15 +44,22 @@ fun BlinkContactDiscoveryCard(
     var settings by remember(accountId) { mutableStateOf(BlinkContactsDiscoveryClient.Consent()) }
     var people by remember(accountId) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var working by remember(accountId) { mutableStateOf(false) }
+    var serviceReady by remember(accountId) { mutableStateOf(false) }
+    var syncedThisSession by remember(accountId) { mutableStateOf(false) }
     var problem by remember(accountId) { mutableStateOf<String?>(null) }
     var confirmDelete by remember(accountId) { mutableStateOf(false) }
 
     fun update(value: BlinkContactsDiscoveryClient.Consent) {
         scope.launch {
             working = true
-            runCatching { client.set(value) }.onSuccess { settings = it; problem = null }
-                .onFailure { problem = it.message ?: "Could not save your choices." }
-            if (!value.syncEnabled) people = emptyList()
+            runCatching { client.set(value) }.onSuccess {
+                settings = it
+                problem = null
+                if (!it.syncEnabled) {
+                    people = emptyList()
+                    syncedThisSession = false
+                }
+            }.onFailure { problem = it.message ?: "Could not save your choices." }
             working = false
         }
     }
@@ -60,7 +67,11 @@ fun BlinkContactDiscoveryCard(
     fun sync() {
         scope.launch {
             working = true
-            runCatching { client.syncFromDevice(context) }.onSuccess { people = it; problem = null }
+            runCatching { client.syncFromDevice(context) }.onSuccess {
+                people = it
+                syncedThisSession = true
+                problem = null
+            }
                 .onFailure { problem = it.message ?: "Contact sync unavailable." }
             working = false
         }
@@ -69,10 +80,21 @@ fun BlinkContactDiscoveryCard(
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) sync() else problem = "Permission denied. BLINK works without contact access."
     }
+    suspend fun refresh() {
+        working = true
+        runCatching { client.get() }.onSuccess {
+            settings = it.consent
+            people = it.people
+            serviceReady = true
+            problem = null
+        }.onFailure {
+            serviceReady = false
+            problem = it.message ?: "Contact discovery is currently unavailable."
+        }
+        working = false
+    }
     LaunchedEffect(accountId) {
-        if (accountId.isBlank()) return@LaunchedEffect
-        runCatching { client.get() }.onSuccess { settings = it.consent; people = it.people }
-            .onFailure { problem = "Contact discovery is currently unavailable." }
+        if (accountId.isNotBlank()) refresh()
     }
 
     Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -83,33 +105,43 @@ fun BlinkContactDiscoveryCard(
             Text("Optional: BLINK matches phone numbers with consent. No call history or contact names are collected.",
                 style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = settings.syncEnabled, enabled = !working, onCheckedChange = {
+                Checkbox(checked = settings.syncEnabled, enabled = serviceReady && !working, onCheckedChange = {
                     update(settings.copy(syncEnabled = it))
                 })
-                Text("Sync my phone contacts", style = MaterialTheme.typography.bodyMedium)
+                Text("Sync my phone contacts", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = settings.discoverable, enabled = !working, onCheckedChange = {
+                Checkbox(checked = settings.discoverable, enabled = serviceReady && !working, onCheckedChange = {
                     update(settings.copy(discoverable = it))
                 })
-                Text("Let my contacts find me", style = MaterialTheme.typography.bodyMedium)
+                Text("Let my contacts find me", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = settings.joinAlerts, enabled = !working && settings.syncEnabled, onCheckedChange = {
+                Checkbox(checked = settings.joinAlerts, enabled = serviceReady && !working && settings.syncEnabled, onCheckedChange = {
                     update(settings.copy(joinAlerts = it))
                 })
-                Text("Notify me when contacts join", style = MaterialTheme.typography.bodyMedium)
+                Text("Notify me when contacts join", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Button(modifier = Modifier.fillMaxWidth(), onClick = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
                         PackageManager.PERMISSION_GRANTED) sync()
                     else permission.launch(Manifest.permission.READ_CONTACTS)
-                }, enabled = settings.syncEnabled && !working) { Text("Find my friends") }
-                TextButton(onClick = { confirmDelete = true }, enabled = !working) { Text("Delete synced contacts") }
+                }, enabled = serviceReady && settings.syncEnabled && !working) { Text("Find my friends") }
+                TextButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth(),
+                    enabled = serviceReady && !working) { Text("Delete synced contacts") }
             }
             problem?.let {
                 Text(it, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            if (!serviceReady && !working && accountId.isNotBlank()) {
+                TextButton(onClick = { scope.launch { refresh() } }) {
+                    Text("Retry contact discovery connection")
+                }
+            }
+            if (syncedThisSession && people.isEmpty()) {
+                Text("No matching BLINK contacts found yet. Your contacts remain private.",
                     style = MaterialTheme.typography.bodySmall)
             }
             if (people.isNotEmpty()) {
