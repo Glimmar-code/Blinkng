@@ -2430,6 +2430,7 @@ fun MainAppContent(
         BackgroundPostPublishIndicator(
             isCreatingPost = uiState.isCreatingPost,
             messages = viewModel.snackBarMessages,
+            uploadProgress = uiState.postUploadProgress,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = if (shouldShowBottomBar) 92.dp else 18.dp)
