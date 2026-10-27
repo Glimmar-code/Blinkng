@@ -1,6 +1,9 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.ProfileVisitSettings
+import com.blinkng.shared.ProfileVisitor
+import com.blinkng.shared.ProfileVisitHistory
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
@@ -917,6 +920,56 @@ class DesktopSupabaseClient(
                 }
             }
         }
+
+
+    /** Owner-scoped visitor RPCs; errors must never silently become opt-out. */
+    suspend fun getMyProfileVisitSettings(): ProfileVisitSettings = withContext(Dispatchers.IO) {
+        val item = postObject("/rest/v1/rpc/get_my_profile_visit_settings", JSONObject()) as? JSONObject
+            ?: error("Profile visitor history is not available yet.")
+        ProfileVisitSettings(item.optBoolean("participate", false), item.optBoolean("notify_visits", false))
+    }
+
+    suspend fun setMyProfileVisitSettings(participate: Boolean, notify: Boolean): ProfileVisitSettings =
+        withContext(Dispatchers.IO) {
+            val item = postObject("/rest/v1/rpc/set_my_profile_visit_settings",
+                JSONObject().put("p_participate", participate)
+                    .put("p_notify_visits", participate && notify)) as? JSONObject
+                ?: error("Couldn't save visitor privacy settings.")
+            ProfileVisitSettings(item.optBoolean("participate", false), item.optBoolean("notify_visits", false))
+        }
+
+    suspend fun listMyProfileVisitors(): ProfileVisitHistory = withContext(Dispatchers.IO) {
+        val item = postObject("/rest/v1/rpc/list_my_profile_visitors", JSONObject()) as? JSONObject
+            ?: error("Profile visitor history is not available yet.")
+        val rows = item.optJSONArray("visitors") ?: JSONArray()
+        val visitors = buildList {
+            for (i in 0 until rows.length()) {
+                val row = rows.optJSONObject(i) ?: continue
+                val id = row.optString("id")
+                val handle = row.optString("username")
+                if (id.isBlank() || handle.isBlank()) continue
+                add(ProfileVisitor(
+                    id, handle, row.optString("full_name").ifBlank { handle },
+                    row.optString("avatar_url"), row.optString("last_visited_at")
+                ))
+            }
+        }
+        ProfileVisitHistory(item.optBoolean("enabled", false), item.optString("seen_through"), visitors)
+    }
+
+    suspend fun recordOptInProfileVisit(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        if (profileId == requireSession().userId) return@withContext false
+        if (runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
+        runCatching {
+            val response = postObject("/rest/v1/rpc/record_opt_in_profile_visit",
+                JSONObject().put("p_profile_id", profileId))
+            when (response) {
+                is Boolean -> response
+                is String -> response.equals("true", ignoreCase = true)
+                else -> false
+            }
+        }.getOrDefault(false)
+    }
 
     suspend fun getProfileNotificationPreference(profileId: String): DesktopProfileNotificationMode =
         withContext(Dispatchers.IO) {
