@@ -146,6 +146,9 @@ import com.example.ui.theme.LightTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** A second double-tap must never undo an existing Like. */
+internal fun shouldApplyPostDoubleTapLike(alreadyLiked: Boolean): Boolean = !alreadyLiked
+
 /**
  * Premium home-feed card. It renders only real post media: text-only posts never
  * allocate an empty image area and video content remains routed to Reels.
@@ -788,7 +791,7 @@ fun PostCard(
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
                             cropToFrame = false,
                             deferAspectChanges = isFeedScrolling,
-                            onDoubleTapLike = if (xFeedStyle) ({ if (!post.isLiked) onLike() }) else null,
+                            onDoubleTapLike = if (xFeedStyle) ({ if (shouldApplyPostDoubleTapLike(post.isLiked)) onLike() }) else null,
                             onClick = {
                                 imagePage = 0
                                 showImageFullscreen = true
@@ -813,7 +816,7 @@ fun PostCard(
                                     modifier = Modifier.fillParentMaxWidth(),
                                     cropToFrame = false,
                                     deferAspectChanges = isFeedScrolling,
-                                    onDoubleTapLike = if (xFeedStyle) ({ if (!post.isLiked) onLike() }) else null,
+                                    onDoubleTapLike = if (xFeedStyle) ({ if (shouldApplyPostDoubleTapLike(post.isLiked)) onLike() }) else null,
                                     onClick = {
                                         imagePage = index
                                         showImageFullscreen = true
