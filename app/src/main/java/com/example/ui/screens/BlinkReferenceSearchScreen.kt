@@ -48,6 +48,7 @@ import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
 import com.example.data.models.FeedPost
 import com.example.data.repository.FollowStateStore
+import com.example.data.repository.SearchDiscoveryRepository
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import com.example.data.models.UserProfile
@@ -120,6 +121,13 @@ internal fun BlinkReferenceSearchScreen(
     var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var searchedPeople by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var referralCount by remember(accountKey) { mutableStateOf<Long?>(null) }
+    // Backend-only trends: never invent or cache fake hashtags if unavailable.
+    var trendingTags by remember(accountKey) { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(accountKey, myProfile.university) {
+        trendingTags = SearchDiscoveryRepository()
+            .trendingTags(university = myProfile.university, limit = 5)
+            .take(5)
+    }
     LaunchedEffect(accountKey, query) {
         val clean = BlinkReferralPolicy.normalizedQuery(query)
         if (clean.isBlank()) { searchedPeople = emptyList(); return@LaunchedEffect }
@@ -398,6 +406,32 @@ internal fun BlinkReferenceSearchScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+                if (trendingTags.isNotEmpty()) {
+                    Text("Trending hashtags · 7 days", color = fg,
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(7.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        items(trendingTags, key = { it }) { hashtag ->
+                            val term = if (hashtag.startsWith("#")) hashtag else "#$hashtag"
+                            Surface(
+                                onClick = {
+                                    query = term
+                                    rememberQuery(term)
+                                    search.setQuery(term, persistHistory = false)
+                                    search.commitQuery()
+                                    keyboard?.hide()
+                                },
+                                shape = RoundedCornerShape(24.dp),
+                                color = subtle,
+                                border = BorderStroke(1.dp, line),
+                            ) {
+                                Text(term, Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    fontSize = 12.sp, color = fg, maxLines = 1)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
                 if (referralRecommendations.isNotEmpty()) {
                     Text("Discover students on BLINK", color = fg, fontWeight = FontWeight.Bold,
                         fontSize = 15.sp)
