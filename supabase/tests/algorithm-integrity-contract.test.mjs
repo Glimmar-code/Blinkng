@@ -27,6 +27,9 @@ test("rewarded coins require signed SSV and only service role may settle", () =>
 
 test("ranked and chronological Feeds respect user privacy and blocks", () => {
   assert.match(migration, /ALGORITHM_DISCOVERY_SOURCE_DRIFT/);
+  assert.match(migration, /REEL_COMPLETION_SCORE_SOURCE_DRIFT/);
+  assert.match(migration, /v_reel_factor text/);
+  assert.match(migration, /reel_watch_samples >= 12/);
   assert.match(migration, /privacy\.private_account is true/);
   assert.match(migration, /v_owner_bonus, '0::numeric'/);
   assert.match(migration, /'private\.is_blink_owner_id\(fp\.user_id\)', 'false'/);
@@ -42,6 +45,10 @@ test("Reels events use real watch-time derived flags, with duplicate protection"
 });
 
 test("Post views reject rapid replays without inflating counters", () => {
+  assert.match(migration, /CONTENT_VIEW_VISIBILITY_SOURCE_DRIFT/);
+  assert.match(migration, /raise exception 'CONTENT_NOT_VISIBLE'/);
+  assert.match(migration, /allowed\.is_active=true/);
+  assert.match(migration, /privacy\.private_account=true/);
   assert.match(migration, /ALGORITHM_VIEW_REPLAY_COOLDOWN/);
   assert.match(migration, /recent\.last_viewed_at > now\(\) - interval '60 seconds'/);
   assert.match(migration, /'accepted',false,'duplicate',false,'cap_reached',false/);
