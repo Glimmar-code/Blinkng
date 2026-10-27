@@ -147,6 +147,7 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
     var targetPageBusy by remember { mutableStateOf(false) }
     var confirmStart by remember { mutableStateOf(false) }
     var pendingCancel by remember { mutableStateOf<String?>(null) }
+    var showManagement by remember { mutableStateOf(false) }
 
     fun currentRequest() = BlinkBoostCampaignRequest(targetType, targetId, power.toInt(), objective,
         audience, duration, selectedUniversity.trim().takeIf { audience == "SELECTED_UNIVERSITY" && it.isNotBlank() })
@@ -537,6 +538,12 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
             }
         }
 
+        item {
+            TextButton(onClick = { showManagement = !showManagement }) {
+                Text(if (showManagement) "Hide campaign management" else "Show campaigns, analytics and receipts")
+            }
+        }
+        if (showManagement) {
         growthState?.optJSONObject("analytics")?.let { analytics ->
             item {
                 DesktopBoostSection("Growth results", "Live totals for your campaigns")
@@ -602,6 +609,7 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                 }
             }
         }
+        }
     }
 
     if (confirmStart) {
@@ -661,7 +669,12 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
         AlertDialog(
             onDismissRequest = { if (!working) pendingCancel = null },
             title = { Text("Cancel this Boost?") },
-            text = { Text("Unused reserved Blink Coins will be returned according to the server's settlement rules.") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Unused reserved Blink Coins will be returned according to the server's settlement rules.")
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
             confirmButton = {
                 Button(enabled = !working, onClick = {
                     working = true
