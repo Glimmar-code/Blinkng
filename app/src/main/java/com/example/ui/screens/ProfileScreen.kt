@@ -299,6 +299,14 @@ fun ProfileScreen(
     val context = LocalContext.current
     val scrollState = rememberLazyListState()
 
+    // A deep link into Liked or Saved must reveal the selected section, not leave
+    // its tab uncomposed below the tall profile dashboard on compact phones.
+    LaunchedEffect(profile.id, initialTab, isMe) {
+        if (initialTab != 0 && initialTab in tabs.indices) {
+            scrollState.scrollToItem(1)
+        }
+    }
+
     val presenceVisible = canViewProfileField(
         scope = profile.presenceVisibility,
         isOwner = isMe,
