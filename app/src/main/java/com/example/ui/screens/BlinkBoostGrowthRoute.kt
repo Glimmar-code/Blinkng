@@ -169,6 +169,12 @@ private object BoostDraftStore {
     }
 }
 
+private data class BoostListingTarget(
+    val id: String,
+    val title: String,
+    val listing: MarketItem? = null,
+)
+
 private data class MissionItem(
     val campaignId: String,
     val targetType: String,
@@ -365,8 +371,20 @@ private fun BoostCampaignColumn(
     }
     val ownPosts = ownContent.filterNot { it.isReel }
     val ownReels = ownContent.filter { it.isReel }
-    val ownListings = remember(marketItems, me) {
-        marketItems.filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
+    val ownListings = remember(marketItems, me, ownedContent) {
+        val cached = marketItems
+            .filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
+            .associateBy { it.id }
+        val server = ownedContent?.optJSONArray("market").objectList().mapNotNull { item ->
+            val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            BoostListingTarget(
+                id = id,
+                title = cached[id]?.title ?: item.optString("text").ifBlank { "Your listing" },
+                listing = cached[id],
+            )
+        }.orEmpty()
+        (server + cached.values.map { BoostListingTarget(it.id, it.title, it) })
+            .distinctBy { it.id }
     }
 
     var setupStep by remember { mutableIntStateOf(0) }
@@ -686,12 +704,20 @@ private fun BoostCampaignColumn(
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
                                                 items(ownListings.take(80), key = { it.id }) { listing ->
-                                                    SelectableListingTarget(
-                                                        listing = listing,
-                                                        selected = targetId == listing.id,
-                                                        isDark = isDark,
-                                                        onSelect = { targetId = listing.id; setupStep = 1 },
-                                                    )
+                                                    if (listing.listing != null) {
+                                                        SelectableListingTarget(
+                                                            listing = listing.listing,
+                                                            selected = targetId == listing.id,
+                                                            isDark = isDark,
+                                                            onSelect = { targetId = listing.id; setupStep = 1 },
+                                                        )
+                                                    } else {
+                                                        SelectableListingSummaryTarget(
+                                                            title = listing.title,
+                                                            selected = targetId == listing.id,
+                                                            onSelect = { targetId = listing.id; setupStep = 1 },
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -1505,12 +1531,48 @@ private fun SelectablePostTarget(
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold)
-                Text("${post.viewsCount} views",
+                Text(
+                    if (post.timeAgo == "Your content") "Preview · view metrics unavailable"
+                    else "${post.viewsCount} views",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) {
                     Text(if (selected) "✓ Selected" else label)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectableListingSummaryTarget(
+    title: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.width(278.dp),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(26.dp))
+            Text(title, maxLines = 3, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            Text(
+                "From your seller inventory · full listing details are not loaded",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) {
+                Text(if (selected) "✓ Selected" else "Boost this Listing")
             }
         }
     }
