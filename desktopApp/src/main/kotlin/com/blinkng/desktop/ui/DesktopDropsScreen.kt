@@ -24,6 +24,12 @@ fun DesktopDropsScreen(state: DesktopAppState) {
     val rpc = remember(state.client) { DesktopRpcActions(state.client) }
     val scope = rememberCoroutineScope()
     var data by remember { mutableStateOf<JSONObject?>(null) }
+    var availablePage by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var minePage by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var availableMore by remember { mutableStateOf(false) }
+    var mineMore by remember { mutableStateOf(false) }
+    var pageBusy by remember { mutableStateOf(false) }
+    var pendingCancel by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
@@ -43,6 +49,14 @@ fun DesktopDropsScreen(state: DesktopAppState) {
     suspend fun reload() {
         runCatching { rpc.getDropsState() }.onSuccess { data = it; error = null }
             .onFailure { error = it.message ?: "Unable to load Drops." }
+        runCatching { rpc.getDropsPage("AVAILABLE",0) }.onSuccess {
+            availablePage = it.optJSONArray("items").dropRows()
+            availableMore = it.optBoolean("has_more")
+        }
+        runCatching { rpc.getDropsPage("MINE",0) }.onSuccess {
+            minePage = it.optJSONArray("items").dropRows()
+            mineMore = it.optBoolean("has_more")
+        }
         loading = false
     }
     fun perform(action: suspend () -> Unit) {
@@ -107,12 +121,16 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                     perform { quote = rpc.quoteDrop(request); quotedRequest = request }
                 }) { Text("Preview eligibility and budget") }
                 Button(enabled = input.isValid() && quotedRequest == input && quote != null && !busy &&
+                    (quote?.optInt("eligible_followers", 0) ?: 0) > 0 &&
                     quote?.optLong("total_budget",Long.MAX_VALUE)?.let { it <= (balance ?: -1) } == true,
                     onClick = { confirm = input }) { Text("Create Drop") }
             }
             if (quotedRequest == input) quote?.let {
                 Text("${it.optLong("total_budget")} coins reserved · ${it.optInt("eligible_followers")} eligible followers · " +
                     "${it.optLong("remaining_balance_after_reserve")} coins after reserve")
+                if (it.optInt("eligible_followers") < 1)
+                    Text("At least one eligible follower is required; no coins will be reserved.",
+                        color = MaterialTheme.colorScheme.error)
             }
         }
         val analytics = data?.optJSONObject("analytics")
@@ -121,7 +139,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
             Text("${analytics.optLong("distributed")} coins rewarded · ${analytics.optInt("recipients")} recipients · ${analytics.optLong("refunded")} coins refunded")
         }
         item { Text("Available Drops", fontWeight = FontWeight.Bold) }
-        val available = data?.optJSONArray("active_drops").dropRows()
+        val available = availablePage ?: data?.optJSONArray("active_drops").dropRows()
         if (!loading && available.isEmpty()) item { Text("No eligible Drops available right now.") }
         items(available, key = { "available-" + it.optString("id") }) { drop ->
             val id = drop.optString("id")
@@ -137,17 +155,44 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (availableMore) item {
+            OutlinedButton(enabled = !pageBusy, onClick = {
+                pageBusy = true
+                scope.launch {
+                    runCatching { rpc.getDropsPage("AVAILABLE",available.size) }
+                        .onSuccess {
+                            availablePage = (available + it.optJSONArray("items").dropRows()).distinctBy { row -> row.optString("id") }
+                            availableMore = it.optBoolean("has_more")
+                        }.onFailure { error = it.message ?: "Could not load more Drops." }
+                    pageBusy = false
+                }
+            }) { Text(if (pageBusy) "Loading…" else "Load more available Drops") }
+        }
         item { Text("Your Drop history", fontWeight = FontWeight.Bold) }
-        items(data?.optJSONArray("my_drops").dropRows(), key = { "mine-" + it.optString("id") }) { drop ->
+        val mine = minePage ?: data?.optJSONArray("my_drops").dropRows()
+        items(mine, key = { "mine-" + it.optString("id") }) { drop ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(drop.optString("target_title"), fontWeight = FontWeight.Bold)
                     Text("${drop.optString("status")} · ${drop.optInt("claimed_count")}/${drop.optInt("winner_count")} claimed")
                     Text("${drop.optLong("coin_distributed")} coins rewarded · ${drop.optLong("coin_refunded")} refunded")
                     if (drop.optString("status") == "ACTIVE") TextButton(enabled = !busy,
-                        onClick = { perform { rpc.cancelDrop(drop.optString("id")) } }) { Text("End Drop and refund unused coins") }
+                        onClick = { pendingCancel = drop.optString("id") }) { Text("End Drop and refund unused coins") }
                 }
             }
+        }
+        if (mineMore) item {
+            OutlinedButton(enabled = !pageBusy, onClick = {
+                pageBusy = true
+                scope.launch {
+                    runCatching { rpc.getDropsPage("MINE",mine.size) }
+                        .onSuccess {
+                            minePage = (mine + it.optJSONArray("items").dropRows()).distinctBy { row -> row.optString("id") }
+                            mineMore = it.optBoolean("has_more")
+                        }.onFailure { error = it.message ?: "Could not load more history." }
+                    pageBusy = false
+                }
+            }) { Text(if (pageBusy) "Loading…" else "Load more Drop history") }
         }
         val givers = data?.optJSONArray("top_givers").dropRows()
         if (givers.isNotEmpty()) item { Text("Top givers", fontWeight = FontWeight.Bold) }
@@ -163,6 +208,21 @@ fun DesktopDropsScreen(state: DesktopAppState) {
         items(receipts, key = { "receipt-" + it.optString("id") }) { receipt ->
             Text("${receipt.optString("item_name")} · ${receipt.optLong("amount")} coins · Balance ${receipt.optLong("balance_after")}")
         }
+    }
+    pendingCancel?.let { id ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) pendingCancel = null },
+            title = { Text("Cancel this Drop?") },
+            text = { Text("Future claims stop, and the server refunds any unclaimed reserved Coins.") },
+            confirmButton = {
+                Button(enabled = !busy, onClick = {
+                    perform { rpc.cancelDrop(id); pendingCancel = null }
+                }) { Text("Confirm cancellation") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { pendingCancel = null }) { Text("Keep Drop") }
+            },
+        )
     }
     confirm?.let { request ->
         AlertDialog(onDismissRequest = { if (!busy) confirm = null }, title = { Text("Reserve coins for this Drop?") },
