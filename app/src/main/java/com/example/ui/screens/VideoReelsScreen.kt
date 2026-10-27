@@ -56,6 +56,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1861,7 +1864,7 @@ private fun VideoProgressBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(48.dp)
             .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
             .pointerInput(widthPx) {
                 detectDragGestures(
@@ -1875,7 +1878,14 @@ private fun VideoProgressBar(
             .pointerInput(widthPx) {
                 detectTapGestures { seekAt(it.x) }
             }
-            .semantics { contentDescription = "Video seek bar. Tap or drag to seek." },
+            .semantics {
+                contentDescription = "Video seek bar. Tap, drag or adjust to seek."
+                progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                setProgress { target ->
+                    latestOnSeek(target.coerceIn(0f, 1f))
+                    true
+                }
+            },
         contentAlignment = Alignment.CenterStart
     ) {
         Box(
