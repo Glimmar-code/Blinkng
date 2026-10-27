@@ -407,7 +407,7 @@ fun ConnectHubPremiumPanel(
                     )
                 }.onFailure {
                     android.widget.Toast.makeText(
-                        localContext, "Couldn't open Communities.",
+                        localContext, "Couldn't open Channels.",
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -416,7 +416,7 @@ fun ConnectHubPremiumPanel(
         ) {
             Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Explore / Create Communities")
+            Text("Explore / Create Channels")
         }
         Spacer(Modifier.height(18.dp))
 

@@ -268,6 +268,32 @@ class MainActivity : ComponentActivity() {
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
         }
         handleNotificationIntent(intent)
+        handleNotificationIntent(intent)
+        // Public BLINK channel links are routed to the same native channel page
+        // as the inbox. Only exact first-party hosts and UUIDs are trusted.
+        val incomingUri = intent?.data
+        val segments = incomingUri?.pathSegments.orEmpty()
+        val isTrustedChannelLink = (incomingUri?.scheme == "blink" && incomingUri.host == "channel") ||
+            (incomingUri?.scheme == "https" && incomingUri.host?.lowercase() in
+                setOf("blink.com.ng", "www.blink.com.ng") &&
+                segments.firstOrNull() == "channel")
+        val incomingChannelId = if (isTrustedChannelLink)
+            (if (incomingUri?.scheme == "blink") segments.firstOrNull() else segments.getOrNull(1))
+        else null
+        if (incomingChannelId != null &&
+            runCatching { java.util.UUID.fromString(incomingChannelId) }.isSuccess) {
+            val offset = if (incomingUri?.scheme == "blink") 1 else 2
+            val requestedUpdateId = if (segments.getOrNull(offset) == "update")
+                segments.getOrNull(offset + 1)?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+            else null
+            val openChannel = Intent(this, ProfessionalCenterActivity::class.java)
+                .putExtra("section", "communities")
+                .putExtra("channel_id", incomingChannelId)
+            if (requestedUpdateId != null) openChannel.putExtra("update_id", requestedUpdateId)
+            startActivity(openChannel)
+            intent?.setData(null)
+            return
+        }
         val invitedUsername = DeepLinkRouter.invitedBy(intent?.data)
         if (invitedUsername != null) {
             // Count actual link openings, not shares, without storing personal identifiers.
@@ -312,6 +338,14 @@ class MainActivity : ComponentActivity() {
         val action = intent?.getStringExtra(BlinkNotificationHelper.EXTRA_ACTION) ?: return
 
         when (action) {
+            BlinkNotificationHelper.ACTION_OPEN_CHANNEL -> {
+                val id = intent.getStringExtra(BlinkNotificationHelper.EXTRA_CHANNEL_ID).orEmpty()
+                if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
+                    startActivity(Intent(this, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "communities")
+                        .putExtra("channel_id", id))
+                }
+            }
             BlinkNotificationHelper.ACTION_OPEN_MESSAGES -> {
                 viewModel.setTab(MainTab.MESSAGES)
                 viewModel.closeConversation()
@@ -386,6 +420,14 @@ class MainActivity : ComponentActivity() {
         }
 
         when (event.destination) {
+            BlinkInAppNotificationDestination.CHANNEL -> {
+                val id = event.targetId.orEmpty()
+                if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
+                    startActivity(Intent(this, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "communities")
+                        .putExtra("channel_id", id))
+                }
+            }
             BlinkInAppNotificationDestination.CHAT -> {
                 if (event.senderUsername.isNotBlank()) {
                     viewModel.setTab(MainTab.MESSAGES)

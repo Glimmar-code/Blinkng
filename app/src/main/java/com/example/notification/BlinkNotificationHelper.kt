@@ -99,6 +99,7 @@ object BlinkNotificationHelper {
     // ================================================================
 
     const val EXTRA_ACTION = "EXTRA_ACTION"
+    const val EXTRA_CHANNEL_ID = "EXTRA_CHANNEL_ID"
     const val EXTRA_PARTNER_USERNAME = "EXTRA_PARTNER_USERNAME"
     const val EXTRA_PARTNER_NAME = "EXTRA_PARTNER_NAME"
     const val EXTRA_PARTNER_AVATAR = "EXTRA_PARTNER_AVATAR"
@@ -106,6 +107,7 @@ object BlinkNotificationHelper {
     const val EXTRA_MARKET_ID = "EXTRA_MARKET_ID"
     const val EXTRA_PROFILE_IDENTIFIER = "EXTRA_PROFILE_IDENTIFIER"
 
+    const val ACTION_OPEN_CHANNEL = "OPEN_CHANNEL"
     const val ACTION_OPEN_CHAT = "OPEN_CHAT"
     const val ACTION_OPEN_MESSAGES = "OPEN_MESSAGES"
     const val ACTION_OPEN_POST = "OPEN_POST"
@@ -947,6 +949,18 @@ object BlinkNotificationHelper {
                         targetType.equals("profile", ignoreCase = true) &&
                             !targetId.isNullOrBlank() ->
                             buildProfilePendingIntent(context, targetId)
+                        targetType.equals("channel", ignoreCase = true) &&
+                            !targetId.isNullOrBlank() ->
+                            PendingIntent.getActivity(
+                                context,
+                                positiveHash("channel:$targetId"),
+                                Intent(context, MainActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    putExtra(EXTRA_ACTION, ACTION_OPEN_CHANNEL)
+                                    putExtra(EXTRA_CHANNEL_ID, targetId)
+                                },
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
                         targetType.equals("market", ignoreCase = true) ->
                             buildMarketPendingIntent(context, targetId)
                         targetType.equals("giveaway", ignoreCase = true) ->

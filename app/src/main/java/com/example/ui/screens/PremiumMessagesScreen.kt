@@ -762,6 +762,7 @@ private fun PremiumMessagesHome(
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
+    val channelContext = androidx.compose.ui.platform.LocalContext.current
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
     var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
     var showAll by rememberSaveable { mutableStateOf(false) }
@@ -823,7 +824,13 @@ private fun PremiumMessagesHome(
                 unreadCount = unreadCount,
                 archivedCount = archivedCount,
                 palette = messagePalette(if (isDark) MessageThemeMode.DARK else MessageThemeMode.LIGHT),
-                onSelect = { inboxTab = it }
+                onSelect = { inboxTab = it },
+                onChannelsClick = {
+                    channelContext.startActivity(
+                        Intent(channelContext, com.example.ProfessionalCenterActivity::class.java)
+                            .putExtra("section", "communities")
+                    )
+                }
             )
         }
     )
@@ -836,12 +843,22 @@ private fun MessageInboxTabs(
     unreadCount: Int,
     archivedCount: Int,
     palette: MessagePalette,
-    onSelect: (MessageInboxTab) -> Unit
+    onSelect: (MessageInboxTab) -> Unit,
+    onChannelsClick: () -> Unit
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        item {
+            MessageInboxTabChip(
+                label = "Channels",
+                selected = false,
+                count = null,
+                palette = palette,
+                onClick = onChannelsClick
+            )
+        }
         item {
             MessageInboxTabChip(
                 label = "All",

@@ -1,6 +1,6 @@
 package com.blinkng.shared
 
-/** Shared Android/Windows input and visibility validation for real communities. */
+/** Shared Android/Windows input and visibility validation for real channels backed by the existing community tables. */
 object BlinkCommunityPolicy {
     const val MAX_RULES = 15
     const val MAX_NAME = 80
@@ -15,7 +15,7 @@ object BlinkCommunityPolicy {
     }
 
     fun validatedName(name: String): String = name.trim().also {
-        require(it.length in 3..MAX_NAME) { "Community name must have 3–80 characters." }
+        require(it.length in 3..MAX_NAME) { "Channel name must have 3–80 characters." }
     }
 
     fun validatedDescription(description: String): String = description.trim().also {
@@ -28,7 +28,7 @@ object BlinkCommunityPolicy {
 
     fun validatedRules(values: List<String>): List<String> {
         val clean = values.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        require(clean.size <= MAX_RULES) { "Only 15 community rules are supported." }
+        require(clean.size <= MAX_RULES) { "Only 15 channel rules are supported." }
         require(clean.all { it.length <= MAX_RULE_LENGTH }) { "Each rule must be 300 characters or less." }
         return clean
     }

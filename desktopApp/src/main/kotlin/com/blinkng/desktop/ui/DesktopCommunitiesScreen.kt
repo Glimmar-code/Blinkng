@@ -56,6 +56,8 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
     var coverUrl by remember(ownerId) { mutableStateOf("") }
     var isPrivate by remember(ownerId) { mutableStateOf(false) }
     var inviteTo by remember(ownerId) { mutableStateOf<DesktopCommunity?>(null) }
+    var selectedChannel by remember(ownerId) { mutableStateOf<DesktopCommunity?>(null) }
+
     var manageCommunityId by remember(ownerId) { mutableStateOf<String?>(null) }
     var memberRoster by remember(ownerId) { mutableStateOf<List<DesktopProfileMembership>>(emptyList()) }
     var inviteQuery by remember(ownerId) { mutableStateOf("") }
@@ -67,7 +69,7 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
             communities = state.client.fetchCommunities()
             error = null
         } catch (cause: Exception) {
-            error = cause.message ?: "Communities are not currently available."
+            error = cause.message ?: "Channels are not currently available."
         } finally { busy = false }
     }
     LaunchedEffect(ownerId) {
@@ -82,6 +84,17 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
         } catch (cause: Exception) { error = cause.message }
     }
 
+    selectedChannel?.let { channel ->
+        DesktopChannelDetail(
+            state, channel, onBack = { selectedChannel = null },
+            onChannelEdited = { updated ->
+                selectedChannel = updated
+                communities = communities.map { if (it.id == updated.id) updated else it }
+            }
+        )
+        return
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -91,12 +104,12 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("BLINK Communities", style = MaterialTheme.typography.headlineMedium)
+                Text("BLINK Channels", style = MaterialTheme.typography.headlineMedium)
                 TextButton(onClick = { scope.launch { reload() } }) { Text("Refresh") }
             }
-            Text("Create campus spaces with real accounts, rules, visibility and invitations.")
+            Text("Follow channels for admin-only news, announcements and updates.")
             OutlinedButton(onClick = { showCreate = !showCreate }, enabled = !busy) {
-                Text(if (showCreate) "Cancel" else "＋ Create Community")
+                Text(if (showCreate) "Cancel" else "＋ Create Channel")
             }
         }
         if (showCreate) {
@@ -106,7 +119,7 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(name, { name = it.take(80) }, label = { Text("Community name") })
+                        OutlinedTextField(name, { name = it.take(80) }, label = { Text("Channel name") })
                         OutlinedTextField(description, { description = it.take(1500) },
                             label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(university, { university = it.take(150) },
@@ -136,7 +149,8 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                             rules.lines(), coverUrl.trim().takeIf { it.isNotBlank() }
                                         )
                                         communities = listOf(created) + communities.filterNot { it.id == created.id }
-                                        message = "Community created."
+                                        message = "Channel created."
+                                        selectedChannel = created
                                         error = null
                                         showCreate = false
                                         name = ""
@@ -145,7 +159,7 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                     finally { busy = false }
                                 }
                             }
-                        ) { Text("Create Community") }
+                        ) { Text("Create Channel") }
                     }
                 }
             }
@@ -163,7 +177,10 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                     modifier = Modifier.fillMaxWidth().padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    Text(community.name, style = MaterialTheme.typography.titleLarge)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(community.name, style = MaterialTheme.typography.titleLarge)
+                        TextButton(onClick = { selectedChannel = community }) { Text("Open ›") }
+                    }
                     Text(community.university + " · " + community.category + " · " + community.visibility)
                     if (community.description.isNotBlank()) Text(community.description)
                     community.rules.take(4).forEach { Text("• " + it) }
@@ -172,7 +189,7 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                             OutlinedButton(onClick = {
                                 inviteTo = community
                                 inviteQuery = ""
-                            }) { Text("Invite members") }
+                            }) { Text("Invite followers") }
                             TextButton(enabled = !busy, onClick = {
                                 if (manageCommunityId == community.id) {
                                     manageCommunityId = null
@@ -187,19 +204,20 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                         finally { busy = false }
                                     }
                                 }
-                            }) { Text(if (manageCommunityId == community.id) "Close" else "Manage members") }
+                            }) { Text(if (manageCommunityId == community.id) "Close" else "Manage followers") }
                         } else {
                             Button(enabled = !busy, onClick = {
                                 scope.launch {
                                     busy = true
                                     try {
                                         val result = state.client.requestJoinCommunity(community.id)
-                                        message = if (result == "pending") "Join request sent." else "Joined " + community.name
+                                        message = if (result == "pending") "Follow request sent." else "Following " + community.name
+                                        if (result == "active") selectedChannel = community
                                         error = null
                                     } catch (cause: Exception) { error = cause.message }
                                     finally { busy = false }
                                 }
-                            }) { Text(if (community.visibility == "private") "Request / Accept Invite" else "Join") }
+                            }) { Text(if (community.visibility == "private") "Request / Accept Invite" else "Follow") }
                             TextButton(enabled = !busy, onClick = {
                                 scope.launch {
                                     busy = true
@@ -210,11 +228,11 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                     } catch (cause: Exception) { error = cause.message }
                                     finally { busy = false }
                                 }
-                            }) { Text("Leave") }
+                            }) { Text("Unfollow") }
                         }
                     }
                     if (community.ownerId == ownerId && manageCommunityId == community.id) {
-                        Text("Member requests & moderation", style = MaterialTheme.typography.titleMedium)
+                        Text("Follower requests & moderation", style = MaterialTheme.typography.titleMedium)
                         if (memberRoster.isEmpty()) Text("No membership requests yet.")
                         memberRoster.forEach { person ->
                             Row(
