@@ -80,7 +80,7 @@ jobs:
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
             # The emulator action executes each script line separately. Backslash
             # continuations therefore become a bogus Gradle task named '\\'.
-            gradle :app:connectedRtcSmokeAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.call.WebRtcJniReleaseSmokeTest --stacktrace --no-daemon
+            gradle :app:connectedRtcSmokeAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.call.WebRtcJniReleaseSmokeTest --stacktrace --no-daemon --no-parallel --max-workers=1
       - name: Upload minified JNI test reports
         if: always()
         uses: actions/upload-artifact@v4
