@@ -5069,18 +5069,16 @@ suspend fun uploadPostMedia(
             // Official announcements carry the exact shared notification id.
             val canonicalIds = notificationItems.mapNotNull { it.targetEntityId }.toHashSet()
             val legacyFallback = activityItems.filterNot { legacy ->
-                val officialMirror = legacy.targetType.equals("notification", ignoreCase = true) &&
-                    legacy.targetEntityId in canonicalIds
+                val officialMirror = com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                    .isOfficialMirror(legacy.targetType, legacy.targetEntityId, canonicalIds)
+                // Never infer an event type from its display text or hide unrelated history.
                 val socialMirror = notificationItems.any { canonical ->
-                    canonical.user.isNotBlank() &&
-                        canonical.user == legacy.user &&
-                        canonical.category == legacy.category &&
+                    canonical.user.isNotBlank() && canonical.user == legacy.user &&
                         canonical.category != NotificationFilter.ALL &&
+                        canonical.category == legacy.category &&
                         canonical.rawTimestamp.take(19) == legacy.rawTimestamp.take(19) &&
-                        ((canonical.targetPostId != null && canonical.targetPostId == legacy.targetPostId) ||
-                            (canonical.targetMarketId != null && canonical.targetMarketId == legacy.targetMarketId) ||
-                            (canonical.targetPostId == null && legacy.targetPostId == null &&
-                                canonical.targetType.equals("profile", ignoreCase = true)))
+                        canonical.targetPostId != null &&
+                        canonical.targetPostId == legacy.targetPostId
                 }
                 officialMirror || socialMirror
             }

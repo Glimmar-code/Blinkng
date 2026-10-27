@@ -177,7 +177,7 @@ fun ActivityScreen(
     }
 
     val timelineActivities = remember(activities) {
-        activities.filterNot { it.targetType.equals("CHAT", ignoreCase = true) }
+        activities.filter { com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) }
     }
     val unread = timelineActivities.count { it.isUnread }
     val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(

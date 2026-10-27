@@ -1742,8 +1742,8 @@ fun MainAppContent(
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onOpenMarketListing = { item -> viewModel.openProductDetail(item) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
-                        hasUnreadNotifications = uiState.activities.any { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
-                        unreadNotificationCount = uiState.activities.count { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
+                        unreadNotificationCount = uiState.activities.count { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
                         isInteractionOverlayOpen =
                             uiState.activeCommentsPostId != null ||
                                 uiState.activePostOptionsPost != null ||
@@ -1782,7 +1782,7 @@ fun MainAppContent(
                         onMarketItemClick = { viewModel.openProductDetail(it) },
                         onGameClick = { feedUtilitySheet = "items" },
                         onNotificationsClick = { viewModel.openActivity(true) },
-                        hasUnreadNotifications = uiState.activities.any { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
                         isSearching = uiState.isDiscoverSearching,
                         onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
@@ -3218,7 +3218,7 @@ fun MainAppContent(
             BlinkReferenceMenuScreen(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
-                hasUnreadNotifications = uiState.activities.any { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
+                hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
                 appVersion = BuildConfig.VERSION_NAME,
                 onDismiss = { viewModel.openMenu(false) },
                 onViewProfile = {

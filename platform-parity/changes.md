@@ -1562,3 +1562,11 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 - **Windows:** Dark chat bubbles have matching deep-green/charcoal colours while light-theme bubbles retain existing presentation. Retains existing previous/next and downloaded-copy actions; adds left/right keyboard navigation and Escape dismissal as the desktop equivalents of touch swipes.
 - **Not yet verified:** Exact visual screenshot parity, actual on-device pointer competition/double-tap behavior, CI builds and end-to-end Android↔Windows transfers. An opt-in Telegram-reference three-column gallery, up-to-10 photo selection, Media3 chat video trimming/filter/music/export, audio playback and PDF first-page document review, and photo editor undo/redo/presets have been added in this PR; remaining native poll/live location, secure Media Vault, complete advanced video/audio effects, and exhaustive device screenshot and privacy testing remain outstanding.
 - **Promotion gate:** Testlab branch first; no `main` merge, live database edit or signed APK publication without green applicable Android, shared and Windows checks plus device gesture verification.
+
+## 2026-10-27 — Notification reliability Testlab PR #622
+
+- Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.
+- Android repairs canonical announcement routing, duplicate navigation, notification-only refresh, history pagination, cross-account preference storage and compact card readability.
+- Windows now uses the shared event-matching policy for canonical/legacy notification merging.
+- OS-only differences: Android Firebase channels, Android 15 permissions and touch swipes do not directly apply to Windows.
+- **Not yet release-verified:** CI, Windows packaging, Android emulator, real Firebase/device push and hosted Supabase integration. Keep main unchanged until verification.
