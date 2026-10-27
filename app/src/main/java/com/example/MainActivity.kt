@@ -2895,7 +2895,7 @@ fun MainAppContent(
                         viewModel.openProfileFromChat(username)
                     },
                     isDark = uiState.isDarkMode,
-                    isConnected = uiState.isLiveSupabaseConnected,
+                    isConnected = uiState.isOnline,
                     onRetryMessage = { msg ->
                         viewModel.retrySendMessage(convo.partnerUsername, msg)
                     },
