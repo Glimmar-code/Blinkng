@@ -3,7 +3,6 @@ package com.example.call
 import android.content.Context
 import android.net.ConnectivityManager
 import android.media.AudioAttributes
-import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
@@ -249,24 +248,22 @@ class WebRtcCallClient(
     }
 
     fun setSpeakerEnabled(enabled: Boolean): Boolean {
-        speakerEnabled = enabled
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val targetType = if (enabled) {
-                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                } else {
-                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                }
-                val target = audioManager.availableCommunicationDevices.firstOrNull { it.type == targetType }
-                if (target != null) audioManager.setCommunicationDevice(target)
-            } else {
-                @Suppress("DEPRECATION")
-                run { audioManager.isSpeakerphoneOn = enabled }
-            }
+        // Android 8+ is owned by BlinkTelecomManager / Core-Telecom.
+        // setCommunicationDevice() here would race the system call endpoint,
+        // bypass connected Bluetooth/headsets, and report false success.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return speakerEnabled
+
+        return try {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = enabled
+            @Suppress("DEPRECATION")
+            val actuallyEnabled = audioManager.isSpeakerphoneOn
+            speakerEnabled = actuallyEnabled
+            actuallyEnabled
         } catch (error: Exception) {
-            Log.w(TAG, "Audio route update failed", error)
+            Log.w(TAG, "Legacy call audio route update failed", error)
+            speakerEnabled
         }
-        return speakerEnabled
     }
 
     fun toggleSpeaker(): Boolean = setSpeakerEnabled(!speakerEnabled)
