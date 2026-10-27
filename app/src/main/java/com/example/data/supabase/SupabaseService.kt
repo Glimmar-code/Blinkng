@@ -5958,6 +5958,34 @@ suspend fun uploadPostMedia(
             }
         }
 
+    suspend fun countMyNewProfileVisitors(): Int = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) return@withContext 0
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/count_my_new_profile_visitors", true)
+                    .post("{}".toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use 0
+                response.body?.string().orEmpty().trim().toIntOrNull()?.coerceAtLeast(0) ?: 0
+            }
+        }.getOrDefault(0)
+    }
+
+    suspend fun acknowledgeMyProfileVisitorsSeen(watermark: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isAuthenticated() || watermark.isBlank()) return@withContext false
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/ack_my_profile_visitors_seen", true)
+                        .post(JSONObject().put("p_seen_through", watermark).toString()
+                            .toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    response.isSuccessful &&
+                        response.body?.string().orEmpty().trim() == "true"
+                }
+            }.getOrDefault(false)
+        }
+
     /** Records only if BOTH accounts previously consented, never for self visits. */
     suspend fun recordOptInProfileVisit(profileId: String): Boolean =
         withContext(Dispatchers.IO) {
