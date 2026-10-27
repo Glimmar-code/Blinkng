@@ -33,6 +33,7 @@ data class DesktopProfile(
     val isBlinkVip: Boolean = false,
     val blinkVipUntil: String? = null,
     val verifiedAtMillis: Long = 0L,
+    val verificationExpiresAtMillis: Long = 0L,
     val profileViewsThisWeek: Int = 0,
     val academicLevel: String? = null,
     val gender: String? = null,
