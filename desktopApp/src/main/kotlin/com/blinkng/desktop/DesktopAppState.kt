@@ -137,16 +137,18 @@ class DesktopAppState(
         level: String,
         gender: String,
         birthDate: String,
+        notStudent: Boolean = false,
     ) = profileAction {
-        val canonicalUniversity = BlinkUniversitySearch.canonical(university)
+        val canonicalUniversity = if (notStudent) "" else BlinkUniversitySearch.canonical(university)
             ?: throw IllegalArgumentException("Select a university from the BLINK directory.")
-        require(department.trim().isNotBlank()) { "Choose your department." }
+        require(notStudent || department.trim().isNotBlank()) { "Choose your department." }
         require(gender in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
         client.savePrivateBirthDate(birthDate)
         profile = client.saveOnboardingProfile(
             university = canonicalUniversity,
-            department = department,
-            academicLevel = level,
+            accountType = if (notStudent) BlinkOnboardingPolicy.NON_STUDENT else "STUDENT",
+            department = if (notStudent) "" else department,
+            academicLevel = if (notStudent) "" else level,
             gender = gender,
             onboardingStep = 2,
             onboardingCompleted = false,
@@ -177,8 +179,10 @@ class DesktopAppState(
         }
         val current = profile ?: client.refreshProfile()
         require(current.username.isNotBlank()) { "Choose your username." }
-        require(!current.university.isNullOrBlank()) { "Choose your university." }
-        require(!current.department.isNullOrBlank()) { "Choose your department." }
+        if (BlinkOnboardingPolicy.campusRequired(current.accountType)) {
+            require(!current.university.isNullOrBlank()) { "Choose your university." }
+            require(!current.department.isNullOrBlank()) { "Choose your department." }
+        }
         require(!current.gender.isNullOrBlank()) { "Choose your gender." }
         require(current.interests.isNotEmpty()) { "Choose at least one interest." }
 
