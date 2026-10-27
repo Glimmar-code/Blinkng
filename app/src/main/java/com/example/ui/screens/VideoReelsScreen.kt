@@ -942,7 +942,7 @@ private fun ReelsContent(
                         fontWeight = FontWeight.SemiBold
                     )
                     if (launchLookupTimedOut) {
-                        TextButton(onClick = onRetry) { Text("Try refreshing", color = Color.White) }
+                        TextButton(onClick = onRefreshSelected) { Text("Try refreshing", color = Color.White) }
                         TextButton(onClick = {
                             unconsumedLaunchId = null
                             expanded = false
@@ -2341,6 +2341,7 @@ private fun ReelVideo(
                 addListener(object : Player.Listener {
                     override fun onPlayerError(e: PlaybackException) {
                         error = e.errorCodeName
+                        currentOnBufferingChange(false)
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -2488,7 +2489,18 @@ private fun ReelVideo(
         )
         if (error != null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Unable to play this reel", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        error?.contains("ERROR_CODE_IO") == true ->
+                            "Network error while loading this reel"
+                        error?.contains("ERROR_CODE_DECODING") == true ||
+                            error?.contains("ERROR_CODE_PARSING") == true ->
+                            "This video format could not be played"
+                        else -> "Unable to play this reel"
+                    },
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
                 TextButton(onClick = {
                     autoRetryCount = 0
                     error = null
