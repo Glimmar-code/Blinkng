@@ -6,6 +6,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +55,7 @@ internal fun DesktopCreatorStudioDialog(
     val tier = profile.verificationTier.uppercase()
     val member = profile.isVerified && tier in setOf("BLUE", "GOLD")
     val gold = member && tier == "GOLD"
+    var clipboardStatus by remember { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(22.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -141,15 +146,18 @@ internal fun DesktopCreatorStudioDialog(
                             }
                         }
                         item {
-                            var copyError: String? = null
                             OutlinedButton(onClick = {
                                 try {
                                     Toolkit.getDefaultToolkit().systemClipboard.setContents(
                                         StringSelection(desktopCreatorReport(summary)), null)
+                                    clipboardStatus = "Report copied"
                                 } catch (_: Exception) {
-                                    copyError = "Clipboard unavailable"
+                                    clipboardStatus = "Clipboard unavailable on this device"
                                 }
                             }) { Text("Copy Gold performance report") }
+                            clipboardStatus?.let { status ->
+                                Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     } else {
                         item {
