@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.performance.rememberBlinkReduceMotion
 import com.example.ui.components.BlinkSkeletonBlock
 
 import android.content.Intent
@@ -109,9 +110,10 @@ fun ProductDetailScreen(
     val imageSwipeActivation = with(LocalDensity.current) { 88.dp.toPx() }
     val imageSwipeFlick = with(LocalDensity.current) { 28.dp.toPx() }
     val imageSwipeVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
     val imageVisualX by animateFloatAsState(
-        BlinkElasticGesturePhysics.visualDistance(imageSwipeDrag, imageSwipeActivation),
-        if (imageSwipeActive) snap() else spring(
+        if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(imageSwipeDrag, imageSwipeActivation),
+        if (imageSwipeActive || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
         ), label = "marketImageElastic"
     )
