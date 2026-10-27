@@ -240,6 +240,16 @@ android {
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
 
+// The R8-minified, debug-signed rtcSmoke variant uses placeholder Firebase config.
+// Crashlytics rejects mapping uploads from this disposable CI app (HTTP 400), but
+// a mapping upload is not needed to validate WebRTC JNI_OnLoad. Keep upload tasks
+// fully enabled for real signed release builds.
+if (providers.environmentVariable("BLINK_RTC_SMOKE").orNull == "true") {
+  tasks.matching { it.name == "uploadCrashlyticsMappingFileRtcSmoke" }.configureEach {
+    enabled = false
+  }
+}
+
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
