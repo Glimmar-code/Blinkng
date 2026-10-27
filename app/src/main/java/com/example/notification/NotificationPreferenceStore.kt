@@ -30,9 +30,10 @@ import java.util.concurrent.TimeUnit
 object NotificationPreferenceStore {
     private const val TAG = "BlinkNotifyPrefs"
     private const val PREFS = "blink_notification_preferences"
-    private fun accountPrefs(context: Context): android.content.SharedPreferences {
+    private val syncMutex = kotlinx.coroutines.sync.Mutex()
+    private fun accountPrefs(context: Context, accountId: String? = null): android.content.SharedPreferences {
         val appContext = context.applicationContext
-        val uid = runCatching {
+        val uid = accountId ?: runCatching {
             SupabaseService.initialize(appContext)
             SupabaseService().getCurrentUserId().orEmpty()
         }.getOrDefault("")
@@ -138,20 +139,27 @@ object NotificationPreferenceStore {
     }
 
     fun refreshFromServerAsync(context: Context) {
-        CoroutineScope(Dispatchers.IO).launch { refreshFromServer(context.applicationContext) }
+        val uid = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        if (uid.isBlank()) return
+        CoroutineScope(Dispatchers.IO).launch { refreshFromServer(context.applicationContext, uid) }
     }
 
     fun syncToServerAsync(context: Context) {
-        CoroutineScope(Dispatchers.IO).launch { syncToServer(context.applicationContext) }
+        val uid = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        if (uid.isBlank()) return
+        CoroutineScope(Dispatchers.IO).launch {
+            syncMutex.withLock { syncToServer(context.applicationContext, uid) }
+        }
     }
 
-    private suspend fun refreshFromServer(context: Context) {
+    private suspend fun refreshFromServer(context: Context, expectedUid: String) {
         runCatching {
             SupabaseService.initialize(context)
             val service = SupabaseService()
             if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
             val uid = service.getCurrentUserId() ?: return
+            if (uid != expectedUid) return
             val request = Request.Builder()
                 .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notification_preferences?select=*&user_id=eq.$uid&limit=1")
                 .addHeader("apikey", SupabaseConfig.anonKey)
@@ -163,7 +171,9 @@ object NotificationPreferenceStore {
                 val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
                 if (rows.length() == 0) return@use
                 val row = rows.getJSONObject(0)
-                val editor = accountPrefs(context).edit()
+                // A delayed response from another account must never alter this account.
+                if (SupabaseService().getCurrentUserId() != expectedUid) return@use
+                val editor = accountPrefs(context, expectedUid).edit()
                 editor.putBoolean(MASTER, row.optBoolean("master_enabled", true))
                 mapOf(
                     "messages" to "messages_enabled",
@@ -192,14 +202,15 @@ object NotificationPreferenceStore {
         }.onFailure { Log.w(TAG, "Unable to refresh notification preferences", it) }
     }
 
-    private suspend fun syncToServer(context: Context) {
+    private suspend fun syncToServer(context: Context, expectedUid: String) {
         runCatching {
             SupabaseService.initialize(context)
             val service = SupabaseService()
             if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
             val uid = service.getCurrentUserId() ?: return
-            val prefs = accountPrefs(context)
+            if (uid != expectedUid) return
+            val prefs = accountPrefs(context, expectedUid)
             val payload = JSONObject()
                 .put("user_id", uid)
                 .put("master_enabled", prefs.safeBoolean(MASTER, true))
