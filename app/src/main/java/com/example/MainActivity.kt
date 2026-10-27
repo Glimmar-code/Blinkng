@@ -16,7 +16,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.*
@@ -74,7 +73,6 @@ import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
 import com.blinkng.shared.BlinkStoreAvailability
-import com.blinkng.shared.BlinkSwipeNavigation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -633,6 +631,15 @@ class MainActivity : ComponentActivity() {
             val snackbarHostState = remember { SnackbarHostState() }
             // Covers auth/session restoration too: returning users must see the intro.
             var showStartupIntro by remember { mutableStateOf(true) }
+            var introAnimationFinished by remember { mutableStateOf(false) }
+            // Never reveal the legacy black SPLASH placeholder after the wordmark.
+            // Keep the final BLINK frame visible until a real destination is ready.
+            LaunchedEffect(introAnimationFinished, uiState.destination) {
+                if (introAnimationFinished && uiState.destination != AppDestination.SPLASH) {
+                    startupIntroComplete = true
+                    showStartupIntro = false
+                }
+            }
             // Ad consent and rewarded-ad loading compete with first-frame rendering.
             // Run them only after the exact approved BLINK intro finishes.
             LaunchedEffect(showStartupIntro) {
@@ -1099,7 +1106,7 @@ class MainActivity : ComponentActivity() {
                 // how quickly a cached session transitions from SPLASH to MAIN.
                 if (showStartupIntro) {
                     com.blinkng.shared.brand.BlinkBeyondLinkIntro(
-                        onFinished = { startupIntroComplete = true; showStartupIntro = false },
+                        onFinished = { introAnimationFinished = true },
                         modifier = Modifier.fillMaxSize()
                             .zIndex(1000f)
                             .pointerInput(Unit) {
@@ -1544,11 +1551,12 @@ fun MainAppContent(
     }
     val pagerState = rememberPagerState(
         initialPage = selectedPage,
-        pageCount = { if (selectedPage in 0..4) 5 else 8 }
+        // Keep page count constant: rebuilding pager topology when navigating to
+        // Search/Leaderboard/Game could reset the ongoing drag and flash a blank frame.
+        pageCount = { 8 }
     )
     var requestedPage by remember { mutableIntStateOf(selectedPage) }
     val latestSelectedPage by rememberUpdatedState(selectedPage)
-    val reducePageMotion = com.example.performance.rememberBlinkReduceMotion()
 
     LaunchedEffect(selectedPage) {
         requestedPage = selectedPage
@@ -1624,14 +1632,10 @@ fun MainAppContent(
                 6 -> MainTab.LEADERBOARD
                 else -> MainTab.HOME
             }
-            val pageDistance = (pagerState.currentPage - page) +
-                pagerState.currentPageOffsetFraction
-            Box(modifier = Modifier.fillMaxSize().graphicsLayer {
-                val scale = if (reducePageMotion) 1f else BlinkSwipeNavigation.scale(pageDistance)
-                scaleX = scale
-                scaleY = scale
-                alpha = if (reducePageMotion) 1f else BlinkSwipeNavigation.alpha(pageDistance)
-            }) {
+            // Telegram-like native paging: the outgoing page follows the finger
+            // and exposes its full-size neighbour. Never scale or fade the whole
+            // surface, which caused dark seams and made text look jittery.
+            Box(modifier = Modifier.fillMaxSize()) {
             when (tab) {
                 MainTab.HOME -> {
                     PremiumFeedScreen(
