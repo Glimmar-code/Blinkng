@@ -338,6 +338,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val genericTarget = data["target_id"].orEmpty()
         val targetType = data["target_type"].orEmpty()
         val inAppDestination = when {
+            targetType.equals("channel", ignoreCase = true) -> BlinkInAppNotificationDestination.CHANNEL
             targetType.equals("giveaway", ignoreCase = true) -> BlinkInAppNotificationDestination.DROPS
             targetType.equals("boost", ignoreCase = true) -> BlinkInAppNotificationDestination.BOOST
             else -> when (type) {

@@ -41,7 +41,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun BlinkCommunitiesPanel(
     searchProfiles: suspend (String, Int, String?, String?) -> List<UserProfile>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onChannelOpenChange: (Boolean) -> Unit = {},
+    initialChannelId: String? = null,
+    initialUpdateId: String? = null
 ) {
     val backend = remember { BlinkCommunityRepository() }
     val service = remember { SupabaseService() }
@@ -63,6 +66,8 @@ fun BlinkCommunitiesPanel(
     var rules by rememberSaveable(ownerId) { mutableStateOf("") }
     var isPrivate by rememberSaveable(ownerId) { mutableStateOf(false) }
     var inviteTo by remember(ownerId) { mutableStateOf<BlinkCommunity?>(null) }
+    var selectedChannel by remember(ownerId) { mutableStateOf<BlinkCommunity?>(null) }
+
     var managing by remember(ownerId) { mutableStateOf<String?>(null) }
     var roster by remember(ownerId) { mutableStateOf<List<BlinkCommunityMember>>(emptyList()) }
 
@@ -72,11 +77,39 @@ fun BlinkCommunitiesPanel(
             communities = backend.discover()
             error = null
         } catch (cause: Exception) {
-            error = cause.message ?: "Communities are not currently available."
+            error = cause.message ?: "Channels are not currently available."
         } finally { loading = false }
     }
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) refresh() else loading = false
+    }
+
+    LaunchedEffect(ownerId, initialChannelId) {
+        if (!initialChannelId.isNullOrBlank() && ownerId.isNotBlank()) {
+            try {
+                val found = backend.findChannel(initialChannelId)
+                if (found == null) error = "Channel not found or you do not have access."
+                else selectedChannel = found
+            } catch (cause: Exception) { error = cause.message ?: "Cannot open this channel." }
+        }
+    }
+
+    androidx.compose.runtime.DisposableEffect(selectedChannel) {
+        onChannelOpenChange(selectedChannel != null)
+        onDispose { onChannelOpenChange(false) }
+    }
+
+    selectedChannel?.let { channel ->
+        BlinkChannelDetail(
+            channel = channel, backend = backend,
+            onBack = { selectedChannel = null }, modifier = modifier,
+            initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId },
+            onChannelEdited = { edited ->
+                selectedChannel = edited
+                communities = communities.map { if (it.id == edited.id) edited else it }
+            }
+        )
+        return
     }
 
     LazyColumn(
@@ -88,13 +121,13 @@ fun BlinkCommunitiesPanel(
                 Modifier.fillMaxWidth().padding(14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Communities", style = MaterialTheme.typography.headlineSmall)
+                Text("Channels", style = MaterialTheme.typography.headlineSmall)
                 TextButton(onClick = { scope.launch { refresh() } }) { Text("Refresh") }
             }
         }
         item {
             Text(
-                "Find campus communities, or create a public/private space with rules and invitations.",
+                "Follow campus channels for one-way updates from creators, departments and organizations.",
                 Modifier.padding(horizontal = 14.dp),
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -102,7 +135,7 @@ fun BlinkCommunitiesPanel(
                 onClick = { showCreate = !showCreate },
                 modifier = Modifier.fillMaxWidth().padding(14.dp),
                 enabled = !saving
-            ) { Text(if (showCreate) "Cancel creation" else "＋ Create Community") }
+            ) { Text(if (showCreate) "Cancel creation" else "＋ Create Channel") }
         }
         if (showCreate) {
             item {
@@ -111,7 +144,7 @@ fun BlinkCommunitiesPanel(
                         Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(name, { name = it.take(80) }, label = { Text("Community name") },
+                        OutlinedTextField(name, { name = it.take(80) }, label = { Text("Channel name") },
                             singleLine = true, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(description, { description = it.take(1500) },
                             label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
@@ -122,7 +155,7 @@ fun BlinkCommunitiesPanel(
                         OutlinedTextField(coverUrl, { coverUrl = it.take(500) },
                             label = { Text("Cover image URL (optional)") }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(rules, { rules = it.take(4500) },
-                            label = { Text("Community rules (one per line)") },
+                            label = { Text("Channel rules (one per line)") },
                             modifier = Modifier.fillMaxWidth())
                         Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             FilterChip(selected = !isPrivate, onClick = { isPrivate = false },
@@ -145,7 +178,8 @@ fun BlinkCommunitiesPanel(
                                             rules.lines(), coverUrl.trim().takeIf { it.isNotBlank() }
                                         )
                                         communities = listOf(created) + communities.filterNot { it.id == created.id }
-                                        success = "Community created."
+                                        success = "Channel created."
+                                        selectedChannel = created
                                         showCreate = false
                                         name = ""
                                         description = ""
@@ -157,7 +191,7 @@ fun BlinkCommunitiesPanel(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Create Community") }
+                        ) { Text("Create Channel") }
                     }
                 }
             }
@@ -174,7 +208,10 @@ fun BlinkCommunitiesPanel(
         items(communities, key = { it.id }) { community ->
             Card(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text(community.name, style = MaterialTheme.typography.titleMedium)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(community.name, style = MaterialTheme.typography.titleMedium)
+                        TextButton(onClick = { selectedChannel = community }) { Text("Open ›") }
+                    }
                     Text(community.university + " · " + community.category + " · " +
                         community.visibility.replaceFirstChar(Char::uppercase))
                     if (community.description.isNotBlank()) Text(community.description)
@@ -184,7 +221,7 @@ fun BlinkCommunitiesPanel(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (community.ownerId == ownerId) {
                             OutlinedButton(onClick = { inviteTo = community }, enabled = !saving) {
-                                Text("Invite students")
+                                Text("Invite followers")
                             }
                             TextButton(enabled = !saving, onClick = {
                                 if (managing == community.id) {
@@ -200,20 +237,21 @@ fun BlinkCommunitiesPanel(
                                         finally { saving = false }
                                     }
                                 }
-                            }) { Text(if (managing == community.id) "Close management" else "Manage members") }
+                            }) { Text(if (managing == community.id) "Close management" else "Manage followers") }
                         } else {
                             Button(enabled = !saving, onClick = {
                                 scope.launch {
                                     saving = true
                                     try {
                                         val result = backend.requestJoin(community.id)
-                                        success = if (result == "pending") "Join request sent to " + community.name
-                                            else "Joined " + community.name
+                                        success = if (result == "pending") "Follow request sent to " + community.name
+                                            else "Following " + community.name
+                                        if (result == "active") selectedChannel = community
                                     } catch (cause: Exception) {
                                         error = cause.message
                                     } finally { saving = false }
                                 }
-                            }) { Text(if (community.visibility == "private") "Request / Accept Invite" else "Join") }
+                            }) { Text(if (community.visibility == "private") "Request / Accept Invite" else "Follow") }
                             TextButton(enabled = !saving, onClick = {
                                 scope.launch {
                                     saving = true
@@ -225,12 +263,12 @@ fun BlinkCommunitiesPanel(
                                         error = cause.message
                                     } finally { saving = false }
                                 }
-                            }) { Text("Leave") }
+                            }) { Text("Unfollow") }
                         }
                     }
                     if (community.ownerId == ownerId && managing == community.id) {
-                        Text("Membership and requests", style = MaterialTheme.typography.titleSmall)
-                        if (roster.isEmpty()) Text("No requests or members to review.")
+                        Text("Followers and requests", style = MaterialTheme.typography.titleSmall)
+                        if (roster.isEmpty()) Text("No follower requests to review.")
                         roster.forEach { member ->
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(member.displayName + "  @" + member.username)

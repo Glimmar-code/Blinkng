@@ -141,7 +141,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
     DesktopDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
     DesktopDestination("connect", "Connect", Icons.Rounded.Groups),
-    DesktopDestination("communities", "Communities", Icons.Rounded.Groups),
+    DesktopDestination("communities", "Channels", Icons.Rounded.Groups),
     DesktopDestination("messages", "Messages", Icons.Rounded.Chat),
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
