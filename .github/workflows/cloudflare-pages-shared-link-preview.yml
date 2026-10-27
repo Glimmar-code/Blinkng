@@ -17,6 +17,9 @@ permissions:
 
 jobs:
   real-deep-links:
+    # Only Testlab-web-* branches have deployed Cloudflare Pages preview URLs.
+    # Other Testlab PRs use local web/parity checks instead of probing a nonexistent deployment.
+    if: startsWith(github.head_ref || github.ref_name, 'Testlab-web-')
     runs-on: ubuntu-latest
     timeout-minutes: 9
     steps:
