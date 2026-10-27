@@ -1286,7 +1286,7 @@ private fun PremiumProfileTabs(
                         if (commit) {
                             val current = primary.indexOf(tabs.getOrNull(selectedTab))
                             val targetVisible = (if (current < 0) 0 else current +
-                                if (rawTabDrag < 0f) 1 else -1).coerceIn(0, primary.lastIndex)
+                                (if (rawTabDrag < 0f) 1 else -1)).coerceIn(0, primary.lastIndex)
                             val target = tabs.indexOf(primary[targetVisible])
                             if (target >= 0 && target != selectedTab) onTabSelected(target)
                         }
@@ -2662,7 +2662,8 @@ private fun ProfileMoreSheet(
     onBlock: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)
+            .verticalScroll(rememberScrollState())) {
             Text("Profile options", fontSize = 21.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(10.dp))
             if (isMe) {
@@ -2767,28 +2768,6 @@ private fun ProfileOption(
             pressed = false
         }
     }
-}
-
-private fun calculateProfileCompletion(profile: UserProfile): Int {
-    val values = listOf(
-        profile.fullName.isNotBlank(),
-        profile.username.isNotBlank(),
-        profile.avatarUrl.isNotBlank(),
-        profile.coverPhotoUrl.isNotBlank(),
-        profile.professionalHeadline.isNotBlank(),
-        profile.currentJobTitle.isNotBlank(),
-        profile.bio.isNotBlank(),
-        profile.university.isNotBlank(),
-        profile.faculty.isNotBlank(),
-        profile.department.isNotBlank(),
-        profile.academicLevel.isNotBlank(),
-        profile.email.value.isNotBlank(),
-        profile.phone.value.isNotBlank(),
-        profile.links.website.isNotBlank(),
-        profile.links.linkedin.isNotBlank()
-    )
-
-    return (values.count { it } * 100 / values.size).coerceIn(0, 100)
 }
 
 private fun openExternalUrl(context: android.content.Context, url: String) {
