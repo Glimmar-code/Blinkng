@@ -282,7 +282,8 @@ fun PremiumMessagesScreen(
     isConnected: Boolean = true,
     isLoading: Boolean = false,
     isDark: Boolean = false,
-    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> },
+    showInboxBehindChat: Boolean = true
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -352,6 +353,8 @@ fun PremiumMessagesScreen(
                     // Telegram-style interactive back needs the actual previous
                     // conversation list underneath the chat even at full screen.
                     // Do not blank it while the top screen follows the finger.
+                    // Overlay chats from Feed/Profile/Connect reveal the actual prior screen.
+                    if (showInboxBehindChat) {
                     PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
@@ -376,6 +379,7 @@ fun PremiumMessagesScreen(
                                 if (!chatSlideVisible) onVisibleInboxReceipt(conversationId, receiptId)
                             }
                         )
+                    }
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
