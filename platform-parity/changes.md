@@ -1,7 +1,8 @@
 ## 2026-10-27 — Notification push trust and preference safety (Testlab candidate, not deployed)
 
 - **Shared backend only:** Protects Android and Windows notifications equally; neither client changes its UI, API or notification event format.
-- **Client authorization:** The activity push dispatcher verifies the sender's JWT with Supabase Auth instead of trusting a decoded unverified `sub` claim. Only the independently checked service-role path can send server-authorized referral, Channel and opted-in contact alerts.
+- **Client authorization:** Activity, direct-message and call FCM dispatchers now all verify sender JWTs with Supabase Auth rather than decoding and trusting unsigned `sub` claims. The service-role activity notification path remains independently restricted to verified referral, Channel and contact events.
+- **Call and direct-message parity:** Both Android and Windows rely on these shared server-side push authorization, recipient opt-out and dispatch-ledger semantics; the fix changes no on-device UI or calling/media protocol. Direct-message mute lookup failures are retried instead of overriding a user's preferences. Call push dispatches also fail closed when ledger read/write fails.
 - **Recipient consent:** Failure or non-boolean results from `notification_push_allowed` now return a retryable HTTP 503 rather than sending an unapproved push. Genuine opt-outs remain terminal skips.
 - **Deduplication:** An inaccessible notification dispatch ledger also yields a retryable failure instead of sending an untracked, potentially duplicate FCM push.
 - **Tests:** Node tests cover unsigned/forged JWTs, auth outages, opt-outs, missing preference results and backend errors; the tests are part of the standard Supabase CI package suite.
