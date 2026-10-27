@@ -2128,7 +2128,7 @@ private suspend fun restoreSupabaseSession() {
                             .onFailure { Log.e(TAG, "Scheduled posts fetch failed", it) }
                     }
                     val activitiesRequest = async {
-                        runCatching { supabaseService.fetchActivities() }
+                        runCatching { supabaseService.fetchActivitiesPage() }
                             .onFailure { Log.e(TAG, "Activities fetch failed", it) }
                     }
 
@@ -2234,13 +2234,22 @@ private suspend fun restoreSupabaseSession() {
                     activitiesRequest.await()
                         .onSuccess { result ->
                             result.fold(
-                                { activities ->
-                                    _uiState.value = _uiState.value.copy(
-                                        activities = activities,
-                                        activitiesLoading = false,
-                                        activitiesHasMore = activities.size >= 80,
-                                        activitiesLoadingMore = false
-                                    )
+                                { page ->
+                                    if (_uiState.value.myProfile.id == before.myProfile.id &&
+                                        notificationRefreshJob?.isActive != true &&
+                                        olderNotificationJob?.isActive != true) {
+                                        activityHistoryCursor = page.activityCursor
+                                        canonicalHistoryCursor = page.notificationCursor
+                                        _uiState.value = _uiState.value.copy(
+                                            activities = page.items,
+                                            activitiesLoading = false,
+                                            activitiesHasMore = page.hasMore,
+                                            activitiesLoadingMore = false,
+                                            activitiesError = page.warning
+                                        )
+                                    } else {
+                                        _uiState.value = _uiState.value.copy(activitiesLoading = false)
+                                    }
                                 },
                                 { error ->
                                     _uiState.value = _uiState.value.copy(
@@ -7741,6 +7750,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun toggleActivityReadState(activity: ActivityItem) {
+        val initiatingAccount = _uiState.value.myProfile.id
         val newUnreadState = !activity.isUnread
         _uiState.value = _uiState.value.copy(
             activities = _uiState.value.activities.map {
@@ -7758,6 +7768,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             }.getOrDefault(false)
 
+            if (_uiState.value.myProfile.id != initiatingAccount) return@launch
             if (!synced) {
                 _uiState.value = _uiState.value.copy(
                     activities = _uiState.value.activities.map {
@@ -7766,11 +7777,12 @@ private suspend fun restoreSupabaseSession() {
                 )
                 persistExtendedCache()
                 showToast("Couldn't sync notification read status.")
-            }
+            } else persistExtendedCache()
         }
     }
 
     fun markAllActivitiesRead() {
+        val initiatingAccount = _uiState.value.myProfile.id
         val unreadIds = _uiState.value.activities.filter { it.isUnread }.mapTo(hashSetOf()) { it.id }
         if (unreadIds.isEmpty()) return
         _uiState.value = _uiState.value.copy(
@@ -7778,6 +7790,7 @@ private suspend fun restoreSupabaseSession() {
         )
         viewModelScope.launch {
             val success = runCatching { supabaseService.markAllActivitiesRead() }.getOrDefault(false)
+            if (_uiState.value.myProfile.id != initiatingAccount) return@launch
             if (!success) {
                 _uiState.value = _uiState.value.copy(
                     activities = _uiState.value.activities.map {
@@ -7786,6 +7799,7 @@ private suspend fun restoreSupabaseSession() {
                 )
                 showToast("Couldn't sync notification read status.")
             }
+            persistExtendedCache()
         }
     }
 
