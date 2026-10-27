@@ -141,6 +141,12 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     var pendingFingerprint by remember { mutableStateOf("") }
     var budgetText by remember { mutableStateOf("1000") }
+    var targetQuery by remember { mutableStateOf("") }
+    var ownedPages by remember { mutableStateOf<Map<String,List<JSONObject>>>(emptyMap()) }
+    var ownedMore by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var targetPageBusy by remember { mutableStateOf(false) }
+    var confirmStart by remember { mutableStateOf(false) }
+    var pendingCancel by remember { mutableStateOf<String?>(null) }
 
     fun currentRequest() = BlinkBoostCampaignRequest(targetType, targetId, power.toInt(), objective,
         audience, duration, selectedUniversity.trim().takeIf { audience == "SELECTED_UNIVERSITY" && it.isNotBlank() })
@@ -160,6 +166,12 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
 
     LaunchedEffect(rpc) {
         reload()
+        for (type in listOf("POST","REEL","LISTING")) {
+            runCatching { rpc.getBoostableContentPage(type,0) }.onSuccess { page ->
+                ownedPages = ownedPages + (type to page.optJSONArray("items").objects())
+                ownedMore = if (page.optBoolean("has_more")) ownedMore + type else ownedMore - type
+            }
+        }
         while (isActive) { delay(30_000); reload(background = true) }
     }
 
@@ -173,7 +185,10 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
         quote = null
     }
 
-    val postTargets = boostable?.optJSONArray("posts").objects().mapNotNull { row ->
+    val postRows = if (ownedPages.containsKey("POST") || ownedPages.containsKey("REEL"))
+        ownedPages["POST"].orEmpty() + ownedPages["REEL"].orEmpty()
+    else boostable?.optJSONArray("posts").objects()
+    val postTargets = postRows.mapNotNull { row ->
         val type = row.optString("type").uppercase()
         if (type !in setOf("POST", "REEL")) return@mapNotNull null
         DesktopBoostTarget(
@@ -182,14 +197,14 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
             label = row.optString("text").ifBlank { if (type == "REEL") "Reel" else "Post" },
         )
     }
-    val listingTargets = boostable?.optJSONArray("market").objects().map {
+    val listingTargets = (ownedPages["LISTING"] ?: boostable?.optJSONArray("market").objects()).map {
         DesktopBoostTarget(
             id = it.optString("id"),
             type = "LISTING",
             label = it.optString("text").ifBlank { "Listing" },
         )
     }
-    val targets = when (targetType) {
+    val allTargets = when (targetType) {
         "POST" -> postTargets.filter { it.type == "POST" }
         "REEL" -> postTargets.filter { it.type == "REEL" }
         "LISTING" -> listingTargets
@@ -201,6 +216,10 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
         else -> emptyList()
     }
 
+    val targets = allTargets.filter {
+        targetQuery.isBlank() || it.label.contains(targetQuery,ignoreCase=true) ||
+            it.id.contains(targetQuery,ignoreCase=true)
+    }
     val objectives = when (targetType) {
         "POST", "REEL" -> listOf("VIEWS", "LIKES", "COMMENTS", "SAVES", "ENGAGEMENT", "PROFILE_VISITS", "FOLLOWERS")
         "PROFILE" -> listOf("REACH", "PROFILE_VISITS", "FOLLOWERS")
@@ -276,11 +295,22 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
             }
         }
 
+        if (targetType != "PROFILE") {
+            item {
+                OutlinedTextField(
+                    value = targetQuery,
+                    onValueChange = { targetQuery = it.take(80) },
+                    label = { Text("Search your ${targetType.lowercase()} content") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
         if (!loading) {
             if (targets.isEmpty()) {
                 item { DesktopBoostStatus("No boostable " + targetType.lowercase() + " is available yet.", false) }
             } else {
-                items(targets.take(30), key = { "boost-target-" + it.type + "-" + it.id }) { target ->
+                items(targets, key = { "boost-target-" + it.type + "-" + it.id }) { target ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
                             targetId = target.id
@@ -314,6 +344,28 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                         }
                     }
                 }
+            }
+        }
+
+        if (targetType in ownedMore) {
+            item {
+                OutlinedButton(
+                    enabled = !targetPageBusy,
+                    onClick = {
+                        val type = targetType
+                        targetPageBusy = true
+                        scope.launch {
+                            runCatching { rpc.getBoostableContentPage(type,ownedPages[type].orEmpty().size) }
+                                .onSuccess { page ->
+                                    ownedPages = ownedPages + (type to
+                                        (ownedPages[type].orEmpty() + page.optJSONArray("items").objects())
+                                            .distinctBy { it.optString("id") })
+                                    ownedMore = if (page.optBoolean("has_more")) ownedMore + type else ownedMore - type
+                                }.onFailure { error = it.message ?: "Unable to load more content." }
+                            targetPageBusy = false
+                        }
+                    },
+                ) { Text(if (targetPageBusy) "Loading…" else "Load more owned content") }
             }
         }
 
@@ -463,39 +515,7 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                 ) { Text("Preview cost") }
 
                 Button(
-                    onClick = {
-                        if (working) return@Button
-                        working = true
-                        val request = currentRequest()
-                        val fingerprint = request.fingerprint()
-                        if (pendingRequestId == null || pendingFingerprint != fingerprint) {
-                            pendingRequestId = UUID.randomUUID().toString()
-                            pendingFingerprint = fingerprint
-                        }
-                        val requestId = pendingRequestId.orEmpty()
-                        scope.launch {
-                            runCatching {
-                                rpc.createBoostCampaign(
-                                    targetType = request.targetType,
-                                    targetId = request.targetId,
-                                    boostPower = request.power,
-                                    objective = request.objective,
-                                    audienceScope = request.audience,
-                                    durationDays = request.duration,
-                                    requestId = requestId,
-                                    targetUniversity = request.university,
-                                )
-                            }.onSuccess {
-                                message = "Boost campaign started."
-                                pendingRequestId = null
-                                quote = null
-                                reload()
-                            }.onFailure {
-                                error = it.message ?: "Unable to start this Boost."
-                            }
-                            working = false
-                        }
-                    },
+                    onClick = { confirmStart = true },
                     enabled = ready && !working && quote != null && quoteCost > 0 && balance >= quoteCost,
                 ) {
                     Text(
@@ -574,19 +594,7 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                         )
                         if (active) {
                             OutlinedButton(
-                                onClick = {
-                                    val id = campaign.optString("id")
-                                    scope.launch {
-                                        working = true
-                                        runCatching { rpc.cancelBoostCampaign(id) }
-                                            .onSuccess {
-                                                message = "Boost cancelled. Unused time was refunded by the server."
-                                                reload()
-                                            }
-                                            .onFailure { error = it.message ?: "Unable to cancel Boost." }
-                                        working = false
-                                    }
-                                },
+                                onClick = { pendingCancel = campaign.optString("id") },
                                 enabled = !working,
                             ) { Text("End campaign") }
                         }
@@ -595,6 +603,84 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
             }
         }
     }
+
+    if (confirmStart) {
+        AlertDialog(
+            onDismissRequest = { if (!working) confirmStart = false },
+            title = { Text("Reserve coins for this Boost?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(targetType + " · " + power.toInt() + "% power · " + duration + " days")
+                    Text("Reserve " + formatter.format(quoteCost) + " Blink Coins.")
+                    Text("Estimated reach is not guaranteed.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(enabled = !working && quote != null && quoteCost > 0 && balance >= quoteCost,
+                    onClick = {
+                        working = true
+                        val request = currentRequest()
+                        val fingerprint = request.fingerprint()
+                        if (pendingRequestId == null || pendingFingerprint != fingerprint) {
+                            pendingRequestId = UUID.randomUUID().toString()
+                            pendingFingerprint = fingerprint
+                        }
+                        val requestId = pendingRequestId.orEmpty()
+                        scope.launch {
+                            runCatching {
+                                rpc.createBoostCampaign(
+                                    targetType = request.targetType,
+                                    targetId = request.targetId,
+                                    boostPower = request.power,
+                                    objective = request.objective,
+                                    audienceScope = request.audience,
+                                    durationDays = request.duration,
+                                    requestId = requestId,
+                                    targetUniversity = request.university,
+                                )
+                            }.onSuccess {
+                                confirmStart = false
+                                message = "Boost campaign started."
+                                pendingRequestId = null
+                                quote = null
+                                reload()
+                            }.onFailure {
+                                error = it.message ?: "Unable to start this Boost."
+                            }
+                            working = false
+                        }
+                    }) { Text(if (working) "Starting…" else "Confirm Boost") }
+            },
+            dismissButton = {
+                TextButton(enabled = !working, onClick = { confirmStart = false }) { Text("Keep coins") }
+            },
+        )
+    }
+    pendingCancel?.let { id ->
+        AlertDialog(
+            onDismissRequest = { if (!working) pendingCancel = null },
+            title = { Text("Cancel this Boost?") },
+            text = { Text("Unused reserved Blink Coins will be returned according to the server's settlement rules.") },
+            confirmButton = {
+                Button(enabled = !working, onClick = {
+                    working = true
+                    scope.launch {
+                        runCatching { rpc.cancelBoostCampaign(id) }.onSuccess {
+                            message = "Boost cancelled. Unused reserved coins were refunded by the server."
+                            pendingCancel = null
+                            reload()
+                        }.onFailure { error = it.message ?: "Unable to cancel Boost." }
+                        working = false
+                    }
+                }) { Text(if (working) "Cancelling…" else "Confirm cancellation") }
+            },
+            dismissButton = {
+                TextButton(enabled = !working, onClick = { pendingCancel = null }) { Text("Keep Boost") }
+            },
+        )
+    }
+
 }
 
 @Composable
