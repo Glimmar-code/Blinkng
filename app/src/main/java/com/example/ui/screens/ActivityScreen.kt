@@ -217,7 +217,7 @@ fun ActivityScreen(
         if (!showSavedUpdates && !isLoading && hasMore && !isLoadingMore && sortedNotifications.isNotEmpty()) {
             snapshotFlow {
                 val info = listState.layoutInfo
-                info.visibleItemsInfo.lastOrNull()?.index ?: 0 to info.totalItemsCount
+                (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
             }.distinctUntilChanged().collect { (lastVisible, total) ->
                 if (total > 0 && lastVisible >= total - 5) onLoadMore()
             }
