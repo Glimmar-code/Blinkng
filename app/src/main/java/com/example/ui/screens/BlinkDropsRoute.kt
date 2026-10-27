@@ -179,6 +179,9 @@ fun BlinkDropsRoute(
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var showOrganizer by remember { mutableStateOf(false) }
+    var organizerError by remember { mutableStateOf<String?>(null) }
+    var pendingCancelDropId by remember { mutableStateOf<String?>(null) }
+    var cancellationError by remember { mutableStateOf<String?>(null) }
     var commentDrop by remember { mutableStateOf<DropItem?>(null) }
     var busyDropId by remember { mutableStateOf<String?>(null) }
     var creatingDrop by remember { mutableStateOf(false) }
@@ -227,6 +230,21 @@ fun BlinkDropsRoute(
     val eligibleCampus = state?.optInt("eligible_followers_my_campus", 0) ?: 0
     val receipts = state?.optJSONArray("receipts").objects()
     val analytics = state?.optJSONObject("analytics")
+    val dropsListState = rememberLazyListState()
+    var deepLinkHandled by remember(initialDropId) { mutableStateOf(false) }
+    LaunchedEffect(initialDropId, loading, activeDrops, analytics, isOnline, error, message) {
+        val match = activeDrops.indexOfFirst { it.id == initialDropId }
+        if (!deepLinkHandled && initialDropId != null && !loading && match >= 0) {
+            val prefix = 1 + (if (analytics != null) 1 else 0) +
+                (if (!isOnline) 1 else 0) +
+                (if (error != null && state == null) 1 else 0) +
+                (if (error != null) 1 else 0) +
+                (if (message != null) 1 else 0) + 1
+            selectedColumn = DropsColumn.GIVEAWAYS
+            dropsListState.animateScrollToItem(prefix + match)
+            deepLinkHandled = true
+        }
+    }
 
     fun complete(drop: DropItem, comment: String? = null) {
         if (busyDropId != null) return
@@ -320,6 +338,7 @@ fun BlinkDropsRoute(
         ) {
             when (selectedColumn) {
             DropsColumn.GIVEAWAYS -> LazyColumn(
+                state = dropsListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -528,8 +547,10 @@ fun BlinkDropsRoute(
             isOnline = isOnline,
             creating = creatingDrop,
             onGetCoins = onGetCoins,
+            publishError = organizerError,
             onDismiss = {
                 if (!creatingDrop) {
+                    organizerError = null
                     showOrganizer = false
                     pendingCreateRequestId = null
                     pendingCreateFingerprint = null
@@ -559,13 +580,14 @@ fun BlinkDropsRoute(
                         val notified = result.optInt("eligible_followers", 0)
                         message = "Drop started. $notified eligible follower${if (notified == 1) "" else "s"} notified."
                         error = null
+                        organizerError = null
                         pendingCreateRequestId = null
                         pendingCreateFingerprint = null
                         DropDraftStore.value = DropDraftSnapshot()
                         showOrganizer = false
                         refresh()
                     }.onFailure {
-                        error = it.message ?: "Unable to create this Drop."
+                        organizerError = it.message ?: "Unable to create this Drop. Please retry."
                     }
                     creatingDrop = false
                 }
@@ -887,6 +909,7 @@ private fun OrganizeDropDialog(
     isOnline: Boolean,
     creating: Boolean,
     onGetCoins: () -> Unit,
+    publishError: String?,
     onDismiss: () -> Unit,
     onCreate: (
         target: DropTarget,
