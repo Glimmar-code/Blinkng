@@ -3742,13 +3742,42 @@ private fun MessageContent(
                     )
                 }
             } else if (!message.attachedImageUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = message.attachedImageUrl,
-                    contentDescription = "Shared image",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(220.dp).height(170.dp).clip(RoundedCornerShape(13.dp))
-                        .clickable { onOpenImage(message) }
-                )
+                var imageRetry by remember(message.id, message.attachedImageUrl) { mutableIntStateOf(0) }
+                var imageFailed by remember(message.id, message.attachedImageUrl) { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier.width(220.dp).height(170.dp)
+                        .clip(RoundedCornerShape(13.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = remember(message.attachedImageUrl, imageRetry) {
+                            coil.request.ImageRequest.Builder(context)
+                                .data(message.attachedImageUrl)
+                                .memoryCacheKey("${message.id}:$imageRetry")
+                                .build()
+                        },
+                        contentDescription = "Shared image",
+                        contentScale = ContentScale.Crop,
+                        onSuccess = { imageFailed = false },
+                        onError = { imageFailed = true },
+                        modifier = Modifier.fillMaxSize().clickable { if (!imageFailed) onOpenImage(message) }
+                    )
+                    if (imageFailed) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().background(contentColor.copy(alpha = .10f)),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text("Photo unavailable", color = contentColor, fontSize = 12.sp)
+                            androidx.compose.material3.TextButton(onClick = {
+                                imageFailed = false
+                                imageRetry++
+                            }) {
+                                Text("Retry", color = contentColor, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
             }
             if (!message.attachedVideoUrl.isNullOrBlank()) {
                 Surface(
