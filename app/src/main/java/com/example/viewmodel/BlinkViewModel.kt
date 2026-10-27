@@ -3968,7 +3968,8 @@ private suspend fun restoreSupabaseSession() {
                         isCreatingPost = false
                     )
                     clearCreatePostPersistentState(profile)
-                    cleanupPublishedReelExport(post.videoUrl)
+                    cleanupPublishedEditorMedia(post.videoUrl)
+                    post.images.forEach(::cleanupPublishedEditorMedia)
                     showToast("Post scheduled for $timeFormatted")
                 }
             } catch (e: Exception) {
@@ -4159,7 +4160,8 @@ private suspend fun restoreSupabaseSession() {
                     )
                     persistCurrentFeed()
                     clearCreatePostPersistentState(profile)
-                    cleanupPublishedReelExport(videoUri)
+                    cleanupPublishedEditorMedia(videoUri)
+                    imageInputs.forEach(::cleanupPublishedEditorMedia)
                     showToast(if (finalIsReel) "Reel published." else "Post published.")
                 }
             } catch (e: Exception) {
@@ -4178,22 +4180,27 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    /** Reclaim temporary rendered MP4s only after the server saves the post.
-     * A video still referenced by a saved draft must remain available offline.
+    /** Delete only our private, fully uploaded exports/covers, not media owned by
+     * other applications or still referenced by a saved draft on this account.
      */
-    private fun cleanupPublishedReelExport(videoUri: String?) {
-        if (videoUri.isNullOrBlank() ||
-            _uiState.value.savedDrafts.any { it.videoUri == videoUri }) return
-        val uri = runCatching { Uri.parse(videoUri) }.getOrNull() ?: return
+    private fun cleanupPublishedEditorMedia(mediaUri: String?) {
+        if (mediaUri.isNullOrBlank() ||
+            _uiState.value.savedDrafts.any {
+                it.videoUri == mediaUri ||
+                    it.imageUri == mediaUri ||
+                    it.imageUri?.contains(mediaUri) == true
+            }) return
+        val uri = runCatching { Uri.parse(mediaUri) }.getOrNull() ?: return
         if (uri.scheme != "content" ||
             uri.authority != "${appContext.packageName}.chatfiles") return
         val filename = uri.lastPathSegment ?: return
-        if (!Regex("^reel_[0-9a-fA-F-]{36}\\.mp4$").matches(filename)) return
+        if (!Regex("^(reel_[0-9a-fA-F-]{36}\\.mp4|reel_cover_[0-9a-fA-F-]{36}\\.jpg)$")
+                .matches(filename)) return
         val renderDir = java.io.File(appContext.filesDir, "reel_edits")
-        val rendered = java.io.File(renderDir, filename)
-        if (rendered.parentFile == renderDir && rendered.isFile) {
-            runCatching { rendered.delete() }
-                .onFailure { Log.w(TAG, "Unable to remove published render", it) }
+        val mediaFile = java.io.File(renderDir, filename)
+        if (mediaFile.parentFile == renderDir && mediaFile.isFile) {
+            runCatching { mediaFile.delete() }
+                .onFailure { Log.w(TAG, "Unable to remove uploaded editor media", it) }
         }
     }
 
