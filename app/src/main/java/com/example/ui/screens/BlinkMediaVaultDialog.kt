@@ -41,9 +41,7 @@ internal fun BlinkMediaVaultDialog(onDismiss: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
 
     fun dismiss() {
-        preview?.let { uri -> scope.launch {
-            BlinkPrivateMediaVault.clearTemporaryPreview(context, uri)
-        } }
+        preview?.let { BlinkPrivateMediaVault.clearTemporaryPreview(context, it) }
         onDismiss()
     }
     LaunchedEffect(Unit) {
@@ -91,9 +89,7 @@ internal fun BlinkMediaVaultDialog(onDismiss: () -> Unit) {
                         val old = preview
                         preview = null
                         selected = null
-                        if (old != null) scope.launch {
-                            BlinkPrivateMediaVault.clearTemporaryPreview(context, old)
-                        }
+                        if (old != null) BlinkPrivateMediaVault.clearTemporaryPreview(context, old)
                     }) { Text("Back to vault") }
                     OutlinedButton(onClick = { confirmDelete = true }) {
                         Icon(Icons.Default.Delete, null)
