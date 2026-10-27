@@ -11,6 +11,13 @@ const ssvWorker = readFileSync(
   "utf8",
 );
 
+const exposureTracker = readFileSync(
+  new URL("../../app/src/main/java/com/example/ui/components/ContentExposureTracker.kt", import.meta.url), "utf8"
+);
+const reelScreen = readFileSync(
+  new URL("../../app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt", import.meta.url), "utf8"
+);
+
 test("rewarded coins require signed SSV and only service role may settle", () => {
   assert.match(migration, /v_claim\.ssv_verified_at is null then raise exception ''REWARDED_AD_VERIFICATION_PENDING''/);
   assert.match(migration, /grant execute on function public\.settle_blink_rewarded_ad_verified\(uuid\) to service_role;/i);
@@ -52,4 +59,27 @@ test("Post views reject rapid replays without inflating counters", () => {
   assert.match(migration, /ALGORITHM_VIEW_REPLAY_COOLDOWN/);
   assert.match(migration, /recent\.last_viewed_at > now\(\) - interval '60 seconds'/);
   assert.match(migration, /'accepted',false,'duplicate',false,'cap_reached',false/);
+});
+
+test("Reel recommendation events use an accepted event type and preserve follower access", () => {
+  assert.match(migration, /v_event_type := case when v_skipped then 'skip' else 'dwell'/);
+  assert.doesNotMatch(migration, /then 'skip' else 'view'/);
+  assert.match(migration, /audience_follow\.follower_id=v_viewer/);
+  assert.match(migration, /existing\.created_at > now\(\)-interval '24 hours'/);
+  assert.match(migration, />= 24 then/);
+});
+
+test("Expired creator badges never confer a verification ranking or view multiplier", () => {
+  assert.match(migration, /EXPIRED_VERIFICATION_VIEW_WEIGHT_SOURCE_DRIFT/);
+  assert.match(migration, /EXPIRED_VERIFICATION_RANK_SOURCE_DRIFT/);
+  assert.match(migration, /p\.verification_expires_at > now\(\)/);
+  assert.match(migration, /pr\.verification_expires_at > p_as_of/);
+  assert.match(migration, /CONTENT_VIEW_ATOMIC_COOLDOWN_SOURCE_DRIFT/);
+});
+
+test("Reel exposure is playback-qualified; paused and buffering previews do not count", () => {
+  assert.match(exposureTracker, /playbackActive: Boolean = true/);
+  assert.match(exposureTracker, /!playbackActive \|\| wasRecorded/);
+  assert.match(reelScreen, /!isPausedByUser && !isBuffering/);
+  assert.match(reelScreen, /!previewFinished && !isBuffering/);
 });
