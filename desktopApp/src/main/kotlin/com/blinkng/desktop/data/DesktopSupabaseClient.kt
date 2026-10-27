@@ -1034,7 +1034,8 @@ class DesktopSupabaseClient(
 
     suspend fun countMyNewProfileVisitors(): Int = withContext(Dispatchers.IO) {
         val response = postObject("/rest/v1/rpc/count_my_new_profile_visitors", JSONObject())
-        (response as? JSONObject)?.optString("value")?.removeSurrounding("\"")
+        val payload = response as? JSONObject
+        payload?.optString("value")?.removeSurrounding("\"")
             ?.toIntOrNull()?.coerceAtLeast(0) ?: 0
     }
 
