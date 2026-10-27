@@ -44,7 +44,9 @@ internal class BoundedMessageAttachment(
 
     companion object {
         fun open(context: Context, uri: Uri, kind: BlinkChatAttachmentKind): BoundedMessageAttachment {
-            val mime = if (uri.scheme == "file" && kind == BlinkChatAttachmentKind.IMAGE) {
+            // Files staged by private Channel forwarding use the file scheme.
+            // The system content resolver does not reliably infer MIME for file:// URIs.
+            val mime = if (uri.scheme == "file") {
                 when (File(uri.path.orEmpty()).extension.lowercase()) {
                     "jpg", "jpeg" -> "image/jpeg"
                     "png" -> "image/png"
@@ -52,10 +54,16 @@ internal class BoundedMessageAttachment(
                     "gif" -> "image/gif"
                     "heic" -> "image/heic"
                     "heif" -> "image/heif"
-                    else -> throw IllegalArgumentException("Unsupported queued picture format.")
+                    "mp4" -> if (kind == BlinkChatAttachmentKind.VOICE) "audio/mp4" else "video/mp4"
+                    "webm" -> "video/webm"
+                    "mov" -> "video/quicktime"
+                    "m4a" -> "audio/mp4"
+                    "mp3" -> "audio/mpeg"
+                    "aac" -> "audio/aac"
+                    "pdf" -> "application/pdf"
+                    "txt" -> "text/plain"
+                    else -> throw IllegalArgumentException("Unsupported staged attachment format.")
                 }
-            } else if (kind == BlinkChatAttachmentKind.VOICE && uri.scheme == "file") {
-                "audio/mp4"
             } else context.contentResolver.getType(uri)?.lowercase()
                 ?: throw IllegalArgumentException("File type could not be verified.")
             require(kind.accepts(mime)) { "This ${kind.title.lowercase()} format is unsupported." }

@@ -340,6 +340,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val inAppDestination = when {
             targetType.equals("user", ignoreCase = true) && (sender.isNotBlank() || senderId.isNotBlank()) ->
                 BlinkInAppNotificationDestination.PROFILE
+            targetType.equals("channel", ignoreCase = true) -> BlinkInAppNotificationDestination.CHANNEL
             targetType.equals("giveaway", ignoreCase = true) -> BlinkInAppNotificationDestination.DROPS
             targetType.equals("boost", ignoreCase = true) -> BlinkInAppNotificationDestination.BOOST
             else -> when (type) {
