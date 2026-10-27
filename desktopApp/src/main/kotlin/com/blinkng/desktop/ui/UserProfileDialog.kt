@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,9 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import java.io.File
+import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -125,6 +129,17 @@ fun DesktopUserProfileDialog(
     var editCourse by remember(initialProfile.id) { mutableStateOf(initialProfile.courseOfStudy.orEmpty()) }
     var editLevel by remember(initialProfile.id) { mutableStateOf(initialProfile.academicLevel.orEmpty()) }
     var editGraduation by remember(initialProfile.id) { mutableStateOf(initialProfile.graduationYear.orEmpty()) }
+    var editWebsite by remember(initialProfile.id) { mutableStateOf(initialProfile.website.orEmpty()) }
+    var editLinkedin by remember(initialProfile.id) { mutableStateOf(initialProfile.linkedin.orEmpty()) }
+    var editTwitter by remember(initialProfile.id) { mutableStateOf(initialProfile.twitter.orEmpty()) }
+    var editInstagram by remember(initialProfile.id) { mutableStateOf(initialProfile.instagram.orEmpty()) }
+    var editFeaturedLink by remember(initialProfile.id) { mutableStateOf(initialProfile.featuredLink.orEmpty()) }
+    var editFeaturedLabel by remember(initialProfile.id) { mutableStateOf(initialProfile.featuredLinkLabel.orEmpty()) }
+    var editEmailVisibility by remember(initialProfile.id) { mutableStateOf(initialProfile.emailVisibility) }
+    var editPhoneVisibility by remember(initialProfile.id) { mutableStateOf(initialProfile.phoneVisibility) }
+    var editWhatsappVisibility by remember(initialProfile.id) { mutableStateOf(initialProfile.whatsappVisibility) }
+    var editAvatarFile by remember(initialProfile.id) { mutableStateOf<File?>(null) }
+    var editCoverFile by remember(initialProfile.id) { mutableStateOf<File?>(null) }
 
     suspend fun reload() {
         loading = true
@@ -256,6 +271,17 @@ fun DesktopUserProfileDialog(
                             editCourse = profile.courseOfStudy.orEmpty()
                             editLevel = profile.academicLevel.orEmpty()
                             editGraduation = profile.graduationYear.orEmpty()
+                            editWebsite = profile.website.orEmpty()
+                            editLinkedin = profile.linkedin.orEmpty()
+                            editTwitter = profile.twitter.orEmpty()
+                            editInstagram = profile.instagram.orEmpty()
+                            editFeaturedLink = profile.featuredLink.orEmpty()
+                            editFeaturedLabel = profile.featuredLinkLabel.orEmpty()
+                            editEmailVisibility = profile.emailVisibility
+                            editPhoneVisibility = profile.phoneVisibility
+                            editWhatsappVisibility = profile.whatsappVisibility
+                            editAvatarFile = null
+                            editCoverFile = null
                             editError = null
                             showEditProfile = true
                         }) { Text("Edit profile", color = Color.White) }
@@ -487,9 +513,9 @@ fun DesktopUserProfileDialog(
                                     if (isMe) {
                                         ProfileAboutLine("Relationship status", profile.relationshipStatus)
                                     }
-                                    ProfileAboutLine("Email", profile.email)
-                                    ProfileAboutLine("Phone", profile.phone)
-                                    ProfileAboutLine("WhatsApp", profile.whatsapp)
+                                    if (!profile.email.isNullOrBlank()) ProfileAboutLine("Email", profile.email)
+                                    if (!profile.phone.isNullOrBlank()) ProfileAboutLine("Phone", profile.phone)
+                                    if (!profile.whatsapp.isNullOrBlank()) ProfileAboutLine("WhatsApp", profile.whatsapp)
                                     ProfileAboutLine("Joined", profile.createdAt)
                                 }
                             }
@@ -678,6 +704,21 @@ fun DesktopUserProfileDialog(
                         editDepartment, editLevel, profile.accountType
                     )
                     Text("Profile strength: ${percent}%", fontSize = 12.sp)
+                    Text("Profile pictures: JPEG, PNG, or WebP, up to 8 MB.", fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(enabled = !busy, onClick = {
+                            val chooser = JFileChooser()
+                            chooser.fileFilter = FileNameExtensionFilter("Images", "jpg", "jpeg", "png", "webp")
+                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
+                                editAvatarFile = chooser.selectedFile
+                        }) { Text(if (editAvatarFile == null) "Choose avatar" else "Avatar selected") }
+                        OutlinedButton(enabled = !busy, onClick = {
+                            val chooser = JFileChooser()
+                            chooser.fileFilter = FileNameExtensionFilter("Images", "jpg", "jpeg", "png", "webp")
+                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
+                                editCoverFile = chooser.selectedFile
+                        }) { Text(if (editCoverFile == null) "Choose cover" else "Cover selected") }
+                    }
                     OutlinedTextField(
                         value = editName, onValueChange = { editName = it },
                         label = { Text("Full name") }, singleLine = true,
@@ -722,6 +763,35 @@ fun DesktopUserProfileDialog(
                             label = { Text("Graduation year") }, modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    Text("Links & contact visibility", style = MaterialTheme.typography.titleSmall)
+                    listOf(
+                        Triple("Website", editWebsite, { value: String -> editWebsite = value }),
+                        Triple("LinkedIn", editLinkedin, { value: String -> editLinkedin = value }),
+                        Triple("X / Twitter", editTwitter, { value: String -> editTwitter = value }),
+                        Triple("Instagram", editInstagram, { value: String -> editInstagram = value }),
+                        Triple("Featured link", editFeaturedLink, { value: String -> editFeaturedLink = value }),
+                        Triple("Featured label", editFeaturedLabel, { value: String -> editFeaturedLabel = value })
+                    ).forEach { (label, value, update) ->
+                        OutlinedTextField(value = value, onValueChange = update,
+                            label = { Text(label) }, modifier = Modifier.fillMaxWidth())
+                    }
+                    listOf(
+                        Triple("Email", editEmailVisibility, { value: String -> editEmailVisibility = value }),
+                        Triple("Phone", editPhoneVisibility, { value: String -> editPhoneVisibility = value }),
+                        Triple("WhatsApp", editWhatsappVisibility, { value: String -> editWhatsappVisibility = value })
+                    ).forEach { (label, selection, update) ->
+                        Text("$label visibility", fontSize = 12.sp)
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("PRIVATE", "FOLLOWERS", "PUBLIC").forEach { level ->
+                                FilterChip(
+                                    selected = selection == level,
+                                    onClick = { update(level) },
+                                    label = { Text(level.lowercase().replaceFirstChar(Char::uppercaseChar)) }
+                                )
+                            }
+                        }
+                    }
                     TextButton(onClick = {
                         if (!busy) {
                             showEditProfile = false
@@ -741,7 +811,11 @@ fun DesktopUserProfileDialog(
                             state.client.saveProfileDetails(
                                 editName, editHeadline, editBio, editRole,
                                 editUniversity, editFaculty, editDepartment,
-                                editCourse, editLevel, editGraduation
+                                editCourse, editLevel, editGraduation,
+                                editWebsite, editLinkedin, editTwitter, editInstagram,
+                                editFeaturedLink, editFeaturedLabel,
+                                editPhoneVisibility, editWhatsappVisibility, editEmailVisibility,
+                                editAvatarFile, editCoverFile
                             )
                         }.onSuccess {
                             profile = it
