@@ -598,7 +598,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,current_job_title,course_of_study,graduation_year,relationship_status,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -638,6 +638,56 @@ class DesktopSupabaseClient(
                 "Profile theme update did not persist. Verify database migration and account permissions."
             }
         }
+    }
+
+
+    /** Owner-only basic profile editor; no identity, wallet or privacy-policy bypass. */
+    suspend fun saveProfileDetails(
+        fullName: String,
+        headline: String,
+        bio: String,
+        currentRole: String,
+        university: String,
+        faculty: String,
+        department: String,
+        course: String,
+        academicLevel: String,
+        graduationYear: String,
+    ): DesktopProfile = withContext(Dispatchers.IO) {
+        val ownerId = requireSession().userId
+        val prior = fetchProfile(ownerId)
+        val name = fullName.trim()
+        val error = com.blinkng.shared.ProfileEditValidation.validate(
+            fullName = name,
+            username = prior.username,
+            email = "",
+            phone = "",
+            whatsapp = "",
+            graduationYear = if (prior.accountType.equals("NON_STUDENT", ignoreCase = true)) "" else graduationYear,
+            links = emptyList()
+        )
+        require(error == null) { error ?: "Invalid profile details." }
+        val isNonStudent = prior.accountType.equals("NON_STUDENT", ignoreCase = true)
+        val cleanBio = bio.trim()
+        val body = JSONObject().apply {
+            put("full_name", name)
+            put("professional_headline", headline.trim())
+            put("current_job_title", currentRole.trim())
+            put("bio", cleanBio)
+            put("university", if (isNonStudent) "" else university.trim())
+            put("faculty", if (isNonStudent) "" else faculty.trim())
+            put("department", if (isNonStudent) "" else department.trim())
+            put("course_of_study", if (isNonStudent) "" else course.trim())
+            put("academic_level", if (isNonStudent) "" else academicLevel.trim())
+            val year = if (isNonStudent) null else graduationYear.trim().toIntOrNull()
+            put("graduation_year", year ?: JSONObject.NULL)
+        }
+        patch("/rest/v1/profiles?id=eq.${encode(ownerId)}", body)
+        val updated = refreshProfile(ownerId)
+        check(updated.fullName == name && updated.bio.orEmpty() == cleanBio) {
+            "Profile update was not confirmed. Please refresh and retry."
+        }
+        updated
     }
 
     suspend fun isUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
@@ -3387,6 +3437,10 @@ class DesktopSupabaseClient(
         coverPhotoUrl = row.optNullableString("cover_photo_url"),
         profileTheme = com.blinkng.shared.BlinkProfileThemes.normalize(row.optString("profile_theme")),
         professionalHeadline = row.optNullableString("professional_headline"),
+        currentJobTitle = row.optNullableString("current_job_title"),
+        courseOfStudy = row.optNullableString("course_of_study"),
+        graduationYear = row.optNullableString("graduation_year"),
+        relationshipStatus = row.optNullableString("relationship_status"),
         dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
         accountType = row.optString("account_type"),
