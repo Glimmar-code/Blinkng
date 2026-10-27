@@ -1,6 +1,9 @@
 package com.example.data.supabase
 
 import com.blinkng.shared.ProfileRankSnapshot
+import com.blinkng.shared.ProfileVisitSettings
+import com.blinkng.shared.ProfileVisitor
+import com.blinkng.shared.ProfileVisitHistory
 import com.blinkng.shared.ProfileVisibilityScope
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
@@ -5878,6 +5881,101 @@ suspend fun uploadPostMedia(
             Result.failure(Exception(e.message ?: "Unable to update password."))
         }
     }
+
+
+    /**
+     * Visitor history is entirely opt-in and owner-scoped in the backend.
+     * Do not fall back to activity notifications if this migration is unavailable.
+     * Server RPCs authoritatively enforce mutual consent, blocking and deletion.
+     */
+    private suspend fun profileVisitRpc(name: String, args: JSONObject = JSONObject()): JSONObject {
+        check(isAuthenticated()) { "Sign in to manage profile visitor history." }
+        return executeRequest(
+            newRequestBuilder("/rest/v1/rpc/$name", authenticated = true)
+                .post(args.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Private profile visitor history is not available right now.")
+            }
+            JSONObject(raw)
+        }
+    }
+
+    suspend fun getMyProfileVisitSettings(): Result<ProfileVisitSettings> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val data = profileVisitRpc("get_my_profile_visit_settings")
+                ProfileVisitSettings(
+                    participate = data.optBoolean("participate", false),
+                    notifyVisits = data.optBoolean("notify_visits", false)
+                )
+            }
+        }
+
+    suspend fun setMyProfileVisitSettings(
+        participate: Boolean,
+        notifyVisits: Boolean
+    ): Result<ProfileVisitSettings> = withContext(Dispatchers.IO) {
+        runCatching {
+            val data = profileVisitRpc(
+                "set_my_profile_visit_settings",
+                JSONObject().put("p_participate", participate)
+                    .put("p_notify_visits", participate && notifyVisits)
+            )
+            ProfileVisitSettings(
+                participate = data.optBoolean("participate", false),
+                notifyVisits = data.optBoolean("notify_visits", false)
+            )
+        }
+    }
+
+    suspend fun listMyProfileVisitors(): Result<ProfileVisitHistory> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val data = profileVisitRpc("list_my_profile_visitors")
+                val visitors = data.optJSONArray("visitors") ?: JSONArray()
+                val items = buildList {
+                    for (index in 0 until visitors.length()) {
+                        val item = visitors.optJSONObject(index) ?: continue
+                        val id = item.optString("id")
+                        val username = item.optString("username")
+                        if (id.isBlank() || username.isBlank()) continue
+                        add(ProfileVisitor(
+                            id = id, username = username,
+                            fullName = item.optString("full_name").ifBlank { username },
+                            avatarUrl = item.optString("avatar_url"),
+                            visitedAt = item.optString("last_visited_at")
+                        ))
+                    }
+                }
+                ProfileVisitHistory(
+                    enabled = data.optBoolean("enabled", false),
+                    seenThrough = data.optString("seen_through"),
+                    visitors = items
+                )
+            }
+        }
+
+    /** Records only if BOTH accounts previously consented, never for self visits. */
+    suspend fun recordOptInProfileVisit(profileId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(profileId) || !isAuthenticated() ||
+                profileId == getCurrentUserId()) return@withContext false
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/record_opt_in_profile_visit", true)
+                        .post(JSONObject().put("p_profile_id", profileId)
+                            .toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    response.isSuccessful &&
+                        response.body?.string().orEmpty().trim().equals("true", ignoreCase = true)
+                }
+            }.getOrDefault(false)
+        }
+
 
 }
 
