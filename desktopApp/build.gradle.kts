@@ -35,6 +35,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.4")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")
+    // Gradle 9's JUnit Platform test executor requires an explicit launcher.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.11.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
 
