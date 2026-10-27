@@ -350,6 +350,10 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.runner)
+  // Keep the AndroidJUnitRunner runtime complete in the R8-minified rtcSmoke
+  // instrumentation APK. Missing androidx.tracing.Trace crashes the runner
+  // before the WebRTC JNI test can execute.
+  androidTestImplementation("androidx.tracing:tracing:1.2.0")
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
