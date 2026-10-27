@@ -1,3 +1,13 @@
+## 2026-10-27 — WebRTC Android 15 JNI call-crash repair (passed Testlab, main promotion pending)
+
+- **Observed failure:** Redmi/Android 15 SIGABRT during `libjingle_peerconnection_so.so` `JNI_OnLoad` inside `PeerConnectionFactory.initialize`; this is a native Java-class lookup failure and cannot be recovered by catching Kotlin exceptions.
+- **Android:** Preserve existing `org.webrtc.**` JNI keep rules, upgrade the pinned native/Java WebRTC AAR together from 150.7871.01 to 150.7871.04, only mark factory initialization successful after it returns, and log/handle recoverable Java/native linkage errors without hiding fatal JNI failures.
+- **Release verification:** Added `rtcSmoke` with R8/resource shrinking and the production keep file, an Android 15 instrumented JNI load/factory-creation test, and APK native-binary checks for both arm64-v8a and x86_64. Debug-only tests do not validate this crash.
+- **PARITY-EXCEPTION: android-webrtc-jni-arm64** — Android-only JNI class loading, ProGuard/R8 rules and APK native packaging have no equivalent in the Windows executable. Windows retains its existing native call-engine initialization and shared BLINK signaling contract.
+- **Android audio-route correction:** Core-Telecom exclusively handles speaker/earpiece/Bluetooth endpoint changes on Android 8+, while the legacy WebRTC route is used only below API 26. This avoids competing `setCommunicationDevice` calls and avoids claiming a route switch succeeded when the actual device did not switch. The Telecom endpoint callback remains the source of truth for the visible speaker icon.
+- **Windows parity:** WebRTC native Android initialization and APK shrinking are Android-specific; no shared calling model, Supabase signaling, credentials, message contracts, or Windows calling behavior is changed. Desktop's closest equivalent is retaining its existing native calling path; this is a platform-specific exception, not a missing user feature.
+- **Hold:** Testlab checks passed for Android unit/build, Windows/parity, security and Android 15 minified JNI initialization/factory creation. Main promotion must preserve concurrent changes, pass combined main-target checks, and verify the signed APK. Live incoming/outgoing voice/video calls on the Redmi ARM64 handset remain to be confirmed.
+
 ## 2026-10-27 — Notification push trust and preference safety (Testlab candidate, not deployed)
 
 - **Shared backend only:** Protects Android and Windows notifications equally; neither client changes its UI, API or notification event format.
