@@ -23,9 +23,14 @@ import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.ProgressHolder
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
@@ -122,7 +127,8 @@ internal suspend fun exportEditedReel(
     context: Context,
     sourceUri: String,
     durationMs: Long,
-    spec: ReelEditSpec
+    spec: ReelEditSpec,
+    onProgress: (Int) -> Unit = {}
 ): String = withContext(Dispatchers.Main.immediate) {
     val edit = spec.validate(durationMs)
     val directory = File(context.filesDir, "reel_edits").apply { mkdirs() }
@@ -202,8 +208,11 @@ internal suspend fun exportEditedReel(
 
     try {
         suspendCancellableCoroutine<String> { continuation ->
+            var progressJob: Job? = null
             val listener = object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                    progressJob?.cancel()
+                    onProgress(100)
                     if (!continuation.isActive) return
                     if (!out.isFile || out.length() == 0L) {
                         continuation.resumeWithException(IllegalStateException("Reel export produced no video."))
@@ -222,6 +231,7 @@ internal suspend fun exportEditedReel(
                     exportResult: ExportResult,
                     exportException: ExportException
                 ) {
+                    progressJob?.cancel()
                     out.delete()
                     if (continuation.isActive) continuation.resumeWithException(exportException)
                 }
@@ -230,6 +240,7 @@ internal suspend fun exportEditedReel(
                 .addListener(listener)
                 .build()
             continuation.invokeOnCancellation {
+                progressJob?.cancel()
                 // Transformer requires its original looper for cancellation.
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     transformer.cancel()
@@ -239,7 +250,17 @@ internal suspend fun exportEditedReel(
             runCatching {
                 if (composition != null) transformer.start(composition, out.absolutePath)
                 else transformer.start(videoItem, out.absolutePath)
+                progressJob = CoroutineScope(Dispatchers.Main.immediate).launch {
+                    val holder = ProgressHolder()
+                    while (continuation.isActive) {
+                        if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) {
+                            onProgress(holder.progress.coerceIn(0, 99))
+                        }
+                        delay(250)
+                    }
+                }
             }.onFailure {
+                progressJob?.cancel()
                 out.delete()
                 if (continuation.isActive) continuation.resumeWithException(it)
             }
