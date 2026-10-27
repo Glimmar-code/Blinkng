@@ -20,6 +20,7 @@ declare
   v_owner_bonus text := 'case when private.is_blink_owner_id(c.creator_id) then 1000000000::numeric else 0::numeric end';
   v_privacy_anchor text := 'where fp.is_active=true';
   v_reel_factor text := '(case when c.is_reel and c.reel_watch_samples >= 12 then least(1.15::numeric,greatest(0.90::numeric,0.90::numeric + 0.25::numeric * c.completion_rate)) else 1::numeric end)';
+  v_expired_creator text := 'vm.tier = case upper(coalesce(pr.verification_badge,''NONE''))';
 begin
   if v_discovery is null or position(v_owner_bonus in v_discovery)=0
      or position(v_privacy_anchor in v_discovery)=0 then
@@ -56,6 +57,11 @@ begin
     '* '||v_reel_factor||' * c.verification_multiplier * c.cold_start_multiplier');
   v_discovery := replace(v_discovery,'''reel_completion_boost'',1,',
     '''reel_completion_boost'','||v_reel_factor||',');
+  if position(v_expired_creator in v_discovery)=0 then
+    raise exception 'EXPIRED_VERIFICATION_RANK_SOURCE_DRIFT';
+  end if;
+  v_discovery := replace(v_discovery,v_expired_creator,
+    'vm.tier = case (case when pr.verification_expires_at > p_as_of or (pr.verification_expires_at is null and upper(coalesce(pr.verification_badge,''NONE''))=''GOLD'') then upper(coalesce(pr.verification_badge,''NONE'')) else ''NONE'' end)');
   execute v_discovery;
 
   if v_feed is null or position('private.is_blink_owner_id(fp.user_id)' in v_feed)=0 then
@@ -125,6 +131,38 @@ begin
     end if;
     v_content_type := case when v_is_reel then 'reel' else 'post' end;
 $visibility$);
+  -- Verification weights are entitlements, not permanent account labels.
+  -- Expired Blue/Gold subscriptions must fall back to the ordinary +1 view.
+  if position($verification_gold$when upper(coalesce(p.verification_badge::text, '')) = 'GOLD'
+          or upper(coalesce(p.verification_tier::text, '')) = 'GOLD' then 6$verification_gold$ in v_source)=0
+    or position($verification_blue$when upper(coalesce(p.verification_badge::text, '')) = 'BLUE'
+          or upper(coalesce(p.verification_tier::text, '')) = 'STANDARD'
+          or coalesce(p.is_verified, false) then 3$verification_blue$ in v_source)=0 then
+    raise exception 'EXPIRED_VERIFICATION_VIEW_WEIGHT_SOURCE_DRIFT';
+  end if;
+  v_source := replace(v_source,$verification_gold$when upper(coalesce(p.verification_badge::text, '')) = 'GOLD'
+          or upper(coalesce(p.verification_tier::text, '')) = 'GOLD' then 6$verification_gold$,
+    $verified_gold$when (upper(coalesce(p.verification_badge::text, '')) = 'GOLD'
+          or upper(coalesce(p.verification_tier::text, '')) = 'GOLD')
+          and (p.verification_expires_at > now()
+            or (p.verification_expires_at is null
+              and upper(coalesce(p.verification_badge::text, '')) = 'GOLD')) then 6$verified_gold$);
+  v_source := replace(v_source,$verification_blue$when upper(coalesce(p.verification_badge::text, '')) = 'BLUE'
+          or upper(coalesce(p.verification_tier::text, '')) = 'STANDARD'
+          or coalesce(p.is_verified, false) then 3$verification_blue$,
+    $verified_blue$when (upper(coalesce(p.verification_badge::text, '')) = 'BLUE'
+          or upper(coalesce(p.verification_tier::text, '')) = 'STANDARD'
+          or coalesce(p.is_verified, false))
+          and p.verification_expires_at > now() then 3$verified_blue$);
+  if position('and (pv.weighted_view_count + v_view_weight) <= v_max_contribution' in v_source)=0 then
+    raise exception 'CONTENT_VIEW_ATOMIC_COOLDOWN_SOURCE_DRIFT';
+  end if;
+  -- Enforce the 60-second guard under the unique (post_id,viewer_id) upsert
+  -- itself, preventing concurrent requests from passing a stale earlier read.
+  v_source := replace(v_source,
+    'and (pv.weighted_view_count + v_view_weight) <= v_max_contribution',
+    'and (pv.weighted_view_count + v_view_weight) <= v_max_contribution' ||
+      E'\\n       and (pv.last_viewed_at is null or pv.last_viewed_at <= now() - interval ''60 seconds'')');
   if position('ALGORITHM_VIEW_REPLAY_COOLDOWN' in v_source)=0 then
     v_source := replace(v_source,v_anchor,v_anchor || $block$
 
