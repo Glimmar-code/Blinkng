@@ -120,7 +120,7 @@ internal fun BlinkReferenceSearchScreen(
     var showFilters by rememberSaveable { mutableStateOf(false) }
     var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
     var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
-    var searchedPeople by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var searchedPeople by remember(accountKey, query) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var referralCount by remember(accountKey) { mutableStateOf<Long?>(null) }
     // A backend that still serves only seven-day tags must be labelled truthfully.
     // Ranked people are only shown when the authenticated 30-day RPC exists.
@@ -504,7 +504,7 @@ internal fun BlinkReferenceSearchScreen(
 
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.PEOPLE) {
                 ReferenceTitle("People", fg, muted) { select(ReferenceCategory.PEOPLE) }
-                if (searchedPeople.isNotEmpty()) searchedPeople.take(limit).forEach { person ->
+                if (searchedPeople.isNotEmpty() && (category == ReferenceCategory.ALL || livePeople.isEmpty())) searchedPeople.take(limit).forEach { person ->
                     ReferencePersonRow(
                         title = person.fullName.ifBlank { person.username },
                         subtitle = listOfNotNull(person.university,
@@ -593,8 +593,8 @@ internal fun BlinkReferenceSearchScreen(
                 // unrelated local fallback lists must not fabricate more results.
                 val visibleSourceSize = when (category) {
                     ReferenceCategory.PEOPLE -> when {
-                        searchedPeople.isNotEmpty() -> searchedPeople.size
                         livePeople.isNotEmpty() -> livePeople.size
+                        searchedPeople.isNotEmpty() -> searchedPeople.size
                         else -> localPeople.size
                     }
                     ReferenceCategory.POSTS ->
@@ -603,7 +603,7 @@ internal fun BlinkReferenceSearchScreen(
                 }
                 val cursorHasMore = discovery.backendAvailable &&
                     discovery.query == query && discovery.hasMore &&
-                    (category != ReferenceCategory.PEOPLE || searchedPeople.isEmpty())
+                    (category != ReferenceCategory.PEOPLE || livePeople.isNotEmpty() || searchedPeople.isEmpty())
                 val moreResultsAvailable =
                     visibleSourceSize > visibleResultLimit || cursorHasMore
                 if (discovery.isLoadingMore) {
