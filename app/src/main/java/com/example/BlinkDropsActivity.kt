@@ -27,7 +27,12 @@ class BlinkDropsActivity : ComponentActivity() {
                         onClose = { finish() },
                         initialDropId = dropId,
                         onGetCoins = {
-                            startActivity(android.content.Intent(this@BlinkDropsActivity, BlinkStoreActivity::class.java))
+                            startActivity(
+                                android.content.Intent(this@BlinkDropsActivity, MainActivity::class.java)
+                                    .putExtra("open_blink_coin_packs", true)
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            )
                         },
                     )
                 }
