@@ -104,6 +104,7 @@ internal fun PremiumReelEditor(
     var originalAudioVolume by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("originalVolume", 1.0).toFloat()) }
     var musicVolume by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("musicVolume", 1.0).toFloat()) }
     var isExporting by remember(uri) { mutableStateOf(false) }
+    var exportPercent by remember(uri) { mutableIntStateOf(0) }
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
     var showAdvanced by remember(uri) { mutableStateOf(false) }
@@ -452,19 +453,26 @@ internal fun PremiumReelEditor(
                     Text(it, color = Color(0xFFFF8A80), fontSize = 11.sp)
                 }
                 if (isExporting) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Text("Rendering video. Keep this screen open until it finishes.", color = white, fontSize = 12.sp)
+                    LinearProgressIndicator(
+                        progress = { exportPercent.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Rendering ${exportPercent.coerceIn(0, 100)}% · Keep this screen open.",
+                        color = white, fontSize = 12.sp)
                 } else {
                     Button(
                         enabled = hasPendingEdits,
                         onClick = {
                             exportError = null
+                            exportPercent = 0
                             isExporting = true
                             onExporting(true)
                             player.pause()
                             scope.launch {
                                 try {
-                                    val result = exportEditedReel(context, uri, durationMs, spec)
+                                    val result = exportEditedReel(context, uri, durationMs, spec) {
+                                        exportPercent = it
+                                    }
                                     PersistentTextDraftStore.clearValue(context, editKey, draftScope)
                                     onEdited(result)
                                     Toast.makeText(context, "Reel edits applied to the video.", Toast.LENGTH_SHORT).show()
