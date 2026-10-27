@@ -268,7 +268,7 @@ fun DesktopUserProfileDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                ProfileStat("Posts", content.count { !it.isReel }.toString())
+                                ProfileStat("Loaded posts", content.count { !it.isReel }.toString())
                                 ProfileStat(
                                     "Followers",
                                     profile.followerCount.toString(),
