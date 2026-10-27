@@ -33,6 +33,7 @@ class FeedReferenceThemeTest {
     @Test fun darkThemeFeedTabsRemainSelectableAndActionsWork() = verifyTabs(dark = true)
 
     private fun verifyTabs(dark: Boolean) {
+        var filterClicks = 0
         composeRule.setContent {
             var selected by remember { mutableIntStateOf(0) }
             BlinkTheme(darkTheme = dark) {
@@ -40,7 +41,7 @@ class FeedReferenceThemeTest {
                     selectedIndex = selected,
                     onForYouClick = { selected = 0 },
                     onFollowingClick = { selected = 1 },
-                    onFilterClick = {},
+                    onFilterClick = { filterClicks++ },
                     onRefreshClick = {},
                     modifier = Modifier.width(360.dp)
                 )
@@ -53,10 +54,12 @@ class FeedReferenceThemeTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("feed_tab_following").assertIsSelected()
         composeRule.onNodeWithTag("feed_tab_for_you").assertIsNotSelected()
-        // Refresh and filters are deliberately not visible in the supplied
-        // reference. Pull-to-refresh remains available on the actual Home feed.
+        // The filter control is now intentionally visible and usable on both themes.
+        // Refresh stays gesture-based, avoiding a crowded toolbar.
         composeRule.onNodeWithTag("feed_refresh_action").assertDoesNotExist()
-        composeRule.onNodeWithTag("feed_filter_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("feed_filter_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_filter_action").performClick()
+        composeRule.runOnIdle { assertEquals(1, filterClicks) }
     }
 
     @Test fun realRankAndCoinsCardsUseAccountValuesAndOpenActions() {

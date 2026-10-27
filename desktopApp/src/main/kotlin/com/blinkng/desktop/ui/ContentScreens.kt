@@ -165,6 +165,17 @@ fun HomeScreen(
     var loadingMorePosts by remember { mutableStateOf(false) }
     var hasMorePosts by remember { mutableStateOf(true) }
     var consumedPostRows by remember { mutableStateOf(0) }
+    var feedFilter by remember { mutableStateOf("All") }
+    val visiblePosts = remember(posts, feedFilter) {
+        posts.filter { post ->
+            when (feedFilter) {
+                "Photos" -> post.images.any { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ||
+                    !post.imageUrl.isNullOrBlank()
+                "Polls" -> post.hasPoll
+                else -> true
+            }
+        }
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
     var postDetailsId by remember { mutableStateOf<String?>(null) }
@@ -631,10 +642,37 @@ fun HomeScreen(
                 }
             }
         }
+        item(key = "home_feed_filter") {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("All", "Photos", "Polls").forEach { option ->
+                    FilterChip(
+                        selected = feedFilter == option,
+                        onClick = { feedFilter = option },
+                        label = { Text(if (option == "All") "All posts" else option) }
+                    )
+                }
+            }
+        }
         error?.let { item { InlineError(it) } }
         if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
-        items(posts, key = { it.id }) { post ->
+        if (!loading && posts.isNotEmpty() && visiblePosts.isEmpty()) {
+            item(key = "home_filtered_empty") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("No $feedFilter posts in the current page", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { feedFilter = "All" }) { Text("Show all") }
+                        if (hasMorePosts && !loadingMorePosts) {
+                            TextButton(onClick = { scope.launch { loadMorePosts() } }) { Text("Load more matching posts") }
+                        }
+                    }
+                }
+            }
+        }
+        items(visiblePosts, key = { it.id }) { post ->
             DesktopFeedPostCard(
                 post = post,
                 onLike = {
@@ -741,6 +779,15 @@ fun HomeScreen(
                 TextButton(onClick = { scope.launch { loadMorePosts() } }) {
                     Text("Load more posts")
                 }
+            }
+        } else if (!hasMorePosts && posts.isNotEmpty()) {
+            item(key = "home_feed_end") {
+                Text(
+                    "You're all caught up",
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
