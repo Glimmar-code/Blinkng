@@ -4942,7 +4942,8 @@ suspend fun uploadPostMedia(
     data class NotificationHistoryPage(
         val items: List<ActivityItem>,
         val activityCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?,
-        val notificationCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?
+        val notificationCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?,
+        val warning: String? = null
     ) {
         val hasMore: Boolean get() = activityCursor != null || notificationCursor != null
     }
@@ -4970,6 +4971,7 @@ suspend fun uploadPostMedia(
                 item.rawTimestamp.trim().take(19)
             ).joinToString("|")
 
+            var optionalSourceUnavailable = false
             suspend fun fetchArray(path: String, label: String, required: Boolean): JSONArray {
                 return try {
                     val request = newRequestBuilder(path, authenticated = true).get().build()
@@ -4982,6 +4984,7 @@ suspend fun uploadPostMedia(
                     }
                 } catch (error: Exception) {
                     if (required) throw error
+                    optionalSourceUnavailable = true
                     Log.w(TAG, "$label fetch unavailable; continuing with remaining notification sources.", error)
                     JSONArray()
                 }
@@ -5031,7 +5034,8 @@ suspend fun uploadPostMedia(
                                 .takeIf { o.optString("entity_type").equals("market", true) },
                             targetType = o.optString("entity_type").takeIf { it.isNotBlank() },
                             targetEntityId = o.optString("entity_id").takeIf { it.isNotBlank() },
-                            targetResourceId = o.optString("entity_id").takeIf { it.isNotBlank() }
+                            targetResourceId = o.optString("entity_id").takeIf { it.isNotBlank() },
+                            eventType = type
                         )
                     )
                 }
@@ -5077,12 +5081,15 @@ suspend fun uploadPostMedia(
                             },
                             targetType = when {
                                 isMessage -> "CHAT"
-                                type.equals("follow", true) -> "PROFILE"
                                 !optionalTargetType.isNullOrBlank() -> optionalTargetType
+                                postId != null -> "POST"
+                                type.equals("follow", true) -> "PROFILE"
+                                !type.equals("system", true) -> "PROFILE"
                                 else -> "NOTIFICATION"
                             },
                             targetEntityId = id,
                             targetResourceId = optionalTargetId,
+                            eventType = type,
                             previewText = o.optString("sub_text").takeIf { it.isNotBlank() },
                             actorIsVip = o.optBoolean("actor_is_vip", false),
                             vipPriority = o.optBoolean("vip_priority", false)
@@ -5100,12 +5107,11 @@ suspend fun uploadPostMedia(
                     .isOfficialMirror(legacy.targetType, legacy.targetEntityId, canonicalIds)
                 // Never infer an event type from its display text or hide unrelated history.
                 val socialMirror = notificationItems.any { canonical ->
-                    canonical.user.isNotBlank() && canonical.user == legacy.user &&
-                        canonical.category != NotificationFilter.ALL &&
-                        canonical.category == legacy.category &&
-                        canonical.rawTimestamp.take(19) == legacy.rawTimestamp.take(19) &&
-                        canonical.targetPostId != null &&
-                        canonical.targetPostId == legacy.targetPostId
+                    com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isSameSocialEvent(
+                        legacy.user, canonical.user, legacy.eventType, canonical.eventType,
+                        legacy.rawTimestamp, canonical.rawTimestamp,
+                        legacy.targetPostId, canonical.targetPostId, canonical.targetType
+                    )
                 }
                 officialMirror || socialMirror
             }
@@ -5128,7 +5134,10 @@ suspend fun uploadPostMedia(
                 NotificationHistoryPage(
                     items = merged,
                     activityCursor = nextCursor(activityArray),
-                    notificationCursor = nextCursor(notificationArray)
+                    notificationCursor = nextCursor(notificationArray),
+                    warning = if (optionalSourceUnavailable) {
+                        "Some notifications couldn't be loaded. Tap Refresh to retry."
+                    } else null
                 )
             )
         } catch (e: Exception) {
