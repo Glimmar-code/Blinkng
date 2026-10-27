@@ -51,6 +51,7 @@ object NotificationPreferenceStore {
             "${PREFS}_${uid.ifBlank { "signed_out" }}", Context.MODE_PRIVATE
         )
     }
+    private const val PENDING_SYNC = "pending_sync"
     private const val MASTER = "master"
     private const val QUIET_ENABLED = "quiet_enabled"
     private const val QUIET_START = "quiet_start_minute"
@@ -84,13 +85,13 @@ object NotificationPreferenceStore {
 
     fun setMasterEnabled(context: Context, enabled: Boolean) {
         accountPrefs(context)
-            .edit().putBoolean(MASTER, enabled).apply()
+            .edit().putBoolean(MASTER, enabled).putBoolean(PENDING_SYNC, true).apply()
         syncToServerAsync(context)
     }
 
     fun setCategoryEnabled(context: Context, type: BlinkNotificationType, enabled: Boolean) {
         accountPrefs(context)
-            .edit().putBoolean(type.preferenceKey, enabled).apply()
+            .edit().putBoolean(type.preferenceKey, enabled).putBoolean(PENDING_SYNC, true).apply()
         syncToServerAsync(context)
     }
 
@@ -115,6 +116,7 @@ object NotificationPreferenceStore {
             .putInt(QUIET_START, startMinute.coerceIn(0, 1439))
             .putInt(QUIET_END, endMinute.coerceIn(0, 1439))
             .putString(TIMEZONE, timezone)
+            .putBoolean(PENDING_SYNC, true)
             .apply()
         syncToServerAsync(context)
     }
@@ -151,6 +153,11 @@ object NotificationPreferenceStore {
     fun refreshFromServerAsync(context: Context) {
         val uid = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
         if (uid.isBlank()) return
+        // Never replace offline local choices with a stale server snapshot.
+        if (accountPrefs(context, uid).safeBoolean(PENDING_SYNC, false)) {
+            syncToServerAsync(context)
+            return
+        }
         CoroutineScope(Dispatchers.IO).launch { refreshFromServer(context.applicationContext, uid) }
     }
 
@@ -170,7 +177,7 @@ object NotificationPreferenceStore {
             if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
             val uid = service.getCurrentUserId() ?: return
-            if (uid != expectedUid) return
+            if (uid != expectedUid || accountPrefs(context, uid).safeBoolean(PENDING_SYNC, false)) return
             val request = Request.Builder()
                 .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notification_preferences?select=*&user_id=eq.$uid&limit=1")
                 .addHeader("apikey", SupabaseConfig.anonKey)
@@ -183,7 +190,8 @@ object NotificationPreferenceStore {
                 if (rows.length() == 0) return@use
                 val row = rows.getJSONObject(0)
                 // A delayed response from another account must never alter this account.
-                if (SupabaseService().getCurrentUserId() != expectedUid) return@use
+                if (SupabaseService().getCurrentUserId() != expectedUid ||
+                    accountPrefs(context, expectedUid).safeBoolean(PENDING_SYNC, false)) return@use
                 val editor = accountPrefs(context, expectedUid).edit()
                 editor.putBoolean(MASTER, row.optBoolean("master_enabled", true))
                 mapOf(
@@ -262,6 +270,7 @@ object NotificationPreferenceStore {
                 }
             }
             if (SupabaseService().getCurrentUserId() == expectedUid) {
+                accountPrefs(context, expectedUid).edit().putBoolean(PENDING_SYNC, false).apply()
                 updateSyncStatus(expectedUid, SyncStatus.SYNCED)
             }
         }.onFailure {
