@@ -344,12 +344,14 @@ private fun BoostCampaignColumn(
     var durationDays by remember { mutableIntStateOf(draft.durationDays) }
     var selectedUniversity by remember { mutableStateOf(draft.selectedUniversity) }
     var universityMenuOpen by remember { mutableStateOf(false) }
+    var universityQuery by remember { mutableStateOf("") }
     var lastTargetType by remember { mutableStateOf(targetType) }
 
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
     var quoteError by remember { mutableStateOf<String?>(null) }
+    var quoteRetryNonce by remember { mutableIntStateOf(0) }
     var stateLoading by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
     var budgetWorking by remember { mutableStateOf(false) }
@@ -419,7 +421,7 @@ private fun BoostCampaignColumn(
     val targetReady = targetId.isNotBlank() &&
         (audience != BlinkBoostAudienceScope.SELECTED_UNIVERSITY || selectedUniversity.isNotBlank())
 
-    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity, isOnline) {
+    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity, isOnline, quoteRetryNonce) {
         quote = null
         quoteError = null
         quoteLoading = false
@@ -505,10 +507,6 @@ private fun BoostCampaignColumn(
 
         if (stateLoading) {
             item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-        }
-
-        analytics?.let { value ->
-            item { BoostAnalyticsCard(value, formatter) }
         }
 
         if (!isOnline) {
@@ -687,14 +685,24 @@ private fun BoostCampaignColumn(
                                 }
                                 if (audience == BlinkBoostAudienceScope.SELECTED_UNIVERSITY) {
                                     Box {
-                                        OutlinedButton(onClick = { universityMenuOpen = true },
+                                        OutlinedButton(onClick = { universityQuery = ""; universityMenuOpen = true },
                                             modifier = Modifier.fillMaxWidth()) {
                                             Text(selectedUniversity.ifBlank { "Choose university" },
                                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                         DropdownMenu(expanded = universityMenuOpen,
                                             onDismissRequest = { universityMenuOpen = false }) {
-                                            kNigerianUniversitiesList.forEach { university ->
+                                            OutlinedTextField(
+                                                value = universityQuery,
+                                                onValueChange = { universityQuery = it.take(70) },
+                                                label = { Text("Search university") },
+                                                singleLine = true,
+                                                modifier = Modifier.width(300.dp),
+                                            )
+                                            kNigerianUniversitiesList
+                                                .filter { it.contains(universityQuery.trim(), ignoreCase = true) }
+                                                .take(40)
+                                                .forEach { university ->
                                                 DropdownMenuItem(text = { Text(university) }, onClick = {
                                                     selectedUniversity = university
                                                     universityMenuOpen = false
@@ -762,7 +770,7 @@ private fun BoostCampaignColumn(
                                     balance = balance, formatter = formatter)
                                 quoteError?.let { problem ->
                                     Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                                    OutlinedButton(onClick = { refreshNonce++ }, enabled = isOnline && !quoteLoading) {
+                                    OutlinedButton(onClick = { quoteRetryNonce++ }, enabled = isOnline && !quoteLoading) {
                                         Text("Retry estimate")
                                     }
                                 }
@@ -832,6 +840,10 @@ private fun BoostCampaignColumn(
                     }
                 }
             }
+        }
+
+        analytics?.let { value ->
+            item { BoostAnalyticsCard(value, formatter) }
         }
 
         if (activeCampaigns.isNotEmpty()) {
