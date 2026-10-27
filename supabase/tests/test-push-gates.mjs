@@ -44,7 +44,8 @@ for (const file of backendFiles) {
     `Push preferences can be bypassed in ${file}`);
   assert.ok(source.includes('error: "notification_preferences_unavailable"'),
     `Unknown preferences are not retried in ${file}`);
-  assert.ok(source.includes('"dispatch_ledger_unavailable"'),
+  assert.ok(source.includes('"dispatch_ledger_unavailable"') ||
+      source.includes('"call_dispatch_ledger_unavailable"'),
     `Failed dispatch ledger must not send untracked push in ${file}`);
 }
 const directMessage = readFileSync(
