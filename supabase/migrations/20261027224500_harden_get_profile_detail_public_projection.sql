@@ -70,7 +70,8 @@ begin
       'twitter', v_profile.twitter,
       'instagram', v_profile.instagram,
       'featured_link', v_profile.featured_link,
-      'featured_link_label', v_profile.featured_link_label,
+      'featured_link_label', v_profile.featured_link_label
+    ) || jsonb_build_object(
       'verification_badge', v_profile.verification_badge,
       'verification_tier', v_profile.verification_tier,
       'is_verified', v_profile.is_verified,
