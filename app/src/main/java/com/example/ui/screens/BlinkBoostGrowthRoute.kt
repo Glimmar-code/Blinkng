@@ -131,7 +131,42 @@ private data class BoostDraftSnapshot(
 )
 
 private object BoostDraftStore {
-    var value = BoostDraftSnapshot()
+    private fun prefs(context: android.content.Context, userId: String): android.content.SharedPreferences? =
+        userId.takeIf(String::isNotBlank)?.let {
+            context.getSharedPreferences("blink_boost_draft_" + it, android.content.Context.MODE_PRIVATE)
+        }
+
+    fun load(context: android.content.Context, userId: String): BoostDraftSnapshot {
+        val raw = prefs(context, userId)?.getString("draft", null) ?: return BoostDraftSnapshot()
+        return runCatching {
+            val json = JSONObject(raw)
+            BoostDraftSnapshot(
+                targetType = BlinkBoostTargetType.valueOf(json.optString("targetType", "POST")),
+                targetId = json.optString("targetId"),
+                boostPower = json.optInt("boostPower", 25).coerceIn(1, 100),
+                objective = BlinkBoostObjective.valueOf(json.optString("objective", "VIEWS")),
+                audience = BlinkBoostAudienceScope.valueOf(json.optString("audience", "MY_UNIVERSITY")),
+                durationDays = json.optInt("durationDays", 3),
+                selectedUniversity = json.optString("selectedUniversity"),
+            )
+        }.getOrDefault(BoostDraftSnapshot())
+    }
+
+    fun save(context: android.content.Context, userId: String, draft: BoostDraftSnapshot) {
+        val json = JSONObject()
+            .put("targetType", draft.targetType.name)
+            .put("targetId", draft.targetId)
+            .put("boostPower", draft.boostPower)
+            .put("objective", draft.objective.name)
+            .put("audience", draft.audience.name)
+            .put("durationDays", draft.durationDays)
+            .put("selectedUniversity", draft.selectedUniversity)
+        prefs(context, userId)?.edit()?.putString("draft", json.toString())?.apply()
+    }
+
+    fun clear(context: android.content.Context, userId: String) {
+        prefs(context, userId)?.edit()?.remove("draft")?.apply()
+    }
 }
 
 private data class MissionItem(
@@ -299,7 +334,7 @@ private fun BoostCampaignColumn(
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
     val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
-    val draft = remember { BoostDraftStore.value }
+    val draft = remember(context, myProfile.id) { BoostDraftStore.load(context, myProfile.id) }
 
     val me = myProfile.username.trim().removePrefix("@")
     var ownedContent by remember { mutableStateOf<JSONObject?>(null) }
@@ -403,7 +438,7 @@ private fun BoostCampaignColumn(
     }
 
     LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
-        BoostDraftStore.value = BoostDraftSnapshot(
+        BoostDraftStore.save(context, myProfile.id, BoostDraftSnapshot(
             targetType = targetType,
             targetId = targetId,
             boostPower = boostPower,
@@ -411,7 +446,7 @@ private fun BoostCampaignColumn(
             audience = audience,
             durationDays = durationDays,
             selectedUniversity = selectedUniversity,
-        )
+        ))
     }
 
     val targetUniversity = when (audience) {
@@ -1003,6 +1038,7 @@ private fun BoostCampaignColumn(
                                 confirmStart = false
                                 pendingRequestId = null
                                 pendingRequestFingerprint = null
+                                BoostDraftStore.clear(context, myProfile.id)
                                 val charged = it.optLong("charged", quoteCost)
                                 it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                                 message = "Boost started. " + formatter.format(charged) + " coins were reserved for campaign delivery."
