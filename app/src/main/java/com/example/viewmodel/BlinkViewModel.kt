@@ -3772,21 +3772,19 @@ private suspend fun restoreSupabaseSession() {
         persistCurrentFeed()
     }
 
-    // Each account sees only its own phone drafts. The legacy global preference had
-    // no owner marker, so it must never be adopted by another signed-in account.
-    private fun draftStorageKey(): String? =
-        _uiState.value.myProfile.id.trim()
-            .takeIf { it.isNotBlank() }
-            ?.let { "blink_saved_drafts_data_${it}" }
+    // Each account sees only its own encrypted phone drafts. The legacy global
+    // preference had no owner marker, so it must not be adopted across accounts.
+    private fun draftOwnerScope(): String? =
+        _uiState.value.myProfile.id.trim().takeIf { it.isNotBlank() }
 
     private fun loadDraftsFromPrefs() {
-        val key = draftStorageKey()
-        if (key == null) {
+        val owner = draftOwnerScope()
+        if (owner == null) {
             _uiState.value = _uiState.value.copy(savedDrafts = emptyList())
             return
         }
         try {
-            val raw = prefs.safeString(key, null).orEmpty()
+            val raw = PersistentTextDraftStore.readValue(appContext, "saved_drafts_v2", owner).orEmpty()
             val drafts = if (raw.isBlank()) emptyList() else {
                 val array = JSONArray(raw)
                 buildList {
@@ -3864,12 +3862,13 @@ private suspend fun restoreSupabaseSession() {
     }
 
     private fun saveDraftsToPrefs(drafts: List<PostDraft>): Boolean {
-        val key = draftStorageKey() ?: return false
+        val owner = draftOwnerScope() ?: return false
         return try {
             val serialized = JSONArray().apply {
                 drafts.forEach { put(postDraftToJson(it)) }
             }.toString()
-            prefs.edit().putString(key, serialized).commit()
+            PersistentTextDraftStore.writeValue(appContext, "saved_drafts_v2", owner, serialized)
+            PersistentTextDraftStore.readValue(appContext, "saved_drafts_v2", owner) == serialized
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save account-specific drafts", e)
             false
