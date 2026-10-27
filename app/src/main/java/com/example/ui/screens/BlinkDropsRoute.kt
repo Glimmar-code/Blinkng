@@ -226,6 +226,7 @@ fun BlinkDropsRoute(
     var pendingCreateFingerprint by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
+    var showAllReceipts by remember { mutableStateOf(false) }
 
     fun refresh() {
         refreshNonce += 1
@@ -518,7 +519,16 @@ fun BlinkDropsRoute(
                             "Every Drop reserve, reward and refund stays auditable in your Blink Coin ledger."
                         )
                     }
-                    items(receipts.take(12), key = { "drop-receipt-" + it.optString("id") }) { receipt ->
+                    if (receipts.size > 4) {
+                        item {
+                            TextButton(onClick = { showAllReceipts = !showAllReceipts }) {
+                                Text(if (showAllReceipts) "Show fewer receipts"
+                                    else "View all ${receipts.size} recent receipts")
+                            }
+                        }
+                    }
+                    items(if (showAllReceipts) receipts else receipts.take(4),
+                        key = { "drop-receipt-" + it.optString("id") }) { receipt ->
                         DropReceiptCard(receipt, formatter)
                     }
                 }
