@@ -2042,6 +2042,14 @@ private fun AboutSection(
             }
         }
 
+        if (isMe && profile.relationshipStatus.isNotBlank() &&
+            !profile.relationshipStatus.equals("Private", ignoreCase = true)) {
+            InfoCard(title = "Personal", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                ProfileInfoRow(Icons.Default.FavoriteBorder, "Relationship status",
+                    profile.relationshipStatus, textPrimary, textSecondary)
+            }
+        }
+
         if (showEmail || showPhone || showWhatsapp || (isMe && profile.currentCityState.isNotBlank())) {
             InfoCard(title = "Contact", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
                 if (showEmail) {
@@ -2168,7 +2176,7 @@ private fun LazyListScope.profileMarketItems(
         item(key = "market_empty", contentType = "profile_empty") {
             EmptyProfileState(
                 title = "No market listings 🛒",
-                subtitle = "Items listed by this student will appear here.",
+                subtitle = "Listings from this account will appear here.",
                 textPrimary = textPrimary,
                 textSecondary = textSecondary
             )
@@ -2214,7 +2222,7 @@ private fun CircleToolbarButton(
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .size(40.dp)
+            .size(48.dp)
             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
             .testTag(testTag)
     ) {
@@ -2248,6 +2256,7 @@ private fun SmallActionButton(
         shape = RoundedCornerShape(100.dp),
         color = animatedBackground,
         modifier = modifier
+            .heightIn(min = 48.dp)
             .clickable { onClick() }
             .testTag(testTag)
     ) {
@@ -2301,6 +2310,7 @@ private fun OutlinePill(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
+            .heightIn(min = 48.dp)
             .scale(scale)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
