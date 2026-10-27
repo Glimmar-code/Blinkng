@@ -27,3 +27,28 @@ assert.equal(await verifiedNotificationActor("Token no", async () => ({
   data: { user: { id } }, error: null,
 })), null, "bearer token is required");
 console.log("Notification actor JWT validation: 5 cases passed.");
+
+import { readFileSync } from "node:fs";
+const backendFiles = [
+  "../functions/send-activity-notification/index.ts",
+  "../functions/send-push-notification/index.ts",
+  "../functions/send-call-notification/index.ts",
+];
+for (const file of backendFiles) {
+  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  assert.ok(source.includes("verifiedNotificationActor("),
+    `Missing verified sender authorization in ${file}`);
+  assert.ok(!source.includes("jwtSubject("),
+    `Decode-only JWT subject remains in ${file}`);
+  assert.ok(source.includes("pushPreferenceDecision(allowed, allowedError)"),
+    `Push preferences can be bypassed in ${file}`);
+  assert.ok(source.includes('error: "notification_preferences_unavailable"'),
+    `Unknown preferences are not retried in ${file}`);
+  assert.ok(source.includes('"dispatch_ledger_unavailable"'),
+    `Failed dispatch ledger must not send untracked push in ${file}`);
+}
+const directMessage = readFileSync(
+  new URL("../functions/send-push-notification/index.ts", import.meta.url), "utf8");
+assert.ok(directMessage.includes('"conversation_preferences_unavailable"'),
+  "Message push must not bypass unavailable mute settings");
+console.log("PASS message, call and activity push sender/consent/dedup regression checks");
