@@ -87,11 +87,22 @@ internal fun ReelsReferenceChrome(
     onCreateReel: () -> Unit = {},
     isRefreshing: Boolean = false,
     autoSlideEnabled: Boolean = true,
+    featuredCardHeight: androidx.compose.ui.unit.Dp = 144.dp,
     modifier: Modifier = Modifier
 ) {
     val foreground = if (isDark) Color.White else Color(0xFF101014)
     val background = if (isDark) Color(0xFF121214) else Color.White
     val featured = remember(featuredReels) { featuredReels.take(5) }
+    val validStories = remember(stories) {
+        stories.filter { it.id != "story_me" && it.storyImage.isNotBlank() }
+            .distinctBy { it.id }
+    }
+    val ownStory = validStories.firstOrNull {
+        it.isUser || it.username.removePrefix("@").equals(
+            currentUsername.removePrefix("@"), ignoreCase = true
+        )
+    }
+    val otherStories = validStories.filterNot { it.id == ownStory?.id }
     val featuredPager = rememberPagerState(pageCount = { featured.size })
     LaunchedEffect(featured.map { it.reel.id }, autoSlideEnabled) {
         if (autoSlideEnabled && featured.size > 1) {
@@ -151,10 +162,77 @@ internal fun ReelsReferenceChrome(
         }
         }
 
-        // Replace only the Reels preview's story row. Stories elsewhere stay untouched.
+        // Compact strip uses the actual Story models and existing viewer callbacks.
+        // The current user's ring exists only while an uploaded story exists.
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().height(72.dp),
+            horizontalArrangement = Arrangement.spacedBy(13.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            item(key = "my_story") {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(60.dp)
+                        .clickable { if (ownStory != null) onStoryClick(ownStory) else onAddStory() }
+                ) {
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        AsyncImage(
+                            model = ownStory?.avatar?.ifBlank { userAvatar } ?: userAvatar,
+                            fallback = painterResource(R.drawable.ic_default_profile),
+                            error = painterResource(R.drawable.ic_default_profile),
+                            contentDescription = "My story",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(42.dp).clip(CircleShape)
+                                .then(
+                                    if (ownStory != null) Modifier.border(
+                                        2.dp, foreground, CircleShape
+                                    ) else Modifier
+                                )
+                        )
+                        if (ownStory == null) {
+                            Box(
+                                Modifier.size(19.dp).clip(CircleShape).background(foreground),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add story",
+                                    tint = background, modifier = Modifier.size(15.dp))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text("Your story", color = foreground, fontSize = 10.sp, maxLines = 1)
+                }
+            }
+            items(otherStories, key = { it.id }) { story ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(60.dp).clickable { onStoryClick(story) }
+                ) {
+                    AsyncImage(
+                        model = story.avatar,
+                        fallback = painterResource(R.drawable.ic_default_profile),
+                        error = painterResource(R.drawable.ic_default_profile),
+                        contentDescription = "Open ${story.displayLabel}'s story",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(42.dp).clip(CircleShape)
+                            .border(
+                                2.dp,
+                                if (story.hasUnseen) foreground else foreground.copy(alpha = .32f),
+                                CircleShape
+                            )
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        story.displayLabel, color = foreground, fontSize = 10.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
         if (featured.isNotEmpty()) {
         Box(
-            Modifier.fillMaxWidth().height(184.dp).padding(horizontal = 12.dp, vertical = 8.dp)
+            Modifier.fillMaxWidth().height(featuredCardHeight).padding(horizontal = 12.dp, vertical = 8.dp)
                 .semantics { contentDescription = "Top Reels: up to five featured videos" }
         ) {
             if (featured.isNotEmpty()) {
@@ -269,16 +347,6 @@ internal fun ReelsReferenceChrome(
                                     else Color.White.copy(alpha = .65f))
                         )
                     }
-                }
-            } else {
-                Box(
-                    Modifier.fillMaxSize()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
-                        .background(Brush.horizontalGradient(listOf(Color(0xFF250F33),Color(0xFF101225)))),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Top Reels · New highlights every 12 hours",
-                        color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
                 }
             }
         }
