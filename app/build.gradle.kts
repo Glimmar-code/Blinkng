@@ -208,6 +208,17 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
+    // CI-only R8-shrunk variant: exercises the same native WebRTC JNI names
+    // as release without requiring or exposing the production signing key.
+    create("rtcSmoke") {
+      initWith(getByName("debug"))
+      applicationIdSuffix = ".rtcsmoke"
+      versionNameSuffix = "-rtcsmoke"
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      matchingFallbacks.add("debug")
+    }
     debug {
       versionNameSuffix = "-debug"
       // Never request live ads from developer/test builds.
@@ -218,6 +229,11 @@ android {
   }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
+  // Keep ordinary test tasks unchanged. The dedicated native smoke workflow
+  // opts in to instrumenting the R8-shrunk build on Android 15.
+  if (providers.environmentVariable("BLINK_RTC_SMOKE").orNull == "true") {
+    testBuildType = "rtcSmoke"
+  }
   sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
@@ -303,7 +319,7 @@ dependencies {
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
   implementation(libs.androidx.camera.core)
-  implementation("io.github.webrtc-sdk:android:150.7871.01")
+  implementation("io.github.webrtc-sdk:android:150.7871.04")
   implementation("com.google.zxing:core:3.5.3")
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
