@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="192dp"
-    android:height="72dp"
-    android:viewportWidth="256"
-    android:viewportHeight="96">
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <!-- Android 12+ clips splash icons to a central circle (diameter about 192dp
+         in a 288dp icon). Keep ALL of Beyond LINK, including the dots and K,
+         inside that circle; never show a cropped wordmark before Compose. -->
+    <group android:translateX="54" android:translateY="113"
+        android:scaleX="0.73" android:scaleY="0.73">
     <!-- Static FIRST frame of the approved Compose Beyond LINK -> BLINK intro.
          No launcher icon tile, no additional B-logo scene. -->
     <group android:translateX="12" android:translateY="57.5">
@@ -24,5 +29,6 @@
         <path android:fillColor="#FFF9FAFD" android:pathData="M37,87 L37,169  L55,169  L55,87 Z" />
         <path android:fillColor="#FFF9FAFD" android:pathData="M139,94 L134,90  L127,87  L113,86  L112,87  L106,88  L101,91  L93,100  L92,99  L92,87  L74,87  L74,169  L92,169  L92,121  L93,120  L93,115  L96,109  L100,105  L107,102  L115,102  L120,104  L126,110  L128,115  L128,169  L147,169  L147,114  L146,113  L146,108  L144,102 Z" />
         <path android:fillColor="#FFF9FAFD" android:pathData="M166,54 L166,169  L184,169  L184,142  L192,134  L195,136  L201,145  L205,149  L220,169  L242,169  L207,123  L216,112  L240,87  L217,87  L216,89  L196,109  L196,110  L186,120  L184,119  L184,54 Z" />
+    </group>
     </group>
 </vector>
