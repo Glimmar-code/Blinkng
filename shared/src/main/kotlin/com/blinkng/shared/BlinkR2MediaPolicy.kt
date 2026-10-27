@@ -25,7 +25,7 @@ object BlinkR2MediaPolicy {
 
     fun intentionalFallback(httpStatus: Int, serverError: String): Boolean =
         (httpStatus == 503 && serverError == "R2_DISABLED") ||
-            (httpStatus == 404 && serverError == "Function not found")
+            (httpStatus == 404 && serverError in setOf("Function not found", "R2_FUNCTION_NOT_DEPLOYED"))
 
     /** Reject mixed-content, signed S3 endpoints and unexpected external URLs. */
     fun isValidPublicUrl(value: String): Boolean = runCatching {
