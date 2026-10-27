@@ -18,15 +18,20 @@ class BlinkElasticGesturePhysicsTest {
         assertFalse(BlinkElasticGesturePhysics.shouldCommit(-40f, -180f, 100f, 28f, 1100f))
     }
 
-    @Test fun fastFlickOrLongDeliberateSwipeCommits() {
+    @Test fun onlyFastDirectionMatchedFlicksCommit() {
         assertTrue(BlinkElasticGesturePhysics.shouldCommit(40f, 1200f, 100f, 28f, 1100f))
         assertTrue(BlinkElasticGesturePhysics.shouldCommit(-40f, -1200f, 100f, 28f, 1100f))
-        assertTrue(BlinkElasticGesturePhysics.shouldCommit(110f, 0f, 100f, 28f, 1100f))
+        assertTrue(BlinkElasticGesturePhysics.shouldCommit(28f, 1100f, 100f, 28f, 1100f))
+        assertFalse(BlinkElasticGesturePhysics.shouldCommit(110f, 0f, 100f, 28f, 1100f))
+        assertFalse(BlinkElasticGesturePhysics.shouldCommit(500f, 300f, 100f, 28f, 1100f))
+        assertFalse(BlinkElasticGesturePhysics.shouldCommit(-500f, -1099f, 100f, 28f, 1100f))
     }
 
     @Test fun reverseFlingSmallMovementAndInvalidInputsNeverCommit() {
         assertFalse(BlinkElasticGesturePhysics.shouldCommit(40f, -1200f, 100f, 28f, 1100f))
         assertFalse(BlinkElasticGesturePhysics.shouldCommit(10f, 5000f, 100f, 28f, 1100f))
         assertFalse(BlinkElasticGesturePhysics.shouldCommit(Float.NaN, 1400f, 100f, 28f, 1100f))
+        assertFalse(BlinkElasticGesturePhysics.shouldCommit(50f, Float.POSITIVE_INFINITY, 100f, 28f, 1100f))
+        assertFalse(BlinkElasticGesturePhysics.shouldCommit(50f, 1400f, 0f, 28f, 1100f))
     }
 }
