@@ -716,52 +716,10 @@
     if(!uid())throw new Error('Sign in first.');
     if(!file)throw new Error('Choose a file first.');
 
-    // R2 is the preferred public-media backend when explicitly enabled on the
-    // server. Private Story media stays on its existing Supabase route until
-    // the signed viewer and Story audience rules are implemented.
-    const purpose=bucket==='post-media'?(file.type.startsWith('video/')?'reel':'feed'):
-      (bucket==='avatars'||bucket==='covers')?'profile':
-      (bucket==='market-media'||bucket==='marketplace-media')?'market':null;
-    const mime=(file.type||'').toLowerCase();
-    const validByPurpose={
-      feed:new Set(['image/jpeg','image/png','image/webp','image/heic']),
-      reel:new Set(['video/mp4','video/webm']),
-      profile:new Set(['image/jpeg','image/png','image/webp']),
-      market:new Set(['image/jpeg','image/png','image/webp','video/mp4','video/webm'])
-    };
-    const maxByPurpose={feed:25000000,reel:80000000,profile:8000000,market:50000000};
-    if(purpose&&validByPurpose[purpose].has(mime)&&file.size>0&&file.size<=maxByPurpose[purpose]){
-      const gateway=`${SUPABASE_URL}/functions/v1/blink-r2-media`;
-      const call=async payload=>{
-        const response=await fetchWithTimeout(gateway,{
-          method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},
-          body:JSON.stringify(payload)
-        },30000);
-        const data=await parseJsonSafe(response);
-        return {status:response.status,ok:response.ok,data};
-      };
-      const init=await call({action:'init',purpose,mimeType:mime,bytes:file.size});
-      const absent=init.status===503&&init.data?.error==='R2_DISABLED' ||
-        init.status===404&&init.data?.code==='NOT_FOUND'&&
-          init.data?.message==='Requested function was not found';
-      if(!init.ok&&!absent)throw new Error('BLINK media upload could not start.');
-      if(init.ok){
-        const signed=new URL(init.data?.uploadUrl||'');
-        if(signed.protocol!=='https:'||!signed.hostname.endsWith('.r2.cloudflarestorage.com'))
-          throw new Error('Untrusted BLINK upload destination.');
-        const uploaded=await fetchWithTimeout(signed.toString(),{
-          method:'PUT',headers:{'Content-Type':mime},body:file
-        },120000);
-        if(!uploaded.ok)throw new Error(`BLINK media transfer failed (${uploaded.status}).`);
-        const complete=await call({action:'complete',purpose,assetId:init.data.assetId});
-        if(!complete.ok)throw new Error('BLINK media confirmation failed.');
-        const published=new URL(complete.data?.publicUrl||'');
-        if(published.protocol!=='https:'||
-          (published.hostname!=='blink.com.ng'&&!published.hostname.endsWith('.blink.com.ng'))||
-          published.search||published.hash)throw new Error('Untrusted BLINK media URL.');
-        return published.toString();
-      }
-    }
+    const r2=await import('./r2-media.mjs');
+    const cloudUrl=await r2.tryUploadR2({bucket,file,baseUrl:SUPABASE_URL,
+      anonKey:KEY,accessToken:token(),fetchWithTimeout,parseJsonSafe});
+    if(cloudUrl)return cloudUrl;
 
     const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(-120)||'upload';
     const objectPath=`${uid()}/${prefix}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
