@@ -20,6 +20,35 @@ class ReelsReferenceChromeTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun emptyFeaturedListDoesNotReserveAnEmptyHighlightBanner() {
+        composeRule.setContent {
+            MaterialTheme {
+                ReelsReferenceChrome(
+                    stories = emptyList(),
+                    userAvatar = "",
+                    currentUsername = "current",
+                    isDark = false,
+                    hasUnreadNotifications = false,
+                    selectedTab = "Reels",
+                    onSelectTab = {},
+                    onAddStory = {},
+                    onStoryClick = {},
+                    onProfileClick = {},
+                    onSearch = {},
+                    onGame = {},
+                    onNotifications = {},
+                    onMenu = {},
+                    featuredReels = emptyList(),
+                    autoSlideEnabled = false
+                )
+            }
+        }
+        composeRule.onNodeWithText("Top Reels · New highlights every 12 hours").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Refresh reels").assertExists()
+        composeRule.onNodeWithContentDescription("Create reel").assertExists()
+    }
+
+    @Test
     fun previewShowsReferenceNavigationAndRoutesRealActions() {
         var currentTab = "Reels"
         val actions = mutableListOf<String>()
