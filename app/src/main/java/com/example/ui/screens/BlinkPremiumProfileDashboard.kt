@@ -237,7 +237,7 @@ internal fun BlinkPremiumProfileDashboard(
                         Text(profile.university, color = softInk, fontSize = 11.sp, maxLines = 2)
                     }
                 }
-                if (profile.bio.isBlank() && profile.professionalHeadline.isBlank() &&
+                if (isMe && profile.bio.isBlank() && profile.professionalHeadline.isBlank() &&
                     profile.university.isBlank()) {
                     Text("No bio added yet", color = softInk, fontSize = 11.sp)
                 }
