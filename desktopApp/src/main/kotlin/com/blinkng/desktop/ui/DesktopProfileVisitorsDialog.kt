@@ -1,6 +1,10 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -18,7 +22,8 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun DesktopProfileVisitorsDialog(
     client: DesktopSupabaseClient,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenProfile: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var settings by remember { mutableStateOf<ProfileVisitSettings?>(null) }
@@ -27,6 +32,7 @@ internal fun DesktopProfileVisitorsDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var key by remember { mutableIntStateOf(0) }
+    var unreadCount by remember { mutableIntStateOf(0) }
     var confirmDisable by remember { mutableStateOf(false) }
 
     LaunchedEffect(key) {
@@ -40,8 +46,15 @@ internal fun DesktopProfileVisitorsDialog(
         } else {
             settings = first.getOrNull()
             if (settings?.participate == true) {
+                unreadCount = runCatching { client.countMyNewProfileVisitors() }.getOrDefault(0)
                 runCatching { client.listMyProfileVisitors() }
-                    .onSuccess { history = it }
+                    .onSuccess {
+                        history = it
+                        runCatching {
+                            if (it.seenThrough.isNotBlank())
+                                client.acknowledgeMyProfileVisitorsSeen(it.seenThrough)
+                        }
+                    }
                     .onFailure { error = "Couldn't load visitor history." }
             }
         }
@@ -82,6 +95,10 @@ internal fun DesktopProfileVisitorsDialog(
                                     Text(if (busy) "Saving…" else "Enable visitor history")
                                 }
                             } else {
+                                if (unreadCount > 0) {
+                                    Text("$unreadCount new visitors since your last check.",
+                                        style = MaterialTheme.typography.labelMedium)
+                                }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text("Visitor alerts")
@@ -102,10 +119,21 @@ internal fun DesktopProfileVisitorsDialog(
                                     h != null -> {
                                         Text("${h.visitors.size} recent visitors", fontSize = 13.sp)
                                         h.visitors.forEach { visitor ->
-                                            Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                                                Text(visitor.fullName.ifBlank { visitor.username })
-                                                Text("@${visitor.username} · ${visitor.visitedAt.take(10)}",
-                                                    style = MaterialTheme.typography.bodySmall)
+                                            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically) {
+                                                AsyncImage(model = visitor.avatarUrl,
+                                                    contentDescription = "Visitor avatar",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.size(42.dp).clip(CircleShape))
+                                                Spacer(Modifier.width(10.dp))
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(visitor.fullName.ifBlank { visitor.username })
+                                                    Text("@${visitor.username} · ${visitor.visitedAt.take(10)}",
+                                                        style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                TextButton(onClick = { onOpenProfile(visitor.username) }) {
+                                                    Text("View")
+                                                }
                                             }
                                         }
                                     }
