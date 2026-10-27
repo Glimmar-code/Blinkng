@@ -108,6 +108,7 @@ fun DesktopUserProfileDialog(
     var connectionProfiles by remember(initialProfile.id) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
+    var showCreatorStudio by remember(initialProfile.id) { mutableStateOf(false) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
 
     suspend fun reload() {
@@ -227,6 +228,9 @@ fun DesktopUserProfileDialog(
                             chosenTheme = BlinkProfileThemes.normalize(profile.profileTheme)
                             showThemePicker = true
                         }) { Text("Edit theme", color = Color.White) }
+                         TextButton(onClick = { showCreatorStudio = true }) {
+                             Text("Creator Studio", color = Color.White)
+                         }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
@@ -567,6 +571,16 @@ fun DesktopUserProfileDialog(
         DesktopBlinkShareDialog(
             state = state, postId = id, isReel = true,
             onDismiss = { shareReelId = null }
+        )
+    }
+
+    if (showCreatorStudio && isMe) {
+        DesktopCreatorStudioDialog(
+            profile = profile,
+            posts = content,
+            loading = loading,
+            onDismiss = { showCreatorStudio = false },
+            onRefresh = { scope.launch { reload() } },
         )
     }
 
