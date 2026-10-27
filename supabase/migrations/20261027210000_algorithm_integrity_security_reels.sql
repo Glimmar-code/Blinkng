@@ -19,6 +19,7 @@ declare
   v_feed text := pg_get_functiondef('public.get_feed_page(integer,timestamptz,uuid,text,uuid)'::regprocedure);
   v_owner_bonus text := 'case when private.is_blink_owner_id(c.creator_id) then 1000000000::numeric else 0::numeric end';
   v_privacy_anchor text := 'where fp.is_active=true';
+  v_reel_factor text := '(case when c.is_reel and c.reel_watch_samples >= 12 then least(1.15::numeric,greatest(0.90::numeric,0.90::numeric + 0.25::numeric * c.completion_rate)) else 1::numeric end)';
 begin
   if v_discovery is null or position(v_owner_bonus in v_discovery)=0
      or position(v_privacy_anchor in v_discovery)=0 then
@@ -30,6 +31,31 @@ begin
     v_privacy_anchor,
     v_privacy_anchor || E'\n      and (fp.user_id=v_user or not exists (select 1 from public.user_settings privacy where privacy.user_id=fp.user_id and privacy.private_account is true))'
   );
+
+  -- Completion is scored only after 12 received samples, with a bounded 0.90..1.15
+  -- multiplier. Keep the metadata exactly aligned with the actual ranking factor.
+  if position('completion_rate numeric not null,' in v_discovery)=0
+     or position('coalesce(rm.completion_rate,0)::numeric as completion_rate,' in v_discovery)=0
+     or position('feed_score,completion_rate,' in v_discovery)=0
+     or position('s.final_score,s.completion_rate,' in v_discovery)=0
+     or position('* c.verification_multiplier * c.cold_start_multiplier' in v_discovery)=0
+     or position('''reel_completion_boost'',1,' in v_discovery)=0 then
+    raise exception 'REEL_COMPLETION_SCORE_SOURCE_DRIFT';
+  end if;
+  v_discovery := replace(v_discovery,'completion_rate numeric not null,',
+    'completion_rate numeric not null, reel_watch_samples numeric not null,');
+  v_discovery := replace(v_discovery,
+    'coalesce(rm.completion_rate,0)::numeric as completion_rate,',
+    'coalesce(rm.completion_rate,0)::numeric as completion_rate, coalesce(rm.watch_samples,0)::numeric as reel_watch_samples,');
+  v_discovery := replace(v_discovery,'feed_score,completion_rate,',
+    'feed_score,completion_rate,reel_watch_samples,');
+  v_discovery := replace(v_discovery,'s.final_score,s.completion_rate,',
+    's.final_score,s.completion_rate,s.reel_watch_samples,');
+  v_discovery := replace(v_discovery,
+    '* c.verification_multiplier * c.cold_start_multiplier',
+    '* '||v_reel_factor||' * c.verification_multiplier * c.cold_start_multiplier');
+  v_discovery := replace(v_discovery,'''reel_completion_boost'',1,',
+    '''reel_completion_boost'','||v_reel_factor||',');
   execute v_discovery;
 
   if v_feed is null or position('private.is_blink_owner_id(fp.user_id)' in v_feed)=0 then
