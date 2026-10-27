@@ -3413,7 +3413,9 @@ class DesktopSupabaseClient(
         ).coerceIn(0, BlinkOnboardingPolicy.TOTAL_STEPS),
         bio = row.optNullableString("bio"),
         isVerified = row.optBoolean("is_verified"),
-        verificationTier = row.optString("verification_tier"),
+        verificationTier = row.optString("verification_badge")
+            .takeIf { it.equals("BLUE", ignoreCase = true) || it.equals("GOLD", ignoreCase = true) }
+            ?: row.optString("verification_tier"),
         followerCount = row.optInt("follower_count"),
         followingCount = row.optInt("following_count"),
         postsCount = row.optInt("posts_count"),
