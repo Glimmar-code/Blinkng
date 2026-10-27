@@ -543,7 +543,7 @@ fun AccountOnboardingScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             enabled = !phoneBusy && !phoneVerified, singleLine = true,
                             modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"))
-                        Text("Verify ownership by SMS. Contact access is always optional.",
+                        Text("SMS verification is being activated. You can continue without a code for now. Contact access is optional.",
                             color = DarkTextSecondary, fontSize = 11.sp)
                         if (!phoneVerified) {
                             Button(onClick = {
@@ -594,7 +594,7 @@ fun AccountOnboardingScreen(
                             text = if (saving) "Saving..." else "Continue",
                             enabled = (notStudent || (university.isNotBlank() && department.isNotBlank())) &&
                                 gender.isNotBlank() &&
-                                phoneVerified &&
+                                (phoneVerified || !BlinkPhonePolicy.REQUIRE_VERIFIED_PHONE_IN_ONBOARDING) &&
                                 birthdayValid &&
                                 !saving
                         ) {

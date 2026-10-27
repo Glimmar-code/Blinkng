@@ -1528,3 +1528,7 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 - Android and Windows share pickers now debounce authenticated server-side profile directory searches rather than only filtering cached suggestions; existing recipient ACLs apply. Android multi-send queues one explicit link per selected recipient; queued is not falsely reported as delivered.
 - Coins plus button has a 48dp interaction box with its original 32dp visual footprint.
 - This change does not replace real-device playback, high-font visual reviews, recipient delivery verification, desktop native Reel playback or the Windows Story composer. Re-validate final merge commit before promoting to main.
+
+## PR #606 launch guard (October 27, 2026)
+- Signed-in SMS verification entry is retained, but it is temporarily optional on both Android and Windows via `BlinkPhonePolicy.REQUIRE_VERIFIED_PHONE_IN_ONBOARDING=false`, because the production Supabase Auth SMS provider is not independently verified. Do not turn on mandatory verification until configuration and deliverability testing pass; signups must not be blocked.
+- Contact discovery still requires separately deployed private migration, HMAC secret and Edge Function. Before backend activation, the optional suggestion control should report unavailability rather than upload any data, and call logs are never requested.

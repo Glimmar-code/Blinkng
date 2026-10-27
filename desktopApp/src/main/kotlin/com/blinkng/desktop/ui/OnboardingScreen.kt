@@ -375,7 +375,7 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                                 label = { Text("Phone / WhatsApp number") },
                                 enabled = !phoneBusy && !phoneVerified, singleLine = true,
                                 modifier = Modifier.fillMaxWidth())
-                            Text("SMS verification required. Contact syncing remains optional.", color = OnboardingMuted, fontSize = 11.sp)
+                            Text("SMS verification is not mandatory until provider activation. Contact syncing remains optional.", color = OnboardingMuted, fontSize = 11.sp)
                             if (!phoneVerified) {
                                 Button(onClick = {
                                     scope.launch {
@@ -406,7 +406,7 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                             Spacer(Modifier.height(16.dp))
                             OnboardingPrimaryButton(
                                 text = if (state.busy) "Saving..." else "Continue",
-                                enabled = phoneVerified && (notStudent || (BlinkUniversitySearch.canonical(university) != null && department.isNotBlank())) &&
+                                enabled = (phoneVerified || !BlinkPhonePolicy.REQUIRE_VERIFIED_PHONE_IN_ONBOARDING) && (notStudent || (BlinkUniversitySearch.canonical(university) != null && department.isNotBlank())) &&
                                     gender.isNotBlank() &&
                                     !state.busy,
                             ) {

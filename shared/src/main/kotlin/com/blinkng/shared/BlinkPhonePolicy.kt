@@ -2,6 +2,8 @@ package com.blinkng.shared
 
 /** Common E.164 validation for signed-in phone verification; not proof of WhatsApp use. */
 object BlinkPhonePolicy {
+    /** Fail open during staged launch: production SMS provider is not verified. Switch only after live OTP QA. */
+    const val REQUIRE_VERIFIED_PHONE_IN_ONBOARDING: Boolean = false
     fun normalize(raw: String): String? {
         val compact = raw.trim().replace(Regex("[\\s()-]"), "")
         val value = when {
