@@ -27,6 +27,7 @@ try {
     create role authenticated;
     create schema auth;
     create schema private;
+    create table private.blink_boost_growth_config(key text primary key,numeric_value numeric);
     create function auth.uid() returns uuid language sql stable
       as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     create table public.profiles(
@@ -109,6 +110,8 @@ try {
   assert.deepEqual(read(await db.query(
     "select public.get_blink_drop_by_id($1::uuid) result",[d1])),{not_found:true});
   assert.equal(read(await db.query("select public.get_blink_drop_page('AVAILABLE',0,30) result")).items.length,0);
+  const gate = read(await db.query("select public.get_blink_cash_boost_availability() result"));
+  assert.equal(gate.enabled,false,'Cash Boost must fail closed without its own switch');
   const grants = await db.query(`select has_function_privilege('anon','public.get_blink_drop_page(text,integer,integer)','EXECUTE') as anon_allowed`);
   assert.equal(grants.rows[0].anon_allowed,false);
   console.log('PASS growth: owner pagination, exact eligible lookup, anon denial, sold/inactive exclusion and Reel media');
