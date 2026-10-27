@@ -130,6 +130,20 @@ begin
       raise exception 'CONTENT_NOT_VISIBLE';
     end if;
     v_content_type := case when v_is_reel then 'reel' else 'post' end;
+    -- Viewing your own content must never mint a qualified impression or a
+    -- popularity advantage, but acknowledge harmless client replay requests.
+    if exists (
+      select 1 from public.feed_posts own
+      where own.id=p_post_id and own.user_id=v_viewer_id
+    ) then
+      return jsonb_build_object(
+        'accepted',false,'duplicate',false,'cap_reached',false,
+        'view_count',v_view_count,'user_view_count',0,
+        'user_contribution',0,'max_contribution',v_max_contribution,
+        'view_weight',v_view_weight,'content_type',v_content_type,
+        'event_id',p_event_id
+      );
+    end if;
 $visibility$);
   -- Verification weights are entitlements, not permanent account labels.
   -- Expired Blue/Gold subscriptions must fall back to the ordinary +1 view.
