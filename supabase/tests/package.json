@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node run-testlab-promotion.mjs && node test-push-gates.mjs && node run-contact-discovery-integration.mjs && node test-push-atomicity.mjs && node run-drop-recipient-guard.mjs"
+    "test": "node run-testlab-promotion.mjs && node test-push-gates.mjs && node run-contact-discovery-integration.mjs && node test-push-atomicity.mjs && node run-drop-recipient-guard.mjs && node run-growth-pagination.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8"
