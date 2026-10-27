@@ -50,6 +50,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.ChatMessage
 import com.example.data.repository.ProfileRepository
 import com.example.data.local.BlinkStickerLibrary
+import com.example.data.local.BlinkPrivateMediaVault
 import com.example.data.supabase.BlinkGroupAvatarClient
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.CancellationException
@@ -124,6 +125,8 @@ internal fun BlinkChatPictureViewer(
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
     var savingSticker by remember(message.id) { mutableStateOf(false) }
     var settingGroupIcon by remember(message.id) { mutableStateOf(false) }
+    var vaultOpen by remember(message.id) { mutableStateOf(false) }
+    var vaultBusy by remember(message.id) { mutableStateOf(false) }
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
@@ -209,7 +212,7 @@ internal fun BlinkChatPictureViewer(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 })
             }.onFailure { downloadError = "No compatible gallery app available." }
-            "sticker", "ai", "group", "profile" -> confirmation = action
+            "sticker", "ai", "group", "profile", "vault" -> confirmation = action
             "wallpaper" -> runCatching {
                 context.startActivity(
                     android.app.WallpaperManager.getInstance(context)
@@ -410,6 +413,13 @@ internal fun BlinkChatPictureViewer(
                             DropdownMenuItem(text = { Text("View in gallery") },
                                 onClick = { requestLocalAction("gallery") },
                                 leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
+                            DropdownMenuItem(text = { Text("Save in encrypted Media Vault") },
+                                enabled = !vaultBusy,
+                                onClick = { requestLocalAction("vault") },
+                                leadingIcon = { Icon(Icons.Default.Lock, null) })
+                            DropdownMenuItem(text = { Text("Open my Media Vault") },
+                                onClick = { moreOpen = false; vaultOpen = true },
+                                leadingIcon = { Icon(Icons.Default.Folder, null) })
                             DropdownMenuItem(text = { Text("Create reusable sticker") },
                                 enabled = !savingSticker,
                                 onClick = { requestLocalAction("sticker") },
@@ -514,6 +524,7 @@ internal fun BlinkChatPictureViewer(
             }
         }
     }
+    if (vaultOpen) BlinkMediaVaultDialog(onDismiss = { vaultOpen = false })
     stickerEditingPhoto?.let { source ->
         BlinkUniversalPhotoEditor(
             originalUri = source,
@@ -562,6 +573,7 @@ internal fun BlinkChatPictureViewer(
                 "profile" -> "Use this picture as your BLINK avatar?"
                 "group" -> "Set this group picture?"
                 "sticker" -> "Save as reusable sticker?"
+                "vault" -> "Encrypt picture in Media Vault?"
                 "ai" -> "Send image to BLINK AI?"
                 "edit_save_required" -> "Save edited copy to gallery?"
                 else -> "Picture action"
@@ -579,6 +591,8 @@ internal fun BlinkChatPictureViewer(
                     "Only group owners and admins can change this picture. It will be visible to group members."
                 "sticker" ->
                     "Open the editor to crop, draw and add text before saving this private sticker. Do not reuse someone's private photo without permission."
+                "vault" ->
+                    "Save this received picture as an encrypted, device-only copy? Your vault is account-scoped, not backed up or synced, and may be lost if you uninstall BLINK."
                 "ai" ->
                     "BLINK AI may process the selected picture. It will be attached to a draft; nothing is sent until you press Send."
                 "edit_save_required" ->
@@ -590,6 +604,20 @@ internal fun BlinkChatPictureViewer(
                     preparePrivateCopy()
                 } else if (confirmation=="gallery_download") {
                     downloadToGallery()
+                } else if (confirmation=="vault") {
+                    savedUri?.let { image ->
+                        vaultBusy = true
+                        scope.launch {
+                            val result = runCatching {
+                                BlinkPrivateMediaVault.add(context, image)
+                            }
+                            downloadError = result.fold(
+                                onSuccess = { "Photo encrypted in your private Media Vault." },
+                                onFailure = { it.message ?: "Unable to save to Media Vault." }
+                            )
+                            vaultBusy = false
+                        }
+                    }
                 } else if (confirmation=="sticker") {
                     // Editing a private copy never alters the original received message.
                     // The user explicitly completes the editor before the sticker is saved.
