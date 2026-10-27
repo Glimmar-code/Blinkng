@@ -166,16 +166,26 @@ Deno.serve(async (req) => {
     if (Number.isFinite(ageMs) && ageMs < 90_000) return json({ ok: true, skipped: "already_sending" });
   }
   const attempts = Number(prior?.attempts ?? 0) + 1;
-  const { error: dispatchError } = await admin.from("call_push_dispatches").upsert({
-    call_id: callId,
-    event,
-    target_user_id: targetUserId,
-    status: "sending",
-    attempts,
-    last_error: null,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "call_id,event,target_user_id" });
-  if (dispatchError) return json({ error: "call_dispatch_ledger_unavailable", retryable: true }, 503);
+  const next = { status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() };
+  if (prior) {
+    // The call/event/recipient primary key alone does not prevent races when
+    // unconditional upsert overwrites an already-in-flight retry.
+    const { data: claimed, error: dispatchError } = await admin.from("call_push_dispatches")
+      .update(next)
+      .eq("call_id", callId).eq("event", event).eq("target_user_id", targetUserId)
+      .eq("status", prior.status).eq("updated_at", prior.updated_at)
+      .select("call_id").maybeSingle();
+    if (dispatchError) return json({ error: "call_dispatch_ledger_unavailable", retryable: true }, 503);
+    if (!claimed) return json({ ok: true, skipped: "concurrent_dispatch", attempts });
+  } else {
+    const { error: dispatchError } = await admin.from("call_push_dispatches").insert({
+      call_id: callId, event, target_user_id: targetUserId, ...next,
+    });
+    if (dispatchError?.code === "23505") {
+      return json({ ok: true, skipped: "concurrent_dispatch", attempts });
+    }
+    if (dispatchError) return json({ error: "call_dispatch_ledger_unavailable", retryable: true }, 503);
+  }
 
   const [{ data: sender }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
     admin.from("profiles").select("username,full_name,avatar_url").eq("id", senderId).maybeSingle(),
