@@ -411,6 +411,7 @@ private fun BoostCampaignColumn(
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmStart by remember { mutableStateOf(false) }
+    var startError by remember { mutableStateOf<String?>(null) }
     var pendingCancelCampaignId by remember { mutableStateOf<String?>(null) }
     var cancellationError by remember { mutableStateOf<String?>(null) }
     var refreshNonce by remember { mutableIntStateOf(0) }
@@ -859,7 +860,7 @@ private fun BoostCampaignColumn(
                                     Text("Pay with Paystack • Final price shown at checkout")
                                 }
                                 Button(
-                                    onClick = { confirmStart = true },
+                                    onClick = { startError = null; confirmStart = true },
                                     enabled = !working && !quoteLoading && isOnline && quote != null &&
                                         quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                                     modifier = Modifier.fillMaxWidth(),
@@ -1034,6 +1035,9 @@ private fun BoostCampaignColumn(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    startError?.let { problem ->
+                        Text(problem, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {
@@ -1061,6 +1065,7 @@ private fun BoostCampaignColumn(
                                 targetUniversity = targetUniversity,
                                 requestId = pendingRequestId.orEmpty(),
                             ).onSuccess {
+                                startError = null
                                 confirmStart = false
                                 pendingRequestId = null
                                 pendingRequestFingerprint = null
@@ -1070,12 +1075,12 @@ private fun BoostCampaignColumn(
                                 message = "Boost started. " + formatter.format(charged) + " coins were reserved for campaign delivery."
                                 reloadState()
                             }.onFailure {
-                                error = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
+                                startError = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
                             }
                             working = false
                         }
                     },
-                ) { Text("Confirm Boost") }
+                ) { Text(if (working) "Starting…" else if (startError != null) "Retry Boost" else "Confirm Boost") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmStart = false }, enabled = !working) { Text("Cancel") }
