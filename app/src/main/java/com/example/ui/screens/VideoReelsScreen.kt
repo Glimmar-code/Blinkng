@@ -955,6 +955,53 @@ private fun ReelsContent(
         }
 
         if (expanded) {
+        // An explicit top-edge drag handle allows collapsing *any* Reel without
+        // stealing the vertical pager's previous/next-video swipe gesture.
+        Box(
+            modifier = Modifier.align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .width(116.dp).height(48.dp)
+                .pointerInput(isInteractionOverlayOpen, viewportHeightPx) {
+                    if (!isInteractionOverlayOpen) {
+                        var downDistance = 0f
+                        var handleVelocity = VelocityTracker()
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                downDistance = 0f
+                                handleVelocity = VelocityTracker()
+                                dragProgress = expansion.value.coerceIn(0f, 1f)
+                            },
+                            onVerticalDrag = { change, delta ->
+                                change.consume()
+                                downDistance += delta
+                                handleVelocity.addPosition(change.uptimeMillis, change.position)
+                                dragProgress = ReelExpansionMotion.progressAfterDrag(
+                                    dragProgress, delta, viewportHeightPx
+                                )
+                            },
+                            onDragEnd = {
+                                val collapse = downDistance > 0f &&
+                                    ReelExpansionMotion.shouldCompleteFastSwipe(
+                                        dragDistancePx = downDistance,
+                                        releaseVelocityPxPerSecond = handleVelocity.calculateVelocity().y,
+                                        minimumDistancePx = 28.dp.toPx(),
+                                        velocityThresholdPxPerSecond = 1100.dp.toPx()
+                                    )
+                                settleExpansion(!collapse)
+                            },
+                            onDragCancel = { settleExpansion(true) }
+                        )
+                    }
+                },
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Box(
+                Modifier.padding(top = 13.dp).width(34.dp).height(4.dp)
+                    .clip(CircleShape).background(Color.White.copy(alpha = .8f))
+                    .semantics { contentDescription = "Drag down quickly to return to Reels preview" }
+            )
+        }
+
         // Preview tabs and header disappear completely in immersive fullscreen.
         IconButton(
             onClick = { expanded = false },
