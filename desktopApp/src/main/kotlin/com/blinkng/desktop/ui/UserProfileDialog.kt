@@ -5,6 +5,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -109,6 +111,18 @@ fun DesktopUserProfileDialog(
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
+    var showEditProfile by remember(initialProfile.id) { mutableStateOf(false) }
+    var editError by remember(initialProfile.id) { mutableStateOf<String?>(null) }
+    var editName by remember(initialProfile.id) { mutableStateOf(initialProfile.fullName) }
+    var editHeadline by remember(initialProfile.id) { mutableStateOf(initialProfile.professionalHeadline.orEmpty()) }
+    var editRole by remember(initialProfile.id) { mutableStateOf(initialProfile.currentJobTitle.orEmpty()) }
+    var editBio by remember(initialProfile.id) { mutableStateOf(initialProfile.bio.orEmpty()) }
+    var editUniversity by remember(initialProfile.id) { mutableStateOf(initialProfile.university.orEmpty()) }
+    var editFaculty by remember(initialProfile.id) { mutableStateOf(initialProfile.faculty.orEmpty()) }
+    var editDepartment by remember(initialProfile.id) { mutableStateOf(initialProfile.department.orEmpty()) }
+    var editCourse by remember(initialProfile.id) { mutableStateOf(initialProfile.courseOfStudy.orEmpty()) }
+    var editLevel by remember(initialProfile.id) { mutableStateOf(initialProfile.academicLevel.orEmpty()) }
+    var editGraduation by remember(initialProfile.id) { mutableStateOf(initialProfile.graduationYear.orEmpty()) }
 
     suspend fun reload() {
         loading = true
@@ -224,9 +238,19 @@ fun DesktopUserProfileDialog(
                     }
                     if (isMe) {
                         TextButton(onClick = {
-                            chosenTheme = BlinkProfileThemes.normalize(profile.profileTheme)
-                            showThemePicker = true
-                        }) { Text("Edit theme", color = Color.White) }
+                            editName = profile.fullName
+                            editHeadline = profile.professionalHeadline.orEmpty()
+                            editRole = profile.currentJobTitle.orEmpty()
+                            editBio = profile.bio.orEmpty()
+                            editUniversity = profile.university.orEmpty()
+                            editFaculty = profile.faculty.orEmpty()
+                            editDepartment = profile.department.orEmpty()
+                            editCourse = profile.courseOfStudy.orEmpty()
+                            editLevel = profile.academicLevel.orEmpty()
+                            editGraduation = profile.graduationYear.orEmpty()
+                            editError = null
+                            showEditProfile = true
+                        }) { Text("Edit profile", color = Color.White) }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
@@ -412,10 +436,19 @@ fun DesktopUserProfileDialog(
                         if (selectedTab == "About") {
                             item {
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    ProfileAboutLine("University", profile.university)
-                                    ProfileAboutLine("Faculty", profile.faculty)
-                                    ProfileAboutLine("Department", profile.department)
-                                    ProfileAboutLine("Level", profile.academicLevel)
+                                    ProfileAboutLine("Headline", profile.professionalHeadline)
+                                    ProfileAboutLine("Current role", profile.currentJobTitle)
+                                    if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+                                        ProfileAboutLine("University", profile.university)
+                                        ProfileAboutLine("Faculty", profile.faculty)
+                                        ProfileAboutLine("Department", profile.department)
+                                        ProfileAboutLine("Course of study", profile.courseOfStudy)
+                                        ProfileAboutLine("Level", profile.academicLevel)
+                                        ProfileAboutLine("Graduation", profile.graduationYear)
+                                    }
+                                    if (isMe) {
+                                        ProfileAboutLine("Relationship status", profile.relationshipStatus)
+                                    }
                                     ProfileAboutLine("Email", profile.email)
                                     ProfileAboutLine("Phone", profile.phone)
                                     ProfileAboutLine("WhatsApp", profile.whatsapp)
@@ -567,6 +600,104 @@ fun DesktopUserProfileDialog(
         DesktopBlinkShareDialog(
             state = state, postId = id, isReel = true,
             onDismiss = { shareReelId = null }
+        )
+    }
+
+    if (showEditProfile && isMe) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showEditProfile = false },
+            title = { Text("Edit profile", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    val percent = com.blinkng.shared.ProfileCompletionPolicy.calculate(
+                        editName, profile.username, profile.avatarUrl.orEmpty(),
+                        editHeadline, editBio, editUniversity, editFaculty,
+                        editDepartment, editLevel, profile.accountType
+                    )
+                    Text("Profile strength: ${percent}%", fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = editName, onValueChange = { editName = it },
+                        label = { Text("Full name") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editHeadline, onValueChange = { editHeadline = it },
+                        label = { Text("Headline") }, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editRole, onValueChange = { editRole = it },
+                        label = { Text("Current role") }, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editBio, onValueChange = { editBio = it },
+                        label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                    if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+                        OutlinedTextField(
+                            value = editUniversity, onValueChange = { editUniversity = it },
+                            label = { Text("University") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editFaculty, onValueChange = { editFaculty = it },
+                            label = { Text("Faculty") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editDepartment, onValueChange = { editDepartment = it },
+                            label = { Text("Department") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editCourse, onValueChange = { editCourse = it },
+                            label = { Text("Course of study") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editLevel, onValueChange = { editLevel = it },
+                            label = { Text("Academic level") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editGraduation, onValueChange = { editGraduation = it },
+                            label = { Text("Graduation year") }, modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    TextButton(onClick = {
+                        if (!busy) {
+                            showEditProfile = false
+                            chosenTheme = BlinkProfileThemes.normalize(profile.profileTheme)
+                            showThemePicker = true
+                        }
+                    }) { Text("Choose profile theme") }
+                    editError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                Button(enabled = !busy, onClick = {
+                    scope.launch {
+                        busy = true
+                        editError = null
+                        runCatching {
+                            state.client.saveProfileDetails(
+                                editName, editHeadline, editBio, editRole,
+                                editUniversity, editFaculty, editDepartment,
+                                editCourse, editLevel, editGraduation
+                            )
+                        }.onSuccess {
+                            profile = it
+                            statusMessage = "Profile saved."
+                            showEditProfile = false
+                        }.onFailure {
+                            editError = it.message ?: "Could not save profile. Please retry."
+                        }
+                        busy = false
+                    }
+                }) { Text(if (busy) "Saving…" else "Save profile") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditProfile = false }, enabled = !busy) { Text("Cancel") }
+            }
         )
     }
 
