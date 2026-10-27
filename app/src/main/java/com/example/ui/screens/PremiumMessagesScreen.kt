@@ -580,6 +580,7 @@ private fun PremiumMessagesMasterDetail(
 
             PremiumChatDetail(
                 conversation = displayedConversation,
+                reducedMotion = chatReducedMotion,
                 allConversations = conversations,
                 palette = palette,
                 onBack = onCloseConversation,
@@ -1445,6 +1446,7 @@ private fun ConversationCard(
 @Composable
 private fun PremiumChatDetail(
     conversation: ChatConversation,
+    reducedMotion: Boolean,
     allConversations: List<ChatConversation>,
     palette: MessagePalette,
     onBack: () -> Unit,
@@ -2005,6 +2007,7 @@ private fun PremiumChatDetail(
                                 )
                             } else MessageBubble(
                             message = message,
+                            reducedMotion = reducedMotion,
                             replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
                             partnerName = conversation.partnerName,
@@ -3161,6 +3164,7 @@ private fun DayDivider(label: String, palette: MessagePalette) {
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
+    reducedMotion: Boolean,
     replyTarget: ChatMessage?,
     partnerAvatar: String,
     partnerName: String,
@@ -3177,14 +3181,13 @@ private fun MessageBubble(
     val density = LocalDensity.current
     val threshold = with(density) { BlinkReplySwipePhysics.activationDp.dp.toPx() }
     val haptic = LocalHapticFeedback.current
-    val bubbleReducedMotion = rememberBlinkReduceMotion()
     var dragOffset by remember(message.id) { mutableStateOf(0f) }
     var isDragging by remember(message.id) { mutableStateOf(false) }
     var replyArmed by remember(message.id) { mutableStateOf(false) }
     var replyVelocity by remember(message.id) { mutableStateOf(VelocityTracker()) }
     val displayOffset by animateFloatAsState(
-        targetValue = if (bubbleReducedMotion) 0f else BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
-        animationSpec = if (isDragging || bubbleReducedMotion) snap() else spring(
+        targetValue = if (reducedMotion) 0f else BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
+        animationSpec = if (isDragging || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow
         ),
