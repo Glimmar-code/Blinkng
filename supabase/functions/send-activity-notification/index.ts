@@ -108,15 +108,29 @@ async function claimDispatch(
   }
 
   const attempts = Number(existing?.attempts ?? 0) + 1;
-  const { error } = await admin.from("notification_push_dispatches").upsert({
-    notification_id: notificationId,
-    status: "sending",
-    attempts,
-    last_error: null,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "notification_id" });
-
-  // Failing open here allows duplicate FCM notifications when ledger writes fail.
+  const next = { status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() };
+  if (existing) {
+    // Optimistic concurrency control: two push requests may both read a stale
+    // failed/expired claim. Only the first may atomically advance its version.
+    const { data: claimed, error } = await admin.from("notification_push_dispatches")
+      .update(next)
+      .eq("notification_id", notificationId)
+      .eq("status", existing.status)
+      .eq("updated_at", existing.updated_at)
+      .select("notification_id")
+      .maybeSingle();
+    if (error) return { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true };
+    return claimed
+      ? { proceed: true, tracked: true, attempts }
+      : { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
+  }
+  // An insert (not an unconditional upsert) makes concurrent first delivery
+  // atomic on the existing notification_id primary key.
+  const { error } = await admin.from("notification_push_dispatches")
+    .insert({ notification_id: notificationId, ...next });
+  if (error?.code === "23505") {
+    return { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
+  }
   return error
     ? { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true }
     : { proceed: true, tracked: true, attempts };
