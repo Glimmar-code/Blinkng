@@ -3619,7 +3619,16 @@ private fun MessageBubble(
                                 shape = RoundedCornerShape(100.dp),
                                 border = BorderStroke(1.dp, if (entry.key in message.myReactions) palette.accent.copy(alpha = .55f) else palette.border)
                             ) {
-                                Text("${entry.key} ${entry.value}", fontSize = 11.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                                Text(
+                                    "${entry.key} ${entry.value}",
+                                    fontSize = 11.sp,
+                                    color = palette.textSecondary,
+                                    modifier = Modifier.clickable(
+                                        role = androidx.compose.ui.semantics.Role.Button,
+                                        onClickLabel = "Manage message reactions",
+                                        onClick = onActions
+                                    ).padding(horizontal = 10.dp, vertical = 9.dp)
+                                )
                             }
                         }
                     }
@@ -3780,19 +3789,10 @@ private fun MessageContent(
                 }
             }
             if (!message.attachedVideoUrl.isNullOrBlank()) {
-                Surface(
-                    color = Color.Black.copy(alpha = .20f),
-                    contentColor = contentColor,
-                    shape = RoundedCornerShape(13.dp),
-                    modifier = Modifier.width(220.dp).height(96.dp).clickable {
-                        openExternalUri(context, Uri.parse(message.attachedVideoUrl))
-                    }
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(Icons.Default.PlayCircle, contentDescription = "Play video", modifier = Modifier.size(34.dp))
-                        Text("Video message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
+                BlinkChatInlineVideo(
+                    url = message.attachedVideoUrl,
+                    modifier = Modifier.width(240.dp),
+                )
             }
             if (!message.attachedAudioUrl.isNullOrBlank()) {
                 BlinkChatVoicePlayer(
