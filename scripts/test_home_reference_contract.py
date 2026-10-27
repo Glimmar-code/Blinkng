@@ -162,8 +162,10 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('hasUnreadMessages = uiState.conversations.any', MAIN)
         search = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceSearchScreen.kt').read_text()
         inbox = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceInbox.kt').read_text()
-        self.assertIn('Icons.Rounded.GridView, "Open Items"', search)
-        self.assertIn('Icons.Outlined.GridView, contentDescription = "Open Items"', inbox)
+        # Search and Inbox have a dedicated Games route rather than the
+        # general Items hub; the Home header above still owns Items.
+        self.assertIn('Icons.Rounded.SportsEsports, "Open games"', search)
+        self.assertIn('Icons.Outlined.SportsEsports, contentDescription = "Open games"', inbox)
 
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)
