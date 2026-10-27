@@ -663,6 +663,20 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentFeed()
     }
 
+    /**
+     * Profile card navigation must not leave the full-screen profile overlay above
+     * a routed Reel. Use the normal primary navigation transition so Back can
+     * restore the same profile route without losing its content scroll state.
+     */
+    fun openProfilePost(post: FeedPost) {
+        if (post.isReel) {
+            navigateToPrimaryTab(MainTab.HOME, homeSubTab = 1)
+            openSearchPost(post)
+        } else {
+            openFeedPostDetails(post)
+        }
+    }
+
     /** Open a Feed card without switching tabs, re-ranking posts or losing scroll position. */
     fun openFeedPostDetails(post: FeedPost) {
         if (post.isReel) {

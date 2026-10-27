@@ -90,6 +90,7 @@ import com.blinkng.desktop.data.DesktopChatPhotoWorker
 import com.blinkng.desktop.data.DesktopStickerLibrary
 import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkChatPhotoAlbum
+import com.blinkng.shared.BlinkChatPollPolicy
 import javax.swing.JFileChooser
 import java.util.UUID
 import java.io.File
@@ -153,6 +154,9 @@ fun MessagesScreen(state: DesktopAppState) {
     var aiImageFile by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
     var showStickerTray by remember(myUserId) { mutableStateOf(false) }
+    var showTextPollComposer by remember(myUserId) { mutableStateOf(false) }
+    var pollQuestion by remember(myUserId) { mutableStateOf("") }
+    var pollOptionLines by remember(myUserId) { mutableStateOf("") }
     var stickerRevision by remember(myUserId) { mutableStateOf(0) }
     var stickerToDelete by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoReviewItems by remember(myUserId) {
@@ -348,6 +352,9 @@ fun MessagesScreen(state: DesktopAppState) {
         if (myUserId.isNotBlank()) loadConversations()
     }
     LaunchedEffect(selected?.id) {
+        showTextPollComposer = false
+        pollQuestion = ""
+        pollOptionLines = ""
         showContactCard = false
         chatSearchVisible = false
         chatQuery = ""
@@ -862,6 +869,14 @@ fun MessagesScreen(state: DesktopAppState) {
                     enabled = !photoBusy && myUserId.isNotBlank(),
                     onClick = { chooseChatPhoto(true) }
                 ) { Text("View once") }
+                TextButton(
+                    enabled = !photoBusy && myUserId.isNotBlank() && draft.isBlank(),
+                    onClick = {
+                        pollQuestion = ""
+                        pollOptionLines = ""
+                        showTextPollComposer = true
+                    }
+                ) { Text("Poll") }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draftsByConversation[active.id] = it },
@@ -1077,6 +1092,67 @@ fun MessagesScreen(state: DesktopAppState) {
                     }
                 }
             }
+        }
+    }
+
+    if (showTextPollComposer) {
+        selected?.let { target ->
+            val prepared = runCatching {
+                BlinkChatPollPolicy.prepare(
+                    pollQuestion,
+                    pollOptionLines.lines().map(String::trim).filter(String::isNotEmpty)
+                )
+            }.getOrNull()
+            AlertDialog(
+                onDismissRequest = { showTextPollComposer = false },
+                title = { Text("Create a chat poll") },
+                text = {
+                    Column(
+                        modifier = Modifier.widthIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Text fallback: recipients can reply with a number. Interactive voting will require the deployed native poll backend.",
+                            style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(
+                            value = pollQuestion,
+                            onValueChange = { pollQuestion = it.take(BlinkChatPollPolicy.MAX_QUESTION_LENGTH) },
+                            label = { Text("Question") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = pollOptionLines,
+                            onValueChange = { pollOptionLines = it.take(1400) },
+                            label = { Text("Options — 2 to 8, one per line") },
+                            minLines = 4,
+                            maxLines = 8,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if ((pollQuestion.isNotBlank() || pollOptionLines.isNotBlank()) && prepared == null) {
+                            Text("Use a question and 2–8 different options (maximum 80 characters each).",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        enabled = prepared != null && draftsByConversation[target.id].isNullOrBlank(),
+                        onClick = {
+                            val safe = prepared ?: return@Button
+                            if (selected?.id == target.id &&
+                                draftsByConversation[target.id].isNullOrBlank()
+                            ) {
+                                draftsByConversation[target.id] =
+                                    BlinkChatPollPolicy.textFallback(safe)
+                                showTextPollComposer = false
+                            }
+                        }
+                    ) { Text("Add to message") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTextPollComposer = false }) { Text("Cancel") }
+                }
+            )
         }
     }
 
