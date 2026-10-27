@@ -236,7 +236,7 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(42.dp).clickable { if (currentUsername.isNotBlank()) onProfileClick(currentUsername) }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(48.dp).clickable(enabled = currentUsername.isNotBlank()) { onProfileClick(currentUsername) }, contentAlignment = Alignment.Center) {
                 ReferenceAvatar(currentProfile?.avatarUrl, 42)
                 if (currentProfile?.onlineNow == true) {
                     Box(
@@ -249,10 +249,10 @@ internal fun BlinkReferenceSearchScreen(
                 Text("BLINK", fontSize = 21.sp, letterSpacing = 4.sp,
                     fontWeight = FontWeight.Black, color = fg, maxLines = 1)
             }
-            IconButton(onClick = onGameClick, modifier = Modifier.size(38.dp)) {
+            IconButton(onClick = onGameClick, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Rounded.GridView, "Open Items", modifier = Modifier.size(23.dp), tint = fg)
             }
-            Box(Modifier.size(40.dp)) {
+            Box(Modifier.size(48.dp)) {
                 IconButton(onClick = onNotificationsClick, modifier = Modifier.fillMaxSize()) {
                     Icon(Icons.Rounded.NotificationsNone, "Notifications", modifier = Modifier.size(23.dp), tint = fg)
                 }
@@ -299,7 +299,7 @@ internal fun BlinkReferenceSearchScreen(
                         )
                     }
                     if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }, modifier = Modifier.size(22.dp)) {
+                        IconButton(onClick = { query = "" }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Rounded.Close, "Clear search", Modifier.size(16.dp), tint = muted)
                         }
                     }
@@ -635,14 +635,14 @@ internal fun BlinkReferenceSearchScreen(
 @Composable
 private fun ReferenceTitle(title: String, fg: Color, muted: Color, onSeeAll: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 7.dp).heightIn(min = 34.dp),
+        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 7.dp).heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, Modifier.weight(1f), color = fg, fontSize = 15.sp,
             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text("See all  ›", Modifier.clickable(onClick = onSeeAll)
-            .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            fontSize = 11.sp, color = muted, maxLines = 1)
+            .padding(start = 8.dp, end = 4.dp, top = 14.dp, bottom = 14.dp),
+            fontSize = 12.sp, color = muted, maxLines = 1)
     }
 }
 
@@ -656,7 +656,7 @@ private fun ReferencePersonRow(
 ) {
     val largeFont = LocalDensity.current.fontScale >= 1.6f
     Column(Modifier.fillMaxWidth().padding(vertical = 7.dp).then(impressionModifier)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49, online) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f).clickable(onClick = onClick)) {
@@ -670,7 +670,7 @@ private fun ReferencePersonRow(
                             tint = Color(0xFF159CF5))
                     }
                 }
-                Text(subtitle, color = muted, fontSize = 10.sp,
+                Text(subtitle, color = muted, fontSize = 12.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (!largeFont) {
