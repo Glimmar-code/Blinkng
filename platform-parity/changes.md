@@ -1,3 +1,12 @@
+## 2026-10-27 — Cloudflare R2 staged media migration (Testlab only)
+
+- **Shared contract:** `BlinkR2MediaPolicy` ensures strict public-media MIME/size allowlists, URL provenance and explicit-only fallback. R2 signing and keys exist only server-side.
+- **Android:** Eligible public Feed/Reel bytes and URI streams, profile images and Market images/videos attempt an authenticated signed R2 PUT when the backend is switched on; legacy Supabase uploads remain compatible while R2 is intentionally disabled. Private chat, channel media, story audience rules and view-once stay on their existing paths pending secure private cutover.
+- **Windows:** Existing public-post, Market and profile image flows use the same authenticated init/PUT/complete contract with explicit fallback, without carrying any R2 keys in the EXE.
+- **Web:** No upload-routing cutover yet. Website upload parity must be completed and staged before the production feature flag is enabled. This is a release blocker, not an approved platform exception.
+- **Backend:** Added internal RLS-protected upload ledger migration (not applied in production) and optional Supabase Edge signer (not deployed or activated). Server authorization checks private chat membership and channel posting roles. Bulk copy script preserves originals, skips view-once and verifies byte equality.
+- **Verification status:** No Cloudflare account connection, R2 buckets/credentials or staging deployment has been confirmed. CI/static checks cannot establish secure private media visibility, provider quotas, content-length enforcement or real-device performance. **Do not merge to main or switch production traffic** until the dependencies, staging and end-to-end Android/Windows/Web tests pass. Full checklist: `docs/cloudflare-r2-media-migration.md`.
+
 ## 2026-10-26 — Rubber swipe engine (Testlab candidate; release not verified)
 
 - **Shared contract:** Added `BlinkElasticGesturePhysics`, a platform-independent, bounded visual resistance and release policy that allows long deliberate drags or short velocity-confirmed flicks; incomplete slow gestures spring back and wrong-direction velocity never triggers actions. Existing navigation routes, data, Coin/XP and server contracts remain unchanged.
