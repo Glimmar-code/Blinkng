@@ -466,7 +466,11 @@ class CallActivity : ComponentActivity() {
             return
         }
         mediaReady = true
-        speakerOn = rtcClient?.setSpeakerEnabled(callType == CallType.VIDEO) ?: speakerOn
+        // Telecom reports the real selected endpoint on Android 8+.
+        // Do not override it with a second WebRTC/AudioManager routing request.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            speakerOn = rtcClient?.setSpeakerEnabled(callType == CallType.VIDEO) ?: speakerOn
+        }
 
         BlinkTelecomManager.bindMediaLifecycle(
             callId = active.id,
