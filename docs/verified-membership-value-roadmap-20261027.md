@@ -14,12 +14,13 @@
 3. Counts are computed from actually loaded original content with de-duplication and missing-save warnings. Qualified views are not unique people, and full-lifetime totals and audience retention are never invented.
 4. Get Verified and Wallet screens describe these *working* benefits instead of presenting cosmetics as the only value.
 5. JVM tests cover duplicate posts, missing saves, negative count safeguards, sponsored/reposted exclusions and empty data. Desktop excludes saves entirely because its post DTO does not supply that count.
+6. Gold Merchant Pro read-only listing health: low-stock prompts where quantity exists, missing photos, top loaded items by reported views, and loaded category breakdowns in Android and Windows. Seller management and payment rights are unchanged; only seller-owned listings are included.
 
 ## Follow-on scope — not shipped by this PR
 - Creator Studio v2: server-side creator analytics for complete date ranges, safe aggregation, private RLS, indexing and backfill; Reel retention, reach and accurate posting-time advice only after instrumented event collection.
 - Premium identity bundles: connect existing store cosmetics (profile banner/rings/themes) to monthly entitlements across Android/Windows/web; provide deterministic equip, expiry and safe fallbacks.
 - Channel Pro: gated scheduler, channel analytics, moderation/admin collaboration and notification preferences with channel-specific quotas and abuse safeguards.
-- Merchant Pro: inventory alerts, saved customer replies, item-level reporting and compliant labeled promotions. Seller permission stays server-owned; verification alone is not a real-world guarantee.
+- Merchant Pro v2: account-wide inventory diagnostics independent of Market browse/search filters, saved customer replies, comprehensive item-level reports and compliant labeled promotions. Current v1 shows only seller-owned Market items loaded on screen; seller permission stays server-owned and verification alone is not a real-world guarantee.
 - Creator tools: improved multi-post scheduler, reusable draft templates, meaningful premium video editing features, accessible device-safe export.
 - Creator AI: clear usage caps, consent/privacy protection, data handling and free baseline. Avoid revealing private audience identities.
 - Creator portfolio and event organizer: accessibility, deep links, safety/moderation and ownership checks.
