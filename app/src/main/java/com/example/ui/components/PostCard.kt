@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.performance.rememberBlinkReduceMotion
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkPostFormat
 import com.blinkng.shared.BlinkElasticGesturePhysics
@@ -1260,9 +1261,10 @@ private fun ImageFullscreenDialog(
     val dismissActivation = with(LocalDensity.current) { 110.dp.toPx() }
     val flickMinimum = with(LocalDensity.current) { 28.dp.toPx() }
     val flickVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
     val visualDown by animateFloatAsState(
-        targetValue = BlinkElasticGesturePhysics.visualDistance(dragDown, dismissActivation),
-        animationSpec = if (gestureActive) snap() else spring(
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(dragDown, dismissActivation),
+        animationSpec = if (gestureActive || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ), label = "feedImageElasticDismiss"
