@@ -48,6 +48,10 @@ data class DesktopProfile(
     val professionalHeadline: String? = null,
     val dailyStreak: Int = 0,
     val profileTheme: String = "black",
+    val currentJobTitle: String? = null,
+    val courseOfStudy: String? = null,
+    val graduationYear: String? = null,
+    val relationshipStatus: String? = null,
 )
 
 data class DesktopProfileFollowerPoint(
