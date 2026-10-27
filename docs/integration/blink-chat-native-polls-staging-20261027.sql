@@ -41,6 +41,33 @@ REVOKE ALL ON TABLE public.blink_chat_polls, public.blink_chat_poll_votes
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
     public.blink_chat_polls, public.blink_chat_poll_votes TO service_role;
 
+-- Private helper: for one-to-one threads respect either participant's block
+-- decision. Being left in a historical conversation must never grant renewed
+-- access to its poll results after a block.
+CREATE FUNCTION private.blink_chat_poll_direct_blocked(
+    p_conversation_id uuid, p_actor uuid
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
+AS $
+    SELECT EXISTS (
+        SELECT 1
+        FROM public.conversations c
+        JOIN public.conversation_participants other
+          ON other.conversation_id = c.id
+         AND other.user_id <> p_actor
+         AND other.left_at IS NULL
+        JOIN public.blocks b
+          ON ((b.blocker_id = p_actor AND b.blocked_id = other.user_id)
+           OR (b.blocked_id = p_actor AND b.blocker_id = other.user_id))
+        WHERE c.id = p_conversation_id
+          AND c.is_group IS FALSE
+    );
+$;
+REVOKE ALL ON FUNCTION private.blink_chat_poll_direct_blocked(uuid, uuid)
+    FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.blink_chat_poll_direct_blocked(uuid, uuid)
+    TO service_role;
+
 CREATE FUNCTION public.blink_chat_attach_poll(
     p_message_id uuid,
     p_question text,
@@ -96,6 +123,10 @@ BEGIN
         RAISE EXCEPTION 'BLINK_CHAT_NOT_PARTICIPANT' USING ERRCODE = '42501';
     END IF;
 
+    IF private.blink_chat_poll_direct_blocked(v_message.conversation_id, v_actor) THEN
+        RAISE EXCEPTION 'BLINK_CHAT_BLOCKED' USING ERRCODE = '42501';
+    END IF;
+
     SELECT * INTO v_existing FROM public.blink_chat_polls
         WHERE message_id = p_message_id;
     IF FOUND THEN
@@ -145,6 +176,10 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'BLINK_CHAT_NOT_PARTICIPANT' USING ERRCODE = '42501';
     END IF;
+    IF private.blink_chat_poll_direct_blocked(v_poll.conversation_id, v_actor) THEN
+        RAISE EXCEPTION 'BLINK_CHAT_BLOCKED' USING ERRCODE = '42501';
+    END IF;
+
     INSERT INTO public.blink_chat_poll_votes
         (message_id, user_id, selected_option)
     VALUES (p_message_id, v_actor, p_option)
@@ -183,6 +218,10 @@ BEGIN
           AND cp.user_id = v_actor AND cp.left_at IS NULL
     ) THEN
         RAISE EXCEPTION 'BLINK_CHAT_POLL_UNAVAILABLE' USING ERRCODE = '42501';
+    END IF;
+
+    IF private.blink_chat_poll_direct_blocked(v_poll.conversation_id, v_actor) THEN
+        RAISE EXCEPTION 'BLINK_CHAT_BLOCKED' USING ERRCODE = '42501';
     END IF;
 
     SELECT selected_option INTO v_choice FROM public.blink_chat_poll_votes
@@ -256,6 +295,8 @@ COMMIT;
 -- 4. Two to eight unique options; reject duplicate/casefold/oversized options.
 -- 5. Concurrent vote changes, idempotent retry and exactly one vote/user.
 -- 6. Only current members can vote/read; unrelated/anonymous/departed denied.
+-- 6a. Direct-message participants blocked in EITHER direction cannot attach,
+--     read or vote, even when membership history still contains them.
 -- 7. Close makes voting fail; delete-for-everyone hides results.
 -- 8. No directly exposed voter IDs, public SELECT, or unauthenticated RPC.
 -- 9. Android + Windows client UI must display native poll instead of plain
