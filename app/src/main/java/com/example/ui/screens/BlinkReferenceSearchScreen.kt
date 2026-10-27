@@ -214,13 +214,13 @@ internal fun BlinkReferenceSearchScreen(
             query.isBlank() || it.fullName.contains(query, true) ||
                 it.username.contains(query, true) || it.university.contains(query, true) ||
                 it.department.contains(query, true)
-        }.take(30)
+        }
     }
     val localPosts = remember(allPosts, query) {
         allPosts.filter {
             !it.isReel && (query.isBlank() || it.text.contains(query, true) ||
                 it.author.contains(query, true) || it.tags.any { tag -> tag.contains(query, true) })
-        }.take(30)
+        }
     }
     val live = if (discovery.backendAvailable && discovery.query == query && !discovery.isLoading) discovery.results else emptyList()
     val livePeople = live.filter { it.type == DiscoveryResultType.PROFILE }
@@ -589,15 +589,23 @@ internal fun BlinkReferenceSearchScreen(
             }
 
             if (category != ReferenceCategory.ALL) {
-                val remainingLocal = when (category) {
-                    ReferenceCategory.PEOPLE -> localPeople.size > visibleResultLimit
-                    ReferenceCategory.POSTS -> localPosts.size > visibleResultLimit
-                    else -> false
+                // Use the same ranked data source actually rendered above;
+                // unrelated local fallback lists must not fabricate more results.
+                val visibleSourceSize = when (category) {
+                    ReferenceCategory.PEOPLE -> when {
+                        searchedPeople.isNotEmpty() -> searchedPeople.size
+                        livePeople.isNotEmpty() -> livePeople.size
+                        else -> localPeople.size
+                    }
+                    ReferenceCategory.POSTS ->
+                        if (livePosts.isNotEmpty()) livePosts.size else localPosts.size
+                    else -> 0
                 }
+                val cursorHasMore = discovery.backendAvailable &&
+                    discovery.query == query && discovery.hasMore &&
+                    (category != ReferenceCategory.PEOPLE || searchedPeople.isEmpty())
                 val moreResultsAvailable =
-                    (discovery.backendAvailable && discovery.hasMore) ||
-                        (discovery.backendAvailable && live.size > visibleResultLimit) ||
-                        remainingLocal
+                    visibleSourceSize > visibleResultLimit || cursorHasMore
                 if (discovery.isLoadingMore) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
@@ -605,8 +613,9 @@ internal fun BlinkReferenceSearchScreen(
                     TextButton(
                         onClick = {
                             visibleResultLimit += 20
-                            if (discovery.backendAvailable && discovery.hasMore &&
-                                live.size <= visibleResultLimit) search.loadMore()
+                            if (cursorHasMore && visibleSourceSize <= visibleResultLimit) {
+                                search.loadMore()
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     ) { Text("Load more results", color = fg) }
