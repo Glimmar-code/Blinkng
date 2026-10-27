@@ -298,12 +298,26 @@ fun ProfileOwnerInsightsCard(
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Private profile insights", fontWeight = FontWeight.Black, fontSize = 15.sp)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                InsightMetric("Profile views", profile.profileViewsThisWeek.toLong(), "7d")
-                InsightMetric("Loaded views", contentViews, "loaded")
-                InsightMetric("Likes", likes, "loaded")
-                InsightMetric("Comments", comments, "loaded")
-                InsightMetric("Shares", shares, "loaded")
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Profile views", profile.profileViewsThisWeek.toLong(), "7d")
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Loaded views", contentViews, "loaded")
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Likes", likes, "loaded")
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Comments", comments, "loaded")
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Shares", shares, "loaded")
+                    }
+                }
             }
             Text(
                 "Only you can see these analytics. Engagement reflects loaded content.",
