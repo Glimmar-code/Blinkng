@@ -212,6 +212,9 @@ android {
     // as release without requiring or exposing the production signing key.
     create("rtcSmoke") {
       initWith(getByName("debug"))
+      // R8 disables optimizations for debuggable builds. The JNI smoke APK must
+      // actually be shrunk just like production, but retain debug signing.
+      isDebuggable = false
       // Keep the real package name: google-services.json only defines the production client.
       // This debug-signed variant runs on a disposable CI emulator, never on user devices.
       versionNameSuffix = "-rtcsmoke"
