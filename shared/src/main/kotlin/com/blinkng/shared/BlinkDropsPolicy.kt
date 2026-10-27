@@ -39,6 +39,12 @@ object BlinkDropsPolicy {
 
     fun isWinnerCountValid(value: Int): Boolean = value in MIN_WINNERS..MAX_WINNERS
 
+    /**
+     * Zero recipients means reserving Coins would never allow a genuine claim.
+     * UI uses this as a preflight; the server revalidates at creation time.
+     */
+    fun hasEligibleRecipients(eligible: Int): Boolean = eligible > 0
+
     fun totalBudget(rewardPerUser: Int, winnerCount: Int): Long {
         require(isRewardValid(rewardPerUser)) { "Reward must be a multiple of 100 BLINK Coins." }
         require(isWinnerCountValid(winnerCount)) { "Invalid number of recipients." }
