@@ -16,10 +16,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
-import kotlin.math.hypot
 
 /**
  * Screenshots at different viewport sizes are CI artifacts for comparing with the
@@ -51,41 +49,42 @@ class BlinkBeyondLinkIntroTest {
     )
 
     @Test
-    fun platformSplashIconKeepsWholeWordmarkInAndroidTwelveSafeCircle() {
-        // Android 12+ masks the platform icon to the central 192dp circle.
-        // An off-centre 192x72 vector clipped the leading dots and final K:
-        // on the actual device it read "beyond lin" BEFORE Compose started.
-        val file = listOf(
-            File("src/main/res/drawable/blink_intro_wordmark.xml"),
-            File("app/src/main/res/drawable/blink_intro_wordmark.xml"),
-        ).firstOrNull { it.isFile } ?: error("BLINK launch icon XML not found")
-        val root = DocumentBuilderFactory.newInstance()
-            .newDocumentBuilder()
-            .parse(file).documentElement
-        assertEquals("288dp", root.getAttribute("android:width"))
-        assertEquals("288dp", root.getAttribute("android:height"))
-        assertEquals("288", root.getAttribute("android:viewportWidth"))
-        assertEquals("288", root.getAttribute("android:viewportHeight"))
+    fun androidNativeStartupContainsNoBrandingBeforeComposeAnimation() {
+        // Android 12+ requires a platform startup screen; its icon must be
+        // genuinely transparent and the pre-Compose window must contain no
+        // static Beyond LINK text or any other drawable.
+        fun resource(path: String): File =
+            listOf(File("src/main/res/$path"), File("app/src/main/res/$path"))
+                .firstOrNull { it.isFile } ?: error("Missing resource: $path")
 
-        val safeGroup = root.getElementsByTagName("group").item(0) as Element
-        val sx = safeGroup.getAttribute("android:scaleX").toFloat()
-        val sy = safeGroup.getAttribute("android:scaleY").toFloat()
-        val tx = safeGroup.getAttribute("android:translateX").toFloat()
-        val ty = safeGroup.getAttribute("android:translateY").toFloat()
-        // Conservative corners of the complete vector (dots, B, eyond, LINK).
-        for (x in listOf(12f, 234f)) {
-            for (y in listOf(19f, 65f)) {
-                val distance = hypot(tx + x * sx - 144f, ty + y * sy - 144f)
-                assertTrue("Full Beyond LINK must fit within platform splash circle", distance < 96f)
-            }
-        }
+        val theme = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(resource("values-v31/themes.xml"))
+        val iconSetting = (0 until theme.getElementsByTagName("item").length)
+            .map { theme.getElementsByTagName("item").item(it) }
+            .firstOrNull { it.attributes?.getNamedItem("name")?.nodeValue ==
+                "android:windowSplashScreenAnimatedIcon" }
+        assertEquals("@drawable/blink_splash_empty", iconSetting?.textContent?.trim())
+
+        val emptyIcon = resource("drawable/blink_splash_empty.xml").readText()
+        assertTrue("System icon should not show any lettering or logo",
+            emptyIcon.contains("#00000000"))
+        assertTrue("Startup icon must not contain any opaque path",
+            !Regex("""#FF[0-9a-fA-F]{6}""").containsMatchIn(emptyIcon))
+
+        val windowBackground = resource("drawable/blink_launch_window.xml").readText()
+        assertTrue("No native static wordmark before animation",
+            !windowBackground.contains("blink_intro_wordmark"))
+        assertTrue("No extra image in the native window",
+            !windowBackground.contains("<item android:drawable=\"@drawable/"))
+        assertTrue("Black native window should mask slow cold launches",
+            windowBackground.contains("@color/black"))
     }
 
     private fun verifyFrame(snapshot: String) {
         var finished = false
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
-            BlinkBeyondLinkIntro(onFinished = { finished = true }, matchPlatformSplash = true)
+            BlinkBeyondLinkIntro(onFinished = { finished = true })
         }
         // This exact B is the ONLY brand mark throughout the transition.
         // Replacing it with another logo would break this invariant.
