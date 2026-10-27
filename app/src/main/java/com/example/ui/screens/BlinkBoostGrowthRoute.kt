@@ -436,6 +436,7 @@ private fun BoostCampaignColumn(
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
     var showAllReceipts by remember { mutableStateOf(false) }
+    var showManagement by remember { mutableStateOf(false) }
 
     suspend fun reloadState() {
         stateLoading = true
@@ -972,6 +973,15 @@ private fun BoostCampaignColumn(
             }
         }
 
+        item {
+            TextButton(
+                onClick = { showManagement = !showManagement },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (showManagement) "Hide analytics and campaigns" else "Manage active Boosts, history and receipts")
+            }
+        }
+        if (showManagement) {
         analytics?.let { value ->
             item { BoostAnalyticsCard(value, formatter) }
         }
@@ -1048,6 +1058,7 @@ private fun BoostCampaignColumn(
                 key = { "receipt-" + it.optString("id") }) { receipt ->
                 GrowthReceiptCard(receipt, formatter)
             }
+        }
         }
     }
     }
