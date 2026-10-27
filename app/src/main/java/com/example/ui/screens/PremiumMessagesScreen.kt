@@ -2126,6 +2126,36 @@ private fun PremiumChatDetail(
                 )
             }
 
+            if (searchVisible && searchQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${matchedMessages.size} loaded matches",
+                        color = palette.textSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (hasMoreMessages) {
+                        androidx.compose.material3.TextButton(
+                            enabled = !isLoadingOlder && isConnected,
+                            onClick = { onLoadOlder() },
+                            modifier = Modifier.testTag("chat_search_older")
+                        ) {
+                            Text(
+                                if (isLoadingOlder) "Searching older…" else "Search older messages",
+                                color = palette.textPrimary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    } else {
+                        Text("Entire history loaded", color = palette.textMuted, fontSize = 11.sp)
+                    }
+                }
+            }
+
             if (pinnedOnly || starredOnly) {
                 Surface(color = palette.glassElevated, border = BorderStroke(1.dp, palette.border)) {
                     Row(
