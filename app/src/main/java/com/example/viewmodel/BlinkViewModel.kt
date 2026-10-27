@@ -1914,7 +1914,13 @@ private suspend fun restoreSupabaseSession() {
         visibleRefreshAt[key] = now
         val accountId = state.myProfile.id
         followingPageEpoch++ // Invalidate a pending old-page cursor before quiet refresh.
-        _uiState.value = state.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
+        // The invalidated load-more job will not clear its own flag in finally.
+        _uiState.value = state.copy(
+            isRefreshingFollowing = true,
+            isLoadingMoreFollowingPosts = false,
+            followingPaginationErrorMessage = null,
+            followingFeedErrorMessage = null
+        )
         viewModelScope.launch {
             try {
                 syncMutex.withLock {
