@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+import com.blinkng.shared.BlinkChatPollPolicy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -99,6 +100,9 @@ internal fun BlinkChatExtrasDialog(
     val isLocation = mode == "location"
     val isArticle = mode == "article"
     val isPoll = mode == "poll"
+    val pollDraft = if (isPoll) runCatching {
+        BlinkChatPollPolicy.prepare(title, details.lines().map(String::trim).filter(String::isNotEmpty))
+    }.getOrNull() else null
     val heading = when(mode) {
         "location" -> "Share a place"
         "contact" -> "Share contact"
@@ -115,15 +119,13 @@ internal fun BlinkChatExtrasDialog(
             "📰 ${title.trim()}\n${details.trim()}"
         isContact && contact != null ->
             "👤 Contact: ${contact.first}\nPhone: ${contact.second}"
-        isPoll && title.isNotBlank() -> {
-            val choices = details.lines().map(String::trim).filter(String::isNotBlank)
-                .distinct().take(10)
-            if (choices.size >= 2)
-                "📊 Poll question: ${title.trim()}\n" +
-                    choices.mapIndexed { index, option -> "${index + 1}. $option" }
-                        .joinToString("\n") +
-                    "\n(Reply with your choice number)"
-            else ""
+        isPoll && pollDraft != null -> {
+            // Until the server/native clients are deployed, send an honest text
+            // fallback, never silently drop duplicate or ninth poll options.
+            "📊 Poll question: ${pollDraft.question}\n" +
+                pollDraft.options.mapIndexed { index, option -> "${index + 1}. $option" }
+                    .joinToString("\n") +
+                "\n(Reply with your choice number)"
         }
         else -> ""
     }
@@ -183,7 +185,7 @@ internal fun BlinkChatExtrasDialog(
                         color=Color.LightGray)
                 }
                 isPoll -> {
-                    Text("Text poll: people reply with an option number. Voting buttons are not available yet.",
+                    Text("Text poll: participants reply with an option number. Native voting requires the server upgrade.",
                         color=Color.LightGray)
                     OutlinedTextField(
                         value=title, onValueChange={title=it.take(200)},
@@ -191,10 +193,17 @@ internal fun BlinkChatExtrasDialog(
                     )
                     OutlinedTextField(
                         value=details,onValueChange={details=it.take(1400)},
-                        label={Text("Options (one per line, 2–10)")},
+                        label={Text("Options (one per line, 2–8)")},
                         minLines=4,maxLines=10,
                         modifier=Modifier.fillMaxWidth()
                     )
+                    if ((title.isNotBlank() || details.isNotBlank()) && pollDraft == null) {
+                        Text(
+                            "Enter a question (1–200 characters) and 2–8 different options (1–80 characters each).",
+                            color = Color(0xFFFFC4BB),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(18.dp))
