@@ -13,6 +13,8 @@ import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.RgbFilter
 import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.effect.TextOverlay
+import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.common.OverlaySettings
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.transformer.Composition
@@ -42,7 +44,10 @@ internal data class ReelEditSpec(
     val originalAudioVolume: Float = 1f,
     val musicVolume: Float = 1f,
     val overlayStartMs: Long = 0L,
-    val overlayEndMs: Long = Long.MAX_VALUE
+    val overlayEndMs: Long = Long.MAX_VALUE,
+    val overlayX: Float = 0f,
+    val overlayY: Float = 0f,
+    val overlayScale: Float = 1f
 ) {
     fun validate(durationMs: Long): ReelEditSpec {
         require(durationMs >= 500L) { "Video is too short to edit." }
@@ -52,6 +57,8 @@ internal data class ReelEditSpec(
         }
         require(rotationDegrees in listOf(0f, 90f, 180f, 270f)) { "Invalid rotation." }
         require(overlayText.length <= 120 && sticker.length <= 16) { "Overlay text too long." }
+        require(overlayX in -1f..1f && overlayY in -1f..1f &&
+            overlayScale in 0.5f..2.0f) { "Overlay position or size is invalid." }
         require(originalAudioVolume in 0f..1f && musicVolume in 0f..1f) {
             "Audio volume must be between 0 and 100%."
         }
@@ -142,12 +149,19 @@ internal suspend fun exportEditedReel(
         val startUs = (edit.overlayStartMs - edit.startMs).coerceAtLeast(0L) * 1_000L
         val endUs = if (edit.overlayEndMs == Long.MAX_VALUE) Long.MAX_VALUE else
             (edit.overlayEndMs - edit.startMs).coerceAtLeast(0L) * 1_000L
+        val settings = StaticOverlaySettings.Builder()
+            .setBackgroundFrameAnchor(edit.overlayX, edit.overlayY)
+            .setScale(edit.overlayScale, edit.overlayScale)
+            .build()
         videoEffects += OverlayEffect(
             listOf(object : TextOverlay() {
                 override fun getText(presentationTimeUs: Long): SpannableString =
                     SpannableString(
                         if (presentationTimeUs in startUs..endUs) overlayString else ""
                     )
+
+                override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
+                    settings
             })
         )
     }
