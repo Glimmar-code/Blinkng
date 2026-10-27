@@ -50,6 +50,7 @@ internal fun BlinkPremiumProfileDashboard(
     totalLoadedViews: Long,
     totalLoadedLikes: Long,
     profileCompletion: Int,
+    metricsComplete: Boolean = false,
     onAvatarClick: () -> Unit,
     hasActiveStory: Boolean = false,
     onStoryClick: () -> Unit = {},
@@ -210,13 +211,14 @@ internal fun BlinkPremiumProfileDashboard(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                PremiumProfileStat("Posts", postCount.toLong(), Modifier.weight(1f))
+                PremiumProfileStat(if (metricsComplete) "Posts" else "Loaded", postCount.toLong(), Modifier.weight(1f))
                 PremiumProfileStat("Followers", profile.followerCount.toLong(), Modifier.weight(1f).clickable(onClick = onFollowers))
                 PremiumProfileStat("Views", totalLoadedViews, Modifier.weight(1f))
                 PremiumProfileStat("Likes", totalLoadedLikes, Modifier.weight(1f))
             }
         }
-        Text("Post engagement reflects loaded content", color = softInk, fontSize = 10.sp)
+        Text(if (metricsComplete) "Totals from all active content" else "Engagement reflects loaded posts",
+            color = softInk, fontSize = 11.sp)
 
         Surface(
             color = card.copy(alpha = .92f), shape = RoundedCornerShape(19.dp),
