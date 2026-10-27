@@ -1095,8 +1095,8 @@ private fun OrganizeDropDialog(
         !quoteLoading &&
         quote != null &&
         quoteError == null &&
-        eligibleFollowers > 0 &&
-        maximumPossibleRecipients > 0 &&
+        BlinkDropsPolicy.hasEligibleRecipients(eligibleFollowers) &&
+        BlinkDropsPolicy.hasEligibleRecipients(maximumPossibleRecipients) &&
         action in actions.map { it.name }
 
     var setupStep by remember { mutableIntStateOf(0) }
