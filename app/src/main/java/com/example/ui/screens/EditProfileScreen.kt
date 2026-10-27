@@ -153,9 +153,13 @@ fun EditProfileScreen(
         )
     }
 
+    var skillsText by rememberSaveable(profile.id) {
+        mutableStateOf(profile.coreSkills.joinToString(", "))
+    }
+
     var relationshipStatus by rememberSaveable(profile.id) {
         mutableStateOf(
-            profile.relationshipStatus.ifBlank { "Private" }
+            profile.relationshipStatus
         )
     }
 
@@ -284,6 +288,7 @@ fun EditProfileScreen(
         academicLevel != profile.academicLevel ||
         graduationYear != profile.graduationYear ||
         relationshipStatus != profile.relationshipStatus ||
+        skillsText != profile.coreSkills.joinToString(", ") ||
         email != profile.email.value ||
         phone != profile.phone.value ||
         whatsapp != profile.whatsapp.value ||
@@ -422,7 +427,7 @@ fun EditProfileScreen(
 
                                 try {
 
-                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
+                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, if (isNonStudent) "" else graduationYear, website, linkedin, twitter, instagram, featuredLink)
 
                                     if (validationError != null) throw IllegalArgumentException(validationError)
 
@@ -430,7 +435,6 @@ fun EditProfileScreen(
 
                                     if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
 
-                                    if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
 
                                     var finalAvatar =
                                         avatarUrl
@@ -523,6 +527,9 @@ fun EditProfileScreen(
 
                                             relationshipStatus =
                                                 relationshipStatus,
+
+                                             coreSkills = skillsText.split(",").map { it.trim() }
+                                                 .filter { it.isNotBlank() }.distinct().take(20).toMutableList(),
 
                                             email =
                                                 ContactField(
@@ -1129,6 +1136,20 @@ fun EditProfileScreen(
                                 )
                         )
                     }
+                }
+            }
+
+            item {
+                EditorSection(
+                    title = "Skills",
+                    subtitle = "Add up to 20 comma-separated skills."
+                ) {
+                    ProfileField(
+                        value = skillsText,
+                        onValueChange = { skillsText = it },
+                        label = "Skills",
+                        icon = Icons.Default.Star
+                    )
                 }
             }
 
