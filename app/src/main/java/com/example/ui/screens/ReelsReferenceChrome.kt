@@ -175,6 +175,9 @@ internal fun ReelsReferenceChrome(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.width(60.dp)
                         .clickable { if (ownStory != null) onStoryClick(ownStory) else onAddStory() }
+                        .semantics {
+                            contentDescription = if (ownStory != null) "Open my story" else "Add story"
+                        }
                 ) {
                     Box(contentAlignment = Alignment.BottomEnd) {
                         AsyncImage(
@@ -195,7 +198,7 @@ internal fun ReelsReferenceChrome(
                                 Modifier.size(19.dp).clip(CircleShape).background(foreground),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = "Add story",
+                                Icon(Icons.Default.Add, contentDescription = null,
                                     tint = background, modifier = Modifier.size(15.dp))
                             }
                         }
@@ -207,13 +210,15 @@ internal fun ReelsReferenceChrome(
             items(otherStories, key = { it.id }) { story ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(60.dp).clickable { onStoryClick(story) }
+                    modifier = Modifier.width(60.dp)
+                        .clickable { onStoryClick(story) }
+                        .semantics { contentDescription = "Open ${story.displayLabel}'s story" }
                 ) {
                     AsyncImage(
                         model = story.avatar,
                         fallback = painterResource(R.drawable.ic_default_profile),
                         error = painterResource(R.drawable.ic_default_profile),
-                        contentDescription = "Open ${story.displayLabel}'s story",
+                        contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(42.dp).clip(CircleShape)
                             .border(
