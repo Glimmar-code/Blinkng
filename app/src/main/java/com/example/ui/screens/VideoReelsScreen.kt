@@ -767,6 +767,7 @@ private fun ReelsContent(
                         onSwipeToHome = onBackToPosts,
                         onSwipeToProfile = onOpenConnectHub,
                         isPreview = !expanded,
+                        onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
                         onInitialPositionConsumed = {
                             if (pendingLaunchReelId == reel.id) {
@@ -820,6 +821,7 @@ private fun ReelsContent(
                         onSwipeToHome = onBackToPosts,
                         onSwipeToProfile = onOpenConnectHub,
                         isPreview = !expanded,
+                        onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = 0L,
                         onInitialPositionConsumed = {},
                         trackExposure = false,
@@ -1098,6 +1100,7 @@ private fun ReelPage(
     initialPositionMs: Long,
     onInitialPositionConsumed: () -> Unit,
     isPreview: Boolean = false,
+    onExpandPreview: () -> Unit = {},
     trackExposure: Boolean = true,
 ) {
     val context = LocalContext.current
@@ -1179,7 +1182,7 @@ private fun ReelPage(
             }
             // Keep the full reel opaque at every pager offset: sliding is owned
             // by VerticalPager; independent scaling made videos visibly jump.
-            .pointerInput(reel.id) {
+            .pointerInput(reel.id, isPreview, isInteractionOverlayOpen, isActive) {
                 detectTapGestures(
                     onPress = {
                         tryAwaitRelease()
@@ -1196,9 +1199,15 @@ private fun ReelPage(
                         burstTrigger++
                     },
                     onTap = {
-                        isPausedByUser = !isPausedByUser
-                        showPlaybackHint = true
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (isPreview) {
+                            // Tapping the preview opens the SAME mounted reel
+                            // into fullscreen; it must not toggle pause first.
+                            if (isActive && !isInteractionOverlayOpen) onExpandPreview()
+                        } else {
+                            isPausedByUser = !isPausedByUser
+                            showPlaybackHint = true
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
                     }
                 )
             }
