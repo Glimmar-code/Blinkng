@@ -10,7 +10,7 @@ export function pushPreferenceDecision(allowed, error) {
  * authenticated getUser() result can authorize a client-originated push.
  */
 export async function verifiedNotificationActor(authorization, getUser) {
-  const bearer = authorization.match(/^Bearer\\s+(\\S+)$/i)?.[1];
+  const bearer = authorization.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!bearer) return null;
   try {
     const { data, error } = await getUser(bearer);
