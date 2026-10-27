@@ -446,7 +446,8 @@ fun ActivityScreen(
                     NotificationEmptyState(
                         filter = filter,
                         viewMode = viewMode,
-                        hasSearch = searchQuery.isNotBlank()
+                        hasSearch = searchQuery.isNotBlank(),
+                        modifier = Modifier.weight(1f)
                     )
                     if (hasMore && !isLoadingMore && isConnected) {
                         TextButton(onClick = onLoadMore) { Text("Search older notifications") }
@@ -731,7 +732,8 @@ private fun NotificationLoadError(message: String, onRefresh: () -> Unit) {
 private fun NotificationEmptyState(
     filter: NotificationCategory,
     viewMode: NotificationViewMode,
-    hasSearch: Boolean
+    hasSearch: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val title = when {
         hasSearch -> "No matching notifications"
@@ -762,7 +764,7 @@ private fun NotificationEmptyState(
         else -> "Likes, comments, follows and profile activity will appear here."
     }
 
-    Box(Modifier.fillMaxSize(), Alignment.Center) {
+    Box(modifier.fillMaxSize(), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
                 shape = CircleShape,

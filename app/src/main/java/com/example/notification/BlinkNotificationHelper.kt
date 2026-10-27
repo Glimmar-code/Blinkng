@@ -986,10 +986,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            SOCIAL_ID_BASE +
-                    positiveHash(
-                        stableNotificationKey ?: "$title$body"
-                    ) % 700,
+            positiveHash("blink_social_${stableNotificationKey ?: "$title$body"}"),
             notification
         )
     }
