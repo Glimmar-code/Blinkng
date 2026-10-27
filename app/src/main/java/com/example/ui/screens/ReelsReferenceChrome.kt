@@ -94,7 +94,8 @@ internal fun ReelsReferenceChrome(
     val background = if (isDark) Color(0xFF121214) else Color.White
     val featured = remember(featuredReels) { featuredReels.take(5) }
     val validStories = remember(stories) {
-        stories.filter { it.id != "story_me" && it.storyImage.isNotBlank() }
+        // Keep a real uploaded "story_me"; only an empty placeholder is excluded.
+        stories.filter { it.storyImage.isNotBlank() }
             .distinctBy { it.id }
     }
     val ownStory = validStories.firstOrNull {
