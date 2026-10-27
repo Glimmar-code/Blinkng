@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +67,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -108,6 +110,9 @@ fun ActivityScreen(
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRefresh: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
     onMarkAllRead: () -> Unit = {},
     onToggleRead: (ActivityItem) -> Unit = {},
     accountId: String = "",
@@ -206,6 +211,17 @@ fun ActivityScreen(
     }
     val sections = remember(sortedNotifications, viewMode) {
         buildNotificationSections(sortedNotifications, viewMode)
+    }
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, hasMore, isLoadingMore, showSavedUpdates, isLoading, sortedNotifications.size) {
+        if (!showSavedUpdates && !isLoading && hasMore && !isLoadingMore && sortedNotifications.isNotEmpty()) {
+            snapshotFlow {
+                val info = listState.layoutInfo
+                info.visibleItemsInfo.lastOrNull()?.index ?: 0 to info.totalItemsCount
+            }.distinctUntilChanged().collect { (lastVisible, total) ->
+                if (total > 0 && lastVisible >= total - 5) onLoadMore()
+            }
+        }
     }
 
     Scaffold(
@@ -429,6 +445,7 @@ fun ActivityScreen(
                 )
 
                 else -> LazyColumn(
+                    state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     sections.forEach { section ->
@@ -475,6 +492,20 @@ fun ActivityScreen(
                             item(key = "caught_up_${section.title}") {
                                 CaughtUpDivider()
                             }
+                        }
+                    }
+                    if (isLoadingMore) {
+                        item(key = "older_loading") {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    } else if (hasMore) {
+                        item(key = "older_more") {
+                            TextButton(
+                                onClick = onLoadMore,
+                                modifier = Modifier.fillMaxWidth().padding(8.dp)
+                            ) { Text("Load older notifications") }
                         }
                     }
                 }
@@ -925,7 +956,7 @@ private fun NotificationCard(
                         displayName,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        fontSize = 13.5.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .weight(1f, fill = false)
@@ -949,7 +980,7 @@ private fun NotificationCard(
                             Text(
                                 "OFFICIAL",
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                                fontSize = 8.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = accent
                             )
@@ -961,9 +992,9 @@ private fun NotificationCard(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     safeAction,
-                    maxLines = 4,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -984,7 +1015,7 @@ private fun NotificationCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         item.time,
-                        fontSize = 10.5.sp,
+                        fontSize = 11.5.sp,
                         color = if (item.isUnread) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal
                     )

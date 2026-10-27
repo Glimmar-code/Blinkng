@@ -162,6 +162,8 @@ data class ActivityItem(
     val targetMarketId: String? = null,
     val targetUsername: String? = null,
     val targetType: String? = null,
+    // Stable backend entity key, including the id shared by official notice mirrors.
+    val targetEntityId: String? = null,
     val previewText: String? = null,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
     val actorIsVip: Boolean = false,

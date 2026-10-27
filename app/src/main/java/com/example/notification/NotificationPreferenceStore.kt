@@ -30,6 +30,16 @@ import java.util.concurrent.TimeUnit
 object NotificationPreferenceStore {
     private const val TAG = "BlinkNotifyPrefs"
     private const val PREFS = "blink_notification_preferences"
+    private fun accountPrefs(context: Context): android.content.SharedPreferences {
+        val appContext = context.applicationContext
+        val uid = runCatching {
+            SupabaseService.initialize(appContext)
+            SupabaseService().getCurrentUserId().orEmpty()
+        }.getOrDefault("")
+        return appContext.getSharedPreferences(
+            "${PREFS}_${uid.ifBlank { "signed_out" }}", Context.MODE_PRIVATE
+        )
+    }
     private const val MASTER = "master"
     private const val QUIET_ENABLED = "quiet_enabled"
     private const val QUIET_START = "quiet_start_minute"
@@ -44,7 +54,7 @@ object NotificationPreferenceStore {
         .build()
 
     fun isAllowed(context: Context, type: BlinkNotificationType): Boolean {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = accountPrefs(context)
         if (!prefs.safeBoolean(MASTER, true)) return false
         if (!prefs.safeBoolean(type.preferenceKey, true)) return false
         if (!type.critical && isQuietNow(context)) return false
@@ -62,23 +72,23 @@ object NotificationPreferenceStore {
     }
 
     fun setMasterEnabled(context: Context, enabled: Boolean) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .edit().putBoolean(MASTER, enabled).apply()
         syncToServerAsync(context)
     }
 
     fun setCategoryEnabled(context: Context, type: BlinkNotificationType, enabled: Boolean) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .edit().putBoolean(type.preferenceKey, enabled).apply()
         syncToServerAsync(context)
     }
 
     fun isCategoryEnabled(context: Context, type: BlinkNotificationType): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeBoolean(type.preferenceKey, true)
 
     fun isMasterEnabled(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeBoolean(MASTER, true)
 
     fun setQuietHours(
@@ -88,7 +98,7 @@ object NotificationPreferenceStore {
         endMinute: Int = DEFAULT_QUIET_END,
         timezone: String = ZoneId.systemDefault().id
     ) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .edit()
             .putBoolean(QUIET_ENABLED, enabled)
             .putInt(QUIET_START, startMinute.coerceIn(0, 1439))
@@ -99,21 +109,21 @@ object NotificationPreferenceStore {
     }
 
     fun quietHoursEnabled(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeBoolean(QUIET_ENABLED, false)
 
     fun quietStartMinute(context: Context): Int =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeInt(QUIET_START, DEFAULT_QUIET_START)
             .coerceIn(0, 1439)
 
     fun quietEndMinute(context: Context): Int =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeInt(QUIET_END, DEFAULT_QUIET_END)
             .coerceIn(0, 1439)
 
     private fun isQuietNow(context: Context): Boolean {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = accountPrefs(context)
         if (!prefs.safeBoolean(QUIET_ENABLED, false)) return false
         val start = prefs.safeInt(QUIET_START, DEFAULT_QUIET_START).coerceIn(0, 1439)
         val end = prefs.safeInt(QUIET_END, DEFAULT_QUIET_END).coerceIn(0, 1439)
@@ -153,7 +163,7 @@ object NotificationPreferenceStore {
                 val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
                 if (rows.length() == 0) return@use
                 val row = rows.getJSONObject(0)
-                val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                val editor = accountPrefs(context).edit()
                 editor.putBoolean(MASTER, row.optBoolean("master_enabled", true))
                 mapOf(
                     "messages" to "messages_enabled",
@@ -189,7 +199,7 @@ object NotificationPreferenceStore {
             if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
             val uid = service.getCurrentUserId() ?: return
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val prefs = accountPrefs(context)
             val payload = JSONObject()
                 .put("user_id", uid)
                 .put("master_enabled", prefs.safeBoolean(MASTER, true))

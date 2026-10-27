@@ -266,7 +266,6 @@ class MainActivity : ComponentActivity() {
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
         }
         handleNotificationIntent(intent)
-        handleNotificationIntent(intent)
         // Public BLINK channel links are routed to the same native channel page
         // as the inbox. Only exact first-party hosts and UUIDs are trusted.
         val incomingUri = intent?.data
@@ -1743,8 +1742,8 @@ fun MainAppContent(
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onOpenMarketListing = { item -> viewModel.openProductDetail(item) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
-                        hasUnreadNotifications = uiState.activities.any { it.isUnread },
-                        unreadNotificationCount = uiState.activities.count { it.isUnread },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
+                        unreadNotificationCount = uiState.activities.count { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
                         isInteractionOverlayOpen =
                             uiState.activeCommentsPostId != null ||
                                 uiState.activePostOptionsPost != null ||
@@ -1783,7 +1782,7 @@ fun MainAppContent(
                         onMarketItemClick = { viewModel.openProductDetail(it) },
                         onGameClick = { feedUtilitySheet = "items" },
                         onNotificationsClick = { viewModel.openActivity(true) },
-                        hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
                         isSearching = uiState.isDiscoverSearching,
                         onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
@@ -2900,23 +2899,17 @@ fun MainAppContent(
                     viewModel.openProfile(username)
                 },
                 onNotificationClick = { activity ->
+                    // The ViewModel performs typed navigation once (including uncached Reels).
                     viewModel.handleNotificationClick(activity)
-                    activity.targetPostId?.let { postId ->
-                        val type = if (uiState.reels.any { it.id == postId }) {
-                            ShareContentType.REEL
-                        } else {
-                            ShareContentType.POST
-                        }
-                        viewModel.handleDeepLink(
-                            com.example.sharing.AppDeepLink(type = type, id = postId)
-                        )
-                    }
                 },
                 isDark = uiState.isDarkMode,
                 isConnected = uiState.isLiveSupabaseConnected,
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
-                onRefresh = { viewModel.fetchSupabaseData() },
+                onRefresh = { viewModel.refreshNotifications() },
+                onLoadMore = { viewModel.loadOlderNotifications() },
+                hasMore = uiState.activitiesHasMore,
+                isLoadingMore = uiState.activitiesLoadingMore,
                 onMarkAllRead = { viewModel.markAllActivitiesRead() },
                 onToggleRead = { activity -> viewModel.toggleActivityReadState(activity) }
             )
@@ -3225,7 +3218,7 @@ fun MainAppContent(
             BlinkReferenceMenuScreen(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
-                hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                hasUnreadNotifications = uiState.activities.any { it.isUnread && !it.targetType.equals("CHAT", ignoreCase = true) },
                 appVersion = BuildConfig.VERSION_NAME,
                 onDismiss = { viewModel.openMenu(false) },
                 onViewProfile = {

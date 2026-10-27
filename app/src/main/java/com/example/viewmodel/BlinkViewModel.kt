@@ -156,6 +156,8 @@ data class BlinkUiState(
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
     val activitiesError: String? = null,
+    val activitiesHasMore: Boolean = true,
+    val activitiesLoadingMore: Boolean = false,
     val connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     val isConnectHubLoading: Boolean = false,
     val comments: List<Comment> = emptyList(),
@@ -2235,7 +2237,9 @@ private suspend fun restoreSupabaseSession() {
                                 { activities ->
                                     _uiState.value = _uiState.value.copy(
                                         activities = activities,
-                                        activitiesLoading = false
+                                        activitiesLoading = false,
+                                        activitiesHasMore = activities.size >= 80,
+                                        activitiesLoadingMore = false
                                     )
                                 },
                                 { error ->
@@ -3355,7 +3359,78 @@ private suspend fun restoreSupabaseSession() {
         persistUiPreferences()
     }
     fun openMenu(open: Boolean) { _uiState.value = _uiState.value.copy(isMenuOpen = open) }
-    fun openActivity(open: Boolean) { _uiState.value = _uiState.value.copy(isActivityOpen = open) }
+    fun openActivity(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isActivityOpen = open)
+        if (open && _uiState.value.isOnline) refreshNotifications()
+    }
+
+    private var notificationRefreshJob: kotlinx.coroutines.Job? = null
+
+    fun refreshNotifications() {
+        if (notificationRefreshJob?.isActive == true) return
+        if (!_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(activitiesError = "You're offline. Showing saved activity.")
+            return
+        }
+        notificationRefreshJob = viewModelScope.launch {
+            val accountId = _uiState.value.myProfile.id
+            _uiState.value = _uiState.value.copy(
+                activitiesLoading = _uiState.value.activities.isEmpty(),
+                activitiesError = null
+            )
+            supabaseService.fetchActivities().fold(
+                onSuccess = { fresh ->
+                    if (_uiState.value.myProfile.id != accountId) return@fold
+                    _uiState.value = _uiState.value.copy(
+                        activities = fresh,
+                        activitiesLoading = false,
+                        activitiesHasMore = fresh.size >= 80,
+                        activitiesLoadingMore = false,
+                        activitiesError = null
+                    )
+                    persistExtendedCache()
+                },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(
+                        activitiesLoading = false,
+                        activitiesError = "Couldn't refresh notifications."
+                    )
+                }
+            )
+        }
+    }
+
+    fun loadOlderNotifications() {
+        val current = _uiState.value
+        if (!current.activitiesHasMore || current.activitiesLoadingMore ||
+            !current.isOnline || current.activities.isEmpty()) return
+        val oldest = current.activities.map { it.rawTimestamp }
+            .filter { it.isNotBlank() }.minOrNull() ?: return
+        val accountId = current.myProfile.id
+        _uiState.value = current.copy(activitiesLoadingMore = true)
+        viewModelScope.launch {
+            supabaseService.fetchActivities(beforeCreatedAt = oldest).fold(
+                onSuccess = { older ->
+                    if (_uiState.value.myProfile.id != accountId) return@fold
+                    val combined = (_uiState.value.activities + older)
+                        .distinctBy { it.id }
+                        .sortedByDescending { it.rawTimestamp }
+                    _uiState.value = _uiState.value.copy(
+                        activities = combined,
+                        activitiesHasMore = older.size >= 80,
+                        activitiesLoadingMore = false
+                    )
+                    persistExtendedCache()
+                },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(
+                        activitiesLoadingMore = false,
+                        activitiesError = "Couldn't load older notifications."
+                    )
+                }
+            )
+        }
+    }
 
     fun openCommentsForPost(postId: String?) {
         if (postId == null) {

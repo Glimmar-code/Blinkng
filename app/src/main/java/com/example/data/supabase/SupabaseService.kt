@@ -4939,7 +4939,7 @@ suspend fun uploadPostMedia(
             false
         }
     }
-    suspend fun fetchActivities(): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
+    suspend fun fetchActivities(beforeCreatedAt: String? = null): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: return@withContext Result.success(emptyList())
 
@@ -4969,13 +4969,15 @@ suspend fun uploadPostMedia(
                 }
             }
 
+            val cursorFilter = beforeCreatedAt?.takeIf { it.isNotBlank() }
+                ?.let { "&created_at=lt.${encodeValue(it)}" }.orEmpty()
             val activityArray = fetchArray(
-                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
+                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}${cursorFilter}&order=created_at.desc&limit=100",
                 "Activity",
                 required = true
             )
             val notificationArray = fetchArray(
-                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
+                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}${cursorFilter}&order=created_at.desc&limit=100",
                 "Notification",
                 required = false
             )
@@ -5003,7 +5005,8 @@ suspend fun uploadPostMedia(
                                 .takeIf { o.optString("entity_type").equals("post", true) },
                             targetMarketId = o.optString("entity_id")
                                 .takeIf { o.optString("entity_type").equals("market", true) },
-                            targetType = o.optString("entity_type").takeIf { it.isNotBlank() }
+                            targetType = o.optString("entity_type").takeIf { it.isNotBlank() },
+                            targetEntityId = o.optString("entity_id").takeIf { it.isNotBlank() }
                         )
                     )
                 }
@@ -5052,6 +5055,7 @@ suspend fun uploadPostMedia(
                                 !optionalTargetType.isNullOrBlank() -> optionalTargetType
                                 else -> "NOTIFICATION"
                             },
+                            targetEntityId = id,
                             previewText = o.optString("sub_text").takeIf { it.isNotBlank() },
                             actorIsVip = o.optBoolean("actor_is_vip", false),
                             vipPriority = o.optBoolean("vip_priority", false)
@@ -5060,29 +5064,27 @@ suspend fun uploadPostMedia(
                 }
             }
 
-            // Canonical notification rows win whenever both legacy activity and
-            // notification records describe the same event. The known mirrored social
-            // activity types are removed from the fallback path entirely now that the
-            // production notification trigger/function set is live.
-            fun isCanonicalMirror(item: ActivityItem): Boolean {
-                val action = item.action.lowercase(Locale.US)
-                return action.contains("liked your") ||
-                    action.contains("commented on") ||
-                    action.contains("replied") ||
-                    action.contains("mentioned") ||
-                    action.contains("follow") ||
-                    action.contains("repost")
+            // De-duplicate only matching canonical/legacy events. Previously, merely
+            // having *any* canonical notification hid all legacy likes and comments.
+            // Official announcements carry the exact shared notification id.
+            val canonicalIds = notificationItems.mapNotNull { it.targetEntityId }.toHashSet()
+            val legacyFallback = activityItems.filterNot { legacy ->
+                val officialMirror = legacy.targetType.equals("notification", ignoreCase = true) &&
+                    legacy.targetEntityId in canonicalIds
+                val socialMirror = notificationItems.any { canonical ->
+                    canonical.user.isNotBlank() &&
+                        canonical.user == legacy.user &&
+                        canonical.category == legacy.category &&
+                        canonical.category != NotificationFilter.ALL &&
+                        canonical.rawTimestamp.take(19) == legacy.rawTimestamp.take(19) &&
+                        ((canonical.targetPostId != null && canonical.targetPostId == legacy.targetPostId) ||
+                            (canonical.targetMarketId != null && canonical.targetMarketId == legacy.targetMarketId) ||
+                            (canonical.targetPostId == null && legacy.targetPostId == null &&
+                                canonical.targetType.equals("profile", ignoreCase = true)))
+                }
+                officialMirror || socialMirror
             }
-
-            val notificationKeys = notificationItems.asSequence().map(::semanticKey).toHashSet()
-            val legacyFallback = if (notificationItems.isEmpty()) {
-                activityItems
-            } else {
-                activityItems.filterNot(::isCanonicalMirror)
-            }
-            val merged = (notificationItems + legacyFallback.filterNot {
-                semanticKey(it) in notificationKeys
-            })
+            val merged = (notificationItems + legacyFallback)
                 .sortedByDescending { it.rawTimestamp }
                 .distinctBy { it.id }
                 .take(150)
