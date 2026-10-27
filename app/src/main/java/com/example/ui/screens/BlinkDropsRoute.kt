@@ -14,6 +14,9 @@ import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
 
 import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.background
@@ -187,6 +190,7 @@ private data class DropItem(
     val eligible: Boolean,
     val creatorAvatar: String = "",
     val previewUrl: String = "",
+    val previewVideoUrl: String = "",
 )
 
 private data class TopGiver(
@@ -929,10 +933,16 @@ private fun DropCard(
                 }
             }
 
-            if (drop.previewUrl.startsWith("https://")) {
+            val previewSource = drop.previewUrl.takeIf { it.startsWith("https://") }
+                ?: drop.previewVideoUrl.takeIf { it.startsWith("https://") }
+            if (previewSource != null) {
+                val model: Any = if (previewSource == drop.previewVideoUrl) {
+                    ImageRequest.Builder(LocalContext.current).data(previewSource)
+                        .decoderFactory(VideoFrameDecoder.Factory()).videoFrameMillis(800).build()
+                } else previewSource
                 AsyncImage(
-                    model = drop.previewUrl,
-                    contentDescription = "Drop content preview",
+                    model = model,
+                    contentDescription = if (drop.targetType == "REEL") "Reel video preview" else "Drop content preview",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().height(132.dp),
                 )
@@ -1740,6 +1750,7 @@ private fun JSONArray?.toDropItems(): List<DropItem> {
                         eligible = item.optBoolean("eligible", false),
                         creatorAvatar = item.optString("creator_avatar"),
                         previewUrl = item.optString("target_preview_url"),
+                        previewVideoUrl = item.optString("target_video_url"),
                     )
                 )
             }
