@@ -1107,6 +1107,7 @@ class MainActivity : ComponentActivity() {
                 if (showStartupIntro) {
                     com.blinkng.shared.brand.BlinkBeyondLinkIntro(
                         onFinished = { introAnimationFinished = true },
+                        matchPlatformSplash = true,
                         modifier = Modifier.fillMaxSize()
                             .zIndex(1000f)
                             .pointerInput(Unit) {
