@@ -167,7 +167,8 @@ fun HomeScreen(
     var feedFilter by remember { mutableStateOf("All") }
     val visiblePosts = remember(posts, feedFilter) {
         posts.filter { post ->
-            when (feedFilter) {
+            // Home is text/photos/polls only; exclude legacy video rows too.
+            !post.isReel && post.videoUrl.isNullOrBlank() && when (feedFilter) {
                 "Photos" -> post.images.any { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ||
                     !post.imageUrl.isNullOrBlank()
                 "Polls" -> post.hasPoll
@@ -175,6 +176,7 @@ fun HomeScreen(
             }
         }
     }
+    val pollMetadataUnavailable = posts.any { !it.pollMetadataAvailable }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
     var postDetailsId by remember { mutableStateOf<String?>(null) }
@@ -247,6 +249,20 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(feedFilter) {
+        listState.scrollToItem(0)
+    }
+    var autoFilterFetches by remember(feedFilter) { mutableIntStateOf(0) }
+    LaunchedEffect(feedFilter, visiblePosts.size, hasMorePosts, loading, loadingMorePosts, error) {
+        // Bounded filtered discovery: stop after three pages or any failure.
+        if (feedFilter != "All" && !(feedFilter == "Polls" && pollMetadataUnavailable) &&
+            visiblePosts.size < 3 && hasMorePosts && !loading && !loadingMorePosts &&
+            posts.isNotEmpty() && error == null && autoFilterFetches < 3
+        ) {
+            autoFilterFetches++
+            loadMorePosts()
+        }
+    }
     LaunchedEffect(listState, posts.size, hasMorePosts, loading, loadingMorePosts) {
         if (hasMorePosts && posts.isNotEmpty() && !loading && !loadingMorePosts) {
             snapshotFlow {
@@ -647,12 +663,22 @@ fun HomeScreen(
             }
         }
         error?.let { item { InlineError(it) } }
+        if (feedFilter == "Polls" && pollMetadataUnavailable) {
+            item(key = "poll_metadata_warning") {
+                Column {
+                    Text("Poll filtering is temporarily unavailable. Refresh to retry.",
+                        color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = { scope.launch { reload() } }) { Text("Retry poll lookup") }
+                }
+            }
+        }
         if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
-        if (!loading && posts.isNotEmpty() && visiblePosts.isEmpty()) {
+        if (!loading && posts.isNotEmpty() && visiblePosts.isEmpty() &&
+            !(feedFilter == "Polls" && pollMetadataUnavailable)) {
             item(key = "home_filtered_empty") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("No $feedFilter posts in the current page", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No $feedFilter posts in the pages checked", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { feedFilter = "All" }) { Text("Show all") }
                         if (hasMorePosts && !loadingMorePosts) {
