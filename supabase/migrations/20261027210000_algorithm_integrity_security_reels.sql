@@ -1,3 +1,9 @@
+-- destructive-change-reviewed
+-- rollback-plan: Restore the backed-up pg_get_functiondef definitions of
+-- get_discovery_feed, get_feed_page, record_content_view and
+-- complete_blink_rewarded_ad_claim in a separate reviewed staging rollback;
+-- revert AdMob Edge worker, and remove the new service-only settlement function
+-- after checking for pending verified callbacks. Do not touch coin ledger rows.
 -- Algorithm integrity repair, stage-only until the database and both clients pass validation.
 -- Does not alter wallet amounts, HP, verification prices, or existing balances.
 -- All source rewrites abort on unexpected function definitions instead of silently diverging.
@@ -88,6 +94,8 @@ create table if not exists private_ranking.reel_engagement_sessions (
 
 create index if not exists reel_engagement_sessions_viewer_post_created_idx
   on private_ranking.reel_engagement_sessions(viewer_id, post_id, created_at desc);
+alter table private_ranking.reel_engagement_sessions enable row level security;
+revoke all on private_ranking.reel_engagement_sessions from public,anon,authenticated;
 
 create or replace function private_ranking.reel_quality_factor(p_post_id uuid)
 returns numeric
@@ -287,6 +295,7 @@ do $rewards$
 declare
   v_source text := pg_get_functiondef('public.complete_blink_rewarded_ad_claim(uuid)'::regprocedure);
   v_anchor text := 'if v_claim.started_at < now()-interval ''30 minutes''';
+  v_ad_cap_anchor text := 'if v_ads_before >= v_limit then raise exception ''REWARDED_AD_DAILY_LIMIT''; end if;';
   v_old_user text := 'v_user uuid := auth.uid();';
   v_service text;
 begin
@@ -298,6 +307,21 @@ begin
   v_source := replace(v_source,v_anchor,
     'if v_claim.ssv_verified_at is null then raise exception ''REWARDED_AD_VERIFICATION_PENDING''; end if;' || E'\n  ' || v_anchor
   );
+  if position(v_ad_cap_anchor in v_source)=0 then
+    raise exception 'REWARDED_AD_VERIFIED_LIMIT_SOURCE_DRIFT';
+  end if;
+  -- Android already restricts ads 11-15 to actively verified members.
+  -- Enforce the identical entitlement inside the authoritative coin RPC.
+  v_source := replace(v_source,v_ad_cap_anchor,$verified$
+if v_ads_before >= (case when exists (
+      select 1 from public.profiles verified
+      where verified.id=v_user
+        and upper(coalesce(verified.verification_badge,'')) in ('BLUE','GOLD')
+        and (verified.verification_expires_at > now()
+             or (upper(verified.verification_badge)='GOLD' and verified.verification_expires_at is null))
+    ) then v_limit else least(v_limit,10) end)
+  then raise exception 'REWARDED_AD_DAILY_LIMIT'; end if;
+$verified$);
   execute v_source;
 
   -- Service-role-only sibling: identical transaction, cap, ledger and milestone
