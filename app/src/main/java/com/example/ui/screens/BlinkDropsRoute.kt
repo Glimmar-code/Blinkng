@@ -272,15 +272,18 @@ fun BlinkDropsRoute(
         loading = false
     }
 
-    LaunchedEffect(initialDropId, refreshNonce) {
-        if (initialDropId == null) return@LaunchedEffect
+    LaunchedEffect(initialDropId, refreshNonce, state) {
+        if (initialDropId == null || state == null) return@LaunchedEffect
         notificationError = null
+        val cached = (state?.optJSONArray("active_drops").toDropItems() +
+            state?.optJSONArray("my_drops").toDropItems()).firstOrNull { it.id == initialDropId }
         service.detail(initialDropId).onSuccess { result ->
-            notificationDrop = if (result.optBoolean("not_found")) null
-                else JSONArray().put(result).toDropItems().firstOrNull()
+            notificationDrop = if (result.optBoolean("not_found")) cached
+                else JSONArray().put(result).toDropItems().firstOrNull() ?: cached
             if (notificationDrop == null) notificationError = "This Drop is unavailable or you are not eligible to view it."
         }.onFailure {
-            notificationError = "Unable to load this Drop. Refresh to retry."
+            notificationDrop = cached
+            if (cached == null) notificationError = "Unable to load this Drop. Refresh to retry."
         }
     }
 
