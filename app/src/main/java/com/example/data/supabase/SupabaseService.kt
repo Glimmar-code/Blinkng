@@ -4,6 +4,7 @@ import com.blinkng.shared.ProfileRankSnapshot
 import com.blinkng.shared.ProfileVisitSettings
 import com.blinkng.shared.ProfileVisitor
 import com.blinkng.shared.ProfileVisitHistory
+import com.blinkng.shared.ProfileContentMetrics
 import com.blinkng.shared.ProfileVisibilityScope
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
@@ -5984,6 +5985,30 @@ suspend fun uploadPostMedia(
                         response.body?.string().orEmpty().trim() == "true"
                 }
             }.getOrDefault(false)
+        }
+
+    /** Retrieves totals across all active content, not just the client's current page. */
+    suspend fun getProfileContentMetrics(profileId: String): ProfileContentMetrics? =
+        withContext(Dispatchers.IO) {
+            if (!isAuthenticated() || !isValidUuid(profileId)) return@withContext null
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/get_profile_content_metrics", true)
+                        .post(JSONObject().put("p_profile_id", profileId).toString()
+                            .toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val data = JSONObject(response.body?.string().orEmpty())
+                    ProfileContentMetrics(
+                        posts = data.optLong("posts").coerceAtLeast(0L),
+                        reels = data.optLong("reels").coerceAtLeast(0L),
+                        views = data.optLong("views").coerceAtLeast(0L),
+                        likes = data.optLong("likes").coerceAtLeast(0L),
+                        comments = data.optLong("comments").coerceAtLeast(0L),
+                        shares = data.optLong("shares").coerceAtLeast(0L)
+                    )
+                }
+            }.getOrNull()
         }
 
     /** Records only if BOTH accounts previously consented, never for self visits. */
