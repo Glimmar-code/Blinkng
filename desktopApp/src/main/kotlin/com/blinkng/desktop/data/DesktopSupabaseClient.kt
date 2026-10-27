@@ -652,6 +652,22 @@ class DesktopSupabaseClient(
         ))
     }
 
+    /** Windows uses the same server-held, permission-gated contact matches as Android.
+     * It never reads another device's address book or downloads raw numbers. */
+    suspend fun contactDiscovery(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "get")) as JSONObject
+    }
+
+    suspend fun setContactDiscovery(syncEnabled: Boolean, discoverable: Boolean, joinAlerts: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "settings")
+            .put("sync_enabled", syncEnabled).put("discoverable", discoverable)
+            .put("join_alerts", joinAlerts)) as JSONObject
+    }
+
+    suspend fun deleteContactDiscovery(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "delete")) as JSONObject
+    }
+
     suspend fun requestOnboardingPhoneCode(raw: String) = withContext(Dispatchers.IO) {
         val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Enter a valid phone number." }
         execute(authenticatedRequest("/auth/v1/user")

@@ -1475,3 +1475,6 @@ Android and Windows both request a one-time SMS verification when a new user com
 
 ## October 27, 2026 — Contact discovery Android permission
 Android asks for READ_CONTACTS only after the user presses Find My Friends in a clearly optional consent card. No READ_CALL_LOG permission is requested. The privacy card is available on Connect and at the end of new-user signup. Windows must provide the server-backed equivalent without reading device contacts.
+
+## October 27, 2026 — Windows contact discovery parity
+Windows Connect displays matches saved to the same Supabase account, supports opt-in discoverability and contact-joined alerts, allows refresh and removal, and navigates to matched profiles. Desktop does not request Android Contacts permission or infer access to a paired phonebook. Contact sync requires the explicit Android user action.
