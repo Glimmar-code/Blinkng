@@ -321,6 +321,8 @@ fun PremiumFeedScreen(
     followingRefreshRevision: Int = 0,
     errorMessage: String? = null,
     followingErrorMessage: String? = null,
+    paginationErrorMessage: String? = null,
+    followingPaginationErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
     onFollowingVisible: () -> Unit = {},
@@ -454,11 +456,12 @@ fun PremiumFeedScreen(
             followedAuthorKeys = followedAuthorKeys,
             hiddenFeedPostIds = hiddenFeedPostIds,
             mutedFeedAuthors = mutedFeedAuthors,
-            isLoading = isLoading,
+            isLoading = if (feedLane == 1) isRefreshingFollowing && followingPosts.isEmpty() else isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
             isServerConnected = isServerConnected,
             errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
+            paginationErrorMessage = if (feedLane == 1) followingPaginationErrorMessage else paginationErrorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
             isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
@@ -653,6 +656,7 @@ private fun PremiumHomeFeed(
     refreshRevision: Int,
     isServerConnected: Boolean,
     errorMessage: String?,
+    paginationErrorMessage: String?,
     hasMorePosts: Boolean,
     hasMoreReels: Boolean,
     isLoadingMorePosts: Boolean,
@@ -765,7 +769,8 @@ private fun PremiumHomeFeed(
         animationSpec = tween(if (reduceMotion) 0 else 180),
         label = "feedCreateFabClearance"
     )
-    val latestViewed by rememberUpdatedState(onViewedPost)
+    // Organic Home post views belong exclusively to PostCard's content-view pipeline.
+    // The older list observer also called record_post_view and could double count.
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
     val lastRefreshTapMs = remember(laneResumeKey) { longArrayOf(0L) }
@@ -776,7 +781,6 @@ private fun PremiumHomeFeed(
             latestRefresh()
         }
     }
-    val impressionTracker = remember { PostImpressionTracker() }
     val deliveredBoostImpressions = remember(laneResumeKey) { mutableSetOf<String>() }
     val performanceMonitor = remember(context, laneResumeKey) {
         FeedScrollPerformanceMonitor(context.applicationContext)
@@ -1011,10 +1015,10 @@ private fun PremiumHomeFeed(
     val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed) {
         buildPremiumHomeRows(
             filteredPosts,
-            rankedInlineReels,
-            visiblePromotedFeed,
-            marketSponsoredFeed,
-            dropDiscovery,
+            if (filter == PremiumFeedFilter.ALL) rankedInlineReels else emptyList(),
+            if (filter == PremiumFeedFilter.ALL) visiblePromotedFeed else emptyList(),
+            if (filter == PremiumFeedFilter.ALL) marketSponsoredFeed else emptyList(),
+            if (filter == PremiumFeedFilter.ALL) dropDiscovery else emptyList(),
             reelMixSeed
         )
     }
@@ -1380,27 +1384,8 @@ private fun PremiumHomeFeed(
         }
     }
 
-    LaunchedEffect(listState, homeRows) {
-        // Emit only when the qualifying visible post set changes, instead of
-        // waking impression listeners for every tiny layout-offset change.
-        snapshotFlow {
-            val layout = listState.layoutInfo
-            layout.visibleItemsInfo.mapNotNull { item ->
-                val key = item.key as? String ?: return@mapNotNull null
-                if (!key.startsWith("post:")) return@mapNotNull null
-                if (
-                    qualifiesForPostImpression(
-                        itemOffset = item.offset,
-                        itemSize = item.size,
-                        viewportStart = layout.viewportStartOffset,
-                        viewportEnd = layout.viewportEndOffset
-                    )
-                ) key.removePrefix("post:") else null
-            }.toSet()
-        }.collectLatest { ids ->
-            impressionTracker.update(ids).forEach(latestViewed)
-        }
-    }
+    // Organic cards record content views directly; this list observes only
+    // promoted-delivery visibility (which is a separate paid metric).
 
     // A precomposed card is not necessarily visible. Count a promoted delivery
     // only when its actual on-screen extent meets the post exposure threshold.
@@ -1608,7 +1593,8 @@ private fun PremiumHomeFeed(
                         onFollowingClick = { onLaneChanged(1) },
                         onFilterClick = { filterMenuVisible = true },
                         onRefreshClick = { if (!isRefreshing) requestSafeRefresh() },
-                        isRefreshing = isRefreshing
+                        isRefreshing = isRefreshing,
+                        filterActive = filter != PremiumFeedFilter.ALL
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
                         DropdownMenu(
@@ -1795,6 +1781,7 @@ private fun PremiumHomeFeed(
                                                     },
                                                     coinGiftingEnabled = true,
                                                     xFeedStyle = true,
+                                                    trackExposure = isScreenActive,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
                                             }
@@ -2005,7 +1992,6 @@ private fun PremiumHomeFeed(
                                         lastFlingVelocityY[0] = 0f
                                         fabExpanded = false
                                         onBottomBarVisibilityChange(true)
-                                        requestSafeRefresh()
                                     }
                                 }
                             )
