@@ -3888,6 +3888,14 @@ private fun MessageContent(
                     }
                 }
             }
+            val sharedContact = com.blinkng.shared.BlinkChatContactCardPolicy.parse(message.text)
+            if (sharedContact != null) {
+                BlinkChatContactMessageCard(
+                    contact = sharedContact,
+                    palette = palette,
+                    textColor = contentColor,
+                )
+            }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
                     (!message.attachedImageUrl.isNullOrBlank() &&
@@ -3895,7 +3903,8 @@ private fun MessageContent(
                     (!message.attachedAudioUrl.isNullOrBlank() &&
                         (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
                     !message.attachedDocumentUrl.isNullOrBlank()
-            if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
+            if (message.text.isNotBlank() && !placeholderOnly &&
+                !message.isVoiceNote && sharedContact == null) {
                 Text(
                     message.text,
                     color = contentColor,
