@@ -54,12 +54,15 @@ import androidx.media3.ui.PlayerView
 @Composable
 internal fun BlinkChatInlineVideo(
     url: String,
+    isActive: Boolean,
+    onActivate: () -> Unit,
+    onDeactivate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var requested by remember(url) { mutableStateOf(false) }
     var failed by remember(url) { mutableStateOf(false) }
+    var retryVersion by remember(url) { androidx.compose.runtime.mutableIntStateOf(0) }
     var buffering by remember(url) { mutableStateOf(false) }
 
     Box(
@@ -71,8 +74,11 @@ internal fun BlinkChatInlineVideo(
             .testTag("chat_inline_video"),
         contentAlignment = Alignment.Center,
     ) {
-        if (requested) {
-            val player = remember(url) {
+        if (isActive) {
+            DisposableEffect(url) {
+                onDispose { onDeactivate() }
+            }
+            val player = remember(url, retryVersion) {
                 ExoPlayer.Builder(context).build().apply {
                     setMediaItem(MediaItem.fromUri(Uri.parse(url)))
                     playWhenReady = true
@@ -122,11 +128,11 @@ internal fun BlinkChatInlineVideo(
                 )
             }
         }
-        if (!requested) {
+        if (!isActive) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable { requested = true }
+                    .clickable { onActivate() }
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
@@ -147,7 +153,10 @@ internal fun BlinkChatInlineVideo(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text("Video unavailable", color = Color.White, fontSize = 13.sp)
-                TextButton(onClick = { requested = false; failed = false }) {
+                TextButton(onClick = {
+                    failed = false
+                    retryVersion += 1
+                }) {
                     Text("Retry", color = Color.White)
                 }
                 TextButton(onClick = {
