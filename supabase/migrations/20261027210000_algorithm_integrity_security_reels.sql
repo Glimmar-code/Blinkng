@@ -346,6 +346,14 @@ begin
       and existing.created_at > now()-interval '20 seconds'
   ) then return; end if;
 
+  -- A new random client UUID is not a new legitimate viewer. Prevent a single
+  -- account from repeatedly voting for one Reel throughout the same day.
+  if (select count(*) from private_ranking.reel_engagement_sessions existing
+      where existing.viewer_id=v_viewer and existing.post_id=p_post_id
+        and existing.created_at > now()-interval '24 hours') >= 24 then
+    return;
+  end if;
+
   insert into private_ranking.reel_engagement_sessions(
     session_id, viewer_id, post_id, watched_ms, duration_ms
   ) values (
