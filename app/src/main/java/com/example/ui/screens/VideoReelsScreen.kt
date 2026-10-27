@@ -629,7 +629,7 @@ private fun ReelsContent(
         val featuredHeight = if (compactViewport) 100.dp else 144.dp
         val chromeTop = (
             WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-                180.dp + if (showFeatured) featuredHeight else 0.dp
+                180.dp + (if (showFeatured) featuredHeight else 0.dp)
         ).coerceAtMost(maxHeight * 0.52f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
         val progress = if (dragProgress.isFinite()) dragProgress.coerceIn(0f, 1f)
@@ -802,7 +802,7 @@ private fun ReelsContent(
                     ReelPage(
                         reel = reel,
                         isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
-                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
+                        shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -857,7 +857,7 @@ private fun ReelsContent(
                     ReelPage(
                         reel = reel,
                         isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
-                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
+                        shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -2157,7 +2157,7 @@ internal fun InlineReelPreviewCard(
         Box(Modifier.fillMaxSize()) {
             ReelPreview(reel)
 
-            if (url.isNotBlank() && (isActive || shouldPreload || previewFinished)) {
+            if (url.isNotBlank() && (isActive || shouldPreload) && !previewFinished) {
                 ReelVideo(
                     url = url,
                     isActive = isActive && !previewFinished,
@@ -2493,7 +2493,7 @@ private fun ReelVideo(
                     rewatched = true
                 }
             }
-            delay(100)
+            delay(200) // Avoid unnecessary progress recompositions while playing.
         }
     }
 
