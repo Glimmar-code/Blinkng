@@ -29,7 +29,7 @@ begin
   v_discovery := replace(
     v_discovery,
     v_privacy_anchor,
-    v_privacy_anchor || E'\n      and (fp.user_id=v_user or not exists (select 1 from public.user_settings privacy where privacy.user_id=fp.user_id and privacy.private_account is true))'
+    v_privacy_anchor || E'\n      and (fp.user_id=v_user or not exists (select 1 from public.user_settings privacy where privacy.user_id=fp.user_id and privacy.private_account is true) or exists (select 1 from public.follows private_follow where private_follow.follower_id=v_user and private_follow.following_id=fp.user_id))'
   );
 
   -- Completion is scored only after 12 received samples, with a bounded 0.90..1.15
@@ -102,7 +102,9 @@ begin
         and (allowed.user_id=v_viewer_id or not exists (
           select 1 from public.user_settings privacy
           where privacy.user_id=allowed.user_id and privacy.private_account=true
-        ))
+        ) or exists (select 1 from public.follows private_follow
+          where private_follow.follower_id=v_viewer_id
+            and private_follow.following_id=allowed.user_id))
         and not exists (
           select 1 from public.blocks deny
           where (deny.blocker_id=v_viewer_id and deny.blocked_id=allowed.user_id)
@@ -265,8 +267,10 @@ begin
       and fp.user_id <> v_viewer
       and lower(coalesce(fp.audience,'everyone'))='everyone'
       and (fp.expires_at is null or fp.expires_at>now())
-      and not exists (select 1 from public.user_settings settings
+      and (not exists (select 1 from public.user_settings settings
         where settings.user_id=fp.user_id and settings.private_account=true)
+        or exists (select 1 from public.follows private_follow
+          where private_follow.follower_id=v_viewer and private_follow.following_id=fp.user_id))
       and not exists (select 1 from public.blocks blocked
         where (blocked.blocker_id=v_viewer and blocked.blocked_id=fp.user_id)
            or (blocked.blocker_id=fp.user_id and blocked.blocked_id=v_viewer))
