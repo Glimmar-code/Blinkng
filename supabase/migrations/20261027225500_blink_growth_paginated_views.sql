@@ -28,6 +28,9 @@ as $$
         coalesce((select coalesce(nullif(m.image_url,''),nullif(m.image_urls[1],'')) from public.market_items m
                   where m.id=p_drop.target_id and lower(coalesce(m.status,'active'))='active' and coalesce(m.is_sold,false)=false),'')
       else '' end,
+    'target_video_url',case when p_drop.target_type='REEL' then
+      coalesce((select f.video_url from public.feed_posts f where f.id=p_drop.target_id and f.is_active=true),'')
+      else '' end,
     'audience_scope',p_drop.audience_scope,
     'target_university',coalesce(p_drop.target_university,''),
     'status',p_drop.status,
@@ -134,7 +137,7 @@ begin
   else
     with rows as (
       select f.id,f.is_reel,coalesce(nullif(f.text,''),f.caption,'') as body,
-        f.created_at,f.view_count,f.like_count,f.comment_count,
+        f.created_at,f.view_count,f.like_count,f.comment_count,f.video_url,
         coalesce(nullif(f.image_url,''),nullif(f.images[1],'')) as preview_url
       from public.feed_posts f
       where f.user_id=v_user and f.is_active=true
@@ -143,7 +146,8 @@ begin
     )
     select coalesce((select jsonb_agg(jsonb_build_object(
       'id',r.id,'type',v_type,'text',left(r.body,180),'created_at',r.created_at,
-      'image_url',coalesce(r.preview_url,''),'view_count',r.view_count,
+      'image_url',coalesce(r.preview_url,''),'video_url',coalesce(r.video_url,''),
+      'view_count',r.view_count,
       'like_count',r.like_count,'comment_count',r.comment_count
     ) order by r.created_at desc,r.id desc) from
     (select * from rows order by created_at desc,id desc limit v_limit) r),'[]'::jsonb),
