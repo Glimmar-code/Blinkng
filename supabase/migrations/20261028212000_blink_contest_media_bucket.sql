@@ -1,5 +1,7 @@
 -- A public preview bucket for media contestants explicitly choose to publish.
--- No automatic uploads. Random object paths hide preapproval uploads from indexing.
+-- No automatic uploads. Files have publicly accessible unguessable URLs immediately
+-- after upload, even if the application has not yet been approved. Clients must
+-- disclose this before upload; avoid private or identifying documents.
 begin;
 insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
 values ('blink-contest-media','blink-contest-media',true,26214400,

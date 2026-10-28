@@ -243,7 +243,7 @@ fun BlinkContestScreen(
                                 enabled = mediaChoice == null
                             )
                             Text("JPG/PNG/WebP up to 8 MB, or MP4 up to 25 MB. " +
-                                "Your entry media may be viewed publicly after approval.",
+                                "Uploading creates a public link; BLINK shows your entry after approval.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp)
                             Button(
