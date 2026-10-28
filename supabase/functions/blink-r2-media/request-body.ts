@@ -12,7 +12,7 @@ export async function readBoundedJsonObject(
 ): Promise<BoundedJson> {
   const claimed = request.headers.get("content-length");
   if (claimed !== null) {
-    if (!/^\\d+$/.test(claimed)) return { ok: false, error: "INVALID_REQUEST" };
+    if (!/^\d+$/.test(claimed)) return { ok: false, error: "INVALID_REQUEST" };
     if (Number(claimed) > maxBytes) return { ok: false, error: "REQUEST_TOO_LARGE" };
   }
   if (!request.body) return { ok: false, error: "INVALID_REQUEST" };
