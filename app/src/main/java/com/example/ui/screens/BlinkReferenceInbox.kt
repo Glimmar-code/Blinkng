@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.filled.Mic
@@ -169,8 +170,11 @@ internal fun BlinkReferenceInbox(
             ) {
                 Text("Messages", modifier = Modifier.weight(1f), fontSize = if (compactTitle) 22.sp else 25.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
-                    Text(if (showAll) "Close" else "See all", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
+                    Text(if (showAll) "Less" else "More", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onComposeMessage, modifier = Modifier.size(48.dp).testTag("inbox_compose")) {
+                    Icon(Icons.Default.Edit, contentDescription = "New message", tint = primary, modifier = Modifier.size(23.dp))
                 }
             }
 
@@ -208,6 +212,8 @@ internal fun BlinkReferenceInbox(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("inbox_search_field")
             )
         }
+        // Keep the inbox filters discoverable without hiding them behind "More".
+        filterContent()
         if (showAll) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -217,7 +223,6 @@ internal fun BlinkReferenceInbox(
                 TextButton(onClick = onComposeMessage) { Text("New message", color = primary) }
                 TextButton(onClick = onOpenSettings) { Text("Message settings", color = primary) }
             }
-            filterContent()
         }
         HorizontalDivider(thickness = 1.dp, color = border)
         if (!isConnected) {
@@ -231,7 +236,21 @@ internal fun BlinkReferenceInbox(
             }
         } else if (conversations.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No conversations found", color = secondary, fontSize = 14.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        if (query.isNotBlank()) "No matching conversations" else "No conversations yet",
+                        color = primary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (query.isNotBlank()) "Try another name or message." else "Start a conversation with someone on BLINK.",
+                        color = secondary, fontSize = 13.sp
+                    )
+                    if (query.isBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(onClick = onComposeMessage) { Text("New message", color = primary) }
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -419,7 +438,9 @@ private fun BlinkInboxConversationRow(
                     else -> conversation.lastMessage.ifBlank { "Start the conversation" }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    conversation.lastOutgoingStatus?.let { status ->
+                    conversation.lastOutgoingStatus?.takeIf {
+                        conversation.presenceLabel.isBlank() && draft.isNullOrBlank()
+                    }?.let { status ->
                         val ticks = BlinkDeliveryReceipt.ticks(status.name)
                         Text(
                             text = ticks,
@@ -436,7 +457,7 @@ private fun BlinkInboxConversationRow(
                     }
                     Text(
                         preview, color = secondary,
-                        fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
+                        fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 1,
                         lineHeight = 17.sp, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
@@ -455,8 +476,8 @@ private fun BlinkInboxConversationRow(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            if (conversation.unreadCount > 0)
-                                conversation.unreadCount.coerceAtMost(99).toString()
+                            if (conversation.unreadCount > 99) "99+"
+                             else if (conversation.unreadCount > 0) conversation.unreadCount.toString()
                             else "•",
                             color = if (isDark) Color.Black else Color.White,
                             fontSize = 11.sp, fontWeight = FontWeight.Bold

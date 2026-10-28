@@ -19,6 +19,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -153,5 +154,9 @@ class MessageInboxReferenceVisualAuditTest {
             check(notificationsOpened.intValue == 1)
             check(chatsOpened.intValue == 1)
         }
+        // The new-message button opens BLINK's internal user picker; it does not
+        // invoke the optional external legacy compose callback.
+        rule.onNodeWithTag("inbox_compose").performClick()
+        rule.onNodeWithText("New Message").assertIsDisplayed()
     }
 }
