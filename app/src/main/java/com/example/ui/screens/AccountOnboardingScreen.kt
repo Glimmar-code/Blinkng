@@ -543,7 +543,7 @@ fun AccountOnboardingScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             enabled = !phoneBusy && !phoneVerified, singleLine = true,
                             modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"))
-                        Text("SMS verification is being activated. You can continue without a code for now. Contact access is optional.",
+                        Text("Entering your number does not send an SMS. Tap Send SMS code to verify it. If SMS service is unavailable, you can finish signup and verify later.",
                             color = DarkTextSecondary, fontSize = 11.sp)
                         if (!phoneVerified) {
                             Button(onClick = {

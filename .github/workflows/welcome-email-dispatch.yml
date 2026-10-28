@@ -1,0 +1,41 @@
+name: BLINK Welcome Email Dispatch
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blink-welcome-email-worker
+  cancel-in-progress: false
+
+jobs:
+  send-welcome-emails:
+    # Explicit opt-in: scheduled dispatch is OFF until a verified provider and
+    # staging-tested worker are activated in GitHub repository variables.
+    if: ${{ vars.BLINK_EMAIL_DELIVERY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EDGE_URL: ${{ vars.BLINK_SUPABASE_URL }}
+      WORKER_SECRET: ${{ secrets.BLINK_EMAIL_WORKER_SECRET }}
+    steps:
+      - name: Validate server-side configuration
+        shell: bash
+        run: |
+          if [[ -z "$EDGE_URL" || "$EDGE_URL" != https://*.supabase.co ]]; then
+            echo "Set BLINK_SUPABASE_URL to the verified Supabase project HTTPS URL."
+            exit 1
+          fi
+          if [[ ${#WORKER_SECRET} -lt 32 ]]; then
+            echo "Set a random BLINK_EMAIL_WORKER_SECRET of at least 32 characters."
+            exit 1
+          fi
+      - name: Dispatch queued email without exposing secrets
+        shell: bash
+        run: |
+          response=$(curl --silent --show-error --fail-with-body --max-time 45             -X POST "${EDGE_URL%/}/functions/v1/send-essential-email"             -H "Content-Type: application/json"             -H "x-blink-email-worker-secret: $WORKER_SECRET")
+          # Worker response reports aggregate counts only; never email addresses.
+          printf '%s\n' "$response"
