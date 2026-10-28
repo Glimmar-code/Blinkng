@@ -2063,7 +2063,7 @@ private fun PremiumChatDetail(
                             }.padding(start = 12.dp, end = 5.dp, top = 7.dp, bottom = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.PushPin, contentDescription = null,
+                        Icon(Icons.Default.Place, contentDescription = null,
                             tint = palette.accent, modifier = Modifier.size(19.dp))
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
