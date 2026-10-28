@@ -101,9 +101,19 @@ try {
     from public.blink_contact_notify_recent_matches('${owner}')`);
   assert.equal(lateAlerts.rows.length, 1, 'late importing owner receives one possible-contact alert');
   assert.ok(lateAlerts.rows[0].notification_id);
+  const repeated = await db.query(`select count(*)::integer as total
+      from public.notifications
+      where user_id='${owner}' and metadata->>'kind'='blink_contact_joined'`);
+  assert.equal(repeated.rows[0].total, 1,
+    'resyncing the same contacts must not create duplicate joined notifications');
   await db.exec(`select public.blink_contact_clear_imports('${owner}');`);
   const cleared = await db.query(`select * from private.blink_contact_join_alerts where owner_id='${owner}'`);
   assert.equal(cleared.rows.length, 0, 'revoking sync deletes derived contact alert records');
+  const afterDelete = await db.query(`select count(*)::integer as total
+      from public.notifications
+      where user_id='${owner}' and metadata->>'kind'='blink_contact_joined'`);
+  assert.equal(afterDelete.rows[0].total, 0,
+    'deleting contact data removes only previously generated contact alerts');
   console.log('PASS mutual no-SMS contacts: RLS, reciprocity, dedup, blocks, revocation');
 } finally {
   await db.close();
