@@ -5,6 +5,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +51,9 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import java.io.File
+import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.blinkng.shared.BlinkProfileThemes
+import com.blinkng.shared.ProfileContentMetrics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,6 +93,7 @@ fun DesktopUserProfileDialog(
     var profile by remember(initialProfile.id) { mutableStateOf(initialProfile) }
     val isMe = initialProfile.id == state.session?.userId
     var content by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var accountMetrics by remember(initialProfile.id) { mutableStateOf<ProfileContentMetrics?>(null) }
     var likedContent by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var savedContent by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var followingIds by remember(initialProfile.id) { mutableStateOf<Set<String>>(emptySet()) }
@@ -110,7 +118,32 @@ fun DesktopUserProfileDialog(
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
     var showCreatorStudio by remember(initialProfile.id) { mutableStateOf(false) }
     var creatorAiPrompt by remember(initialProfile.id) { mutableStateOf<String?>(null) }
+    var showVisitorHistory by remember(initialProfile.id) { mutableStateOf(false) }
+    var visitorDetail by remember(initialProfile.id) { mutableStateOf<DesktopProfile?>(null) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
+    var showEditProfile by remember(initialProfile.id) { mutableStateOf(false) }
+    var editError by remember(initialProfile.id) { mutableStateOf<String?>(null) }
+    var editName by remember(initialProfile.id) { mutableStateOf(initialProfile.fullName) }
+    var editHeadline by remember(initialProfile.id) { mutableStateOf(initialProfile.professionalHeadline.orEmpty()) }
+    var editRole by remember(initialProfile.id) { mutableStateOf(initialProfile.currentJobTitle.orEmpty()) }
+    var editBio by remember(initialProfile.id) { mutableStateOf(initialProfile.bio.orEmpty()) }
+    var editUniversity by remember(initialProfile.id) { mutableStateOf(initialProfile.university.orEmpty()) }
+    var editFaculty by remember(initialProfile.id) { mutableStateOf(initialProfile.faculty.orEmpty()) }
+    var editDepartment by remember(initialProfile.id) { mutableStateOf(initialProfile.department.orEmpty()) }
+    var editCourse by remember(initialProfile.id) { mutableStateOf(initialProfile.courseOfStudy.orEmpty()) }
+    var editLevel by remember(initialProfile.id) { mutableStateOf(initialProfile.academicLevel.orEmpty()) }
+    var editGraduation by remember(initialProfile.id) { mutableStateOf(initialProfile.graduationYear.orEmpty()) }
+    var editWebsite by remember(initialProfile.id) { mutableStateOf(initialProfile.website.orEmpty()) }
+    var editLinkedin by remember(initialProfile.id) { mutableStateOf(initialProfile.linkedin.orEmpty()) }
+    var editTwitter by remember(initialProfile.id) { mutableStateOf(initialProfile.twitter.orEmpty()) }
+    var editInstagram by remember(initialProfile.id) { mutableStateOf(initialProfile.instagram.orEmpty()) }
+    var editFeaturedLink by remember(initialProfile.id) { mutableStateOf(initialProfile.featuredLink.orEmpty()) }
+    var editFeaturedLabel by remember(initialProfile.id) { mutableStateOf(initialProfile.featuredLinkLabel.orEmpty()) }
+    var editEmailVisibility by remember(initialProfile.id) { mutableStateOf(initialProfile.emailVisibility) }
+    var editPhoneVisibility by remember(initialProfile.id) { mutableStateOf(initialProfile.phoneVisibility) }
+    var editWhatsappVisibility by remember(initialProfile.id) { mutableStateOf(initialProfile.whatsappVisibility) }
+    var editAvatarFile by remember(initialProfile.id) { mutableStateOf<File?>(null) }
+    var editCoverFile by remember(initialProfile.id) { mutableStateOf<File?>(null) }
 
     suspend fun reload() {
         loading = true
@@ -118,6 +151,7 @@ fun DesktopUserProfileDialog(
         postsFailed = false
         likedFailed = false
         savedFailed = false
+        accountMetrics = runCatching { state.client.getProfileContentMetrics(initialProfile.id) }.getOrNull()
         runCatching { state.client.fetchProfileContent(initialProfile.id) }
             .onSuccess { content = it }
             .onFailure { postsFailed = true; content = emptyList(); statusMessage = it.message }
@@ -138,6 +172,12 @@ fun DesktopUserProfileDialog(
     }
 
     LaunchedEffect(initialProfile.id) { reload() }
+    LaunchedEffect(initialProfile.id, isMe) {
+        if (!isMe && initialProfile.id.isNotBlank()) {
+            // Server refuses recording without reciprocal user consent.
+            runCatching { state.client.recordOptInProfileVisit(initialProfile.id) }
+        }
+    }
 
     val filteredContent = remember(content, likedContent, savedContent, selectedTab, searchQuery) {
         val reels = selectedTab == "Reels"
@@ -242,9 +282,30 @@ fun DesktopUserProfileDialog(
                     }
                     if (isMe) {
                         TextButton(onClick = {
-                            chosenTheme = BlinkProfileThemes.normalize(profile.profileTheme)
-                            showThemePicker = true
-                        }) { Text("Edit theme", color = Color.White) }
+                            editName = profile.fullName
+                            editHeadline = profile.professionalHeadline.orEmpty()
+                            editRole = profile.currentJobTitle.orEmpty()
+                            editBio = profile.bio.orEmpty()
+                            editUniversity = profile.university.orEmpty()
+                            editFaculty = profile.faculty.orEmpty()
+                            editDepartment = profile.department.orEmpty()
+                            editCourse = profile.courseOfStudy.orEmpty()
+                            editLevel = profile.academicLevel.orEmpty()
+                            editGraduation = profile.graduationYear.orEmpty()
+                            editWebsite = profile.website.orEmpty()
+                            editLinkedin = profile.linkedin.orEmpty()
+                            editTwitter = profile.twitter.orEmpty()
+                            editInstagram = profile.instagram.orEmpty()
+                            editFeaturedLink = profile.featuredLink.orEmpty()
+                            editFeaturedLabel = profile.featuredLinkLabel.orEmpty()
+                            editEmailVisibility = profile.emailVisibility
+                            editPhoneVisibility = profile.phoneVisibility
+                            editWhatsappVisibility = profile.whatsappVisibility
+                            editAvatarFile = null
+                            editCoverFile = null
+                            editError = null
+                            showEditProfile = true
+                        }) { Text("Edit profile", color = Color.White) }
                          TextButton(onClick = { showCreatorStudio = true }) {
                              Text("Creator Studio", color = Color.White)
                          }
@@ -289,7 +350,8 @@ fun DesktopUserProfileDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                ProfileStat("Posts", content.count { !it.isReel }.toString())
+                                ProfileStat(if (accountMetrics == null) "Loaded posts" else "Posts",
+                                    (accountMetrics?.posts ?: content.count { !it.isReel }.toLong()).toString())
                                 ProfileStat(
                                     "Followers",
                                     profile.followerCount.toString(),
@@ -317,6 +379,7 @@ fun DesktopUserProfileDialog(
                             }
                         }
 
+                        if (!isMe) {
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val isFollowing = profile.id in followingIds
@@ -325,9 +388,13 @@ fun DesktopUserProfileDialog(
                                     onClick = {
                                         scope.launch {
                                             busy = true
-                                            followingIds = runCatching {
+                                            runCatching {
                                                 state.client.setFollowing(profile.id, !isFollowing)
-                                            }.getOrDefault(followingIds)
+                                            }.onSuccess {
+                                                followingIds = it
+                                            }.onFailure {
+                                                statusMessage = "Could not update following. Retry."
+                                            }
                                             busy = false
                                         }
                                     },
@@ -354,6 +421,16 @@ fun DesktopUserProfileDialog(
                             }
                         }
 
+                        }
+
+                        if (isMe) {
+                            item {
+                                TextButton(onClick = { showVisitorHistory = true }) {
+                                    Text("Profile visitors · Privacy controls")
+                                }
+                            }
+                        }
+
                         item {
                             DesktopProfileQr(
                                 link = DesktopShareLinkManager.generateProfile(profile.username),
@@ -367,6 +444,7 @@ fun DesktopUserProfileDialog(
                             }
                         }
 
+                        if (!isMe) {
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(
@@ -375,10 +453,14 @@ fun DesktopUserProfileDialog(
                                         scope.launch {
                                             busy = true
                                             val desired = !muted
-                                            muted = runCatching {
+                                            runCatching {
                                                 state.client.setProfileMuted(profile.id, desired)
-                                            }.getOrDefault(muted)
-                                            statusMessage = if (muted) "Profile muted." else "Profile unmuted."
+                                            }.onSuccess {
+                                                muted = it
+                                                statusMessage = if (muted) "Profile muted." else "Profile unmuted."
+                                            }.onFailure {
+                                                statusMessage = "Could not update mute preference."
+                                            }
                                             busy = false
                                         }
                                     },
@@ -401,6 +483,16 @@ fun DesktopUserProfileDialog(
                                     Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(5.dp))
                                     Text("Search")
+                                }
+                            }
+                        }
+
+                        } else {
+                            item {
+                                OutlinedButton(onClick = { searchActive = !searchActive }) {
+                                    Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Search profile")
                                 }
                             }
                         }
@@ -433,13 +525,22 @@ fun DesktopUserProfileDialog(
                         if (selectedTab == "About") {
                             item {
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    ProfileAboutLine("University", profile.university)
-                                    ProfileAboutLine("Faculty", profile.faculty)
-                                    ProfileAboutLine("Department", profile.department)
-                                    ProfileAboutLine("Level", profile.academicLevel)
-                                    ProfileAboutLine("Email", profile.email)
-                                    ProfileAboutLine("Phone", profile.phone)
-                                    ProfileAboutLine("WhatsApp", profile.whatsapp)
+                                    ProfileAboutLine("Headline", profile.professionalHeadline)
+                                    ProfileAboutLine("Current role", profile.currentJobTitle)
+                                    if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+                                        ProfileAboutLine("University", profile.university)
+                                        ProfileAboutLine("Faculty", profile.faculty)
+                                        ProfileAboutLine("Department", profile.department)
+                                        ProfileAboutLine("Course of study", profile.courseOfStudy)
+                                        ProfileAboutLine("Level", profile.academicLevel)
+                                        ProfileAboutLine("Graduation", profile.graduationYear)
+                                    }
+                                    if (isMe) {
+                                        ProfileAboutLine("Relationship status", profile.relationshipStatus)
+                                    }
+                                    if (!profile.email.isNullOrBlank()) ProfileAboutLine("Email", profile.email)
+                                    if (!profile.phone.isNullOrBlank()) ProfileAboutLine("Phone", profile.phone)
+                                    if (!profile.whatsapp.isNullOrBlank()) ProfileAboutLine("WhatsApp", profile.whatsapp)
                                     ProfileAboutLine("Joined", profile.createdAt)
                                 }
                             }
@@ -584,6 +685,27 @@ fun DesktopUserProfileDialog(
     }
     }
 
+    if (showVisitorHistory && isMe) {
+        DesktopProfileVisitorsDialog(
+            client = state.client,
+            onDismiss = { showVisitorHistory = false },
+            onOpenProfile = { username ->
+                scope.launch {
+                    runCatching { state.client.fetchProfileDetail(username) }
+                        .onSuccess { if (it != null) visitorDetail = it
+                            else statusMessage = "That profile isn't available." }
+                        .onFailure { statusMessage = "Couldn't open visitor profile." }
+                }
+            }
+        )
+    }
+    visitorDetail?.let { selected ->
+        DesktopUserProfileDialog(
+            state = state, initialProfile = selected,
+            onDismiss = { visitorDetail = null }
+        )
+    }
+
     shareReelId?.let { id ->
         DesktopBlinkShareDialog(
             state = state, postId = id, isReel = true,
@@ -606,6 +728,152 @@ fun DesktopUserProfileDialog(
             state = state,
             onDismiss = { creatorAiPrompt = null },
             initialPrompt = prompt,
+        )
+    }
+
+    if (showEditProfile && isMe) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showEditProfile = false },
+            title = { Text("Edit profile", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    val percent = com.blinkng.shared.ProfileCompletionPolicy.calculate(
+                        editName, profile.username, profile.avatarUrl.orEmpty(),
+                        editHeadline, editBio, editUniversity, editFaculty,
+                        editDepartment, editLevel, profile.accountType
+                    )
+                    Text("Profile strength: ${percent}%", fontSize = 12.sp)
+                    Text("Profile pictures: JPEG, PNG, or WebP, up to 8 MB.", fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(enabled = !busy, onClick = {
+                            val chooser = JFileChooser()
+                            chooser.fileFilter = FileNameExtensionFilter("Images", "jpg", "jpeg", "png", "webp")
+                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
+                                editAvatarFile = chooser.selectedFile
+                        }) { Text(if (editAvatarFile == null) "Choose avatar" else "Avatar selected") }
+                        OutlinedButton(enabled = !busy, onClick = {
+                            val chooser = JFileChooser()
+                            chooser.fileFilter = FileNameExtensionFilter("Images", "jpg", "jpeg", "png", "webp")
+                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
+                                editCoverFile = chooser.selectedFile
+                        }) { Text(if (editCoverFile == null) "Choose cover" else "Cover selected") }
+                    }
+                    OutlinedTextField(
+                        value = editName, onValueChange = { editName = it },
+                        label = { Text("Full name") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editHeadline, onValueChange = { editHeadline = it },
+                        label = { Text("Headline") }, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editRole, onValueChange = { editRole = it },
+                        label = { Text("Current role") }, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editBio, onValueChange = { editBio = it },
+                        label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                    if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+                        OutlinedTextField(
+                            value = editUniversity, onValueChange = { editUniversity = it },
+                            label = { Text("University") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editFaculty, onValueChange = { editFaculty = it },
+                            label = { Text("Faculty") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editDepartment, onValueChange = { editDepartment = it },
+                            label = { Text("Department") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editCourse, onValueChange = { editCourse = it },
+                            label = { Text("Course of study") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editLevel, onValueChange = { editLevel = it },
+                            label = { Text("Academic level") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editGraduation, onValueChange = { editGraduation = it },
+                            label = { Text("Graduation year") }, modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Text("Links & contact visibility", style = MaterialTheme.typography.titleSmall)
+                    listOf(
+                        Triple("Website", editWebsite, { value: String -> editWebsite = value }),
+                        Triple("LinkedIn", editLinkedin, { value: String -> editLinkedin = value }),
+                        Triple("X / Twitter", editTwitter, { value: String -> editTwitter = value }),
+                        Triple("Instagram", editInstagram, { value: String -> editInstagram = value }),
+                        Triple("Featured link", editFeaturedLink, { value: String -> editFeaturedLink = value }),
+                        Triple("Featured label", editFeaturedLabel, { value: String -> editFeaturedLabel = value })
+                    ).forEach { (label, value, update) ->
+                        OutlinedTextField(value = value, onValueChange = update,
+                            label = { Text(label) }, modifier = Modifier.fillMaxWidth())
+                    }
+                    listOf(
+                        Triple("Email", editEmailVisibility, { value: String -> editEmailVisibility = value }),
+                        Triple("Phone", editPhoneVisibility, { value: String -> editPhoneVisibility = value }),
+                        Triple("WhatsApp", editWhatsappVisibility, { value: String -> editWhatsappVisibility = value })
+                    ).forEach { (label, selection, update) ->
+                        Text("$label visibility", fontSize = 12.sp)
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("PRIVATE", "FOLLOWERS", "PUBLIC").forEach { level ->
+                                FilterChip(
+                                    selected = selection == level,
+                                    onClick = { update(level) },
+                                    label = { Text(level.lowercase().replaceFirstChar(Char::uppercaseChar)) }
+                                )
+                            }
+                        }
+                    }
+                    TextButton(onClick = {
+                        if (!busy) {
+                            showEditProfile = false
+                            chosenTheme = BlinkProfileThemes.normalize(profile.profileTheme)
+                            showThemePicker = true
+                        }
+                    }) { Text("Choose profile theme") }
+                    editError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                Button(enabled = !busy, onClick = {
+                    scope.launch {
+                        busy = true
+                        editError = null
+                        runCatching {
+                            state.client.saveProfileDetails(
+                                editName, editHeadline, editBio, editRole,
+                                editUniversity, editFaculty, editDepartment,
+                                editCourse, editLevel, editGraduation,
+                                editWebsite, editLinkedin, editTwitter, editInstagram,
+                                editFeaturedLink, editFeaturedLabel,
+                                editPhoneVisibility, editWhatsappVisibility, editEmailVisibility,
+                                editAvatarFile, editCoverFile
+                            )
+                        }.onSuccess {
+                            profile = it
+                            statusMessage = "Profile saved."
+                            showEditProfile = false
+                        }.onFailure {
+                            editError = it.message ?: "Could not save profile. Please retry."
+                        }
+                        busy = false
+                    }
+                }) { Text(if (busy) "Saving…" else "Save profile") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditProfile = false }, enabled = !busy) { Text("Cancel") }
+            }
         )
     }
 
