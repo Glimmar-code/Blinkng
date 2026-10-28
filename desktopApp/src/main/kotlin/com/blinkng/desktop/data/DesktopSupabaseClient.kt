@@ -1970,6 +1970,7 @@ class DesktopSupabaseClient(
                         else -> "NOTIFICATION"
                     }
                 val targetId = row.optNullableString("target_id")
+                    ?: rawId.takeIf { targetType.equals("notification", ignoreCase = true) }
                 DesktopNotification(
                     id = "notification:$rawId",
                     type = type,
@@ -2012,23 +2013,26 @@ class DesktopSupabaseClient(
             }
         }
 
-        fun isCanonicalMirror(item: DesktopNotification): Boolean {
-            val action = item.text.lowercase()
-            return action.contains("liked your") ||
-                action.contains("commented on") ||
-                action.contains("replied") ||
-                action.contains("mentioned") ||
-                action.contains("follow") ||
-                action.contains("repost")
+        val canonicalIds = serverNotifications.map { it.id.removePrefix("notification:") }.toHashSet()
+        val legacyFallback = activityNotifications.filterNot { legacy ->
+            val officialMirror = com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                .isOfficialMirror(legacy.targetType, legacy.targetId, canonicalIds)
+            val socialMirror = serverNotifications.any { canonical ->
+                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isSameSocialEvent(
+                    legacyActorId = legacy.actorId,
+                    canonicalActorId = canonical.actorId,
+                    legacyType = legacy.type,
+                    canonicalType = canonical.type,
+                    legacyCreatedAt = legacy.createdAt,
+                    canonicalCreatedAt = canonical.createdAt,
+                    legacyPostId = legacy.postId,
+                    canonicalPostId = canonical.postId,
+                    canonicalTargetType = canonical.targetType
+                )
+            }
+            officialMirror || socialMirror
         }
-
-        val notificationKeys = serverNotifications.asSequence().map(::semanticKey).toHashSet()
-        val legacyFallback = if (serverNotifications.isEmpty()) {
-            activityNotifications
-        } else {
-            activityNotifications.filterNot(::isCanonicalMirror)
-        }
-        (serverNotifications + legacyFallback.filterNot { semanticKey(it) in notificationKeys })
+        (serverNotifications + legacyFallback)
             .sortedByDescending { it.createdAt }
             .distinctBy { it.id }
             .take(150)

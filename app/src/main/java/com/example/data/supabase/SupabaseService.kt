@@ -4985,9 +4985,28 @@ suspend fun uploadPostMedia(
             false
         }
     }
-    suspend fun fetchActivities(): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
+    data class NotificationHistoryPage(
+        val items: List<ActivityItem>,
+        val activityCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?,
+        val notificationCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?,
+        val warning: String? = null
+    ) {
+        val hasMore: Boolean get() = activityCursor != null || notificationCursor != null
+    }
+
+    suspend fun fetchActivities(): Result<List<ActivityItem>> =
+        fetchActivitiesPage().map { it.items }
+
+    suspend fun fetchActivitiesPage(
+        activityBefore: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null,
+        notificationBefore: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null,
+        includeActivities: Boolean = true,
+        includeNotifications: Boolean = true
+    ): Result<NotificationHistoryPage> = withContext(Dispatchers.IO) {
         try {
-            val uid = getCurrentUserId() ?: return@withContext Result.success(emptyList())
+            val uid = getCurrentUserId() ?: return@withContext Result.success(
+                NotificationHistoryPage(emptyList(), null, null)
+            )
 
             fun semanticKey(item: ActivityItem): String = listOf(
                 item.user.trim().lowercase(Locale.US),
@@ -4998,6 +5017,7 @@ suspend fun uploadPostMedia(
                 item.rawTimestamp.trim().take(19)
             ).joinToString("|")
 
+            var optionalSourceUnavailable = false
             suspend fun fetchArray(path: String, label: String, required: Boolean): JSONArray {
                 return try {
                     val request = newRequestBuilder(path, authenticated = true).get().build()
@@ -5010,21 +5030,30 @@ suspend fun uploadPostMedia(
                     }
                 } catch (error: Exception) {
                     if (required) throw error
+                    optionalSourceUnavailable = true
                     Log.w(TAG, "$label fetch unavailable; continuing with remaining notification sources.", error)
                     JSONArray()
                 }
             }
 
-            val activityArray = fetchArray(
-                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
+            val activityFilter = activityBefore?.let {
+                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                    .olderThanCursorFilter(it, ::encodeValue)
+            }.orEmpty()
+            val notificationFilter = notificationBefore?.let {
+                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                    .olderThanCursorFilter(it, ::encodeValue)
+            }.orEmpty()
+            val activityArray = if (includeActivities) fetchArray(
+                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}${activityFilter}&order=created_at.desc,id.desc&limit=100",
                 "Activity",
                 required = true
-            )
-            val notificationArray = fetchArray(
-                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
+            ) else JSONArray()
+            val notificationArray = if (includeNotifications) fetchArray(
+                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}${notificationFilter}&order=created_at.desc,id.desc&limit=100",
                 "Notification",
                 required = false
-            )
+            ) else JSONArray()
 
             val activityItems = buildList {
                 for (i in 0 until activityArray.length()) {
@@ -5049,7 +5078,10 @@ suspend fun uploadPostMedia(
                                 .takeIf { o.optString("entity_type").equals("post", true) },
                             targetMarketId = o.optString("entity_id")
                                 .takeIf { o.optString("entity_type").equals("market", true) },
-                            targetType = o.optString("entity_type").takeIf { it.isNotBlank() }
+                            targetType = o.optString("entity_type").takeIf { it.isNotBlank() },
+                            targetEntityId = o.optString("entity_id").takeIf { it.isNotBlank() },
+                            targetResourceId = o.optString("entity_id").takeIf { it.isNotBlank() },
+                            eventType = type
                         )
                     )
                 }
@@ -5087,17 +5119,23 @@ suspend fun uploadPostMedia(
                                 else -> NotificationFilter.ALL
                             },
                             targetPostId = postId ?: optionalTargetId.takeIf {
-                                optionalTargetType.equals("post", ignoreCase = true)
+                                optionalTargetType.equals("post", ignoreCase = true) ||
+                                    optionalTargetType.equals("reel", ignoreCase = true)
                             },
                             targetMarketId = optionalTargetId.takeIf {
                                 optionalTargetType.equals("market", ignoreCase = true)
                             },
                             targetType = when {
                                 isMessage -> "CHAT"
-                                type.equals("follow", true) -> "PROFILE"
                                 !optionalTargetType.isNullOrBlank() -> optionalTargetType
+                                postId != null -> "POST"
+                                type.equals("follow", true) -> "PROFILE"
+                                !type.equals("system", true) -> "PROFILE"
                                 else -> "NOTIFICATION"
                             },
+                            targetEntityId = id,
+                            targetResourceId = optionalTargetId,
+                            eventType = type,
                             previewText = o.optString("sub_text").takeIf { it.isNotBlank() },
                             actorIsVip = o.optBoolean("actor_is_vip", false),
                             vipPriority = o.optBoolean("vip_priority", false)
@@ -5106,36 +5144,50 @@ suspend fun uploadPostMedia(
                 }
             }
 
-            // Canonical notification rows win whenever both legacy activity and
-            // notification records describe the same event. The known mirrored social
-            // activity types are removed from the fallback path entirely now that the
-            // production notification trigger/function set is live.
-            fun isCanonicalMirror(item: ActivityItem): Boolean {
-                val action = item.action.lowercase(Locale.US)
-                return action.contains("liked your") ||
-                    action.contains("commented on") ||
-                    action.contains("replied") ||
-                    action.contains("mentioned") ||
-                    action.contains("follow") ||
-                    action.contains("repost")
+            // De-duplicate only matching canonical/legacy events. Previously, merely
+            // having *any* canonical notification hid all legacy likes and comments.
+            // Official announcements carry the exact shared notification id.
+            val canonicalIds = notificationItems.mapNotNull { it.targetEntityId }.toHashSet()
+            val legacyFallback = activityItems.filterNot { legacy ->
+                val officialMirror = com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                    .isOfficialMirror(legacy.targetType, legacy.targetEntityId, canonicalIds)
+                // Never infer an event type from its display text or hide unrelated history.
+                val socialMirror = notificationItems.any { canonical ->
+                    com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isSameSocialEvent(
+                        legacy.user, canonical.user, legacy.eventType, canonical.eventType,
+                        legacy.rawTimestamp, canonical.rawTimestamp,
+                        legacy.targetPostId, canonical.targetPostId, canonical.targetType
+                    )
+                }
+                officialMirror || socialMirror
             }
-
-            val notificationKeys = notificationItems.asSequence().map(::semanticKey).toHashSet()
-            val legacyFallback = if (notificationItems.isEmpty()) {
-                activityItems
-            } else {
-                activityItems.filterNot(::isCanonicalMirror)
-            }
-            val merged = (notificationItems + legacyFallback.filterNot {
-                semanticKey(it) in notificationKeys
-            })
+            val merged = (notificationItems + legacyFallback)
                 .sortedByDescending { it.rawTimestamp }
                 .distinctBy { it.id }
-                .take(150)
+                // Each source fetches 100 rows. Retaining fewer than 200 would
+                // discard fetched rows that pagination can never recover.
+                .take(200)
 
-            Result.success(merged)
+            fun nextCursor(array: JSONArray): com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? {
+                if (array.length() < 100) return null
+                val last = array.optJSONObject(array.length() - 1) ?: return null
+                val createdAt = last.optString("created_at")
+                val id = last.optString("id")
+                return if (createdAt.isBlank() || id.isBlank()) null
+                else com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor(createdAt, id)
+            }
+            Result.success(
+                NotificationHistoryPage(
+                    items = merged,
+                    activityCursor = nextCursor(activityArray),
+                    notificationCursor = nextCursor(notificationArray),
+                    warning = if (optionalSourceUnavailable) {
+                        "Some notifications couldn't be loaded. Tap Refresh to retry."
+                    } else null
+                )
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "fetchActivities exception", e)
+            Log.e(TAG, "fetchActivitiesPage exception", e)
             Result.failure(e)
         }
     }
@@ -5243,6 +5295,18 @@ suspend fun uploadPostMedia(
     suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            // New backend applies both tables atomically, with auth.uid() ownership and RLS.
+            // Keep an older-server fallback until the versioned migration is deployed.
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/mark_all_my_notifications_read_atomic", true)
+                    .post("{}".toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (response.isSuccessful) return@withContext true
+                val raw = response.body?.string().orEmpty()
+                if (!(response.code == 404 && raw.contains("PGRST202"))) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not mark all notifications read."))
+                }
+            }
             val body = JSONObject().put("is_read", true)
             val targets = listOf(
                 "activities" to "recipient_id",

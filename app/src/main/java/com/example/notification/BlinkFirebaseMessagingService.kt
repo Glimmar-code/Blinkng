@@ -329,7 +329,6 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 Log.d(TAG, "Duplicate notification suppressed: $notificationId")
                 return
             }
-            SocialNotificationRecovery.markShown(applicationContext, currentUid, notificationId)
         }
 
         val senderId = data["sender_id"].orEmpty()
@@ -409,8 +408,19 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         // When Blink itself rendered the event, avoid a second Android heads-up banner.
         // The authoritative server activity/message still remains available in-app.
         if (handledInApp) {
+            if (type != BlinkNotificationType.MESSAGE && notificationId.isNotBlank()) {
+                SocialNotificationRecovery.markShown(applicationContext, currentUid, notificationId)
+            }
             Log.d(TAG, "Rendered foreground notification in-app: $type")
             return
+        }
+        // Permission-denied Android delivery is not a successful notification.
+        // Leave the server id eligible for future recovery after permission is granted.
+        if (type != BlinkNotificationType.INCOMING_CALL &&
+            type != BlinkNotificationType.CALL_UPDATE &&
+            !BlinkNotificationHelper.areNotificationsEnabled(this)) return
+        if (type != BlinkNotificationType.MESSAGE && notificationId.isNotBlank()) {
+            SocialNotificationRecovery.markShown(applicationContext, currentUid, notificationId)
         }
 
         // Visible notification work must stay synchronous. FCM gives this callback a short

@@ -290,7 +290,6 @@ class MainActivity : ComponentActivity() {
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
         }
         handleNotificationIntent(intent)
-        handleNotificationIntent(intent)
         // Public BLINK channel links are routed to the same native channel page
         // as the inbox. Only exact first-party hosts and UUIDs are trusted.
         val incomingUri = intent?.data
@@ -1769,8 +1768,8 @@ fun MainAppContent(
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onOpenMarketListing = { item -> viewModel.openProductDetail(item) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
-                        hasUnreadNotifications = uiState.activities.any { it.isUnread },
-                        unreadNotificationCount = uiState.activities.count { it.isUnread },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
+                        unreadNotificationCount = uiState.activities.count { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
                         isInteractionOverlayOpen =
                             uiState.activeCommentsPostId != null ||
                                 uiState.activePostOptionsPost != null ||
@@ -1809,7 +1808,7 @@ fun MainAppContent(
                         onMarketItemClick = { viewModel.openProductDetail(it) },
                         onGameClick = { feedUtilitySheet = "items" },
                         onNotificationsClick = { viewModel.openActivity(true) },
-                        hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
                         isSearching = uiState.isDiscoverSearching,
                         onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
@@ -2929,22 +2928,45 @@ fun MainAppContent(
                 },
                 onNotificationClick = { activity ->
                     viewModel.handleNotificationClick(activity)
-                    activity.targetPostId?.let { postId ->
-                        val type = if (uiState.reels.any { it.id == postId }) {
-                            ShareContentType.REEL
-                        } else {
-                            ShareContentType.POST
+                    when (activity.targetType?.lowercase()) {
+                        "channel" -> {
+                            val id = activity.targetResourceId.orEmpty()
+                            if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
+                                context.startActivity(
+                                    Intent(context, ProfessionalCenterActivity::class.java)
+                                        .putExtra("section", "communities")
+                                        .putExtra("channel_id", id)
+                                )
+                            } else viewModel.openActivity(true)
                         }
-                        viewModel.handleDeepLink(
-                            com.example.sharing.AppDeepLink(type = type, id = postId)
+                        "giveaway", "drops" -> context.startActivity(
+                            Intent(context, BlinkDropsActivity::class.java)
+                                .putExtra(BlinkDropsActivity.EXTRA_DROP_ID, activity.targetResourceId)
                         )
+                        "boost" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(0)
+                            feedUtilitySheet = "boost"
+                        }
+                        "items" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(0)
+                            feedUtilitySheet = "items"
+                        }
+                        "wallet", "coins", "coin", "reward" -> {
+                            walletOpenedFromMenu = false
+                            showWallet = true
+                        }
                     }
                 },
                 isDark = uiState.isDarkMode,
-                isConnected = uiState.isLiveSupabaseConnected,
+                isConnected = uiState.isOnline,
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
-                onRefresh = { viewModel.fetchSupabaseData() },
+                onRefresh = { viewModel.refreshNotifications() },
+                onLoadMore = { viewModel.loadOlderNotifications() },
+                hasMore = uiState.activitiesHasMore,
+                isLoadingMore = uiState.activitiesLoadingMore,
                 onMarkAllRead = { viewModel.markAllActivitiesRead() },
                 onToggleRead = { activity -> viewModel.toggleActivityReadState(activity) }
             )
@@ -3254,7 +3276,7 @@ fun MainAppContent(
             BlinkReferenceMenuScreen(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
-                hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
                 appVersion = BuildConfig.VERSION_NAME,
                 onDismiss = { viewModel.openMenu(false) },
                 onViewProfile = {
