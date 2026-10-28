@@ -60,6 +60,7 @@
               '<article><h3>Download BLINK</h3><p>Get the current published Android APK from the official GitHub release. Review the release and your device security settings before installing.</p><a href="./download/">Download information</a></article>',
             '</div>',
             '<nav class="br-info-links" aria-label="More information"><a href="./about/">About BLINK</a><a href="./faq/">FAQ</a><a href="./safety/">Safety</a><a href="./privacy/">Privacy Policy</a><a href="./download/">Official download</a><a href="./login">Sign in on web</a></nav>',
+            '<div id="br-retained" class="br-retained" aria-label="More BLINK website tools and information"></div>',
           '</div>',
         '</details>',
       '</section>',
@@ -71,9 +72,17 @@
     if (!isHomepage()) return;
     const landing = root.querySelector(':scope > .landing-page:not([data-brand-refresh])');
     if (!landing) return;
+    // Keep existing public-profile search, campus catalogue, feature tour and
+    // all attached listeners; merely move them behind the expandable overview.
+    const publicSearch = landing.querySelector('#public-search');
+    const legacySections = Array.from(landing.querySelectorAll(':scope > section.landing-container'))
+      .filter(section => !section.classList.contains('landing-hero'));
     landing.setAttribute('data-brand-refresh','1');
     landing.className = 'br-page';
     landing.innerHTML = markup;
+    const retained = landing.querySelector('#br-retained');
+    if (publicSearch) retained.append(publicSearch);
+    for (const section of legacySections) retained.append(section);
     const details = landing.querySelector('#blink-read-more');
     landing.addEventListener('click', event => {
       const trigger = event.target.closest('[data-reveal]');
