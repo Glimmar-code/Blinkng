@@ -964,9 +964,14 @@ fun ReelsScreen(state: DesktopAppState) {
         }
         if (featured.isNotEmpty()) item(key = "top_reels_carousel") {
             val top = featured[featuredIndex.coerceIn(0, featured.lastIndex)]
+            val topPost = reels.firstOrNull { it.id == top.id }
             Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF2C113E)) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(190.dp).clickable {
+                    modifier = Modifier.fillMaxWidth().height(190.dp)
+                        .then(if (topPost != null) Modifier.trackDesktopContentExposure(
+                            state.client, top.id, desktopDisplayedViewCount(top.id, topPost.viewCount)
+                        ) else Modifier)
+                        .clickable {
                         runCatching {
                             Desktop.getDesktop().browse(URI(DesktopShareLinkManager.generate(top.id, true)))
                         }

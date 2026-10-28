@@ -459,8 +459,10 @@ fun DesktopUserProfileDialog(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     row.forEach { reel ->
+                                        val visibleViews = desktopDisplayedViewCount(reel.id, reel.viewCount)
                                         Surface(
                                             modifier = Modifier.weight(1f).aspectRatio(.72f)
+                                                .trackDesktopContentExposure(state.client, reel.id, visibleViews)
                                                 .clickable {
                                                     runCatching {
                                                         java.awt.Desktop.getDesktop().browse(
@@ -510,7 +512,7 @@ fun DesktopUserProfileDialog(
                                                     fontSize = 11.sp
                                                 )
                                                 Text(
-                                                    "${reel.viewCount.coerceAtLeast(0)} views",
+                                                    "${visibleViews.coerceAtLeast(0)} views",
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontSize = 10.sp
                                                 )
