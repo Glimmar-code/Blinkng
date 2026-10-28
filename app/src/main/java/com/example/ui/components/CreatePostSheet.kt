@@ -1,7 +1,10 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
@@ -13,6 +16,7 @@ import com.blinkng.shared.BlinkPostGrowthTips
 import com.example.data.repository.SearchDiscoveryRepository
 import com.example.ui.screens.BlinkUniversalPhotoEditor
 import com.example.media.BlinkReelPoster
+import com.example.performance.rememberBlinkReduceMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -967,6 +971,8 @@ fun CreatePostSheet(
         }
     }
 
+    val reduceReferenceMotion = rememberBlinkReduceMotion()
+
     Dialog(
         onDismissRequest = ::navigateBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1006,9 +1012,24 @@ fun CreatePostSheet(
                 showPublishOptions -> "publish"
                 else -> "editor"
             }
-            Crossfade(
+            AnimatedContent(
                 targetState = referenceStage,
-                animationSpec = tween(durationMillis = 210),
+                transitionSpec = {
+                    val order = listOf("landing", "gallery", "clips", "editor", "details", "publish")
+                    val direction = if (order.indexOf(targetState) >= order.indexOf(initialState)) 1 else -1
+                    if (reduceReferenceMotion) {
+                        fadeIn(animationSpec = tween(0)) togetherWith
+                            fadeOut(animationSpec = tween(0))
+                    } else {
+                        (
+                            slideInHorizontally(animationSpec = tween(230)) { width -> direction * (width / 7) } +
+                                fadeIn(animationSpec = tween(180))
+                            ) togetherWith (
+                            slideOutHorizontally(animationSpec = tween(230)) { width -> -direction * (width / 7) } +
+                                fadeOut(animationSpec = tween(180))
+                            )
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
                 label = "blinkCreatePostStage"
             ) { visibleStage ->
