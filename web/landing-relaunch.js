@@ -79,6 +79,7 @@
       .filter(section => !section.classList.contains('landing-hero'));
     landing.setAttribute('data-brand-refresh','1');
     landing.className = 'br-page';
+    document.title = 'BLINK Nigeria — Connect, Discover and Grow Beyond LINK | Download App';
     landing.innerHTML = markup;
     const retained = landing.querySelector('#br-retained');
     if (publicSearch) retained.append(publicSearch);
