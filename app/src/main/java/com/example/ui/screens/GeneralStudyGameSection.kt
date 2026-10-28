@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -172,9 +176,16 @@ fun GeneralStudyGameSection(
         item { Spacer(Modifier.height(10.dp)) }
 
         item {
+            val reduceMotion = rememberBlinkReduceMotion()
             AnimatedContent(
                 targetState = pane,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                transitionSpec = {
+                    if (reduceMotion) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        fadeIn(tween(180)) togetherWith fadeOut(tween(130))
+                    }
+                },
                 label = "generalStudyPane",
             ) { current ->
                 when (current) {

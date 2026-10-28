@@ -10,6 +10,9 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.blinkSmoothSize
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -1089,16 +1092,21 @@ private fun ReelsTopTabs(
     modifier: Modifier = Modifier
 ) {
     val tabs = listOf("Following", "For You")
+    val reduceMotion = rememberBlinkReduceMotion()
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         tabs.forEachIndexed { index, tab ->
             val isSelected = tab == selectedTab
             val textColor by animateColorAsState(
                 targetValue = if (isSelected) Color.White else Color.White.copy(alpha = .55f),
+                animationSpec = tween(if (reduceMotion) 0 else 170),
                 label = "tabColor"
             )
             val indicatorWidth by animateDpAsState(
                 targetValue = if (isSelected) 24.dp else 0.dp,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                animationSpec = if (reduceMotion) snap() else spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
                 label = "tabIndicatorWidth"
             )
             Column(
@@ -1109,7 +1117,8 @@ private fun ReelsTopTabs(
                     text = tab,
                     color = textColor,
                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
-                    fontSize = if (isSelected) 15.sp else 14.sp
+                    // Keep baselines stable while switching tabs.
+                    fontSize = 15.sp
                 )
                 Spacer(Modifier.height(4.dp))
                 Box(Modifier.width(indicatorWidth).height(2.dp).background(Color.White, CircleShape))
@@ -1982,7 +1991,7 @@ private fun ExpandableCaption(text: String) {
 
     var expanded by remember(text) { mutableStateOf(false) }
 
-    Column(Modifier.animateContentSize()) {
+    Column(Modifier.blinkSmoothSize()) {
         Text(
             text = if (expanded) text else text.take(collapsedThreshold).trimEnd() + "…",
             color = Color.White,
@@ -2078,37 +2087,31 @@ private fun ReelAction(
     contentDescription: String = text,
     onClick: () -> Unit
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) .8f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "reelActionScale"
-    )
-
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            delay(120)
-            pressed = false
-        }
-    }
+    val reducedMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.widthIn(min = 58.dp).padding(vertical = 6.dp)
     ) {
         IconButton(
-            onClick = { pressed = true; onClick() },
+            onClick = onClick,
+            interactionSource = interaction,
             modifier = Modifier
                 .size(48.dp)
-                .scale(scale)
+                .blinkPressFeedback(interaction)
         ) {
             Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(29.dp))
         }
         AnimatedContent(
             targetState = text,
             transitionSpec = {
-                (slideInVertically(tween(200)) { it } + fadeIn(tween(200))) togetherWith
-                    (slideOutVertically(tween(200)) { -it } + fadeOut(tween(150)))
+                if (reducedMotion) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    (slideInVertically(tween(200)) { it } + fadeIn(tween(200))) togetherWith
+                        (slideOutVertically(tween(200)) { -it } + fadeOut(tween(150)))
+                }
             },
             label = "reelActionCount"
         ) { animatedText ->

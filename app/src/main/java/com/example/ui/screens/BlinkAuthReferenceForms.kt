@@ -7,6 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -142,9 +144,12 @@ private fun SolidAuthButton(
     tag: String,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Button(
         onClick = onClick, enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(56.dp).testTag(tag),
+        interactionSource = interaction,
+        modifier = Modifier.fillMaxWidth().height(56.dp)
+            .blinkPressFeedback(interaction, enabled = enabled).testTag(tag),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.Black, contentColor = Color.White,
@@ -182,9 +187,12 @@ private fun OrSeparator() {
 private fun GoogleOutlineButton(
     loading: Boolean, onClick: () -> Unit, tag: String, enabled: Boolean = true
 ) {
+    val interaction = remember { MutableInteractionSource() }
     OutlinedButton(
         onClick = onClick, enabled = enabled && !loading,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag(tag),
+        interactionSource = interaction,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)
+            .blinkPressFeedback(interaction, enabled = enabled && !loading).testTag(tag),
         border = BorderStroke(1.2.dp, Ink),
         shape = RoundedCornerShape(11.dp),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Ink)

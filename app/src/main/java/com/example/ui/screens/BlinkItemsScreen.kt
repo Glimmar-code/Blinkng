@@ -19,6 +19,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -463,6 +465,7 @@ private fun BlinkCompactItemTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(18.dp),
@@ -472,7 +475,12 @@ private fun BlinkCompactItemTile(
         ),
         modifier = modifier
             .heightIn(min = 132.dp)
-            .clickable(onClick = onClick)
+            .blinkPressFeedback(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            )
     ) {
         Column(
             modifier = Modifier.padding(13.dp),
@@ -544,6 +552,7 @@ private fun BlinkItemTile(
     onToggle: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(18.dp),
@@ -553,7 +562,12 @@ private fun BlinkItemTile(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .blinkPressFeedback(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),

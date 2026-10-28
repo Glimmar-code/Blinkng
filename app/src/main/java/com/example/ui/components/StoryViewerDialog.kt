@@ -185,7 +185,11 @@ fun StoryViewerDialog(
             .testTag("story_viewer_dialog")
     ) {
         // Story Background Image / Media
-        Crossfade(targetState = currentStory.id, animationSpec = tween(180), label = "storyMediaReveal") { storyId ->
+        Crossfade(
+            targetState = currentStory.id,
+            animationSpec = tween(if (reducedMotion) 0 else 180),
+            label = "storyMediaReveal"
+        ) { storyId ->
             val displayedStory = storyList.firstOrNull { it.id == storyId } ?: currentStory
             if (displayedStory.storyImage.isNotBlank()) {
             AsyncImage(

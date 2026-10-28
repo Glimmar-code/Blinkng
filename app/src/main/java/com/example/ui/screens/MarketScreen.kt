@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.example.ui.components.BlinkSkeletonMarketRow
+import com.example.ui.components.blinkPressFeedback
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -722,19 +723,13 @@ fun ProductCard(
 ) {
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     val pressInteraction = remember { MutableInteractionSource() }
-    val pressed by pressInteraction.collectIsPressedAsState()
-    val cardScale by animateFloatAsState(
-        targetValue = if (pressed) BlinkDesignTokens.Motion.PressedScale else 1f,
-        animationSpec = tween(BlinkDesignTokens.Motion.Interaction),
-        label = "marketProductPress"
-    )
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = modifier
             .fillMaxWidth()
-            .graphicsLayer { scaleX = cardScale; scaleY = cardScale }
+            .blinkPressFeedback(pressInteraction, pressedScale = BlinkDesignTokens.Motion.PressedScale)
             .clickable(interactionSource = pressInteraction, indication = null, onClick = onClick)
             .testTag("product_card_${item.id}")
     ) {

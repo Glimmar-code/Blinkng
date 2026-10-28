@@ -31,6 +31,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -2460,11 +2461,18 @@ private fun ComposerActionTile(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Surface(
         modifier = Modifier
             .width(138.dp)
             .height(92.dp)
-            .clickable(enabled = enabled, onClick = onClick),
+            .blinkPressFeedback(interaction, enabled = enabled)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            ),
         shape = RoundedCornerShape(18.dp),
         tonalElevation = 3.dp,
         shadowElevation = 2.dp,

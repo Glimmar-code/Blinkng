@@ -8,6 +8,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkSmoothSize
+import com.example.ui.components.blinkPressFeedback
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -625,7 +628,8 @@ private fun AdminFeatureCard(
     openHistory: () -> Unit
 ) {
     val blocked = feature.ownerOnly && !capability.isOwner
-    Card(Modifier.fillMaxWidth()) {
+    val interaction = remember { MutableInteractionSource() }
+    Card(Modifier.fillMaxWidth().blinkSmoothSize()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
@@ -658,7 +662,9 @@ private fun AdminFeatureCard(
                 Button(
                     enabled = !blocked,
                     onClick = if (feature.inputKind == "insight") onRunInsight else onOpen,
+                    interactionSource = interaction,
                     modifier = Modifier.heightIn(min = 48.dp).weight(1f)
+                        .blinkPressFeedback(interaction, enabled = !blocked)
                 ) {
                     Text(if (feature.inputKind == "insight") "Run insight" else "Open tool", fontSize = 15.sp)
                 }
