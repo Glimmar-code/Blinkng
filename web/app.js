@@ -715,6 +715,12 @@
   async function uploadPublicFile(bucket,file,prefix='web'){
     if(!uid())throw new Error('Sign in first.');
     if(!file)throw new Error('Choose a file first.');
+
+    const r2=await import('./r2-media.mjs');
+    const cloudUrl=await r2.tryUploadR2({bucket,file,baseUrl:SUPABASE_URL,
+      anonKey:KEY,accessToken:token(),fetchWithTimeout,parseJsonSafe});
+    if(cloudUrl)return cloudUrl;
+
     const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(-120)||'upload';
     const objectPath=`${uid()}/${prefix}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
     const res=await fetchWithTimeout(`${SUPABASE_URL}/storage/v1/object/${bucket}/${objectPath}`,{

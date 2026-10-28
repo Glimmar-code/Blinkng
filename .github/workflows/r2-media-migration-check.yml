@@ -1,0 +1,69 @@
+name: BLINK R2 migration safety
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/migrate_supabase_media_to_r2.py'
+      - 'scripts/testing/test_r2_migration.py'
+      - 'supabase/functions/blink-r2-media/**'
+      - 'supabase/migrations/*blink_r2*'
+      - 'shared/src/main/kotlin/com/blinkng/shared/BlinkR2MediaPolicy.kt'
+      - 'shared/src/test/kotlin/com/blinkng/shared/BlinkR2MediaPolicyTest.kt'
+      - 'app/src/test/java/com/example/data/supabase/BlinkR2MediaPolicyAndroidTest.kt'
+      - 'desktopApp/src/test/kotlin/com/blinkng/desktop/data/BlinkR2MediaPolicyDesktopTest.kt'
+      - 'web/app.js'
+      - 'web/r2-media.mjs'
+      - 'app/src/main/java/com/example/data/supabase/BlinkR2PublicUploader.kt'
+      - 'app/src/main/java/com/example/data/supabase/SupabaseService.kt'
+      - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopMediaService.kt'
+      - '.github/workflows/r2-media-migration-check.yml'
+  push:
+    branches:
+      - 'Testlab/r2-media-migration-*'
+permissions:
+  contents: read
+
+jobs:
+  copy-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check copy-only migration and private bucket mapping
+        run: python3 -m unittest discover -s scripts/testing -p test_r2_migration.py -v
+
+  edge-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check server-only signer
+        run: deno check supabase/functions/blink-r2-media/index.ts
+      - name: Reject oversized or spoofed R2 control requests
+        run: deno test supabase/functions/blink-r2-media/request-body.test.ts
+
+  shared-media-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test Android shared R2 policy and uploader compilation
+        run: gradle :app:testDebugUnitTest --tests com.example.data.supabase.BlinkR2MediaPolicyAndroidTest --no-daemon
+      - name: Test Windows shared R2 policy and uploader compilation
+        run: gradle -p desktopApp test --tests com.blinkng.desktop.data.BlinkR2MediaPolicyDesktopTest --no-daemon
+      - name: Check website JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/r2-media.mjs
+
+# These code checks never prove a Cloudflare staging integration, security of
+# presigned PUT size limits, chat visibility or device streaming. Keep the
+# production cutover blocked until the complete staging checklist is signed off.
