@@ -641,9 +641,9 @@ internal fun BlinkReferenceMediaReview(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            itemsIndexed(images) { index, uri ->
+            itemsIndexed(images, key = { _, uri -> uri }) { index, uri ->
                 Box(
-                    Modifier.fillMaxWidth().height(118.dp)
+                    Modifier.fillMaxWidth().height(140.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFF20242B))
                 ) {
@@ -651,7 +651,7 @@ internal fun BlinkReferenceMediaReview(
                         model = uri,
                         contentDescription = "Selected photo " + (index + 1),
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().clickable { previewIndex = index }
                     )
                     Surface(
                         modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
@@ -662,6 +662,24 @@ internal fun BlinkReferenceMediaReview(
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                             fontSize = 12.sp
                         )
+                    }
+                    Row(
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = .72f), RoundedCornerShape(8.dp)),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        IconButton(
+                            onClick = { onMove(index, index - 1) },
+                            enabled = index > 0, modifier = Modifier.size(34.dp)
+                        ) { Icon(Icons.Default.ArrowUpward, "Move photo earlier", tint = Color.White) }
+                        IconButton(
+                            onClick = { previewIndex = index },
+                            modifier = Modifier.size(34.dp)
+                        ) { Icon(Icons.Default.Visibility, "Preview selected photo", tint = Color.White) }
+                        IconButton(
+                            onClick = { onMove(index, index + 1) },
+                            enabled = index < images.lastIndex, modifier = Modifier.size(34.dp)
+                        ) { Icon(Icons.Default.ArrowDownward, "Move photo later", tint = Color.White) }
                     }
                     IconButton(
                         onClick = { onRemove(index) },
@@ -676,6 +694,10 @@ internal fun BlinkReferenceMediaReview(
                 }
             }
         }
+        Text(
+            "The first photo is the cover. Tap to preview; use arrows to reorder.",
+            color = Color(0xFFB0B7C4), fontSize = 12.sp
+        )
         OutlinedButton(
             onClick = onAddMore, enabled = images.size < 10,
             modifier = Modifier.fillMaxWidth()
