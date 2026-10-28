@@ -48,6 +48,30 @@ try {
       await page.goto(base+'/',{waitUntil:'domcontentloaded',timeout:25000});
       await page.locator('main.br-page').waitFor({timeout:12000});
       assert.ok(await page.locator('#br-title').isVisible(),'Homepage heading missing');
+      assert.equal(await page.locator('#app').evaluate(node=>node.classList.contains('boot')),false,
+        'Loading screen grid must not center the branded homepage');
+      const design=await page.evaluate(()=>{
+        const heading=document.querySelector('#br-title');
+        const download=document.querySelector('.br-button-main');
+        const phones=document.querySelector('.br-showcase');
+        const pill=document.querySelector('#parity-network-pill');
+        return {
+          headingAlignment:getComputedStyle(heading).textAlign,
+          headingSize:parseFloat(getComputedStyle(heading).fontSize),
+          downloadWidth:download.getBoundingClientRect().width,
+          showcaseTop:phones.getBoundingClientRect().top,
+          showcaseHeight:phones.getBoundingClientRect().height,
+          floatingBadgeVisible:!!pill && getComputedStyle(pill).display!=='none'
+        };
+      });
+      if(width<=480){
+        assert.equal(design.headingAlignment,'left','Mobile hero should have one consistent text alignment');
+        assert.ok(design.headingSize<=44,'Mobile headline should not overwhelm the screen');
+        assert.ok(design.downloadWidth>=width-60,'APK download must have a comfortable full-width tap target');
+        assert.ok(design.showcaseTop<700,'App previews must appear soon after download buttons');
+        assert.ok(design.showcaseHeight<=390,'App previews must not push page content excessively far down');
+        assert.equal(design.floatingBadgeVisible,false,'Network badge must not overlap app previews');
+      }
       assert.equal(await page.locator('.landing-feature-card').count(),6,'Expected six BLINK feature cards');
       assert.ok(await page.locator('a[href*="/releases/latest/download/Blink-latest.apk"]').first().isVisible(),'Android download CTA missing');
       const layout=await page.evaluate(()=>({
