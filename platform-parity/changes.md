@@ -1,3 +1,10 @@
+## 2026-10-28 — Gold Channel Pro and creator workspace parity (PR #629, Testlab)
+
+- **Shared Kotlin:** `BlinkVerifiedChannelPro` computes only loaded update stats (no private followers or fabricated lifetime metrics), validates future UTC schedule presets and produces editable Channel templates. `BlinkVerifiedCreatorTools` creates bounded AI briefs, public portfolio copy and confirmed-data event invitations.
+- **Android:** Active Gold Channel admins can view loaded-update Pro stats and prefill Channel drafts/scheduled UTC time. Blue/Gold owners can open existing BLINK AI with a prefilled prompt, never auto-send. Gold Creator Studio adds portfolio sharing and event invitation sharing through Android share chooser.
+- **Windows:** Same shared Channel Pro stats, template and schedule prefill. Creator Studio opens the existing Windows BLINK AI with prefilled text only. Gold public portfolio/event copy uses the Windows clipboard. No synthetic backend records or new privileges.
+- **Safety:** Existing Channel role permissions, paid Store ownership, post scheduling, subscription prices, Coins/HP, boost pricing, XP and discovery rank remain unchanged. Latest-head unit/build/smoke tests required before main. Pending Gold credits, premium queue SLAs and VIP cosmetic grants must NOT be advertised as delivered entitlements.
+
 ## 2026-10-28 — Gold Merchant Pro listing-health diagnostics (Testlab PR #629)
 
 - **Shared-first:** `BlinkMerchantInsightsPolicy` provides deduplicated, read-only listing health from the user's own loaded Market items, with nullable unknown quantities/view/save counts. No new database writes, RLS, payments or automatic promotion.
