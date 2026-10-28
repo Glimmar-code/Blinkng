@@ -75,10 +75,15 @@ fun BlinkContactSyncLoginPrompt(accountId: String, safeToShow: Boolean) {
     LaunchedEffect(accountId, safeToShow) {
         if (accountId.isBlank() || !safeToShow || checkedAccount) return@LaunchedEffect
         checkedAccount = true
+        // Fail closed when the contact matching Edge Function or tables are not
+        // deployed. Do not ask users for contact access if we cannot sync.
+        val snapshot = runCatching { client.get() }.getOrNull()
+            ?: return@LaunchedEffect
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
             PackageManager.PERMISSION_GRANTED
-        val optedIn = prefs.getBoolean("enabled_" + accountId, false)
+        val optedIn = snapshot.consent.syncEnabled
         if (optedIn && granted) {
+            prefs.edit().putBoolean("enabled_" + accountId, true).apply()
             // Consent was expressly given on an earlier visit. Retry silently;
             // server cooldowns and temporary failures do not interrupt login.
             runCatching { client.syncFromDevice(context) }
