@@ -13,6 +13,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.blinkng.shared.BlinkContestShare
 import org.json.JSONObject
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 import java.awt.Color as AwtColor
 import java.awt.Font
 import java.awt.RenderingHints
@@ -83,6 +86,18 @@ private fun buildContestDesktopPng(candidate: JSONObject): BufferedImage {
             drawCentered(g, candidate.optString("name").take(1).uppercase().ifBlank { "B" },
                 473, 133, AwtColor.WHITE, true)
         }
+        val link = BlinkContestShare.link(candidate.optString("contest_id"), candidate.optString("id"))
+        val qr = QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 164, 164,
+            mapOf(EncodeHintType.MARGIN to 1))
+        g.color = AwtColor.WHITE
+        g.fillRoundRect(793, 318, 180, 180, 14, 14)
+        g.color = AwtColor.BLACK
+        for (y in 0 until qr.height) for (x in 0 until qr.width) {
+            if (qr[x, y]) g.fillRect(801 + x, 326 + y, 1, 1)
+        }
+        g.color = AwtColor(178, 200, 226)
+        g.font = Font("SansSerif", Font.BOLD, 23)
+        g.drawString("SCAN TO VOTE", 794, 536)
         drawCentered(g, candidate.optString("name").ifBlank { candidate.optString("username") },
             667, 64, AwtColor.WHITE, true)
         drawCentered(g, "@" + candidate.optString("username"), 719, 30, AwtColor(177, 197, 223))

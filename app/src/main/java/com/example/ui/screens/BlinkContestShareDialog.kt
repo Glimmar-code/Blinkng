@@ -38,6 +38,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
@@ -146,6 +149,21 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
         canvas.center(candidate.optString("name").take(1).uppercase().ifBlank { "B" },
             cy + 43f, 130f, WHITE, 220f, true)
     }
+
+    // A real scan-to-vote QR also works when a social app drops EXTRA_TEXT for image shares.
+    val qr = QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 164, 164,
+        mapOf(EncodeHintType.MARGIN to 1))
+    paint.color = WHITE
+    canvas.drawRoundRect(RectF(793f, 318f, 973f, 498f), 14f, 14f, paint)
+    paint.color = Color.BLACK
+    for (y in 0 until qr.height) {
+        for (x in 0 until qr.width) {
+            if (qr[x, y]) canvas.drawRect(801f + x, 326f + y,
+                802f + x, 327f + y, paint)
+        }
+    }
+    canvas.drawText("SCAN TO VOTE", 794f, 535f,
+        textPaint(22f, MUTED, true))
 
     val name = candidate.optString("name").ifBlank { candidate.optString("username") }
     canvas.center(name, 662f, 65f, WHITE, 880f, true)
