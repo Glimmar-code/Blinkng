@@ -92,6 +92,7 @@ import com.blinkng.desktop.data.DesktopConnectApplication
 import com.blinkng.desktop.data.DesktopConnectInbox
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
+import com.blinkng.desktop.data.DesktopSupabaseClient
 import com.blinkng.desktop.data.DesktopFeaturedReel
 import com.blinkng.desktop.data.featuredReels12h
 import com.blinkng.desktop.data.DesktopInventoryItem
@@ -675,6 +676,7 @@ fun HomeScreen(
         items(visiblePosts, key = { it.id }) { post ->
             DesktopFeedPostCard(
                 post = post,
+                viewClient = state.client,
                 onLike = {
                     val beforeLiked = post.isLiked
                     val beforeCount = post.likeCount
@@ -823,6 +825,7 @@ private fun DesktopPostDetailsDialog(
             ) {
                 DesktopFeedPostCard(
                     post = post,
+                    viewClient = state.client,
                     onLike = onLike,
                     onBookmark = onBookmark,
                     onRepost = onRepost,
@@ -1013,7 +1016,11 @@ fun ReelsScreen(state: DesktopAppState) {
         if (loading && reels.isEmpty()) item { LoadingRow() }
         if (!loading && reels.isEmpty()) item { EmptyState("No reels are available yet.") }
         items(reels, key = { it.id }) { reel ->
-            Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp) {
+            val displayedViewCount = desktopDisplayedViewCount(reel.id, reel.viewCount)
+            Surface(
+                modifier = Modifier.trackDesktopContentExposure(state.client, reel.id, displayedViewCount),
+                shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     VerifiedName(reel.authorName, reel.authorVerified)
                     reel.caption?.takeIf(String::isNotBlank)?.let {
@@ -1035,7 +1042,7 @@ fun ReelsScreen(state: DesktopAppState) {
                             )
                         }
                     }
-                    Text("${reel.viewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${displayedViewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
                         onClick = { reelToShare = reel },
                     ) {
@@ -1157,6 +1164,7 @@ fun SearchScreen(state: DesktopAppState) {
             items(results.posts, key = { "post-${it.id}" }) { post ->
                 DesktopFeedPostCard(
                     post = post,
+                    viewClient = state.client,
                     onLike = {
                         val beforeLiked = post.isLiked
                         val beforeCount = post.likeCount
@@ -4240,6 +4248,7 @@ fun AdminScreen(state: DesktopAppState) {
 @Composable
 internal fun DesktopFeedPostCard(
     post: DesktopFeedPost,
+    viewClient: DesktopSupabaseClient? = null,
     onLike: () -> Unit,
     onBookmark: () -> Unit,
     onRepost: () -> Unit,
@@ -4248,6 +4257,7 @@ internal fun DesktopFeedPostCard(
     onOpenPost: (() -> Unit)? = null,
     xFeedStyle: Boolean = false,
 ) {
+    val displayedViewCount = desktopDisplayedViewCount(post.id, post.viewCount)
     var expandedText by remember(post.id) { mutableStateOf(false) }
     var textCanExpand by remember(post.id) { mutableStateOf(false) }
     val mediaUrls = remember(post.id, post.imageUrl, post.images) {
@@ -4260,6 +4270,7 @@ internal fun DesktopFeedPostCard(
     }
 
     Surface(
+        modifier = if (viewClient != null) Modifier.trackDesktopContentExposure(viewClient, post.id, displayedViewCount) else Modifier,
         shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 20.dp),
         tonalElevation = if (xFeedStyle) 0.dp else 1.dp,
         color = MaterialTheme.colorScheme.surface,
@@ -4488,7 +4499,7 @@ internal fun DesktopFeedPostCard(
                     TextButton(onClick = onCopyLink) { Text("Share", fontSize = 11.sp) }
                 }
                 Text(
-                    text = "${BlinkPostFormat.count(post.viewCount)} views",
+                    text = "${BlinkPostFormat.count(displayedViewCount)} views",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
@@ -4498,7 +4509,7 @@ internal fun DesktopFeedPostCard(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } else {
                 val primaryMetrics = buildList {
-                    add("${post.viewCount} views")
+                    add("${displayedViewCount} views")
                     if (post.likeCount > 0) add("${post.likeCount} likes")
                 }
                 val secondaryMetrics = buildList {

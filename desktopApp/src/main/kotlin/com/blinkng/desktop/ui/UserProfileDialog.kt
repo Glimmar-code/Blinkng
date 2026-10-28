@@ -523,8 +523,9 @@ fun DesktopUserProfileDialog(
                             }
                         } else {
                             items(filteredContent, key = { it.id }) { post ->
+                                val views = desktopDisplayedViewCount(post.id, post.viewCount)
                                 Surface(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().trackDesktopContentExposure(state.client, post.id, views),
                                     shape = RoundedCornerShape(18.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
                                 ) {
@@ -543,7 +544,7 @@ fun DesktopUserProfileDialog(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         Text(
-                                            "${post.viewCount} views • ${post.likeCount} likes • ${post.commentCount} comments • ${post.shareCount} shares",
+                                            "${views} views • ${post.likeCount} likes • ${post.commentCount} comments • ${post.shareCount} shares",
                                             fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
