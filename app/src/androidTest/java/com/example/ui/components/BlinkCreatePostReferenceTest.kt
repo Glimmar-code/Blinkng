@@ -58,6 +58,41 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun detailsUseSupportedAudienceAndKeepNextSeparateFromPublishing() {
+        val selected = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferencePostDetails(
+                    text = "A campus update",
+                    mediaUri = null,
+                    tags = listOf("FUTA"),
+                    audience = "Everyone",
+                    location = "",
+                    category = "Campus Life",
+                    allowComments = true,
+                    hideLikes = false,
+                    temporary = false,
+                    onBack = { selected += "back" },
+                    onEditCaption = { selected += "edit" },
+                    onAudienceChange = { selected += "audience:" + it },
+                    onLocationChange = { selected += "location:" + it },
+                    onCategoryChange = { selected += "category:" + it },
+                    onCommentsChange = { selected += "comments:" + it },
+                    onHideLikesChange = { selected += "likes:" + it },
+                    onTemporaryChange = { selected += "temporary:" + it },
+                    onNext = { selected += "next" }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_post_details_stage").assertExists()
+        composeRule.onNodeWithText("Followers").performClick()
+        composeRule.onNodeWithText("Next: Post options").performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf("audience:Followers", "next"), selected)
+        }
+    }
+
+    @Test
     fun finalOptionsAreSeparateActionsAndNeverAutoPublish() {
         val selected = mutableListOf<String>()
         composeRule.setContent {
