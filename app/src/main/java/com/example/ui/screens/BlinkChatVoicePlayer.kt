@@ -3,6 +3,10 @@ package com.example.ui.screens
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.PauseCircle
@@ -41,6 +45,8 @@ internal fun BlinkChatVoicePlayer(
     var failed by remember(url) { mutableStateOf(false) }
     var elapsed by remember(url) { mutableIntStateOf(0) }
     var duration by remember(url) { mutableIntStateOf(0) }
+    var speedStep by remember(url) { mutableIntStateOf(0) }
+    val speeds = listOf(1f, 1.5f, 2f)
     DisposableEffect(url) {
         onDispose {
             player?.let { runCatching { it.reset(); it.release() } }
@@ -135,17 +141,38 @@ internal fun BlinkChatVoicePlayer(
                 modifier = Modifier.size(29.dp)
             )
         }
-        Column(Modifier.widthIn(min = 106.dp, max = 170.dp)) {
+        Column(Modifier.widthIn(min = 130.dp, max = 180.dp)) {
             val progress = if (duration > 0) {
                 (elapsed.toFloat() / duration).coerceIn(0f, 1f)
             } else 0f
+            // Reference waveform styling; highlight follows the real player position.
+            Row(
+                Modifier.fillMaxWidth().height(26.dp)
+                    .testTag("chat_reference_voice_waveform"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                val heights = listOf(8, 13, 22, 14, 10, 20, 26, 11,
+                    17, 24, 12, 9, 21, 17, 26, 13, 8, 18, 23, 10, 16, 12, 20, 8)
+                heights.forEachIndexed { index, height ->
+                    Box(
+                        Modifier.weight(1f)
+                            .height(height.dp)
+                            .background(
+                                if (index.toFloat() / heights.size <= progress)
+                                    Color(0xFF5AB6FF) else tint.copy(alpha = .45f),
+                                RoundedCornerShape(2.dp)
+                            )
+                    )
+                }
+            }
             LinearProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = tint,
-                trackColor = tint.copy(alpha = .22f)
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = Color(0xFF1685FF),
+                trackColor = tint.copy(alpha = .16f)
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(3.dp))
             Text(
                 when {
                     failed -> "Unable to play · refresh chat"
@@ -156,6 +183,24 @@ internal fun BlinkChatVoicePlayer(
                 },
                 color = tint.copy(alpha = .85f),
                 fontSize = 10.sp,
+                maxLines = 1
+            )
+        }
+        TextButton(
+            enabled = ready,
+            onClick = {
+                speedStep = (speedStep + 1) % speeds.size
+                player?.let { live ->
+                    runCatching {
+                        live.playbackParams = live.playbackParams.setSpeed(speeds[speedStep])
+                    }
+                }
+            },
+            modifier = Modifier.testTag("chat_reference_voice_speed")
+        ) {
+            Text(
+                "${speeds[speedStep]}×",
+                color = tint, fontSize = 12.sp,
                 maxLines = 1
             )
         }
