@@ -261,7 +261,7 @@ fun BlinkUniversalPhotoEditor(
             ) {
                 TextButton(onClick={close()},enabled=!busy) {
                     Icon(Icons.Default.Close,"Cancel edits",tint=Color.White)
-                    Text("CANCEL",color=Color.White,fontSize=12.sp)
+                    Text("BACK",color=Color.White,fontSize=12.sp)
                 }
                 IconButton(onClick = { undo() }, enabled = !busy && undoHistory.isNotEmpty()) {
                     Icon(Icons.Default.Undo, "Undo edit", tint = Color.White)
@@ -273,7 +273,7 @@ fun BlinkUniversalPhotoEditor(
                 Text("Edit Photo",color=Color.White,fontWeight=FontWeight.Bold,fontSize=16.sp)
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick={commit()},enabled=!busy) {
-                    Text(if(busy) "SAVING" else "DONE",color=Color(0xFF8D85FF),
+                    Text(if(busy) "SAVING" else "NEXT",color=Color(0xFF8D85FF),
                         fontSize=13.sp,fontWeight=FontWeight.Bold)
                 }
             }
