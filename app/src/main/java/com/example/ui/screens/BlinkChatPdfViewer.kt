@@ -57,7 +57,7 @@ internal fun BlinkChatPdfViewer(url: String, filename: String, onDismiss: () -> 
                     chatPdfClient.newCall(Request.Builder().url(url).get().build())
                         .execute().use { response ->
                         require(response.isSuccessful) { "Document unavailable." }
-                        val body = response.body ?: error("Document unavailable.")
+                        val body = response.body ?: kotlin.error("Document unavailable.")
                         require(body.contentLength() <= 16_777_216L) { "PDF exceeds preview limit." }
                         body.byteStream().use { input ->
                             tmp.outputStream().use { output ->
