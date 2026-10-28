@@ -64,10 +64,12 @@ create index blink_contest_votes_entry_idx on public.blink_contest_votes(entry_i
 alter table public.blink_contests enable row level security;
 alter table public.blink_contest_entries enable row level security;
 alter table public.blink_contest_votes enable row level security;
-revoke all on public.blink_contests, public.blink_contest_entries, public.blink_contest_votes
-  from public, anon, authenticated;
-grant select, insert, update, delete on public.blink_contests,
-  public.blink_contest_entries, public.blink_contest_votes to service_role;
+revoke all on table public.blink_contests from public, anon, authenticated;
+revoke all on table public.blink_contest_entries from public, anon, authenticated;
+revoke all on table public.blink_contest_votes from public, anon, authenticated;
+grant select, insert, update, delete on table public.blink_contests to service_role;
+grant select, insert, update, delete on table public.blink_contest_entries to service_role;
+grant select, insert, update, delete on table public.blink_contest_votes to service_role;
 
 create function public.list_blink_contests()
 returns jsonb language sql stable security definer set search_path = '' as $$
