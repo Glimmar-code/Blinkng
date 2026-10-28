@@ -16,6 +16,8 @@ test("both legacy and current sign-in fields avoid persisting the password", () 
   assert.doesNotMatch(signIn, /rememberedLogin\?\.password/);
   assert.doesNotMatch(signIn, /RememberedLoginStore\.save\([^)]*\bpassword\b/);
   assert.match(reference, /var password by remember \{ mutableStateOf\(""\) \}/);
+  assert.match(reference, /AccountSessionStore\.lastIdentifier\(context\)/);
+  assert.match(reference, /mutableStateOf\(preferredIdentifier\)/);
   assert.match(signIn, /Remember my username/);
 });
 
