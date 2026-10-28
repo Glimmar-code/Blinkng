@@ -40,6 +40,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -366,5 +370,163 @@ internal fun BlinkReferenceComposerToolbar(
                 )
             }
         }
+    }
+}
+
+/**
+ * Distinct post-details stage modeled on the approved reference. Every control
+ * updates existing persisted composer state; unsupported privacy modes are not offered.
+ */
+@Composable
+internal fun BlinkReferencePostDetails(
+    text: String,
+    mediaUri: String?,
+    tags: List<String>,
+    audience: String,
+    location: String,
+    category: String,
+    allowComments: Boolean,
+    hideLikes: Boolean,
+    temporary: Boolean,
+    onBack: () -> Unit,
+    onEditCaption: () -> Unit,
+    onAudienceChange: (String) -> Unit,
+    onLocationChange: (String) -> Unit,
+    onCategoryChange: (String) -> Unit,
+    onCommentsChange: (Boolean) -> Unit,
+    onHideLikesChange: (Boolean) -> Unit,
+    onTemporaryChange: (Boolean) -> Unit,
+    onNext: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color.Black)
+            .verticalScroll(rememberScrollState())
+            .testTag("blink_post_details_stage")
+            .padding(horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.Close, contentDescription = "Back to composer", tint = Color.White)
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text("Post Details", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+            TextButton(onClick = onNext) {
+                Text("Next", color = Color(0xFF8B81FF), fontWeight = FontWeight.Bold)
+            }
+        }
+        Surface(
+            color = Color(0xFF13161C), shape = RoundedCornerShape(13.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onEditCaption)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!mediaUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = mediaUri, contentDescription = "Selected post cover",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(76.dp).clip(RoundedCornerShape(10.dp))
+                    )
+                    Spacer(Modifier.width(10.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text.ifBlank { "Add a caption or description" },
+                        color = Color.White, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, fontSize = 13.sp
+                    )
+                    if (tags.isNotEmpty()) {
+                        Text(
+                            tags.joinToString(" ") { "#" + it },
+                            color = Color(0xFF6C92FF), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, fontSize = 12.sp
+                        )
+                    }
+                    Text("Edit caption, tags and mentions", color = Color(0xFFAAB2BF), fontSize = 11.sp)
+                }
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = Color.White)
+            }
+        }
+        BlinkPostMenuRow(
+            title = "Tag people", detail = "Mention students in your caption",
+            icon = Icons.Default.AlternateEmail, onClick = onEditCaption
+        )
+        Surface(
+            color = Color(0xFF191D24), shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedTextField(
+                value = location, onValueChange = { onLocationChange(it.take(120)) },
+                label = { Text("Add location") },
+                placeholder = { Text("Campus or place") },
+                modifier = Modifier.fillMaxWidth().padding(7.dp),
+                singleLine = true
+            )
+        }
+        Text("Who can see this post?", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("Everyone", "Campus", "Followers").forEach { option ->
+                FilterChip(
+                    selected = audience == option,
+                    onClick = { onAudienceChange(option) },
+                    label = { Text(if (option == "Everyone") "Public" else option) }
+                )
+            }
+        }
+        Text("Post category", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            com.blinkng.shared.BlinkPostGrowthTips.feedCategories.forEach { option ->
+                FilterChip(
+                    selected = category == option,
+                    onClick = { onCategoryChange(option) },
+                    label = { Text(option) }
+                )
+            }
+        }
+        Surface(
+            color = Color(0xFF171B22), shape = RoundedCornerShape(13.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
+                BlinkReferenceSettingRow("Allow comments", allowComments, onCommentsChange)
+                HorizontalDivider(color = Color(0xFF343944))
+                BlinkReferenceSettingRow("Hide like count", hideLikes, onHideLikesChange)
+                HorizontalDivider(color = Color(0xFF343944))
+                BlinkReferenceSettingRow("Temporary post", temporary, onTemporaryChange)
+            }
+        }
+        Text(
+            "Post visibility uses your existing BLINK audience rules. Other posting tools remain in the editor.",
+            color = Color(0xFFADB3BF), fontSize = 11.sp
+        )
+        Button(
+            onClick = onNext, modifier = Modifier.fillMaxWidth().height(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2)),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Next: Post options", color = Color.White) }
+    }
+}
+
+@Composable
+private fun BlinkReferenceSettingRow(
+    label: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
