@@ -55,6 +55,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import com.example.data.supabase.SupabaseService
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -107,6 +109,9 @@ private data class NotificationPreferenceSetting(
 @Composable
 private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val syncStatuses by NotificationPreferenceStore.syncStatus.collectAsState()
+    val accountId = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+    val syncStatus = syncStatuses[accountId]
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val notificationManager = remember {
@@ -419,6 +424,24 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
+            }
+
+            if (syncStatus == NotificationPreferenceStore.SyncStatus.FAILED) {
+                item {
+                    SettingsAction(
+                        icon = Icons.Default.Restore,
+                        title = "Notification preferences not synced",
+                        subtitle = "Saved on this device, but not yet saved to your BLINK account. Tap to retry."
+                    ) { NotificationPreferenceStore.retrySync(context) }
+                }
+            } else if (syncStatus == NotificationPreferenceStore.SyncStatus.SAVING) {
+                item {
+                    Text(
+                        "Saving notification preferences to your account…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
             item {

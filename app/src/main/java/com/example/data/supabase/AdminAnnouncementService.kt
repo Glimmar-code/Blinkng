@@ -39,12 +39,41 @@ class AdminAnnouncementService {
                 throw IllegalStateException("Your Blink session has expired. Please sign in again.")
             }
 
+            // Official announcements are stored both in notifications and activities.
+            // The existing authenticated RPC expects an activity UUID, not the
+            // "notification:<uuid>" identifier shown by the canonical inbox.
+            var resolvedActivityId = activityId.trim()
+            if (resolvedActivityId.startsWith("notification:")) {
+                val notificationId = resolvedActivityId.removePrefix("notification:")
+                require(runCatching { java.util.UUID.fromString(notificationId) }.isSuccess) {
+                    "Invalid BLINK announcement."
+                }
+                val uid = session.getCurrentUserId()
+                    ?: throw IllegalStateException("A signed-in Blink account is required.")
+                val jwt = SupabaseService.accessToken()
+                    ?: throw IllegalStateException("Your Blink session has expired.")
+                val lookup = Request.Builder()
+                    .url("$baseUrl/rest/v1/activities?select=id&recipient_id=eq.$uid&entity_type=eq.notification&entity_id=eq.$notificationId&limit=1")
+                    .addHeader("apikey", anonKey)
+                    .addHeader("Authorization", "Bearer $jwt")
+                    .get()
+                    .build()
+                resolvedActivityId = client.newCall(lookup).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Couldn't resolve this BLINK announcement.")
+                    }
+                    org.json.JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+                        .optJSONObject(0)?.optString("id").orEmpty()
+                }
+                if (resolvedActivityId.isBlank()) return@withContext null
+            }
+
             fun request(): Request {
                 val token = SupabaseService.accessToken()
                     ?.takeIf { it.isNotBlank() }
                     ?: throw IllegalStateException("A signed-in Blink account is required.")
                 val body = JSONObject()
-                    .put("p_activity_id", activityId.trim())
+                    .put("p_activity_id", resolvedActivityId)
                     .toString()
                     .toRequestBody(jsonMediaType)
                 return Request.Builder()
