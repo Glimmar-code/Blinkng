@@ -86,6 +86,12 @@ jobs:
             test -s app/build/visual-audit/home-reference-with-create.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/inbox-reference-staging-light.png app/build/visual-audit/inbox-reference-staging-light.png
             test -s app/build/visual-audit/inbox-reference-staging-light.png
+            # Reference composer screenshots are produced on the emulator, not fabricated.
+            for view in landing gallery details options; do
+              adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" \
+                "app/build/visual-audit/create-post-${view}-staging.png"
+              test -s "app/build/visual-audit/create-post-${view}-staging.png"
+            done
 
       - name: Upload instrumentation reports
         if: always()
