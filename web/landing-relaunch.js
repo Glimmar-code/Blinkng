@@ -59,7 +59,7 @@
               '<article><h3>BLINK Market</h3><p>Learn about product discovery and approved seller experiences on the BLINK marketplace.</p><a href="./marketplace/">Explore BLINK Market</a></article>',
               '<article><h3>Download BLINK</h3><p>Get the current published Android APK from the official GitHub release. Review the release and your device security settings before installing.</p><a href="./download/">Download information</a></article>',
             '</div>',
-            '<nav class="br-info-links" aria-label="More information"><a href="./about/">About BLINK</a><a href="./faq/">FAQ</a><a href="./safety/">Safety</a><a href="./privacy/">Privacy Policy</a><a href="./download/">Official download</a><a href="./login">Sign in on web</a></nav>',
+            '<nav class="br-info-links" aria-label="More information"><a href="./about/">About BLINK</a><a href="./faq/">FAQ</a><a href="./safety/">Safety</a><a href="./privacy/">Privacy Policy</a><a href="./download/">Official download</a><a href="./login" data-app-route>Sign in on web</a></nav>',
             '<div id="br-retained" class="br-retained" aria-label="More BLINK website tools and information"></div>',
           '</div>',
         '</details>',
@@ -86,6 +86,16 @@
     for (const section of legacySections) retained.append(section);
     const details = landing.querySelector('#blink-read-more');
     landing.addEventListener('click', event => {
+      const appLink = event.target.closest('a[data-app-route]');
+      if (appLink) {
+        // Preserve the in-app router in local preview as well as Cloudflare production.
+        event.preventDefault();
+        const href = new URL(appLink.getAttribute('href'), location.href);
+        history.pushState({}, '', href.pathname);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        window.scrollTo({top:0,behavior:'instant'});
+        return;
+      }
       const trigger = event.target.closest('[data-reveal]');
       if (!trigger) return;
       event.preventDefault();
