@@ -256,6 +256,8 @@ fun CreatePostSheet(
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var activeDraftId by rememberSaveable { mutableStateOf<String?>(null) }
     var reelEditorStage by rememberSaveable { mutableStateOf(startInReelMode) }
+    var showCreateLanding by rememberSaveable { mutableStateOf(!startInReelMode) }
+    var showPublishOptions by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -359,6 +361,35 @@ fun CreatePostSheet(
         }.getOrDefault(emptyList())
     }
 
+    fun restoreDraft(draft: PostDraft) {
+        activeDraftId = draft.id
+        text = draft.text
+        selectedTags = draft.tags
+        selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
+        selectedCoverUri = if (draft.videoUri.isNullOrBlank()) null else draft.imageUri
+        coverFrameIndex = -1
+        selectedVideo = draft.videoUri
+        reelEditorStage = !draft.videoUri.isNullOrBlank()
+        mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
+        audience = draft.audience
+        category = draft.category
+        location = draft.location.orEmpty()
+        linkUrl = draft.linkUrl.orEmpty()
+        allowComments = draft.allowComments
+        hideLikes = draft.hideLikes
+        isDisappearing = draft.isDisappearing
+        altText = draft.altText.orEmpty()
+        audioTitle = draft.audioTrack.orEmpty()
+        pollQuestion = draft.pollQuestion
+        pollOptions = draft.pollOptions.takeIf { it.size >= 2 } ?: listOf("", "")
+        showPoll = draft.pollQuestion.isNotBlank() && draft.pollOptions.count { it.isNotBlank() } >= 2
+        textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
+        selectedTextStyle = draft.textStyle ?: "aurora"
+        clientRequestId = UUID.randomUUID().toString()
+        showCreateLanding = false
+        showPublishOptions = false
+    }
+
     fun clearComposerPersistence() {
         text = ""
         selectedTags = emptyList()
@@ -423,6 +454,7 @@ fun CreatePostSheet(
                 activeDraftId = value.optString("active_draft_id")
                     .takeIf { it.isNotBlank() && it != "null" }
                 reelEditorStage = value.optBoolean("reel_editor_stage", selectedVideo != null)
+                showCreateLanding = false
             }
         }
         autosaveRestored = true
@@ -831,8 +863,7 @@ fun CreatePostSheet(
     ) {
         val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
-            colorScheme = if (selectedVideo != null || mode == "reel") {
-                darkColorScheme(
+            colorScheme = darkColorScheme(
                     primary = Color.White,
                     onPrimary = Color.Black,
                     background = Color.Black,
@@ -842,11 +873,10 @@ fun CreatePostSheet(
                     surfaceVariant = Color(0xFF232323),
                     onSurfaceVariant = Color.White.copy(alpha = .77f),
                 )
-            } else outerScheme
         ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = if (selectedVideo != null || mode == "reel") Color.Black else outerScheme.background
+            color = Color.Black
         ) {
         Column(
             modifier = Modifier
@@ -855,6 +885,54 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
+            if (showCreateLanding) {
+                BlinkCreatePostLanding(
+                    drafts = savedDrafts,
+                    onClose = ::requestDismiss,
+                    onText = {
+                        mode = "post"
+                        showPoll = false
+                        showCreateLanding = false
+                    },
+                    onPhoto = {
+                        showCreateLanding = false
+                        imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onVideo = {
+                        showCreateLanding = false
+                        videoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    onPoll = {
+                        showPoll = true
+                        mode = "post"
+                        showCreateLanding = false
+                    },
+                    onDraft = { restoreDraft(it) }
+                )
+            } else if (showPublishOptions) {
+                BlinkCreatePostPublishOptions(
+                    onBack = { showPublishOptions = false },
+                    onPost = ::submit,
+                    onSaveDraft = {
+                        saveDraft()
+                        showPublishOptions = false
+                    },
+                    onPreview = { showPreviewDialog = true },
+                    onShareCaption = {
+                        val outgoing = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, text.ifBlank { pollQuestion })
+                        }
+                        context.startActivity(Intent.createChooser(outgoing, "Share your caption"))
+                    },
+                    isSubmitting = isSubmitting,
+                    uploadProgress = uploadProgress
+                )
+            } else {
             val isEditingReel = selectedVideo != null && reelEditorStage
             ComposerTopBar(
                 isSubmitting = isSubmitting,
@@ -866,7 +944,7 @@ fun CreatePostSheet(
                 isEditingReel = isEditingReel,
                 onDismiss = ::requestDismiss,
                 onSubmit = {
-                    if (isEditingReel) reelEditorStage = false else submit()
+                    if (isEditingReel) reelEditorStage = false else showPublishOptions = true
                 }
             )
 
@@ -1585,35 +1663,7 @@ fun CreatePostSheet(
                         items(savedDrafts.take(4), key = { it.id }) { draft ->
                             DraftCard(
                                 draft = draft,
-                                onLoad = {
-                                    activeDraftId = draft.id
-                                    text = draft.text
-                                    selectedTags = draft.tags
-                                    selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
-                                    selectedCoverUri = if (draft.videoUri.isNullOrBlank()) null else draft.imageUri
-                                    coverFrameIndex = -1
-                                    selectedVideo = draft.videoUri
-                                    reelEditorStage = !draft.videoUri.isNullOrBlank()
-                                    mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
-                                    audience = draft.audience
-                                    category = draft.category
-                                    location = draft.location.orEmpty()
-                                    linkUrl = draft.linkUrl.orEmpty()
-                                    allowComments = draft.allowComments
-                                    hideLikes = draft.hideLikes
-                                    isDisappearing = draft.isDisappearing
-                                    altText = draft.altText.orEmpty()
-                                    audioTitle = draft.audioTrack.orEmpty()
-                                    pollQuestion = draft.pollQuestion
-                                    pollOptions = draft.pollOptions
-                                        .takeIf { it.size >= 2 }
-                                        ?: listOf("", "")
-                                    showPoll = draft.pollQuestion.isNotBlank() &&
-                                        draft.pollOptions.count { it.isNotBlank() } >= 2
-                                    textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
-                                    selectedTextStyle = draft.textStyle ?: "aurora"
-                                    clientRequestId = UUID.randomUUID().toString()
-                                },
+                                onLoad = { restoreDraft(draft) },
                                 onDelete = { onDeleteDraft(draft.id) }
                             )
                         }
@@ -1719,6 +1769,7 @@ fun CreatePostSheet(
                 }
             }
             }
+            } // reference landing / editor / publishing options
         }
         }
         }
