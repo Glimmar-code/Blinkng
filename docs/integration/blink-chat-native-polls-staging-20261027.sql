@@ -48,7 +48,7 @@ CREATE FUNCTION private.blink_chat_poll_direct_blocked(
     p_conversation_id uuid, p_actor uuid
 ) RETURNS boolean
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
-AS $
+AS $$
     SELECT EXISTS (
         SELECT 1
         FROM public.conversations c
@@ -62,7 +62,7 @@ AS $
         WHERE c.id = p_conversation_id
           AND c.is_group IS FALSE
     );
-$;
+$$;
 REVOKE ALL ON FUNCTION private.blink_chat_poll_direct_blocked(uuid, uuid)
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION private.blink_chat_poll_direct_blocked(uuid, uuid)
