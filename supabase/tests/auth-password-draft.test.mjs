@@ -24,4 +24,12 @@ test('old encrypted recovery draft values are actively cleared without reading t
 test('password recovery emails target a dedicated exported recovery activity', () => {
   assert.match(recovery, /RESET_REDIRECT_URL = "blink:\/\/auth\/reset-password"/);
   assert.match(manifest, /android:name="\.auth\.PasswordResetActivity"[\s\S]*?<data android:scheme="blink" android:host="auth" android:path="\/reset-password"/);
+  const dedicated = manifest.split('<activity').find(block =>
+    block.includes('android:name=".auth.PasswordResetActivity"'));
+  const main = manifest.split('<activity').find(block =>
+    block.includes('android:name=".MainActivity"'));
+  assert.ok(dedicated?.includes('android:host="reset-password"'));
+  assert.ok(!main?.includes('android:host="reset-password"'),
+    'legacy callback must not be intercepted by MainActivity');
+
 });
