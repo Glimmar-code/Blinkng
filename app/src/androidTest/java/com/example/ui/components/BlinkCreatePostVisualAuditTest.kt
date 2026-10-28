@@ -231,4 +231,27 @@ class BlinkCreatePostVisualAuditTest {
         capture("create-post-photo-editor-staging.png", "blink_photo_editor_stage")
     }
 
+    @Test fun mentionResultsUseRealSuggestionComponentWithOfflineTestData() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val avatar = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
+        rule.setContent {
+            AuditSurface {
+                BlinkPostMentionSuggestions(
+                    text = "@a",
+                    onTextChanged = {},
+                    searchProfiles = { _, _, _, _ ->
+                        listOf(
+                            UserProfile(id = "mention-1", fullName = "Ayo", username = "ayo_futa", avatarUrl = avatar),
+                            UserProfile(id = "mention-2", fullName = "Abby", username = "abby_official", avatarUrl = avatar),
+                            UserProfile(id = "mention-3", fullName = "Adeola", username = "adeola_futa", avatarUrl = avatar),
+                            UserProfile(id = "mention-4", fullName = "Aisha", username = "aisha01", avatarUrl = avatar)
+                        )
+                    }
+                )
+            }
+        }
+        rule.waitForIdle()
+        capture("create-post-mentions-staging.png")
+    }
+
 }
