@@ -228,6 +228,38 @@ end $$;
 revoke all on function public.blink_contact_notify_my_join(uuid) from public,anon,authenticated;
 grant execute on function public.blink_contact_notify_my_join(uuid) to service_role;
 
+
+-- If the established member syncs after a recent joiner, evaluate the reciprocal
+-- match now rather than depending on the joiner's next app launch.
+-- Returns only recent alert IDs for this invoking owner, never raw contact hashes.
+create or replace function public.blink_contact_notify_recent_matches(p_owner uuid)
+returns table(notification_id uuid)
+language plpgsql security definer set search_path=''
+as $
+declare joined record;
+begin
+ if p_owner is null then return; end if;
+ for joined in
+  select distinct d.user_id, d.phone_hmac
+  from private.blink_contact_imports i
+  join private.blink_contact_directory d on d.phone_hmac=i.phone_hmac
+  join public.profiles p on p.id=d.user_id
+  where i.owner_id=p_owner and d.user_id<>p_owner
+    and p.created_at>now()-interval '48 hours'
+  limit 100
+ loop
+  perform private.blink_contact_notify_join(joined.user_id, joined.phone_hmac);
+ end loop;
+ return query
+  select a.notification_id from private.blink_contact_join_alerts a
+  where a.owner_id=p_owner and a.notification_id is not null
+    and a.created_at>now()-interval '15 minutes'
+  order by a.created_at desc limit 100;
+end $;
+revoke all on function public.blink_contact_notify_recent_matches(uuid)
+ from public,anon,authenticated;
+grant execute on function public.blink_contact_notify_recent_matches(uuid) to service_role;
+
 -- Service-role-only cleanup and verified proof for trusted push dispatch.
 create or replace function public.blink_contact_clear_imports(p_owner uuid)
 returns void language plpgsql security definer set search_path=''
