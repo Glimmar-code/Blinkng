@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
@@ -979,7 +980,21 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            if (videoClips.size >= 2 && selectedVideo == null && !showCreateLanding) {
+            val referenceStage = when {
+                videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
+                showMediaReview -> "gallery"
+                showCreateLanding -> "landing"
+                showReferenceDetails -> "details"
+                showPublishOptions -> "publish"
+                else -> "editor"
+            }
+            Crossfade(
+                targetState = referenceStage,
+                animationSpec = tween(durationMillis = 210),
+                modifier = Modifier.fillMaxSize(),
+                label = "blinkCreatePostStage"
+            ) { visibleStage ->
+            if (visibleStage == "clips") {
                 BlinkReelClipReview(
                     clips = videoClips,
                     exporting = combiningClips,
@@ -1036,7 +1051,7 @@ fun CreatePostSheet(
                         }
                     }
                 )
-            } else if (showMediaReview) {
+            } else if (visibleStage == "gallery") {
                 BlinkReferenceMediaReview(
                     images = selectedImages,
                     onBack = {
@@ -1064,7 +1079,7 @@ fun CreatePostSheet(
                     },
                     onNext = { showMediaReview = false }
                 )
-            } else if (showCreateLanding) {
+            } else if (visibleStage == "landing") {
                 BlinkCreatePostLanding(
                     drafts = savedDrafts,
                     onClose = ::requestDismiss,
@@ -1115,7 +1130,7 @@ fun CreatePostSheet(
                     },
                     onDraft = { restoreDraft(it) }
                 )
-            } else if (showReferenceDetails) {
+            } else if (visibleStage == "details") {
                 BlinkReferencePostDetails(
                     text = text.ifBlank { if (showPoll) pollQuestion else "" },
                     mediaUri = selectedImages.firstOrNull() ?: selectedCoverUri ?: selectedVideo,
@@ -1143,7 +1158,7 @@ fun CreatePostSheet(
                         }
                     }
                 )
-            } else if (showPublishOptions) {
+            } else if (visibleStage == "publish") {
                 BlinkCreatePostPublishOptions(
                     onBack = { showPublishOptions = false },
                     onPost = ::submit,
@@ -2079,6 +2094,7 @@ fun CreatePostSheet(
             }
             }
             } // reference landing / editor / publishing options
+            } // crossfade between Create Post reference stages
         }
         }
         }
