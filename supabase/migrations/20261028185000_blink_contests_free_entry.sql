@@ -308,7 +308,7 @@ end; $$;
 -- outside the top 20 without revealing pending or rejected applications.
 create function public.get_blink_contest_candidate(
   p_contest_id uuid, p_entry_id uuid
-) returns jsonb language plpgsql stable security definer set search_path = '' as $
+) returns jsonb language plpgsql stable security definer set search_path = '' as $$
 declare v_candidate jsonb;
 begin
   with ranked as (
@@ -343,7 +343,7 @@ begin
   where r.id=p_entry_id;
   if v_candidate is null then raise exception 'CANDIDATE_NOT_AVAILABLE'; end if;
   return v_candidate;
-end; $;
+end; $$;
 
 -- PUBLIC function EXECUTE is implicit on PostgreSQL; explicitly restrict it.
 revoke all on function public.get_blink_contest_candidate(uuid,uuid) from public,anon,authenticated;

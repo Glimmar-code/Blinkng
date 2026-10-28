@@ -42,7 +42,7 @@ try {
     create table auth.users(id uuid primary key);
     create table public.profiles(
       id uuid primary key references auth.users(id),
-      username text,avatar_url text,university text
+      username text,full_name text,avatar_url text,university text
     );
     create function auth.uid() returns uuid language sql stable
       as 'select nullif(current_setting(''request.jwt.claim.sub'',true),'''')::uuid';
@@ -64,8 +64,8 @@ try {
     [admin,'contestadmin'],[creator1,'creatorone'],[creator2,'creatortwo'],[voter,'voterthree']
   ]) {
     await q('insert into auth.users(id) values ($1)', [id]);
-    await q('insert into public.profiles(id,username,university) values($1,$2,$3)',
-      [id,username,'FUTA']);
+    await q('insert into public.profiles(id,username,full_name,university) values($1,$2,$3,$4)',
+      [id,username,username.toUpperCase(),'FUTA']);
   }
   await db.exec(migration);
   await setUser(creator1);
@@ -98,7 +98,18 @@ try {
   await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text', [first.entry_id,'approve']);
   await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text', [second.entry_id,'approve']);
 
+  // Every approved contestant has a validated public share destination.
   await setUser(voter);
+  const approved = json((await rpc('get_blink_contest_candidate', '$1::uuid,$2::uuid',
+    [id,first.entry_id])).rows[0].result);
+  assert.equal(approved.id, first.entry_id);
+  assert.equal(approved.username, 'creatorone');
+  assert.equal(approved.name, 'CREATORONE');
+  assert.equal(approved.rank, 1);
+  assert.equal(approved.votes, 0);
+  await assert.rejects(() => rpc('get_blink_contest_candidate', '$1::uuid,$2::uuid',
+    [id,'99999999-9999-4999-8999-999999999999']), /CANDIDATE_NOT_AVAILABLE/);
+
   await assert.rejects(() => rpc('vote_blink_contest','$1::uuid,$2::uuid',
     [id, first.entry_id]), /VOTING_CLOSED/);
 
@@ -123,6 +134,12 @@ try {
   assert.equal(details.leaderboard[0].votes, 1);
   assert.equal(details.my_rank, 1);
   assert.equal(details.total_ranked, 2);
+
+  const updated = json((await rpc('get_blink_contest_candidate', '$1::uuid,$2::uuid',
+    [id,first.entry_id])).rows[0].result);
+  assert.equal(updated.rank, 1);
+  assert.equal(updated.votes, 1);
+  assert.equal(updated.contest_title, 'BLINK Creator Challenge');
 
   await setUser(admin);
   await rpc('admin_transition_blink_contest', '$1::uuid,$2::text',[id,'pause']);
