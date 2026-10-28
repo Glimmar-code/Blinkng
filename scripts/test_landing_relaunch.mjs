@@ -31,12 +31,24 @@ function renderAt(pathname) {
     querySelectorAll() { return []; },
     addEventListener(name,listener) { if(name==='click')this.onClick=listener; }
   };
-  const root = {querySelector(selector) {
-    return selector.includes('.landing-page') && landing.className === 'landing-page' ? landing : null;
-  }};
-  const state = { root, landing, details, retained, mutation: null };
+  const classSet = values => {
+    const current = new Set(values);
+    return {
+      add(value){ current.add(value); },
+      remove(value){ current.delete(value); },
+      contains(value){ return current.has(value); }
+    };
+  };
+  const root = {
+    classList: classSet(['boot']),
+    querySelector(selector) {
+      return selector.includes('.landing-page') && landing.className === 'landing-page' ? landing : null;
+    }
+  };
+  const body = {classList: classSet([])};
+  const state = { root, body, landing, details, retained, mutation: null };
   const context = {
-    document: {getElementById: id => id==='app' ? root : null},
+    document: {body, getElementById: id => id==='app' ? root : null},
     location: {pathname},
     window: {matchMedia: ()=>({matches:true}),addEventListener(){}},
     MutationObserver: class {
@@ -52,6 +64,10 @@ function renderAt(pathname) {
 }
 const home=renderAt('/');
 assert.equal(home.landing.className,'br-page');
+assert.equal(home.root.classList.contains('boot'),false,'Loading-screen grid must not leak into homepage');
+assert.equal(home.body.classList.contains('br-marketing-active'),true,'Public marketing page must use scoped styling');
+assert.match(css, /body\.br-marketing-active #parity-network-pill/, 'Floating network badge must not cover phone previews');
+assert.match(css, /\.br-copy, \.br-copy h1, \.br-description/, 'Mobile hero heading and copy must align consistently');
 for(const marker of [
   'blink-logo-v2.png','Connect,','Discover and','Beyond LINK',
   'Download BLINK APK','Read more about BLINK','BLINK Nigeria',
