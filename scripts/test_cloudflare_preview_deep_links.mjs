@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 
 const branch = process.env.BLINK_PREVIEW_BRANCH || '';
-assert.match(branch, /^Testlab-web-[A-Za-z0-9_-]+$/, 'Preview smoke is Testlab-only');
+assert.match(branch, /^(?:Testlab-web-[A-Za-z0-9_-]+|Testlab\/[A-Za-z0-9_-]+)$/, 'Preview smoke is Testlab-only');
 const slug = branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28);
 const origin = 'https://' + slug + '.blinkng.pages.dev';
 const routes = [
