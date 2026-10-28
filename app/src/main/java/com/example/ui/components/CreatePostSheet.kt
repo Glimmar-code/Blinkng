@@ -1050,6 +1050,13 @@ fun CreatePostSheet(
                             showCreateLanding = true
                         }
                     },
+                    onMove = { from, to ->
+                        if (from in selectedImages.indices && to in selectedImages.indices) {
+                            selectedImages = selectedImages.toMutableList().also { photos ->
+                                photos.add(to, photos.removeAt(from))
+                            }
+                        }
+                    },
                     onAddMore = {
                         imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
