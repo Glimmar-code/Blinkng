@@ -10,7 +10,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import com.example.performance.rememberBlinkReduceMotion
+import androidx.compose.ui.platform.LocalContext
+import android.provider.Settings
+import com.blinkng.shared.BlinkPerformancePolicy
+import com.example.performance.HighRefreshRateController
 
 /**
  * Shared, low-cost press feedback for BLINK's reusable controls.
@@ -25,8 +28,8 @@ fun Modifier.blinkPressFeedback(
     enabled: Boolean = true,
     pressedScale: Float = 0.985f
 ): Modifier {
-    val reduceMotion = rememberBlinkReduceMotion()
     val pressed by interactionSource.collectIsPressedAsState()
+    val reduceMotion = blinkReducedMotionForControls()
     val scale by animateFloatAsState(
         targetValue = premiumPressTarget(pressed, enabled, reduceMotion, pressedScale),
         animationSpec = if (reduceMotion) snap() else spring(
@@ -51,4 +54,21 @@ internal fun premiumPressTarget(
     if (pressedScale.isFinite()) pressedScale.coerceIn(0.94f, 1f) else 1f
 } else {
     1f
+}
+
+/**
+ * An interaction-ready snapshot avoids registering a ContentObserver for every
+ * feed card. Press state recomposition re-reads Android's current setting.
+ * Screen-level navigation continues to use the observable motion preference.
+ */
+@Composable
+fun blinkReducedMotionForControls(): Boolean {
+    val resolver = LocalContext.current.contentResolver
+    val animationsDisabled = runCatching {
+        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) <= 0f
+    }.getOrDefault(false)
+    return BlinkPerformancePolicy.reduceDecorativeMotion(
+        HighRefreshRateController.currentModeState.value,
+        animationsDisabled
+    )
 }

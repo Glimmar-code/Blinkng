@@ -314,7 +314,7 @@ fun BlinkSkeleton(
     maxAlpha: Float = .72f,
 ) {
     val colors = BlinkThemeTokens.colors
-    if (rememberBlinkReduceMotion()) {
+    if (blinkReducedMotionForControls()) {
         Surface(
             modifier = modifier.alpha(((minAlpha + maxAlpha) / 2f).coerceIn(0f, 1f)),
             shape = shape,
