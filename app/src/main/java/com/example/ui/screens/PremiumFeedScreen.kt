@@ -377,6 +377,7 @@ fun PremiumFeedScreen(
     // A new app process always lands on For You; rememberSaveable still retains
     // Following during activity recreation and normal in-app navigation.
     var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
+    var showContestPeople by rememberSaveable(resumeUserKey) { mutableStateOf(false) }
     // An explicit Following visit fetches only that lane. The ViewModel's
     // per-account cooldown handles repeat composition or quick tab changes.
     LaunchedEffect(feedLane, currentSubTab, isMainPageActive, resumeUserKey) {
@@ -571,7 +572,9 @@ fun PremiumFeedScreen(
             initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
         )
 
-        2 -> PremiumConnectHost(
+        2 -> if (showContestPeople) {
+            Box(Modifier.fillMaxSize()) {
+                PremiumConnectHost(
             posts = posts,
             profiles = profiles,
             currentUserProfile = currentUserProfile,
@@ -603,7 +606,18 @@ fun PremiumFeedScreen(
             onRepostPost = onRepostPost,
             onOptionsClick = onOptionsClick,
             hasUnreadNotifications = hasUnreadNotifications
-        )
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = { showContestPeople = false },
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                ) { androidx.compose.material3.Text("Back to Contest") }
+            }
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+            ) { BlinkContestScreen(onDiscoverPeople = { showContestPeople = true }) }
+        }
 
         3 -> PremiumGameHost(
             userAvatar = userAvatar,
