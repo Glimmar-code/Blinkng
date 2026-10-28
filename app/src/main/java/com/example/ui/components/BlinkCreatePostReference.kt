@@ -3,6 +3,11 @@ package com.example.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -214,8 +219,17 @@ private fun BlinkPostChoice(
     onClick: () -> Unit,
     modifier: Modifier
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = tween(durationMillis = 140),
+        label = "createChoicePress"
+    )
     Card(
-        modifier = modifier.height(132.dp).clickable(onClick = onClick)
+        modifier = modifier.height(132.dp)
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag("blink_create_choice_" + title.lowercase()),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, Color(0xFF30343E)),
