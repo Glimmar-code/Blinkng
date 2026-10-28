@@ -21,18 +21,20 @@ assert.match(css, /focus-visible/);
 
 function renderAt(pathname) {
   const details = { open: false, scrollIntoView(){ this.scrolled = true; } };
+  const retained = {children:[],append(node){this.children.push(node);}};
   const landing = {
     className: 'landing-page',
     innerHTML: '',
     attrs: {},
     setAttribute(name,value){this.attrs[name]=value;},
-    querySelector(selector) { return selector === '#blink-read-more' ? details : null; },
+    querySelector(selector) { if(selector==='#blink-read-more')return details; if(selector==='#br-retained')return retained; return null; },
+    querySelectorAll() { return []; },
     addEventListener(name,listener) { if(name==='click')this.onClick=listener; }
   };
   const root = {querySelector(selector) {
     return selector.includes('.landing-page') && landing.className === 'landing-page' ? landing : null;
   }};
-  const state = { root, landing, details, mutation: null };
+  const state = { root, landing, details, retained, mutation: null };
   const context = {
     document: {getElementById: id => id==='app' ? root : null},
     location: {pathname},
