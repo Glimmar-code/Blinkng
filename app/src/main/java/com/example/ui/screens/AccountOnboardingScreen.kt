@@ -533,7 +533,7 @@ fun AccountOnboardingScreen(
                                 birthDate = value.filter { it.isDigit() || it == '-' }.take(10)
                                 error = null
                             },
-                            label = { Text("Birthday (YYYY-MM-DD)") },
+                            label = { Text("Birthday (required)") },
                             placeholder = { Text("YYYY-MM-DD") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
