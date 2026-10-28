@@ -19,6 +19,9 @@ object BlinkChatPollPolicy {
 
     fun prepare(question: String, options: List<String>): BlinkChatPollDraft {
         val cleanQuestion = question.trim()
+        require(cleanQuestion.none { it == '\n' || it == '\r' || it.isISOControl() }) {
+            "Poll questions must be a single line without control characters."
+        }
         require(cleanQuestion.isNotEmpty() && cleanQuestion.length <= MAX_QUESTION_LENGTH) {
             "Poll questions must contain 1 to 200 characters."
         }
@@ -26,6 +29,9 @@ object BlinkChatPollPolicy {
             "Choose between 2 and 8 poll options."
         }
         val cleanOptions = options.map(String::trim)
+        require(cleanOptions.all { option -> option.none { it == '\n' || it == '\r' || it.isISOControl() } }) {
+            "Poll options must be single lines without control characters."
+        }
         require(cleanOptions.all { it.isNotEmpty() && it.length <= MAX_OPTION_LENGTH }) {
             "Each poll option must contain 1 to 80 characters."
         }
@@ -48,6 +54,23 @@ object BlinkChatPollPolicy {
             }
             append("(Reply with your choice number)")
         }
+    }
+
+    /**
+     * Read an older-app text poll as a structured card. This is not a native
+     * poll result and MUST NOT be labelled as a server-recorded vote.
+     */
+    fun parseTextFallback(text: String): BlinkChatPollDraft? {
+        val lines = text.trim().lines()
+        if (lines.size !in 4..10 || !lines.first().startsWith("📊 Poll question: ") ||
+            lines.last() != "(Reply with your choice number)") return null
+        val question = lines.first().removePrefix("📊 Poll question: ")
+        val choices = lines.subList(1, lines.lastIndex).mapIndexed { index, line ->
+            val prefix = "${index + 1}. "
+            if (!line.startsWith(prefix)) return null
+            line.removePrefix(prefix)
+        }
+        return runCatching { prepare(question, choices) }.getOrNull()
     }
 
     fun validChoice(choiceIndex: Int, optionCount: Int): Boolean =

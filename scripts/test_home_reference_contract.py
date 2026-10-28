@@ -166,7 +166,13 @@ class HomeReferenceContractTests(unittest.TestCase):
                  'TextButton(onClick = onCopyLink)')
         starts = [contents.index(icon) for icon in order]
         self.assertEqual(starts, sorted(starts))
-        self.assertIn('"${BlinkPostFormat.count(post.viewCount)} views"', contents)
+        self.assertIn('"${BlinkPostFormat.count(displayedViewCount)} views"', contents)
+        # The counter must use the delayed authoritative value rather than
+        # immediately exposing a freshly recorded backend impression.
+        self.assertIn('val displayedViewCount = desktopDisplayedViewCount(post.id, post.viewCount)', DESKTOP)
+        self.assertIn('trackDesktopContentExposure(viewClient, post.id, displayedViewCount)', DESKTOP)
+        self.assertIn('DESKTOP_VIEW_REFLECTION_DELAY_MS = 120_000L',
+                      (ROOT / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/DesktopContentViewTracker.kt").read_text())
         self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else 4', DESKTOP)
 
     def test_foreground_feed_refresh_is_scoped_and_preserves_existing_posts(self):
@@ -200,8 +206,10 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('hasUnreadMessages = uiState.conversations.any', MAIN)
         search = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceSearchScreen.kt').read_text()
         inbox = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceInbox.kt').read_text()
-        self.assertIn('Icons.Rounded.GridView, "Open Items"', search)
-        self.assertIn('Icons.Outlined.GridView, contentDescription = "Open Items"', inbox)
+        # Search and Inbox have a dedicated Games route rather than the
+        # general Items hub; the Home header above still owns Items.
+        self.assertIn('Icons.Rounded.SportsEsports, "Open games"', search)
+        self.assertIn('Icons.Outlined.SportsEsports, contentDescription = "Open games"', inbox)
 
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)

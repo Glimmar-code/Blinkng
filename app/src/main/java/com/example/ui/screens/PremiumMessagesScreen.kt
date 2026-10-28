@@ -282,7 +282,8 @@ fun PremiumMessagesScreen(
     isConnected: Boolean = true,
     isLoading: Boolean = false,
     isDark: Boolean = false,
-    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> },
+    showInboxBehindChat: Boolean = true
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -352,6 +353,8 @@ fun PremiumMessagesScreen(
                     // Telegram-style interactive back needs the actual previous
                     // conversation list underneath the chat even at full screen.
                     // Do not blank it while the top screen follows the finger.
+                    // Overlay chats from Feed/Profile/Connect reveal the actual prior screen.
+                    if (showInboxBehindChat) {
                     PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
@@ -376,6 +379,7 @@ fun PremiumMessagesScreen(
                                 if (!chatSlideVisible) onVisibleInboxReceipt(conversationId, receiptId)
                             }
                         )
+                    }
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
@@ -787,7 +791,7 @@ private fun PremiumMessagesHome(
     val channelContext = androidx.compose.ui.platform.LocalContext.current
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
-    var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.ALL) }
     var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
     var showAll by rememberSaveable { mutableStateOf(false) }
     val unreadCount = conversations.count {
@@ -807,27 +811,32 @@ private fun PremiumMessagesHome(
                 .thenByDescending { it.id }
         )
     }
-    val filteredConversations = remember(sortedConversations, query) {
+    // Inbox search covers all conversation folders, not only the selected filter.
+    val filteredConversations = remember(conversations, sortedConversations, query) {
         if (query.isBlank()) sortedConversations
-        else sortedConversations.filter {
+        else conversations.filter {
             com.blinkng.shared.BlinkConversationSearchPolicy.matches(
                 query, it.partnerName, it.partnerUsername, it.lastMessage
             )
-        }
+        }.sortedWith(
+            compareByDescending<ChatConversation> { it.isConversationPinned }
+                .thenByDescending { it.lastMessageRawTime }
+                .thenByDescending { it.id }
+        )
     }
     BlinkReferenceInbox(
         conversations = filteredConversations,
         stories = stories,
         myAvatar = myAvatar,
         myName = myName,
-        isDark = isDark,
+        isDark = !palette.isLight,
         query = query,
         onQueryChange = { query = it },
         onVoiceSearch = startVoiceSearch,
         showSearch = showSearch,
         onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
         showAll = showAll,
-        onToggleAll = { showAll = !showAll; inboxTab = if (showAll) MessageInboxTab.ALL else MessageInboxTab.PRIMARY },
+        onToggleAll = { showAll = !showAll },
         onOpenConversation = onOpenConversation,
         onProfileClick = onProfileClick,
         onMyProfileClick = onMyProfileClick,
@@ -1669,6 +1678,11 @@ private fun PremiumChatDetail(
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
+    // A quoted reply can point beyond the currently loaded history window.
+    var pendingReplyTargetId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var lastRequestedReplyOldestId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var highlightedReplyId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var activeVideoMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
     val isNearLatest by remember(conversation.id) {
         derivedStateOf {
@@ -1895,6 +1909,42 @@ private fun PremiumChatDetail(
     }
     val historyHeaderCount = if (isLoadingOlder) 1 else 0
 
+    LaunchedEffect(
+        pendingReplyTargetId, conversation.messages.firstOrNull()?.id,
+        visibleMessages, hasMoreMessages, isLoadingOlder
+    ) {
+        val targetId = pendingReplyTargetId ?: return@LaunchedEffect
+        val original = messagesById[targetId]
+        val position = visibleMessages.indexOfFirst { visible ->
+            visible.id == targetId || (
+                !original?.imageAlbumId.isNullOrBlank() &&
+                    visible.imageAlbumId == original?.imageAlbumId
+            )
+        }
+        if (position >= 0) {
+            listState.animateScrollToItem(position + historyHeaderCount)
+            highlightedReplyId = targetId
+            pendingReplyTargetId = null
+            lastRequestedReplyOldestId = null
+        } else if (!hasMoreMessages) {
+            pendingReplyTargetId = null
+            lastRequestedReplyOldestId = null
+            Toast.makeText(context, "Original message is no longer available.", Toast.LENGTH_SHORT).show()
+        } else if (!isLoadingOlder) {
+            val oldestId = conversation.messages.firstOrNull()?.id ?: "empty"
+            if (lastRequestedReplyOldestId != oldestId) {
+                lastRequestedReplyOldestId = oldestId
+                onLoadOlder()
+            }
+        }
+    }
+    LaunchedEffect(highlightedReplyId) {
+        if (highlightedReplyId != null) {
+            delay(1800)
+            highlightedReplyId = null
+        }
+    }
+
     fun submitMessage(value: String = text) {
         val clean = value.trim()
         if (clean.isEmpty()) return
@@ -2076,6 +2126,36 @@ private fun PremiumChatDetail(
                 )
             }
 
+            if (searchVisible && searchQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${matchedMessages.size} loaded matches",
+                        color = palette.textSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (hasMoreMessages) {
+                        androidx.compose.material3.TextButton(
+                            enabled = !isLoadingOlder && isConnected,
+                            onClick = { onLoadOlder() },
+                            modifier = Modifier.testTag("chat_search_older")
+                        ) {
+                            Text(
+                                if (isLoadingOlder) "Searching older…" else "Search older messages",
+                                color = palette.textPrimary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    } else {
+                        Text("Entire history loaded", color = palette.textMuted, fontSize = 11.sp)
+                    }
+                }
+            }
+
             if (pinnedOnly || starredOnly) {
                 Surface(color = palette.glassElevated, border = BorderStroke(1.dp, palette.border)) {
                     Row(
@@ -2128,7 +2208,17 @@ private fun PremiumChatDetail(
 
                     items(visibleMessages, key = { it.id }) { message ->
                         val replyTarget = message.replyToMessageId?.let(messagesById::get)
-                        Column {
+                        val highlightedAlbumId = highlightedReplyId?.let { messagesById[it]?.imageAlbumId }
+                        val showReplyHighlight = highlightedReplyId == message.id ||
+                            (!highlightedAlbumId.isNullOrBlank() && highlightedAlbumId == message.imageAlbumId)
+                        Column(
+                            modifier = Modifier
+                                .background(
+                                    if (showReplyHighlight) palette.accent.copy(alpha = .12f)
+                                    else Color.Transparent,
+                                    RoundedCornerShape(12.dp)
+                                )
+                        ) {
                             messageDateLabels[message.id]?.let { label ->
                                 Box(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
@@ -2169,17 +2259,38 @@ private fun PremiumChatDetail(
                                 editingMessage = null
                             },
                             onReplyTargetClick = {
-                                val targetId = message.replyToMessageId
-                                val targetIndex = visibleMessageIndexes[targetId]
-                                if (targetIndex != null) {
-                                    scrollScope.launch { listState.animateScrollToItem(targetIndex + historyHeaderCount) }
+                                message.replyToMessageId?.let { targetId ->
+                                    // Clear local filters before resolving the target. If it is in
+                                    // older history, load additional pages until found or exhausted.
+                                    searchQuery = ""
+                                    pinnedOnly = false
+                                    starredOnly = false
+                                    lastRequestedReplyOldestId = null
+                                    pendingReplyTargetId = targetId
                                 }
                             },
                             onActions = { selectedMessage = message },
                             onOpenImage = { viewedImageMessage = it },
                             onRetry = { onRetry(message) },
                             onCancelAttachment = { onCancelAttachment(message) },
-                            allowLinkPreviews = allowLinkPreviews
+                            allowLinkPreviews = allowLinkPreviews,
+                            activeVideoMessageId = activeVideoMessageId,
+                            onVideoActivate = { activeVideoMessageId = message.id },
+                            onVideoDeactivate = {
+                                if (activeVideoMessageId == message.id) activeVideoMessageId = null
+                            },
+                            onLegacyPollChoice = { index ->
+                                if (text.isBlank() && editingMessage == null) {
+                                    replyingTo = message
+                                    text = (index + 1).toString()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Finish your current draft before choosing a poll reply.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
                             )
                         }
                     }
@@ -3046,29 +3157,38 @@ private fun ChatHeader(
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit
 ) {
-    Box(
+    // Keep contact, calling, and menu actions visible at ordinary phone widths.
+    // A weighted name column ellipsizes before it can overlap the action buttons.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(palette.headerBrush())
             .border(1.dp, palette.border)
-            .padding(horizontal = 8.dp, vertical = 9.dp)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 6.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         GlassIconButton(
-            Icons.Default.ArrowBack,
-            "Back",
-            palette,
-            40.dp,
-            onClick = onBack,
-            modifier = Modifier.align(Alignment.CenterStart)
+            Icons.Default.ArrowBack, "Back", palette, 40.dp,
+            onClick = onBack
         )
-
+        Spacer(Modifier.width(2.dp))
+        RingAvatar(
+            url = conversation.partnerAvatar,
+            name = conversation.partnerName,
+            palette = palette,
+            size = 38.dp,
+            online = conversation.isOnline,
+            modifier = Modifier.clickable(onClick = onProfileClick)
+        )
+        Spacer(Modifier.width(7.dp))
         Column(
-            modifier = Modifier.align(Alignment.Center).widthIn(max = 190.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.weight(1f).clickable(onClick = onProfileClick),
+            verticalArrangement = Arrangement.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    conversation.partnerName,
+                    text = conversation.partnerName,
                     color = palette.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -3080,7 +3200,7 @@ private fun ChatHeader(
                 BlinkVipMarkForUsername(
                     username = conversation.partnerUsername,
                     knownVip = if (conversation.partnerIsVip) true else null,
-                    modifier = Modifier.padding(start = 4.dp)
+                    modifier = Modifier.padding(start = 2.dp)
                 )
             }
             Text(
@@ -3088,33 +3208,23 @@ private fun ChatHeader(
                     if (conversation.isOnline) "Active now" else conversation.lastSeen
                 },
                 color = if (conversation.isOnline) palette.online else palette.textSecondary,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-
-        Row(
-            modifier = Modifier.align(Alignment.CenterEnd),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RingAvatar(
-                url = conversation.partnerAvatar,
-                name = conversation.partnerName,
-                palette = palette,
-                size = 38.dp,
-                online = conversation.isOnline,
-                modifier = Modifier.clickable(onClick = onProfileClick)
-            )
-            Spacer(Modifier.width(4.dp))
-            GlassIconButton(
-                Icons.Default.MoreVert,
-                "More chat options",
-                palette,
-                34.dp,
-                onClick = onMore
-            )
-        }
+        GlassIconButton(
+            Icons.Default.Call, "Voice call", palette, 38.dp,
+            onClick = onAudioCall
+        )
+        GlassIconButton(
+            Icons.Default.Videocam, "Video call", palette, 38.dp,
+            onClick = onVideoCall
+        )
+        GlassIconButton(
+            Icons.Default.MoreVert, "More chat options", palette, 38.dp,
+            onClick = onMore
+        )
     }
 }
 
@@ -3414,7 +3524,11 @@ private fun MessageBubble(
     onOpenImage: (ChatMessage) -> Unit,
     onRetry: () -> Unit,
     onCancelAttachment: () -> Unit,
-    allowLinkPreviews: Boolean
+    allowLinkPreviews: Boolean,
+    activeVideoMessageId: String?,
+    onVideoActivate: () -> Unit,
+    onVideoDeactivate: () -> Unit,
+    onLegacyPollChoice: (Int) -> Unit
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -3557,7 +3671,11 @@ private fun MessageBubble(
                         palette = palette,
                         allowLinkPreviews = allowLinkPreviews,
                         onCancelAttachment = onCancelAttachment,
-                        onOpenImage = onOpenImage
+                        onOpenImage = onOpenImage,
+                        videoActive = activeVideoMessageId == message.id,
+                        onVideoActivate = onVideoActivate,
+                        onVideoDeactivate = onVideoDeactivate,
+                        onLegacyPollChoice = onLegacyPollChoice
                     )
                     // Compact inside-bubble timestamp and one overlapping double-check glyph.
                     val metadata = when (message.status) {
@@ -3577,7 +3695,7 @@ private fun MessageBubble(
                             metadata,
                             color = if (message.status == MessageStatus.FAILED)
                                 palette.danger else palette.textSecondary,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
                         if (isMine && message.status in setOf(
@@ -3611,7 +3729,16 @@ private fun MessageBubble(
                                 shape = RoundedCornerShape(100.dp),
                                 border = BorderStroke(1.dp, if (entry.key in message.myReactions) palette.accent.copy(alpha = .55f) else palette.border)
                             ) {
-                                Text("${entry.key} ${entry.value}", fontSize = 11.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                                Text(
+                                    "${entry.key} ${entry.value}",
+                                    fontSize = 11.sp,
+                                    color = palette.textSecondary,
+                                    modifier = Modifier.clickable(
+                                        role = androidx.compose.ui.semantics.Role.Button,
+                                        onClickLabel = "Manage message reactions",
+                                        onClick = onActions
+                                    ).padding(horizontal = 10.dp, vertical = 9.dp)
+                                )
                             }
                         }
                     }
@@ -3630,7 +3757,11 @@ private fun MessageContent(
     palette: MessagePalette,
     allowLinkPreviews: Boolean,
     onCancelAttachment: () -> Unit,
-    onOpenImage: (ChatMessage) -> Unit
+    onOpenImage: (ChatMessage) -> Unit,
+    videoActive: Boolean,
+    onVideoActivate: () -> Unit,
+    onVideoDeactivate: () -> Unit,
+    onLegacyPollChoice: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -3734,28 +3865,51 @@ private fun MessageContent(
                     )
                 }
             } else if (!message.attachedImageUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = message.attachedImageUrl,
-                    contentDescription = "Shared image",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(220.dp).height(170.dp).clip(RoundedCornerShape(13.dp))
-                        .clickable { onOpenImage(message) }
-                )
-            }
-            if (!message.attachedVideoUrl.isNullOrBlank()) {
-                Surface(
-                    color = Color.Black.copy(alpha = .20f),
-                    contentColor = contentColor,
-                    shape = RoundedCornerShape(13.dp),
-                    modifier = Modifier.width(220.dp).height(96.dp).clickable {
-                        openExternalUri(context, Uri.parse(message.attachedVideoUrl))
-                    }
+                var imageRetry by remember(message.id, message.attachedImageUrl) { mutableIntStateOf(0) }
+                var imageFailed by remember(message.id, message.attachedImageUrl) { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier.width(220.dp).height(170.dp)
+                        .clip(RoundedCornerShape(13.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(Icons.Default.PlayCircle, contentDescription = "Play video", modifier = Modifier.size(34.dp))
-                        Text("Video message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    AsyncImage(
+                        model = remember(message.attachedImageUrl, imageRetry) {
+                            coil.request.ImageRequest.Builder(context)
+                                .data(message.attachedImageUrl)
+                                .memoryCacheKey("${message.id}:$imageRetry")
+                                .build()
+                        },
+                        contentDescription = "Shared image",
+                        contentScale = ContentScale.Crop,
+                        onSuccess = { imageFailed = false },
+                        onError = { imageFailed = true },
+                        modifier = Modifier.fillMaxSize().clickable { if (!imageFailed) onOpenImage(message) }
+                    )
+                    if (imageFailed) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().background(contentColor.copy(alpha = .10f)),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text("Photo unavailable", color = contentColor, fontSize = 12.sp)
+                            androidx.compose.material3.TextButton(onClick = {
+                                imageFailed = false
+                                imageRetry++
+                            }) {
+                                Text("Retry", color = contentColor, fontSize = 13.sp)
+                            }
+                        }
                     }
                 }
+            }
+            if (!message.attachedVideoUrl.isNullOrBlank()) {
+                BlinkChatInlineVideo(
+                    url = message.attachedVideoUrl,
+                    isActive = videoActive,
+                    onActivate = onVideoActivate,
+                    onDeactivate = onVideoDeactivate,
+                    modifier = Modifier.width(240.dp),
+                )
             }
             if (!message.attachedAudioUrl.isNullOrBlank()) {
                 BlinkChatVoicePlayer(
@@ -3797,6 +3951,23 @@ private fun MessageContent(
                     }
                 }
             }
+            val legacyPoll = com.blinkng.shared.BlinkChatPollPolicy.parseTextFallback(message.text)
+            if (legacyPoll != null) {
+                BlinkChatLegacyPollCard(
+                    draft = legacyPoll,
+                    palette = palette,
+                    textColor = contentColor,
+                    onChoice = onLegacyPollChoice
+                )
+            }
+            val sharedContact = com.blinkng.shared.BlinkChatContactCardPolicy.parse(message.text)
+            if (sharedContact != null) {
+                BlinkChatContactMessageCard(
+                    contact = sharedContact,
+                    palette = palette,
+                    textColor = contentColor,
+                )
+            }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
                     (!message.attachedImageUrl.isNullOrBlank() &&
@@ -3804,12 +3975,13 @@ private fun MessageContent(
                     (!message.attachedAudioUrl.isNullOrBlank() &&
                         (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
                     !message.attachedDocumentUrl.isNullOrBlank()
-            if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
+            if (message.text.isNotBlank() && !placeholderOnly &&
+                !message.isVoiceNote && sharedContact == null && legacyPoll == null) {
                 Text(
                     message.text,
                     color = contentColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
                 if (allowLinkPreviews && !message.imageViewOnce && !message.deletedForEveryone) {
@@ -4135,7 +4307,7 @@ private fun MessageComposer(
                     TextField(
                         value = value,
                         onValueChange = onValueChange,
-                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
+                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 14.sp) },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
@@ -4160,14 +4332,14 @@ private fun MessageComposer(
                         icon = Icons.Default.AttachFile,
                         contentDescription = "Attach picture, file or location",
                         palette = palette,
-                        size = 36.dp,
+                        size = 40.dp,
                         onClick = onAttachment
                     )
                     GlassIconButton(
                         icon = Icons.Default.CameraAlt,
                         contentDescription = "Open camera",
                         palette = palette,
-                        size = 36.dp,
+                        size = 40.dp,
                         onClick = onCamera
                     )
                 }

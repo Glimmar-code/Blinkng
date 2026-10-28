@@ -79,6 +79,30 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+    /** One authoritative action binding for every chat entry point. */
+private fun messageInteractionActions(viewModel: BlinkViewModel): ChatInteractionActions = ChatInteractionActions(
+            onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
+            onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
+            onDeleteForMe = { partner, message -> viewModel.deleteChatMessageForMe(partner, message) },
+            onDeleteForEveryone = { partner, message -> viewModel.deleteChatMessageForEveryone(partner, message) },
+            onToggleStar = { partner, message -> viewModel.toggleChatMessageStar(partner, message) },
+            onTogglePin = { partner, message -> viewModel.toggleChatMessagePin(partner, message) },
+            onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
+            onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
+            onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+            onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
+            onNotificationSettings = { conversation, mode, muteUntil ->
+                viewModel.setChatNotificationSettings(conversation, mode, muteUntil)
+            },
+            onArchiveConversation = { conversation, archived -> viewModel.setConversationArchived(conversation, archived) },
+            onPinConversation = { conversation, pinned -> viewModel.setConversationPinned(conversation, pinned) },
+            onMarkConversationUnread = { conversation, unread -> viewModel.setConversationMarkedUnread(conversation, unread) },
+            onRespondMessageRequest = { conversation, accept -> viewModel.respondToMessageRequest(conversation, accept) },
+            onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
+            onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
+    )
+
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
@@ -1890,27 +1914,7 @@ fun MainAppContent(
                         onForwardMessage = { target, message ->
                             viewModel.forwardChatMessage(target, message)
                         },
-                        interactionActions = ChatInteractionActions(
-                            onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
-                            onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
-                            onDeleteForMe = { partner, message -> viewModel.deleteChatMessageForMe(partner, message) },
-                            onDeleteForEveryone = { partner, message -> viewModel.deleteChatMessageForEveryone(partner, message) },
-                            onToggleStar = { partner, message -> viewModel.toggleChatMessageStar(partner, message) },
-                            onTogglePin = { partner, message -> viewModel.toggleChatMessagePin(partner, message) },
-                            onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
-                            onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
-                            onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
-                            onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
-                            onNotificationSettings = { conversation, mode, muteUntil ->
-                                viewModel.setChatNotificationSettings(conversation, mode, muteUntil)
-                            },
-                            onArchiveConversation = { conversation, archived -> viewModel.setConversationArchived(conversation, archived) },
-                            onPinConversation = { conversation, pinned -> viewModel.setConversationPinned(conversation, pinned) },
-                            onMarkConversationUnread = { conversation, unread -> viewModel.setConversationMarkedUnread(conversation, unread) },
-                            onRespondMessageRequest = { conversation, accept -> viewModel.respondToMessageRequest(conversation, accept) },
-                            onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
-                            onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
-                        ),
+                        interactionActions = messageInteractionActions(viewModel),
                         onSendAttachment = { partner, uri, kind ->
                             viewModel.sendAttachmentMessage(partner, uri, kind)
                         },
@@ -2887,14 +2891,35 @@ fun MainAppContent(
                     convo = convo,
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
+                    onSendMessageWithReply = { text, replyTo ->
+                        viewModel.sendMessage(convo.partnerUsername, text, replyToMessageId = replyTo)
+                    },
+                    onForwardMessage = { target, message -> viewModel.forwardChatMessage(target, message) },
+                    onPresenceChange = { state -> viewModel.updateChatPresence(convo.partnerUsername, state) },
+                    interactionActions = messageInteractionActions(viewModel),
+                    chatPrivacySettings = uiState.chatPrivacySettings,
+                    allConversations = uiState.conversations,
+                    isLoadingMessages = uiState.loadingInitialConversationId == convo.id,
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
+                    onSendAttachment = { uri, kind, _, caption, quality, album ->
+                        viewModel.sendAttachmentMessage(
+                            convo.partnerUsername, uri, kind,
+                            caption = caption, imageQuality = quality, album = album
+                        )
+                    },
+                    onSendViewOncePicture = { uri, caption, quality ->
+                        viewModel.sendViewOncePicture(convo.partnerUsername, uri, caption, quality)
+                    },
                     onProfileClick = { username ->
                         viewModel.openProfileFromChat(username)
                     },
                     isDark = uiState.isDarkMode,
-                    isConnected = uiState.isLiveSupabaseConnected,
+                    isConnected = uiState.isOnline,
                     onRetryMessage = { msg ->
                         viewModel.retrySendMessage(convo.partnerUsername, msg)
+                    },
+                    onCancelAttachment = { msg ->
+                        viewModel.cancelAttachmentMessage(convo.partnerUsername, msg)
                     },
                     hasMoreMessages = uiState.messageHistoryHasMore[convo.id] ?: true,
                     isLoadingOlder = uiState.loadingOlderConversationId == convo.id,

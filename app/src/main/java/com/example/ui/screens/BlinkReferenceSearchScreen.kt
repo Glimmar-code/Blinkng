@@ -20,7 +20,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -110,6 +109,8 @@ internal fun BlinkReferenceSearchScreen(
     val prefs = remember(context) { context.getSharedPreferences(REF_RECENTS_PREF, Context.MODE_PRIVATE) }
     var query by rememberSaveable(accountKey) { mutableStateOf("") }
     var category by rememberSaveable(accountKey) { mutableStateOf(ReferenceCategory.ALL) }
+    var visibleResultLimit by remember(accountKey) { mutableIntStateOf(20) }
+    LaunchedEffect(query, category) { visibleResultLimit = 20 }
     var recents by remember(accountKey) {
         mutableStateOf(
             prefs.getString(recentsKey, "").orEmpty().split(REF_RECENTS_SEPARATOR)
@@ -119,14 +120,21 @@ internal fun BlinkReferenceSearchScreen(
     var showFilters by rememberSaveable { mutableStateOf(false) }
     var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
     var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
-    var searchedPeople by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var searchedPeople by remember(accountKey, query) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var referralCount by remember(accountKey) { mutableStateOf<Long?>(null) }
-    // Backend-only trends: never invent or cache fake hashtags if unavailable.
+    // A backend that still serves only seven-day tags must be labelled truthfully.
+    // Ranked people are only shown when the authenticated 30-day RPC exists.
     var trendingTags by remember(accountKey) { mutableStateOf<List<String>>(emptyList()) }
+    var trendingDays by remember(accountKey) { mutableIntStateOf(7) }
+    var trendingCreators by remember(accountKey) {
+        mutableStateOf<List<com.blinkng.shared.BlinkTrendingCreator>>(emptyList())
+    }
     LaunchedEffect(accountKey, myProfile.university) {
-        trendingTags = SearchDiscoveryRepository()
-            .trendingTags(university = myProfile.university, limit = 5)
-            .take(5)
+        val repository = SearchDiscoveryRepository()
+        val snapshot = repository.trendingTagsWithPeriod(myProfile.university, limit = 5)
+        trendingTags = snapshot.tags
+        trendingDays = snapshot.windowDays
+        trendingCreators = repository.trendingCreators30Days(myProfile.university, limit = 3)
     }
     LaunchedEffect(accountKey, query) {
         val clean = BlinkReferralPolicy.normalizedQuery(query)
@@ -206,18 +214,18 @@ internal fun BlinkReferenceSearchScreen(
             query.isBlank() || it.fullName.contains(query, true) ||
                 it.username.contains(query, true) || it.university.contains(query, true) ||
                 it.department.contains(query, true)
-        }.take(30)
+        }
     }
     val localPosts = remember(allPosts, query) {
         allPosts.filter {
             !it.isReel && (query.isBlank() || it.text.contains(query, true) ||
                 it.author.contains(query, true) || it.tags.any { tag -> tag.contains(query, true) })
-        }.take(30)
+        }
     }
     val live = if (discovery.backendAvailable && discovery.query == query && !discovery.isLoading) discovery.results else emptyList()
     val livePeople = live.filter { it.type == DiscoveryResultType.PROFILE }
     val livePosts = live.filter { it.type == DiscoveryResultType.POST }
-    val limit = if (category == ReferenceCategory.ALL) 2 else 20
+    val limit = if (category == ReferenceCategory.ALL) 2 else visibleResultLimit
 
     if (showReferralDashboard) {
         BlinkReferGrowDialog(username = currentUsername, onDismiss = { showReferralDashboard = false })
@@ -236,7 +244,7 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(42.dp).clickable { if (currentUsername.isNotBlank()) onProfileClick(currentUsername) }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(48.dp).clickable(enabled = currentUsername.isNotBlank()) { onProfileClick(currentUsername) }, contentAlignment = Alignment.Center) {
                 ReferenceAvatar(currentProfile?.avatarUrl, 42)
                 if (currentProfile?.onlineNow == true) {
                     Box(
@@ -249,10 +257,10 @@ internal fun BlinkReferenceSearchScreen(
                 Text("BLINK", fontSize = 21.sp, letterSpacing = 4.sp,
                     fontWeight = FontWeight.Black, color = fg, maxLines = 1)
             }
-            IconButton(onClick = onGameClick, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Rounded.GridView, "Open Items", modifier = Modifier.size(23.dp), tint = fg)
+            IconButton(onClick = onGameClick, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Rounded.SportsEsports, "Open games", modifier = Modifier.size(23.dp), tint = fg)
             }
-            Box(Modifier.size(40.dp)) {
+            Box(Modifier.size(48.dp)) {
                 IconButton(onClick = onNotificationsClick, modifier = Modifier.fillMaxSize()) {
                     Icon(Icons.Rounded.NotificationsNone, "Notifications", modifier = Modifier.size(23.dp), tint = fg)
                 }
@@ -299,7 +307,7 @@ internal fun BlinkReferenceSearchScreen(
                         )
                     }
                     if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }, modifier = Modifier.size(22.dp)) {
+                        IconButton(onClick = { query = "" }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Rounded.Close, "Clear search", Modifier.size(16.dp), tint = muted)
                         }
                     }
@@ -407,7 +415,7 @@ internal fun BlinkReferenceSearchScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 if (trendingTags.isNotEmpty()) {
-                    Text("Trending hashtags · 7 days", color = fg,
+                    Text("Trending hashtags · $trendingDays days", color = fg,
                         fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(7.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -429,6 +437,27 @@ internal fun BlinkReferenceSearchScreen(
                                     fontSize = 12.sp, color = fg, maxLines = 1)
                             }
                         }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+                if (trendingCreators.isNotEmpty()) {
+                    Text("Trending people · 30 days", color = fg, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp)
+                    Spacer(Modifier.height(4.dp))
+                    trendingCreators.forEach { person ->
+                        ReferencePersonRow(
+                            title = person.fullName.ifBlank { person.username },
+                            subtitle = listOf("@${person.username}",person.university)
+                                .filter(String::isNotBlank).joinToString(" · "),
+                            avatar = person.avatarUrl,
+                            verified = person.isVerified, online = false,
+                            fg = fg, muted = muted, line = line,
+                            followable = person.id != currentProfile?.id,
+                            following = person.id in followingIds,
+                            isBusy = busyFollowId == person.id,
+                            onFollow = { toggleFollow(person.id) },
+                            onClick = { openProfileFromDiscovery(person.id, person.username, "search") },
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                 }
@@ -475,7 +504,7 @@ internal fun BlinkReferenceSearchScreen(
 
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.PEOPLE) {
                 ReferenceTitle("People", fg, muted) { select(ReferenceCategory.PEOPLE) }
-                if (searchedPeople.isNotEmpty()) searchedPeople.take(limit).forEach { person ->
+                if (searchedPeople.isNotEmpty() && (category == ReferenceCategory.ALL || livePeople.isEmpty())) searchedPeople.take(limit).forEach { person ->
                     ReferencePersonRow(
                         title = person.fullName.ifBlank { person.username },
                         subtitle = listOfNotNull(person.university,
@@ -559,6 +588,39 @@ internal fun BlinkReferenceSearchScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
+            if (category != ReferenceCategory.ALL) {
+                // Use the same ranked data source actually rendered above;
+                // unrelated local fallback lists must not fabricate more results.
+                val visibleSourceSize = when (category) {
+                    ReferenceCategory.PEOPLE -> when {
+                        livePeople.isNotEmpty() -> livePeople.size
+                        searchedPeople.isNotEmpty() -> searchedPeople.size
+                        else -> localPeople.size
+                    }
+                    ReferenceCategory.POSTS ->
+                        if (livePosts.isNotEmpty()) livePosts.size else localPosts.size
+                    else -> 0
+                }
+                val cursorHasMore = discovery.backendAvailable &&
+                    discovery.query == query && discovery.hasMore &&
+                    (category != ReferenceCategory.PEOPLE || livePeople.isNotEmpty() || searchedPeople.isEmpty())
+                val moreResultsAvailable =
+                    visibleSourceSize > visibleResultLimit || cursorHasMore
+                if (discovery.isLoadingMore) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(12.dp))
+                } else if (moreResultsAvailable) {
+                    TextButton(
+                        onClick = {
+                            visibleResultLimit += 20
+                            if (cursorHasMore && visibleSourceSize <= visibleResultLimit) {
+                                search.loadMore()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Load more results", color = fg) }
+                }
+            }
             Spacer(Modifier.height(22.dp))
         }
     }
@@ -635,14 +697,14 @@ internal fun BlinkReferenceSearchScreen(
 @Composable
 private fun ReferenceTitle(title: String, fg: Color, muted: Color, onSeeAll: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 7.dp).heightIn(min = 34.dp),
+        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 7.dp).heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, Modifier.weight(1f), color = fg, fontSize = 15.sp,
             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text("See all  ›", Modifier.clickable(onClick = onSeeAll)
-            .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            fontSize = 11.sp, color = muted, maxLines = 1)
+            .padding(start = 8.dp, end = 4.dp, top = 14.dp, bottom = 14.dp),
+            fontSize = 12.sp, color = muted, maxLines = 1)
     }
 }
 
@@ -656,7 +718,7 @@ private fun ReferencePersonRow(
 ) {
     val largeFont = LocalDensity.current.fontScale >= 1.6f
     Column(Modifier.fillMaxWidth().padding(vertical = 7.dp).then(impressionModifier)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49, online) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f).clickable(onClick = onClick)) {
@@ -670,7 +732,7 @@ private fun ReferencePersonRow(
                             tint = Color(0xFF159CF5))
                     }
                 }
-                Text(subtitle, color = muted, fontSize = 10.sp,
+                Text(subtitle, color = muted, fontSize = 12.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (!largeFont) {

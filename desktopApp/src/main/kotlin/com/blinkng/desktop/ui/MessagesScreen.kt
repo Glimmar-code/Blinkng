@@ -91,6 +91,7 @@ import com.blinkng.desktop.data.DesktopStickerLibrary
 import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkChatPhotoAlbum
 import com.blinkng.shared.BlinkChatPollPolicy
+import com.blinkng.shared.BlinkChatContactCardPolicy
 import javax.swing.JFileChooser
 import java.util.UUID
 import java.io.File
@@ -127,7 +128,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var messages by remember(myUserId) { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var inboxShowSearch by remember { mutableStateOf(false) }
-    var inboxShowAll by remember { mutableStateOf(false) }
+    var inboxShowAll by remember { mutableStateOf(true) }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
@@ -138,7 +139,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var showNewGroup by remember { mutableStateOf(false) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
-    var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
+    var inbox by remember { mutableStateOf(BlinkMessageInbox.ALL) }
     var controlsBusy by remember { mutableStateOf(false) }
     var forwardMessageId by remember { mutableStateOf<String?>(null) }
     var forwardUsername by remember { mutableStateOf("") }
@@ -554,6 +555,31 @@ fun MessagesScreen(state: DesktopAppState) {
                 )
             }
 
+            if (chatSearchVisible && chatQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "${visibleMessages.size} loaded matches",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                    if (hasMoreOlder) {
+                        TextButton(
+                            onClick = { loadOlderMessages() },
+                            enabled = !olderLoading
+                        ) {
+                            Text(if (olderLoading) "Searching older…" else "Search older messages")
+                        }
+                    } else {
+                        Text("Entire history loaded", fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
             error?.let {
                 Text(
                     it,
@@ -678,7 +704,55 @@ fun MessagesScreen(state: DesktopAppState) {
                                                     .clickable { viewedChatPhoto = message }
                                             )
                                         }
-                                        if (message.content.isNotBlank() &&
+                                        val legacyPoll = BlinkChatPollPolicy.parseTextFallback(message.content)
+                                        if (legacyPoll != null) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.surface.copy(alpha = .7f)
+                                            ) {
+                                                Column(
+                                                    Modifier.padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                                                ) {
+                                                    Text("📊 " + legacyPoll.question, fontWeight = FontWeight.SemiBold)
+                                                    Text("Text poll · responses are chat replies",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    legacyPoll.options.forEachIndexed { index, option ->
+                                                        TextButton(onClick = {
+                                                            if (draft.isBlank() && editingMessage == null) {
+                                                                replyingTo = message
+                                                                draftsByConversation[active.id] = (index + 1).toString()
+                                                            } else {
+                                                                error = "Finish your draft before selecting a poll reply."
+                                                            }
+                                                        }) {
+                                                            Text("${index + 1}. $option · Reply")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        val sharedContact = BlinkChatContactCardPolicy.parse(message.content)
+                                        if (sharedContact != null) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.surface.copy(alpha = .7f),
+                                            ) {
+                                                Column(Modifier.padding(12.dp)) {
+                                                    Text("👤 " + sharedContact.displayName,
+                                                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                                    Text(sharedContact.phoneNumber, fontSize = 12.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    TextButton(onClick = {
+                                                        runCatching {
+                                                            Toolkit.getDefaultToolkit().systemClipboard
+                                                                .setContents(StringSelection(sharedContact.phoneNumber), null)
+                                                        }.onFailure { error = "Unable to copy this phone number." }
+                                                    }) { Text("Copy number") }
+                                                }
+                                            }
+                                        } else if (legacyPoll == null && message.content.isNotBlank() &&
                                             !(message.messageType == "image" &&
                                                 message.content in setOf("Image", "Photo"))) {
                                             Text(message.content)
@@ -694,7 +768,9 @@ fun MessagesScreen(state: DesktopAppState) {
                                                     "$emoji $count",
                                                     fontSize = 11.sp,
                                                     fontWeight = if (emoji in message.myReactions) FontWeight.Bold else FontWeight.Normal,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.clickable { actionMessageId = message.id }
+                                                        .padding(horizontal = 6.dp, vertical = 6.dp)
                                                 )
                                             }
                                         }
@@ -1723,7 +1799,7 @@ private fun DesktopInboxPanel(
 ) {
     val filtered = remember(conversations, query, inbox) {
         conversations.filter {
-            BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
+            (query.isNotBlank() || BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread)) &&
                 BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
         }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
     }
@@ -1776,9 +1852,8 @@ private fun DesktopInboxPanel(
             TextButton(onClick = onGroupInvitations) { Text("Groups & invitations") }
             TextButton(onClick = {
                 onShowAllChange(!inboxShowAll)
-                onInboxChange(if (!inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY)
             }) {
-                Text(if (inboxShowAll) "Close" else "See all")
+                Text(if (inboxShowAll) "Hide filters" else "Filters")
             }
         }
 
@@ -1813,10 +1888,15 @@ private fun DesktopInboxPanel(
 
         HorizontalDivider()
         if (inboxShowAll) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 BlinkMessageInbox.entries.forEach { tab ->
-                    FilterChip(selected = inbox == tab, onClick = { onInboxChange(tab) },
-                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    item(key = tab.name) {
+                        FilterChip(selected = inbox == tab, onClick = { onInboxChange(tab) },
+                            label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    }
                 }
             }
         }

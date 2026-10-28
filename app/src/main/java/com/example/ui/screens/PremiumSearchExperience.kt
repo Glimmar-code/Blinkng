@@ -857,7 +857,7 @@ private fun PremiumDiscoveryHome(
                         isAuthor = post.author.equals(currentUsername, true) ||
                             post.authorUsername.equals(currentUsername, true),
                         onDelete = { onDeletePost(post.id) },
-                        trackExposure = false,
+                        trackExposure = true,
                         xFeedStyle = true,
                     )
                     TextButton(onClick = { onPostClick(post) }) {

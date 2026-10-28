@@ -21,6 +21,17 @@ import kotlinx.coroutines.delay
 private const val MIN_VISIBLE_FRACTION = 0.50f
 private const val POST_QUALIFICATION_MS = 60_000L
 
+/** Tracks a single genuine exposure per continuous qualified visibility session. */
+internal class ContentVisibilityGate {
+    private var wasQualified = false
+
+    fun update(isQualified: Boolean): Boolean {
+        val newlyQualified = isQualified && !wasQualified
+        wasQualified = isQualified
+        return newlyQualified
+    }
+}
+
 @Composable
 fun rememberDelayedContentViewCount(contentId: String, modelCount: Int): Int {
     val displayState by ContentViewCoordinator.displayState.collectAsState()
@@ -48,6 +59,7 @@ fun Modifier.trackContentExposure(
     // An exposure is counted once per continuous visibility session, not forever
     // for a saved LazyColumn item. Scrolling fully away permits requalification.
     var wasRecorded by remember(contentId) { mutableStateOf(false) }
+    val visibilityGate = remember(contentId) { ContentVisibilityGate() }
     var currentlyVisible by remember(contentId) { mutableStateOf(false) }
     var windowFocused by remember(rootView) { mutableStateOf(rootView.hasWindowFocus()) }
 
@@ -64,6 +76,7 @@ fun Modifier.trackContentExposure(
 
     LaunchedEffect(contentId, currentlyVisible, windowFocused, playbackActive, minVisibleMillis, wasRecorded) {
         if (!currentlyVisible) {
+            visibilityGate.update(false)
             // The item left the viewport: reset only then, not on a user pause,
             // buffer event, or lost app focus within the same viewing session.
             wasRecorded = false
@@ -71,7 +84,7 @@ fun Modifier.trackContentExposure(
         }
         if (!windowFocused || !playbackActive || wasRecorded) return@LaunchedEffect
         delay(minVisibleMillis.coerceAtLeast(1_000L))
-        if (currentlyVisible && windowFocused && playbackActive && !wasRecorded) {
+        if (currentlyVisible && windowFocused && playbackActive && !wasRecorded && visibilityGate.update(true)) {
             wasRecorded = true
             ContentViewCoordinator.recordExposure(
                 context = appContext,
