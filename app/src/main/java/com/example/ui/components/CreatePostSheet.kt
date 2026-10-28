@@ -1090,6 +1090,11 @@ fun CreatePostSheet(
                             }
                         }
                     },
+                    onEdit = { selectedUri ->
+                        if (!isSubmitting && selectedUri in selectedImages) {
+                            imageToEdit = selectedUri
+                        }
+                    },
                     onAddMore = {
                         imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
