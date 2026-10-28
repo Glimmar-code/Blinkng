@@ -9,7 +9,6 @@ begin
   loop
     if has_function_privilege('anon', f, 'EXECUTE')
        or has_function_privilege('authenticated', f, 'EXECUTE')
-       or has_function_privilege('public', f, 'EXECUTE')
     then
       raise exception '% must not be callable by API clients', f;
     end if;
