@@ -50,6 +50,10 @@ fun BlinkCommunitiesPanel(
     val service = remember { SupabaseService() }
     val scope = rememberCoroutineScope()
     val ownerId = service.getCurrentUserId().orEmpty()
+    var viewerProfile by remember(ownerId) { mutableStateOf<UserProfile?>(null) }
+    LaunchedEffect(ownerId) {
+        viewerProfile = if (ownerId.isNotBlank()) service.fetchProfileById(ownerId) else null
+    }
     // Never carry a previous account's private communities, roster or draft
     // through a logout/login or Switch Account transition.
     var communities by remember(ownerId) { mutableStateOf<List<BlinkCommunity>>(emptyList()) }
@@ -102,6 +106,7 @@ fun BlinkCommunitiesPanel(
     selectedChannel?.let { channel ->
         BlinkChannelDetail(
             channel = channel, backend = backend,
+            viewerProfile = viewerProfile,
             onBack = { selectedChannel = null }, modifier = modifier,
             initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId },
             onChannelEdited = { edited ->
