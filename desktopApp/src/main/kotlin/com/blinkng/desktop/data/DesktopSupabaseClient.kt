@@ -3420,7 +3420,9 @@ class DesktopSupabaseClient(
         ).coerceIn(0, BlinkOnboardingPolicy.TOTAL_STEPS),
         bio = row.optNullableString("bio"),
         isVerified = row.optBoolean("is_verified"),
-        verificationTier = row.optString("verification_tier"),
+        verificationTier = row.optString("verification_badge")
+            .takeIf { it.equals("BLUE", ignoreCase = true) || it.equals("GOLD", ignoreCase = true) }
+            ?: row.optString("verification_tier"),
         followerCount = row.optInt("follower_count"),
         followingCount = row.optInt("following_count"),
         postsCount = row.optInt("posts_count"),
@@ -3434,6 +3436,7 @@ class DesktopSupabaseClient(
         isBlinkVip = isFutureTimestamp(row.optNullableString("blink_vip_until")),
         blinkVipUntil = row.optNullableString("blink_vip_until"),
         verifiedAtMillis = parseTimestampMillis(row.optNullableString("verified_at")),
+        verificationExpiresAtMillis = parseTimestampMillis(row.optNullableString("verification_expires_at")),
         profileViewsThisWeek = row.optInt("profile_views_this_week"),
         email = row.optNullableString("email"),
         phone = row.optNullableString("phone"),
@@ -3516,6 +3519,9 @@ class DesktopSupabaseClient(
             row.optNullableString("image_url")?.let(::listOf) ?: emptyList()
         },
         createdAt = row.optString("created_at"),
+        quantity = if (row.has("quantity") && !row.isNull("quantity")) row.optInt("quantity").coerceAtLeast(0) else null,
+        viewCount = if (row.has("views_count") && !row.isNull("views_count")) row.optLong("views_count").coerceAtLeast(0L) else null,
+        saveCount = if (row.has("saves_count") && !row.isNull("saves_count")) row.optLong("saves_count").coerceAtLeast(0L) else null,
     )
 
     private fun parseConnectListing(row: JSONObject) = DesktopConnectListing(
