@@ -100,7 +100,7 @@ internal fun BlinkContestCandidateSpotlight(
             Column(Modifier.weight(1f)) {
                 Text("@" + candidate.optString("username"), fontWeight = FontWeight.Bold)
                 Text("#" + candidate.optInt("rank") + " · " +
-                    candidate.optInt("votes") + " votes",
+                    candidate.optInt("votes") + " votes" + BlinkContestRankMovement.label(candidate),
                     color = contestBlue, fontSize = 12.sp)
                 Text(candidate.optString("statement"), fontSize = 11.sp,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -133,7 +133,8 @@ internal fun BlinkContestPodium(leaders: List<JSONObject>, onView: (JSONObject) 
                             person.optString("username"), if (place==1) 52.dp else 43.dp)
                         Text("@" + person.optString("username"), color = Color.White,
                             fontSize = 10.sp, maxLines = 1, fontWeight = FontWeight.Bold)
-                        Text(person.optInt("votes").toString()+" votes", color=Color(0xFFBBD9FF),
+                        Text(person.optInt("votes").toString()+" votes" +
+                            BlinkContestRankMovement.label(person), color=Color(0xFFBBD9FF),
                             fontSize=10.sp)
                     }
                 }
@@ -158,6 +159,18 @@ internal fun BlinkContestWinnerCard(winner: JSONObject) {
                 Text("Payment: " + winner.optString("payment_status") + " (admin recorded)",
                     color=Color(0xFFADBFD2),fontSize=10.sp)
             }
+        }
+    }
+}
+
+internal object BlinkContestRankMovement {
+    fun label(candidate: JSONObject, key: String = "rank_delta"): String {
+        if (!candidate.has(key) || candidate.isNull(key)) return ""
+        val delta = candidate.optInt(key)
+        return when {
+            delta > 0 -> " · ↑" + delta
+            delta < 0 -> " · ↓" + (-delta)
+            else -> " · —"
         }
     }
 }

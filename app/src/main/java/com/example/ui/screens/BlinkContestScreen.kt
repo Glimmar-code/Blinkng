@@ -206,7 +206,8 @@ fun BlinkContestScreen(
                                     }, color = MaterialTheme.colorScheme.primary
                                 )
                                 Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
-                                    else "#" + d.optInt("my_rank"))
+                                    else "#" + d.optInt("my_rank") +
+                                        BlinkContestRankMovement.label(d,"my_rank_delta"))
                             }
                         }
                     }
@@ -327,7 +328,8 @@ fun BlinkContestScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("@" + candidate.optString("username"), fontWeight = FontWeight.Medium)
-                                    Text(candidate.optInt("votes").toString() + " votes", fontSize = 12.sp)
+                                    Text(candidate.optInt("votes").toString() + " votes" +
+                                        BlinkContestRankMovement.label(candidate), fontSize = 12.sp)
                                     Text(candidate.optString("statement"), fontSize = 12.sp, maxLines = 2)
                                     Text("View profile", color = MaterialTheme.colorScheme.primary,
                                         fontSize = 11.sp, modifier = Modifier.clickable {

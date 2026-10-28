@@ -164,7 +164,8 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             }
                         }
                         Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
-                            else "#" + d.optInt("my_rank"))
+                            else "#" + d.optInt("my_rank") +
+                                DesktopContestRankMovement.label(d,"my_rank_delta"))
                         if (own.isNotBlank()) Text("Your application: " + d.optString("my_entry_status"))
                         if (voted.isNotBlank()) Text("You've already used your free vote.")
                     }
@@ -221,7 +222,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                             entry.optString("username"), 48.dp)
                                         Text("@" + entry.optString("username"),
                                             color = Color.White, maxLines = 1)
-                                        Text(entry.optInt("votes").toString() + " votes",
+                                        Text(entry.optInt("votes").toString() + " votes" + DesktopContestRankMovement.label(entry),
                                             color = Color(0xFF9ACFFF), fontSize = 11.sp)
                                     }
                                 }
@@ -513,5 +514,17 @@ private fun DesktopContestAvatar(url: String, username: String, size: androidx.c
             contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         ) else Text(username.take(1).uppercase().ifBlank { "B" }, color = Color.White,
             fontWeight = FontWeight.Bold)
+    }
+}
+
+private object DesktopContestRankMovement {
+    fun label(entry: JSONObject, field: String = "rank_delta"): String {
+        if (!entry.has(field) || entry.isNull(field)) return ""
+        val delta = entry.optInt(field)
+        return when {
+            delta > 0 -> " ↑" + delta
+            delta < 0 -> " ↓" + (-delta)
+            else -> " —"
+        }
     }
 }
