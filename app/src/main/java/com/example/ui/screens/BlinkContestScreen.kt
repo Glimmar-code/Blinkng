@@ -2,6 +2,12 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
+import com.example.data.supabase.BlinkContestMediaUpload
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -37,6 +43,8 @@ fun BlinkContestScreen(
     onTargetHandled: () -> Unit = {}
 ) {
     val api = remember { BlinkContestService() }
+    val mediaUpload = remember { BlinkContestMediaUpload() }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -44,6 +52,10 @@ fun BlinkContestScreen(
     var tab by remember { mutableStateOf("Ongoing") }
     var statement by remember { mutableStateOf("") }
     var mediaUrl by remember { mutableStateOf("") }
+    var mediaChoice by remember { mutableStateOf<Uri?>(null) }
+    val mediaPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { selected -> mediaChoice = selected }
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -205,21 +217,49 @@ fun BlinkContestScreen(
                                 label = { Text("Why should people vote for you?") },
                                 minLines = 3, modifier = Modifier.fillMaxWidth()
                             )
+                            Text("Your entry media", fontWeight = FontWeight.SemiBold)
+                            OutlinedButton(
+                                onClick = {
+                                    mediaPicker.launch(PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (mediaChoice == null) "Choose a photo or video"
+                                else "Change selected media") }
+                            mediaChoice?.let { selected ->
+                                val mime = context.contentResolver.getType(selected).orEmpty()
+                                if (mime.startsWith("image/")) AsyncImage(
+                                    model = selected, contentDescription = "Selected contest photo",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxWidth().height(160.dp)
+                                ) else Text("Selected video · Review before applying",
+                                    color = MaterialTheme.colorScheme.primary)
+                                TextButton(onClick = { mediaChoice = null }) { Text("Remove attachment") }
+                            }
                             OutlinedTextField(
                                 value = mediaUrl, onValueChange = { mediaUrl = it },
-                                label = { Text("Optional entry photo/Reel HTTPS URL") },
-                                modifier = Modifier.fillMaxWidth()
+                                label = { Text("Or paste an existing image/Reel HTTPS URL") },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = mediaChoice == null
                             )
+                            Text("JPG/PNG/WebP up to 8 MB, or MP4 up to 25 MB. " +
+                                "Your entry media may be viewed publicly after approval.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp)
                             Button(
                                 onClick = {
                                     busy = true; error = null; notice = null
                                     scope.launch {
-                                        api.apply(c.optString("id"), statement, mediaUrl)
-                                            .onSuccess {
-                                                notice = "Application submitted: " + it.optString("status")
-                                                revision++
-                                            }
-                                            .onFailure { error = it.message }
+                                        runCatching {
+                                            val url = mediaChoice?.let {
+                                                mediaUpload.upload(context, it).getOrThrow()
+                                            } ?: mediaUrl
+                                            api.apply(c.optString("id"), statement, url).getOrThrow()
+                                        }.onSuccess {
+                                            notice = "Application submitted: " + it.optString("status")
+                                            mediaChoice = null
+                                            revision++
+                                        }.onFailure { error = it.message }
                                         busy = false
                                     }
                                 },
