@@ -97,6 +97,7 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkTextSecondary
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.discovery.BlinkBirthdayPolicy
 import com.blinkng.shared.BlinkPhonePolicy
 import com.example.auth.BlinkPhoneVerificationClient
 import kotlinx.coroutines.delay
@@ -587,7 +588,7 @@ fun AccountOnboardingScreen(
                         )
                         Spacer(Modifier.height(18.dp))
 
-                        val birthdayValid = BlinkOnboardingPolicy.validOptionalBirthday(birthDate)
+                        val birthdayValid = BlinkBirthdayPolicy.isValid(birthDate)
                         if (!birthdayValid) {
                             Text(
                                 "Enter a real date in YYYY-MM-DD format, not a future date.",
