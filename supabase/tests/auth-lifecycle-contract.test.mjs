@@ -12,6 +12,10 @@ const recoveryParser = android('auth/PasswordRecoveryClient.kt');
 test('Google OAuth callback does not strand recreated Activity on an empty screen', () => {
   assert.match(google, /if \(savedInstanceState == null\) \{[\s\S]*startNativeGoogleSignIn\(\)/);
   assert.match(google, /\} else \{[\s\S]*?failAndReturnToSignIn\([\s\S]*?Google sign-in was interrupted/);
+  assert.match(google, /setContent \{/);
+  assert.match(google, /BlinkTheme \{/);
+  assert.match(google, /CircularProgressIndicator\(color = Color.White\)/);
+  assert.match(google, /Connecting to Google/);
   assert.match(google, /AccountSessionStore\.setSignInRequired\(applicationContext, !hasDurableSession\)/);
   assert.match(google, /if \(isFinishing\) GoogleAuthLaunchGate\.end\(\)/);
 });
