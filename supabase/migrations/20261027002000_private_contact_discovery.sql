@@ -1,6 +1,7 @@
 -- destructive-change-reviewed: deletes in replace_imports affect only the invoking user's new
 -- contact HMAC records; named trigger/permission replacements are scoped to BLINK contact objects.
--- No existing profiles, chats, historical notifications or payment rows are deleted.
+-- No profiles, chats, payment rows or unrelated notifications are deleted.
+-- User-requested deletion removes only contact-derived notifications.
 -- rollback-plan: disable blink-contact-discovery Edge Function first; remove the new
 -- blink_contact_* triggers, service-only RPCs, private index/import/alert tables and
 -- owner-only contact settings. This loses only optional contact matching data, not profiles.
@@ -64,7 +65,8 @@ revoke all on private.blink_contact_join_alerts from public,anon,authenticated;
 grant all on private.blink_contact_join_alerts to service_role;
 
 -- Privileged entry points can ONLY be used by service_role; Edge verifies the end user's
--- JWT, verified phone number and express contact consent before invoking them.
+-- JWT and explicit reciprocal contact consent before invoking them.
+-- Phone numbers are not ownership-verified and must never imply identity proof.
 create or replace function public.blink_contact_replace_imports(p_owner uuid,p_hashes text[])
 returns integer language plpgsql security definer set search_path=''
 as $$
@@ -100,7 +102,7 @@ end $$;
 revoke all on function public.blink_contact_replace_imports(uuid,text[]) from public,anon,authenticated;
 grant execute on function public.blink_contact_replace_imports(uuid,text[]) to service_role;
 
--- Join alerts require a new, verified, discoverable member and a previously synced contact.
+-- Join alerts require a recent discoverable member and reciprocal opted-in imports.
 create or replace function private.blink_contact_notify_join(p_joiner uuid,p_hmac text)
 returns integer language plpgsql security definer set search_path=''
 as $$
