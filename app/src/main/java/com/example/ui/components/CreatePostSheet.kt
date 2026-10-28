@@ -695,12 +695,12 @@ fun CreatePostSheet(
         isSubmitting = isSubmitting
     )
 
-    fun scheduledPreviewPost(): FeedPost {
+    fun scheduledPreviewPost(publishAtMillis: Long = System.currentTimeMillis()): FeedPost {
         val poll = if (pollValid) {
             PostPoll(
                 question = pollQuestion.trim(),
                 options = validPollOptions.map { PollOption(UUID.randomUUID().toString(), it) },
-                expiresAtMillis = System.currentTimeMillis() + pollDurationHours * 3_600_000L
+                expiresAtMillis = publishAtMillis + pollDurationHours * 3_600_000L
             )
         } else null
         val style = selectedTextStyle.takeIf {
@@ -757,7 +757,7 @@ fun CreatePostSheet(
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a"))
         showScheduleDialog = false
-        onSchedulePost(scheduledPreviewPost(), timeMillis, formatted)
+        onSchedulePost(scheduledPreviewPost(timeMillis), timeMillis, formatted)
     }
 
     fun scheduleAfter(delayMillis: Long) {
@@ -874,6 +874,10 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
+        if (videoClips.isNotEmpty() || combiningClips) {
+            Toast.makeText(context, "Combine your video clips before saving this Reel.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
             Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
             return
