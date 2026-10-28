@@ -1857,7 +1857,7 @@ private fun PremiumHomeFeed(
                                                     }
                                                 },
                                                 coinGiftingEnabled = true,
-                                                trackExposure = false,
+                                                trackExposure = isScreenActive,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
                                             )

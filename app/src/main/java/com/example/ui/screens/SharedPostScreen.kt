@@ -151,7 +151,7 @@ fun SharedPostScreen(
                         isAuthor = post.author.equals(currentUsername, ignoreCase = true),
                         onDelete = onDelete,
                         onVotePoll = onVotePoll,
-                        trackExposure = false,
+                        trackExposure = true,
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Text(

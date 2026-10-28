@@ -774,7 +774,9 @@ private fun ReelsContent(
                                 pendingLaunchReelId = null
                                 pendingLaunchPositionMs = 0L
                             }
-                        }
+                        },
+                        // Only the current visible page counts; adjacent prefetched pages do not.
+                        trackExposure = isScreenActive && index == pager.currentPage,
                     )
                 }
 
@@ -824,7 +826,7 @@ private fun ReelsContent(
                         onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = 0L,
                         onInitialPositionConsumed = {},
-                        trackExposure = false,
+                        trackExposure = isScreenActive && index == pager.currentPage,
                     )
                 }
 

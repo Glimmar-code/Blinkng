@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-private const val VIEW_REFLECTION_DELAY_MS = 30_000L
+internal const val VIEW_REFLECTION_DELAY_MS = 120_000L
 private const val WINDOW_NETWORK_SETTLE_MS = 1_500L
 private const val LATE_RETRY_COALESCE_MS = 250L
 
@@ -51,7 +51,7 @@ private class DeferredReveal(
  * One app-wide view pipeline for posts and reels.
  *
  * Every genuine exposure is written immediately with its own idempotency UUID. The first
- * exposure for one content item opens a single 30-second presentation window. Additional
+ * exposure for one content item opens a single 120-second presentation window. Additional
  * exposures during that window never restart the timer and never advance the visible counter.
  */
 object ContentViewCoordinator {
