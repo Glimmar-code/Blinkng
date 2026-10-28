@@ -267,10 +267,10 @@ fun BlinkUniversalPhotoEditor(
                     Icon(Icons.Default.Redo, "Redo edit", tint = Color.White)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("BLINK PHOTO",color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
+                Text("Edit Photo",color=Color.White,fontWeight=FontWeight.Bold,fontSize=16.sp)
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick={commit()},enabled=!busy) {
-                    Text(if(busy) "SAVING" else "DONE",color=Color(0xFF38ADFF),
+                    Text(if(busy) "SAVING" else "DONE",color=Color(0xFF8D85FF),
                         fontSize=13.sp,fontWeight=FontWeight.Bold)
                 }
             }
@@ -387,7 +387,7 @@ fun BlinkUniversalPhotoEditor(
                 photoControls.forEach { (name,icon) ->
                     TextButton(onClick={tool=name},enabled=!busy,
                         colors=ButtonDefaults.textButtonColors(
-                            contentColor=if(tool==name) Color(0xFF46B7FF) else Color.LightGray)) {
+                            contentColor=if(tool==name) Color(0xFF8D85FF) else Color.LightGray)) {
                         Icon(icon,contentDescription=null,modifier=Modifier.size(18.dp))
                         Spacer(Modifier.width(3.dp))
                         Text(name,fontSize=11.sp)
