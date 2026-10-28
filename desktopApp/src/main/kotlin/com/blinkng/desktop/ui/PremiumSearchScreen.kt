@@ -987,6 +987,7 @@ private fun DesktopPremiumContent(post: DesktopFeedPost, state: DesktopAppState)
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         DesktopFeedPostCard(
             post = visible,
+            viewClient = state.client,
             onLike = {
                 val before = visible
                 val liked = !before.isLiked

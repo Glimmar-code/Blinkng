@@ -581,8 +581,10 @@ fun DesktopUserProfileDialog(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     row.forEach { reel ->
+                                        val visibleViews = desktopDisplayedViewCount(reel.id, reel.viewCount)
                                         Surface(
                                             modifier = Modifier.weight(1f).aspectRatio(.72f)
+                                                .trackDesktopContentExposure(state.client, reel.id, visibleViews)
                                                 .clickable {
                                                     runCatching {
                                                         java.awt.Desktop.getDesktop().browse(
@@ -632,7 +634,7 @@ fun DesktopUserProfileDialog(
                                                     fontSize = 11.sp
                                                 )
                                                 Text(
-                                                    "${reel.viewCount.coerceAtLeast(0)} views",
+                                                    "${visibleViews.coerceAtLeast(0)} views",
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontSize = 10.sp
                                                 )
@@ -645,8 +647,9 @@ fun DesktopUserProfileDialog(
                             }
                         } else {
                             items(filteredContent, key = { it.id }) { post ->
+                                val views = desktopDisplayedViewCount(post.id, post.viewCount)
                                 Surface(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().trackDesktopContentExposure(state.client, post.id, views),
                                     shape = RoundedCornerShape(18.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
                                 ) {
@@ -665,7 +668,7 @@ fun DesktopUserProfileDialog(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         Text(
-                                            "${post.viewCount} views • ${post.likeCount} likes • ${post.commentCount} comments • ${post.shareCount} shares",
+                                            "${views} views • ${post.likeCount} likes • ${post.commentCount} comments • ${post.shareCount} shares",
                                             fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )

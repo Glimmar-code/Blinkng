@@ -33,6 +33,14 @@ class BlinkDropsPolicyTest {
     }
 
     @Test
+    fun anEmptyFollowerAudienceCannotBeFunded() {
+        assertFalse(BlinkDropsPolicy.hasEligibleRecipients(-1))
+        assertFalse(BlinkDropsPolicy.hasEligibleRecipients(0))
+        assertTrue(BlinkDropsPolicy.hasEligibleRecipients(1))
+        assertTrue(BlinkDropsPolicy.hasEligibleRecipients(100))
+    }
+
+    @Test
     fun supportedActionsMatchExistingBlinkSurfaces() {
         assertEquals(
             setOf(BlinkDropAction.LIKE, BlinkDropAction.COMMENT, BlinkDropAction.REPOST),
