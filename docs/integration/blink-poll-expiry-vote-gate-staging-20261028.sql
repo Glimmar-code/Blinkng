@@ -1,3 +1,9 @@
+-- DEPLOYMENT NOTE 2026-10-28: A vetted security-invoker version of this guard
+-- is now live in BLINK Supabase, migration 20261028200903.
+-- See supabase/migrations/20261028200903_blink_poll_vote_expiration_guard_20261028.sql
+-- for the actual deployed definition. This draft remains a historical staging reference.
+-- The real-account end-to-end vote test remains pending.
+
 -- STAGING ONLY: DO NOT RUN AGAINST PRODUCTION WITHOUT FREE ISOLATED
 -- PostgreSQL role tests and latest-head Android/Windows integration results.
 -- Existing public.polls already has expires_at and allows_multiple columns.
