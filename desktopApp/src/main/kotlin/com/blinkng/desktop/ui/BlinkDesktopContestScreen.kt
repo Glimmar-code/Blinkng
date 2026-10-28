@@ -182,7 +182,17 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
         }
     }
     sharingCandidate?.let { candidate ->
-        BlinkDesktopContestShareDialog(candidate, onDismiss = { sharingCandidate = null })
+        BlinkDesktopContestShareDialog(
+            candidate, onDismiss = { sharingCandidate = null },
+            onShareRecorded = { channel ->
+                scope.launch {
+                    runCatching {
+                        api.contestRecordShare(candidate.optString("contest_id"),
+                            candidate.optString("id"), channel)
+                    }
+                }
+            }
+        )
     }
 }
 

@@ -117,7 +117,11 @@ private fun buildContestDesktopPng(candidate: JSONObject): BufferedImage {
 }
 
 @Composable
-fun BlinkDesktopContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
+fun BlinkDesktopContestShareDialog(
+    candidate: JSONObject,
+    onDismiss: () -> Unit,
+    onShareRecorded: (String) -> Unit = {}
+) {
     val contestId = candidate.optString("contest_id")
     val id = candidate.optString("id")
     if (!BlinkContestShare.isValid(contestId, id)) return
@@ -152,6 +156,7 @@ fun BlinkDesktopContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit)
                     try {
                         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(caption), null)
                         message = "Voting message copied. Paste it into WhatsApp or any other app."
+                        onShareRecorded("copy")
                     } catch (_: Exception) { message = "Clipboard unavailable." }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Copy voting message and link") }
                 OutlinedButton(onClick = {
@@ -166,6 +171,7 @@ fun BlinkDesktopContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit)
                                 else File(chosen.parentFile, chosen.name + ".png")
                             check(ImageIO.write(buildContestDesktopPng(candidate), "png", file))
                             message = "Flyer saved. Share the PNG together with the copied voting link."
+                            onShareRecorded("desktop")
                         }
                     } catch (e: Exception) {
                         message = "Couldn't save flyer: " + (e.message ?: "Unknown error")

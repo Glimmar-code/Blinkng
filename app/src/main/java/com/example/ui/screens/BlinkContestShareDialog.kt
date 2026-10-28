@@ -38,6 +38,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import com.example.data.supabase.BlinkContestService
+import kotlinx.coroutines.launch
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -191,6 +193,8 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
 @Composable
 fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val eventApi = remember { BlinkContestService() }
     val id = candidate.optString("id")
     val contestId = candidate.optString("contest_id")
     if (!BlinkContestShare.isValid(contestId, id)) return
@@ -248,6 +252,7 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(Intent.createChooser(send, "Share BLINK Contest flyer"))
+                            scope.launch { eventApi.recordShare(contestId, id, "native") }
                         } catch (error: Exception) {
                             Toast.makeText(context, "Couldn't share flyer. Copy the voting link instead.",
                                 Toast.LENGTH_LONG).show()
@@ -260,6 +265,7 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
                         context.getSystemService(ClipboardManager::class.java)
                             ?.setPrimaryClip(ClipData.newPlainText("BLINK contestant voting link", caption))
                         Toast.makeText(context, "Voting message copied", Toast.LENGTH_SHORT).show()
+                        scope.launch { eventApi.recordShare(contestId, id, "copy") }
                     }
                 ) { Text("Copy voting message") }
                 TextButton(onClick = onDismiss) { Text("Close") }
