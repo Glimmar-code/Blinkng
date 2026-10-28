@@ -4,6 +4,7 @@
 -- using the Supabase CLI. No production writes during this audit.
 -- One public post is counted once per hashtag. Caller must be authenticated.
 -- Sensitive/private audience posts and mutually blocked creators are excluded.
+-- Expired verification never produces an active verified creator badge.
 begin;
 
 create or replace function public.blink_trending_tags_30d(
@@ -105,7 +106,8 @@ as $sql$
     )
  )
  select p.id,p.username,p.full_name,p.avatar_url,p.university,
-   coalesce(p.is_verified,false),
+   (coalesce(p.is_verified,false) and
+    (p.verification_expires_at is null or p.verification_expires_at > now())) as is_verified,
    round(sum(least(v.views,10000)*0.01
      +least(v.likes,200)*2
      +least(v.comments,100)*3
@@ -116,7 +118,8 @@ as $sql$
    and coalesce(p.onboarding_completed,false) is true
    and (nullif(btrim(p_university),'') is null
         or lower(p.university)=lower(btrim(p_university)))
- group by p.id,p.username,p.full_name,p.avatar_url,p.university,p.is_verified
+ group by p.id,p.username,p.full_name,p.avatar_url,p.university,
+          p.is_verified,p.verification_expires_at
  order by trend_score desc,post_count desc,p.username
  limit least(greatest(coalesce(p_limit,3),1),3)
 $sql$;
