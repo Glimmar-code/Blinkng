@@ -48,7 +48,9 @@ class NewMemberTests(unittest.TestCase):
         self.assertIn("READ_CONTACTS", app)
         self.assertIn("numbers.isEmpty()", app)
         self.assertIn("RequestPermission()", card)
-        self.assertIn("if (!it.syncEnabled) people = emptyList()", card)
+        self.assertIn("if (!it.syncEnabled) {", card)
+        self.assertIn("people = emptyList()", card)
+        self.assertIn("}.onFailure { problem =", card)
         self.assertNotIn("READ_CALL_LOG", app)
 
     def test_returning_member_can_verify_phone_before_enabling_discovery(self):

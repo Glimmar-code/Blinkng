@@ -187,7 +187,9 @@ internal fun ConnectReferenceLanding(
     val following by FollowStateStore.followingIds.collectAsState()
     var showAllPeople by rememberSaveable(accountId) { mutableStateOf(false) }
     var showAllUpdates by rememberSaveable(accountId) { mutableStateOf(false) }
-    BackHandler(showAllPeople) { showAllPeople = false }
+    BackHandler(showAllPeople || showAllUpdates) {
+        if (showAllPeople) showAllPeople = false else showAllUpdates = false
+    }
 
     val sameCampus = remember(profiles, campus, accountId) {
         profiles.filter { it.id != accountId && it.username.isNotBlank() &&
@@ -213,7 +215,7 @@ internal fun ConnectReferenceLanding(
                     universityByUsername[(post.authorUsername.ifBlank { post.author }).trim()
                         .removePrefix("@").lowercase()]?.equals(campus, true) == true ||
                     (post.location?.contains(campus, ignoreCase = true) == true))
-        }.take(8)
+        }
     }
     var communities by remember(accountId) { mutableStateOf<List<BlinkCommunity>>(emptyList()) }
     var communitiesLoading by remember(accountId) { mutableStateOf(true) }
@@ -330,7 +332,7 @@ internal fun ConnectReferenceLanding(
             if (campusPosts.isEmpty()) {
                 item { ConnectReferenceEmpty("No campus updates to show yet.", onOpenAllPosts, "Explore posts") }
             } else {
-                items(campusPosts.take(if (showAllUpdates) 8 else 1), key = { "campus_post_" + it.id }) { post ->
+                items(if (showAllUpdates) campusPosts else campusPosts.take(1), key = { "campus_post_" + it.id }) { post ->
                     ConnectReferencePostCard(
                         post = post,
                         onProfile = { onProfile(post.authorUsername.ifBlank { post.author }) },
