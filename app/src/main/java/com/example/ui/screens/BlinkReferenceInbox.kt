@@ -28,7 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
@@ -118,8 +117,10 @@ internal fun BlinkReferenceInbox(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onMyProfileClick)
-                        .testTag("inbox_my_avatar")
+                    modifier = Modifier.size(48.dp)
+                        .clickable(role = Role.Button, onClick = onMyProfileClick)
+                        .testTag("inbox_my_avatar"),
+                    contentAlignment = Alignment.Center
                 ) {
                     InboxAvatar(myAvatar, myName, if (compactHeader) 36.dp else 40.dp, bg)
                     if (isConnected) {
@@ -141,18 +142,14 @@ internal fun BlinkReferenceInbox(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                IconButton(onClick = onToggleSearch, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_search")) {
+                IconButton(onClick = onToggleSearch, modifier = Modifier.size(48.dp).testTag("inbox_search")) {
                     Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
                 }
-                // Keep the existing Items shortcut; the New Message action is additive.
-                IconButton(onClick = onGameClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_game")) {
-                    Icon(Icons.Outlined.GridView, contentDescription = "Open Items", tint = primary, modifier = Modifier.size(25.dp))
-                }
-                IconButton(onClick = onComposeMessage, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_compose")) {
-                    Icon(Icons.Default.Edit, contentDescription = "New message", tint = primary, modifier = Modifier.size(23.dp))
+                IconButton(onClick = onGameClick, modifier = Modifier.size(48.dp).testTag("inbox_game")) {
+                    Icon(Icons.Outlined.SportsEsports, contentDescription = "Open games", tint = primary, modifier = Modifier.size(27.dp))
                 }
                 Box {
-                    IconButton(onClick = onNotificationsClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_notifications")) {
+                    IconButton(onClick = onNotificationsClick, modifier = Modifier.size(48.dp).testTag("inbox_notifications")) {
                         Icon(Icons.Outlined.NotificationsNone, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
                     }
                     if (hasUnreadNotifications) {
@@ -175,6 +172,9 @@ internal fun BlinkReferenceInbox(
                 TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
                     Text(if (showAll) "Less" else "More", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onComposeMessage, modifier = Modifier.size(48.dp).testTag("inbox_compose")) {
+                    Icon(Icons.Default.Edit, contentDescription = "New message", tint = primary, modifier = Modifier.size(23.dp))
                 }
             }
 

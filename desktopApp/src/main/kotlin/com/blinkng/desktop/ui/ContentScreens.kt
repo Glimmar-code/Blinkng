@@ -92,6 +92,7 @@ import com.blinkng.desktop.data.DesktopConnectApplication
 import com.blinkng.desktop.data.DesktopConnectInbox
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
+import com.blinkng.desktop.data.DesktopSupabaseClient
 import com.blinkng.desktop.data.DesktopFeaturedReel
 import com.blinkng.desktop.data.featuredReels12h
 import com.blinkng.desktop.data.DesktopInventoryItem
@@ -701,6 +702,7 @@ fun HomeScreen(
         items(visiblePosts, key = { it.id }) { post ->
             DesktopFeedPostCard(
                 post = post,
+                viewClient = state.client,
                 onLike = {
                     val beforeLiked = post.isLiked
                     val beforeCount = post.likeCount
@@ -849,6 +851,7 @@ private fun DesktopPostDetailsDialog(
             ) {
                 DesktopFeedPostCard(
                     post = post,
+                    viewClient = state.client,
                     onLike = onLike,
                     onBookmark = onBookmark,
                     onRepost = onRepost,
@@ -987,9 +990,14 @@ fun ReelsScreen(state: DesktopAppState) {
         }
         if (featured.isNotEmpty()) item(key = "top_reels_carousel") {
             val top = featured[featuredIndex.coerceIn(0, featured.lastIndex)]
+            val topPost = reels.firstOrNull { it.id == top.id }
             Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF2C113E)) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(190.dp).clickable {
+                    modifier = Modifier.fillMaxWidth().height(190.dp)
+                        .then(if (topPost != null) Modifier.trackDesktopContentExposure(
+                            state.client, top.id, desktopDisplayedViewCount(top.id, topPost.viewCount)
+                        ) else Modifier)
+                        .clickable {
                         runCatching {
                             Desktop.getDesktop().browse(URI(DesktopShareLinkManager.generate(top.id, true)))
                         }
@@ -1039,7 +1047,11 @@ fun ReelsScreen(state: DesktopAppState) {
         if (loading && reels.isEmpty()) item { LoadingRow() }
         if (!loading && reels.isEmpty()) item { EmptyState("No reels are available yet.") }
         items(reels, key = { it.id }) { reel ->
-            Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp) {
+            val displayedViewCount = desktopDisplayedViewCount(reel.id, reel.viewCount)
+            Surface(
+                modifier = Modifier.trackDesktopContentExposure(state.client, reel.id, displayedViewCount),
+                shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     VerifiedName(reel.authorName, reel.authorVerified)
                     reel.caption?.takeIf(String::isNotBlank)?.let {
@@ -1061,7 +1073,7 @@ fun ReelsScreen(state: DesktopAppState) {
                             )
                         }
                     }
-                    Text("${reel.viewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${displayedViewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
                         onClick = { reelToShare = reel },
                     ) {
@@ -1183,6 +1195,7 @@ fun SearchScreen(state: DesktopAppState) {
             items(results.posts, key = { "post-${it.id}" }) { post ->
                 DesktopFeedPostCard(
                     post = post,
+                    viewClient = state.client,
                     onLike = {
                         val beforeLiked = post.isLiked
                         val beforeCount = post.likeCount
@@ -1481,10 +1494,16 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var sellerPickup by remember { mutableStateOf(true) }
     var marketDashboard by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var marketOffers by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
-    var marketOrders by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
-    var disputeTarget by remember { mutableStateOf<String?>(null) }
-    var disputeReason by remember { mutableStateOf("") }
-    var disputeDetails by remember { mutableStateOf("") }
+    var marketOrders by remember(state.profile?.id) { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var marketOrdersLoading by remember(state.profile?.id) { mutableStateOf(true) }
+    var marketOrdersError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
+    var marketOrdersExpanded by remember(state.profile?.id) { mutableStateOf(false) }
+    var disputeTarget by remember(state.profile?.id) { mutableStateOf<String?>(null) }
+    var disputeReason by remember(state.profile?.id) { mutableStateOf("") }
+    var disputeDetails by remember(state.profile?.id) { mutableStateOf("") }
+    var disputeBusy by remember(state.profile?.id) { mutableStateOf(false) }
+    var disputeError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
+    var disputeFeedback by remember(state.profile?.id) { mutableStateOf<String?>(null) }
 
     var marketOfferAmounts by remember { mutableStateOf<Map<String,String>>(emptyMap()) }
     var marketOfferError by remember { mutableStateOf<String?>(null) }
@@ -1513,6 +1532,18 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketVerifiedOnly by remember { mutableStateOf(false) }
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    suspend fun reloadMarketOrders() {
+        marketOrdersLoading = true
+        runCatching { state.client.fetchMyMarketOrders() }
+            .onSuccess {
+                marketOrders = it
+                marketOrdersError = null
+            }
+            .onFailure {
+                marketOrdersError = "Could not load orders. Check your connection and retry."
+            }
+        marketOrdersLoading = false
+    }
     marketImageToEdit?.let { source ->
         DesktopUniversalPhotoEditor(
             sourceFile = source,
@@ -1523,14 +1554,14 @@ fun MarketplaceScreen(state: DesktopAppState) {
             onDismiss = { marketImageToEdit = null }
         )
     }
-    LaunchedEffect(state.client) {
+    LaunchedEffect(state.client, state.profile?.id) {
         marketCheckoutEnabled = runCatching {
             DesktopRpcActions(state.client).getEconomyStatus().optBoolean("cash_checkout_enabled", false)
         }.getOrDefault(false)
         sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
         if (sellerReady) marketDashboard = runCatching { state.client.getMyMarketDashboard() }.getOrNull()
         marketOffers = runCatching { state.client.fetchMarketOffers() }.getOrDefault(emptyList())
-        marketOrders = runCatching { state.client.fetchMyMarketOrders() }.getOrDefault(emptyList())
+        if (state.profile != null) reloadMarketOrders() else marketOrdersLoading = false
     }
 
     LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, marketMyCampusOnly, refreshRevision) {
@@ -1662,20 +1693,43 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 }
             }
         }
-        if (marketOrders.isNotEmpty()) {
+        if (state.profile != null) {
             item {
-                Card(modifier=Modifier.fillMaxWidth()) {
-                    Column(modifier=Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text("My Orders & Buyer Protection",fontWeight=FontWeight.Bold)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("My Orders & Buyer Protection", fontWeight = FontWeight.Bold)
                         Text("BLINK does not hold payments or guarantee transactions.",
-                            color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        marketOrders.take(12).forEach { order ->
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (marketOrdersLoading) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text("Loading orders…")
+                        }
+                        marketOrdersError?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = { scope.launch { reloadMarketOrders() } },
+                                enabled = !marketOrdersLoading) { Text("Retry orders") }
+                        }
+                        disputeFeedback?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                        if (!marketOrdersLoading && marketOrdersError == null && marketOrders.isEmpty()) {
+                            Text("No Market orders yet. Your orders will appear here when you buy.")
+                        }
+                        val visibleOrders = if (marketOrdersExpanded) marketOrders else marketOrders.take(12)
+                        visibleOrders.forEach { order ->
                             Text("₦${order.optLong("total_price")} · ${order.optString("status")}",
-                                fontWeight=FontWeight.SemiBold)
-                            TextButton(onClick={disputeTarget=order.optString("id")}) {
+                                fontWeight = FontWeight.SemiBold)
+                            TextButton(onClick = {
+                                disputeTarget = order.optString("id")
+                                disputeError = null
+                            }, enabled = order.optString("id").isNotBlank()) {
                                 Text("Open a Dispute")
                             }
                             HorizontalDivider()
+                        }
+                        if (marketOrders.size > 12) {
+                            TextButton(onClick = { marketOrdersExpanded = !marketOrdersExpanded }) {
+                                Text(if (marketOrdersExpanded) "Show fewer orders"
+                                    else "View all ${marketOrders.size} orders")
+                            }
                         }
                     }
                 }
@@ -1684,34 +1738,51 @@ fun MarketplaceScreen(state: DesktopAppState) {
         disputeTarget?.let { orderId ->
             item {
                 AlertDialog(
-                    onDismissRequest={disputeTarget=null},
-                    title={Text("Order Dispute")},
-                    text={
-                        Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    onDismissRequest = { if (!disputeBusy) disputeTarget = null },
+                    title = { Text("Order Dispute") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(disputeReason,
-                                {disputeReason=it.take(200)},label={Text("Reason")})
+                                { disputeReason = it.take(200) }, label = { Text("Reason") },
+                                enabled = !disputeBusy)
                             OutlinedTextField(disputeDetails,
-                                {disputeDetails=it.take(2000)},
-                                label={Text("Explain what happened")})
+                                { disputeDetails = it.take(2000) },
+                                label = { Text("Explain what happened") },
+                                enabled = !disputeBusy)
                             Text("BLINK will review your complaint. No refund or escrow is promised.")
+                            disputeError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            if (disputeBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
                         }
                     },
-                    confirmButton={
+                    confirmButton = {
                         TextButton(
-                            enabled=disputeReason.trim().length>=8,
-                            onClick={
-                                disputeTarget=null
+                            enabled = !disputeBusy && disputeReason.trim().length >= 8,
+                            onClick = {
                                 scope.launch {
-                                    runCatching { state.client.openMarketDispute(orderId,disputeReason,disputeDetails) }
-                                        .onSuccess { marketOfferError=if(it) "Dispute submitted." else "Dispute rejected." }
-                                        .onFailure { marketOfferError=it.message }
-                                    disputeReason=""
-                                    disputeDetails=""
+                                    disputeBusy = true
+                                    disputeError = null
+                                    val submitted = runCatching {
+                                        state.client.openMarketDispute(orderId, disputeReason.trim(), disputeDetails.trim())
+                                    }.getOrDefault(false)
+                                    if (submitted) {
+                                        disputeTarget = null
+                                        disputeReason = ""
+                                        disputeDetails = ""
+                                        disputeFeedback = "Dispute submitted for review."
+                                        reloadMarketOrders()
+                                    } else {
+                                        disputeError = "Could not submit this dispute. Check the reason and retry."
+                                    }
+                                    disputeBusy = false
                                 }
                             }
-                        ) { Text("Submit") }
+                        ) { Text(if (disputeBusy) "Submitting…" else "Submit") }
                     },
-                    dismissButton={TextButton(onClick={disputeTarget=null}){Text("Cancel")}}
+                    dismissButton = {
+                        TextButton(onClick = { disputeTarget = null }, enabled = !disputeBusy) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
         }
@@ -2117,7 +2188,7 @@ private fun DesktopConnectCampusOverview(
             Text("No recent campus posts are available.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            updates.take(if (showAllUpdates) 8 else 1).forEach { post ->
+            (if (showAllUpdates) updates else updates.take(1)).forEach { post ->
                 Surface(shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .36f)) {
                     Column(Modifier.fillMaxWidth().padding(14.dp),
@@ -2201,6 +2272,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var contactMatches by remember(state.profile?.id) { mutableStateOf<List<Pair<String,String>>>(emptyList()) }
     var contactBusy by remember(state.profile?.id) { mutableStateOf(false) }
     var contactError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
+    var contactReady by remember(state.profile?.id) { mutableStateOf(false) }
     var verifiedContactPhone by remember(state.profile?.id) { mutableStateOf<Boolean?>(null) }
     var contactPhoneNumber by remember(state.profile?.id) { mutableStateOf("") }
     var contactPhoneCode by remember(state.profile?.id) { mutableStateOf("") }
@@ -2208,13 +2280,13 @@ fun ConnectScreen(state: DesktopAppState) {
     var contactPhoneBusy by remember(state.profile?.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun loadContactSnapshot(reply: JSONObject) {
+    fun loadContactSnapshot(reply: JSONObject, replaceMatches: Boolean = true) {
         val settings = reply.optJSONObject("settings")
         contactSync = settings?.optBoolean("sync_enabled") == true
         contactDiscoverable = settings?.optBoolean("discoverable") == true
         contactAlerts = settings?.optBoolean("join_alerts") == true
         val matches = reply.optJSONArray("matches")
-        contactMatches = if (matches == null) emptyList() else (0 until matches.length()).mapNotNull { n ->
+        if (replaceMatches) contactMatches = if (matches == null) emptyList() else (0 until matches.length()).mapNotNull { n ->
             matches.optJSONObject(n)?.let { item ->
                 item.optString("username").takeIf(String::isNotBlank)?.let { username ->
                     username to item.optString("full_name").ifBlank { username }
@@ -2227,22 +2299,36 @@ fun ConnectScreen(state: DesktopAppState) {
         scope.launch {
             contactBusy = true
             runCatching { state.client.setContactDiscovery(syncEnabled, discoverable, alerts) }
-                .onSuccess { reply -> loadContactSnapshot(JSONObject().put("settings", reply.optJSONObject("settings")))
+                .onSuccess { reply ->
+                    loadContactSnapshot(JSONObject().put("settings", reply.optJSONObject("settings")), replaceMatches = false)
                     if (!syncEnabled) contactMatches = emptyList()
-                    contactError = null }
+                    contactError = null
+                }
                 .onFailure { contactError = it.message ?: "Contact preferences could not be updated." }
             contactBusy = false
         }
     }
 
+    suspend fun refreshContacts() {
+        contactBusy = true
+        runCatching { state.client.contactDiscovery() }
+            .onSuccess {
+                loadContactSnapshot(it)
+                contactReady = true
+                contactError = null
+            }
+            .onFailure {
+                contactReady = false
+                contactError = it.message ?: "Contact discovery is unavailable."
+            }
+        contactBusy = false
+    }
     LaunchedEffect(state.profile?.id) {
         if (state.profile == null) return@LaunchedEffect
         runCatching { state.client.isOnboardingPhoneVerified() }
             .onSuccess { verifiedContactPhone = it }
             .onFailure { verifiedContactPhone = null }
-        runCatching { state.client.contactDiscovery() }
-            .onSuccess { loadContactSnapshot(it) }
-            .onFailure { contactError = "Contact discovery is unavailable." }
+        refreshContacts()
     }
 
     val directoryOptions = remember { listOf(
@@ -2536,17 +2622,17 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
                         } else Text("Phone verified for contact discovery", fontSize = 12.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactSync, enabled = !contactBusy,
+                            Switch(checked = contactSync, enabled = contactReady && !contactBusy,
                                 onCheckedChange = { changeContacts(it, contactDiscoverable, contactAlerts && it) })
                             Text("Contact sync", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactDiscoverable, enabled = !contactBusy,
+                            Switch(checked = contactDiscoverable, enabled = contactReady && !contactBusy,
                                 onCheckedChange = { changeContacts(contactSync, it, contactAlerts) })
                             Text("Let my contacts find me", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactAlerts, enabled = !contactBusy && contactSync,
+                            Switch(checked = contactAlerts, enabled = contactReady && !contactBusy && contactSync,
                                 onCheckedChange = { changeContacts(contactSync, contactDiscoverable, it) })
                             Text("Notify me when contacts join", modifier = Modifier.padding(start = 9.dp))
                         }
@@ -2556,13 +2642,8 @@ fun ConnectScreen(state: DesktopAppState) {
                             } }) { Text(name + "  @" + username) }
                         }
                         Row {
-                            TextButton(onClick = { scope.launch {
-                                contactBusy = true
-                                runCatching { state.client.contactDiscovery() }
-                                    .onSuccess { loadContactSnapshot(it); contactError = null }
-                                    .onFailure { contactError = it.message }
-                                contactBusy = false
-                            } }, enabled = !contactBusy) { Text("Refresh matches") }
+                            TextButton(onClick = { scope.launch { refreshContacts() } },
+                                enabled = !contactBusy) { Text(if (contactReady) "Refresh matches" else "Retry matching") }
                             TextButton(onClick = { scope.launch {
                                 contactBusy = true
                                 runCatching { state.client.deleteContactDiscovery() }
@@ -2570,7 +2651,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                         contactAlerts = false; contactMatches = emptyList(); contactError = null }
                                     .onFailure { contactError = it.message }
                                 contactBusy = false
-                            } }, enabled = !contactBusy) { Text("Delete synced contacts") }
+                            } }, enabled = contactReady && !contactBusy) { Text("Delete synced contacts") }
                         }
                         contactError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
@@ -4338,6 +4419,7 @@ fun AdminScreen(state: DesktopAppState) {
 @Composable
 internal fun DesktopFeedPostCard(
     post: DesktopFeedPost,
+    viewClient: DesktopSupabaseClient? = null,
     onLike: () -> Unit,
     onBookmark: () -> Unit,
     onRepost: () -> Unit,
@@ -4346,6 +4428,7 @@ internal fun DesktopFeedPostCard(
     onOpenPost: (() -> Unit)? = null,
     xFeedStyle: Boolean = false,
 ) {
+    val displayedViewCount = desktopDisplayedViewCount(post.id, post.viewCount)
     var expandedText by remember(post.id) { mutableStateOf(false) }
     var textCanExpand by remember(post.id) { mutableStateOf(false) }
     val mediaUrls = remember(post.id, post.imageUrl, post.images) {
@@ -4358,6 +4441,7 @@ internal fun DesktopFeedPostCard(
     }
 
     Surface(
+        modifier = if (viewClient != null) Modifier.trackDesktopContentExposure(viewClient, post.id, displayedViewCount) else Modifier,
         shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 20.dp),
         tonalElevation = if (xFeedStyle) 0.dp else 1.dp,
         color = MaterialTheme.colorScheme.surface,
@@ -4586,7 +4670,7 @@ internal fun DesktopFeedPostCard(
                     TextButton(onClick = onCopyLink) { Text("Share", fontSize = 11.sp) }
                 }
                 Text(
-                    text = "${BlinkPostFormat.count(post.viewCount)} views",
+                    text = "${BlinkPostFormat.count(displayedViewCount)} views",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
@@ -4596,7 +4680,7 @@ internal fun DesktopFeedPostCard(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } else {
                 val primaryMetrics = buildList {
-                    add("${post.viewCount} views")
+                    add("${displayedViewCount} views")
                     if (post.likeCount > 0) add("${post.likeCount} likes")
                 }
                 val secondaryMetrics = buildList {

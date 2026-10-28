@@ -70,6 +70,9 @@ import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
+import com.blinkng.desktop.data.DesktopSearchPhase3Repository
+import com.blinkng.shared.BlinkTrendingCreator
+import com.blinkng.shared.BlinkTrendingTags
 import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopSearchResults
 import kotlinx.coroutines.delay
@@ -262,6 +265,15 @@ private fun DesktopSearchCore(
     val scope = rememberCoroutineScope()
     var referralRecommendations by remember { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var rankedPeople by remember { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var trendingCreators by remember(state.session?.userId) { mutableStateOf<List<BlinkTrendingCreator>>(emptyList()) }
+    var backendTrending by remember(state.session?.userId) { mutableStateOf(BlinkTrendingTags()) }
+    LaunchedEffect(state.session?.userId, state.profile?.university) {
+        if (state.session?.userId != null) {
+            val gateway = DesktopSearchPhase3Repository(state.client)
+            backendTrending = gateway.trendingTagsWithPeriod(state.profile?.university, 5)
+            trendingCreators = gateway.trendingCreators30Days(state.profile?.university, 3)
+        }
+    }
     LaunchedEffect(query, state.session?.userId) {
         val clean = BlinkReferralPolicy.normalizedQuery(query)
         if (clean.isBlank() || state.session?.userId == null) {
@@ -513,6 +525,34 @@ private fun DesktopSearchCore(
                             }
                         }
                     }
+                    if (trendingCreators.isNotEmpty()) {
+                        item { DesktopSearchSection("Trending people · 30 days", "Ranked by public post activity") }
+                        items(trendingCreators, key = { "trend:" + it.id }) { person ->
+                            Surface(shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    DesktopReferralAvatar(person.avatarUrl)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(person.fullName.ifBlank { person.username }, fontWeight = FontWeight.Bold)
+                                        Text("@${person.username} · ${person.university}",
+                                            fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    TextButton(
+                                        enabled = person.id !in followedSuggestions,
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching { state.client.followBack(person.id) }
+                                                    .onSuccess { followedSuggestions = followedSuggestions + person.id }
+                                                    .onFailure { referralFollowError = true }
+                                            }
+                                        }
+                                    ) { Text(if (person.id in followedSuggestions) "Following" else "Follow") }
+                                }
+                            }
+                        }
+                    }
                     if (referralRecommendations.isNotEmpty()) {
                         item { DesktopSearchSection(
                             "Discover students on BLINK",
@@ -552,21 +592,35 @@ private fun DesktopSearchCore(
                                 color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                     }
-                    if (discoveryTrending.isNotEmpty()) {
-                        item { DesktopSearchSection("Trending at FUTA", "Popular hashtags from current Blink activity") }
+                    if (backendTrending.tags.isNotEmpty()) {
+                        item { DesktopSearchSection(backendTrending.label, "Actual BLINK server activity") }
                         item {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(discoveryTrending, key = { it.key }) { trend ->
+                                items(backendTrending.tags, key = { it }) { tag ->
                                     Surface(
-                                        onClick = { query = "#${trend.key}" },
+                                        onClick = { query = "#$tag" },
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                     ) {
-                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.TrendingUp, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Rounded.TrendingUp, null,
+                                                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                                             Spacer(Modifier.width(6.dp))
-                                            Text("#${trend.key}")
+                                            Text("#$tag")
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (discoveryTrending.isNotEmpty()) {
+                        item { DesktopSearchSection("Trending in loaded posts", "Only content currently loaded on this device") }
+                        item {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(discoveryTrending, key = { it.key }) { trend ->
+                                    Surface(onClick = { query = "#${trend.key}" },
+                                        shape = RoundedCornerShape(16.dp)) {
+                                        Text("#${trend.key}", Modifier.padding(12.dp))
                                     }
                                 }
                             }
@@ -933,6 +987,7 @@ private fun DesktopPremiumContent(post: DesktopFeedPost, state: DesktopAppState)
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         DesktopFeedPostCard(
             post = visible,
+            viewClient = state.client,
             onLike = {
                 val before = visible
                 val liked = !before.isLiked

@@ -38,6 +38,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
@@ -131,8 +134,49 @@ private data class BoostDraftSnapshot(
 )
 
 private object BoostDraftStore {
-    var value = BoostDraftSnapshot()
+    private fun prefs(context: android.content.Context, userId: String): android.content.SharedPreferences? =
+        userId.takeIf(String::isNotBlank)?.let {
+            context.getSharedPreferences("blink_boost_draft_" + it, android.content.Context.MODE_PRIVATE)
+        }
+
+    fun load(context: android.content.Context, userId: String): BoostDraftSnapshot {
+        val raw = prefs(context, userId)?.getString("draft", null) ?: return BoostDraftSnapshot()
+        return runCatching {
+            val json = JSONObject(raw)
+            BoostDraftSnapshot(
+                targetType = BlinkBoostTargetType.valueOf(json.optString("targetType", "POST")),
+                targetId = json.optString("targetId"),
+                boostPower = json.optInt("boostPower", 25).coerceIn(1, 100),
+                objective = BlinkBoostObjective.valueOf(json.optString("objective", "VIEWS")),
+                audience = BlinkBoostAudienceScope.valueOf(json.optString("audience", "MY_UNIVERSITY")),
+                durationDays = json.optInt("durationDays", 3),
+                selectedUniversity = json.optString("selectedUniversity"),
+            )
+        }.getOrDefault(BoostDraftSnapshot())
+    }
+
+    fun save(context: android.content.Context, userId: String, draft: BoostDraftSnapshot) {
+        val json = JSONObject()
+            .put("targetType", draft.targetType.name)
+            .put("targetId", draft.targetId)
+            .put("boostPower", draft.boostPower)
+            .put("objective", draft.objective.name)
+            .put("audience", draft.audience.name)
+            .put("durationDays", draft.durationDays)
+            .put("selectedUniversity", draft.selectedUniversity)
+        prefs(context, userId)?.edit()?.putString("draft", json.toString())?.apply()
+    }
+
+    fun clear(context: android.content.Context, userId: String) {
+        prefs(context, userId)?.edit()?.remove("draft")?.apply()
+    }
 }
+
+private data class BoostListingTarget(
+    val id: String,
+    val title: String,
+    val listing: MarketItem? = null,
+)
 
 private data class MissionItem(
     val campaignId: String,
@@ -187,7 +231,7 @@ fun BlinkBoostGrowthRoute(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Growth", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                Text("Boost", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                 Text(
                     "Promote content or earn Rank Points from promoted content.",
                     style = MaterialTheme.typography.bodySmall,
@@ -299,29 +343,39 @@ private fun BoostCampaignColumn(
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
     val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
-    val draft = remember { BoostDraftStore.value }
+    val draft = remember(context, myProfile.id) { BoostDraftStore.load(context, myProfile.id) }
 
     val me = myProfile.username.trim().removePrefix("@")
     var ownedContent by remember { mutableStateOf<JSONObject?>(null) }
+    var ownedPages by remember { mutableStateOf<Map<String,List<JSONObject>>>(emptyMap()) }
+    var ownedMore by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var contentPageBusy by remember { mutableStateOf(false) }
+    var targetSearch by remember { mutableStateOf("") }
     var contentLoading by remember { mutableStateOf(true) }
     var contentError by remember { mutableStateOf<String?>(null) }
-    val ownContent = remember(posts, reels, me, ownedContent) {
+    val ownContent = remember(posts, reels, me, ownedContent, ownedPages) {
         val cached = (posts + reels).filter {
             it.authorUsername.trim().removePrefix("@").equals(me, ignoreCase = true)
         }.distinctBy { it.id }
-        val server = ownedContent?.optJSONArray("posts").objectList().mapNotNull { item ->
+        val legacyRows = ownedContent?.optJSONArray("posts").objectList()
+        val serverRows = listOf("POST", "REEL").flatMap { type ->
+            ownedPages[type] ?: legacyRows.filter { it.optString("type").equals(type, ignoreCase = true) }
+        }
+        val server = serverRows.mapNotNull { item ->
             val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             cached.firstOrNull { it.id == id } ?: FeedPost(
                 id = id,
                 author = myProfile.fullName.ifBlank { me },
                 authorAvatar = "",
-                timeAgo = "Your content",
+                timeAgo = if (item.has("view_count")) "Server content" else "Your content",
                 text = item.optString("text"),
-                likes = 0,
-                commentsCount = 0,
+                images = item.optString("image_url").takeIf { it.startsWith("https://") }?.let(::listOf).orEmpty(),
+                likes = item.optInt("like_count", 0),
+                commentsCount = item.optInt("comment_count", 0),
                 sharesCount = 0,
-                viewsCount = 0,
+                viewsCount = item.optInt("view_count", 0),
                 isReel = item.optString("type").equals("REEL", ignoreCase = true),
+                videoUrl = item.optString("video_url").takeIf { it.startsWith("https://") },
                 createdAt = item.optString("created_at"),
                 authorUsername = me,
             )
@@ -330,8 +384,22 @@ private fun BoostCampaignColumn(
     }
     val ownPosts = ownContent.filterNot { it.isReel }
     val ownReels = ownContent.filter { it.isReel }
-    val ownListings = remember(marketItems, me) {
-        marketItems.filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
+    val ownListings = remember(marketItems, me, ownedContent, ownedPages) {
+        val cached = marketItems
+            .filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) && !it.isSold }
+            .associateBy { it.id }
+        val listingRows = ownedPages["LISTING"] ?: ownedContent?.optJSONArray("market").objectList()
+        val server = listingRows.orEmpty().mapNotNull { item ->
+            val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            BoostListingTarget(
+                id = id,
+                title = cached[id]?.title ?: item.optString("text").ifBlank { "Your listing" },
+                listing = cached[id],
+            )
+        }.orEmpty()
+        (if (ownedPages.containsKey("LISTING")) server
+         else server + cached.values.map { BoostListingTarget(it.id, it.title, it) })
+            .distinctBy { it.id }
     }
 
     var setupStep by remember { mutableIntStateOf(0) }
@@ -344,22 +412,31 @@ private fun BoostCampaignColumn(
     var durationDays by remember { mutableIntStateOf(draft.durationDays) }
     var selectedUniversity by remember { mutableStateOf(draft.selectedUniversity) }
     var universityMenuOpen by remember { mutableStateOf(false) }
+    var universityQuery by remember { mutableStateOf("") }
     var lastTargetType by remember { mutableStateOf(targetType) }
 
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
+    var quoteError by remember { mutableStateOf<String?>(null) }
+    var cashBoostEnabled by remember { mutableStateOf(false) }
+    var quoteRetryNonce by remember { mutableIntStateOf(0) }
     var stateLoading by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
     var budgetWorking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmStart by remember { mutableStateOf(false) }
+    var startError by remember { mutableStateOf<String?>(null) }
+    var pendingCancelCampaignId by remember { mutableStateOf<String?>(null) }
+    var cancellationError by remember { mutableStateOf<String?>(null) }
     var refreshNonce by remember { mutableIntStateOf(0) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     var pendingRequestFingerprint by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
+    var showAllReceipts by remember { mutableStateOf(false) }
+    var showManagement by remember { mutableStateOf(false) }
 
     suspend fun reloadState() {
         stateLoading = true
@@ -373,12 +450,23 @@ private fun BoostCampaignColumn(
         stateLoading = false
     }
 
-    LaunchedEffect(refreshNonce) { reloadState() }
+    LaunchedEffect(refreshNonce) {
+        reloadState()
+        service.cashBoostAvailability()
+            .onSuccess { cashBoostEnabled = it.optBoolean("enabled",false) }
+            .onFailure { cashBoostEnabled = false }
+    }
     LaunchedEffect(refreshNonce) {
         contentLoading = true
         service.boostableContent()
             .onSuccess { ownedContent = it; contentError = null }
             .onFailure { contentError = "Unable to load all your content. Showing cached posts." }
+        for (type in listOf("POST","REEL","LISTING")) {
+            service.boostableContentPage(type,0).onSuccess { payload ->
+                ownedPages = ownedPages + (type to payload.optJSONArray("items").objectList())
+                ownedMore = if (payload.optBoolean("has_more")) ownedMore + type else ownedMore - type
+            }
+        }
         contentLoading = false
     }
 
@@ -398,7 +486,7 @@ private fun BoostCampaignColumn(
     }
 
     LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
-        BoostDraftStore.value = BoostDraftSnapshot(
+        BoostDraftStore.save(context, myProfile.id, BoostDraftSnapshot(
             targetType = targetType,
             targetId = targetId,
             boostPower = boostPower,
@@ -406,7 +494,7 @@ private fun BoostCampaignColumn(
             audience = audience,
             durationDays = durationDays,
             selectedUniversity = selectedUniversity,
-        )
+        ))
     }
 
     val targetUniversity = when (audience) {
@@ -416,8 +504,10 @@ private fun BoostCampaignColumn(
     val targetReady = targetId.isNotBlank() &&
         (audience != BlinkBoostAudienceScope.SELECTED_UNIVERSITY || selectedUniversity.isNotBlank())
 
-    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
+    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity, isOnline, quoteRetryNonce) {
         quote = null
+        quoteError = null
+        quoteLoading = false
         if (!targetReady || !isOnline) return@LaunchedEffect
         delay(260)
         quoteLoading = true
@@ -432,9 +522,9 @@ private fun BoostCampaignColumn(
         ).onSuccess {
             quote = it
             it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-            error = null
+            quoteError = null
         }.onFailure {
-            error = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
+            quoteError = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
         }
         quoteLoading = false
     }
@@ -500,10 +590,6 @@ private fun BoostCampaignColumn(
 
         if (stateLoading) {
             item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-        }
-
-        analytics?.let { value ->
-            item { BoostAnalyticsCard(value, formatter) }
         }
 
         if (!isOnline) {
@@ -593,7 +679,7 @@ private fun BoostCampaignColumn(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
-                                                items(ownPosts.take(80), key = { it.id }) { post ->
+                                                items(ownPosts.filter { targetSearch.isBlank() || it.text.contains(targetSearch,true) || it.id.contains(targetSearch,true) }, key = { it.id }) { post ->
                                                     SelectablePostTarget(
                                                         post = post,
                                                         selected = targetId == post.id,
@@ -617,7 +703,7 @@ private fun BoostCampaignColumn(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
-                                                items(ownReels.take(80), key = { it.id }) { reel ->
+                                                items(ownReels.filter { targetSearch.isBlank() || it.text.contains(targetSearch,true) || it.id.contains(targetSearch,true) }, key = { it.id }) { reel ->
                                                     SelectablePostTarget(
                                                         post = reel,
                                                         selected = targetId == reel.id,
@@ -647,16 +733,57 @@ private fun BoostCampaignColumn(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
-                                                items(ownListings.take(80), key = { it.id }) { listing ->
-                                                    SelectableListingTarget(
-                                                        listing = listing,
-                                                        selected = targetId == listing.id,
-                                                        isDark = isDark,
-                                                        onSelect = { targetId = listing.id; setupStep = 1 },
-                                                    )
+                                                items(ownListings.filter { targetSearch.isBlank() || it.title.contains(targetSearch,true) || it.id.contains(targetSearch,true) }, key = { it.id }) { listing ->
+                                                    if (listing.listing != null) {
+                                                        SelectableListingTarget(
+                                                            listing = listing.listing,
+                                                            selected = targetId == listing.id,
+                                                            isDark = isDark,
+                                                            onSelect = { targetId = listing.id; setupStep = 1 },
+                                                        )
+                                                    } else {
+                                                        SelectableListingSummaryTarget(
+                                                            title = listing.title,
+                                                            selected = targetId == listing.id,
+                                                            onSelect = { targetId = listing.id; setupStep = 1 },
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                if (targetType != BlinkBoostTargetType.PROFILE) {
+                                    OutlinedTextField(
+                                        value = targetSearch,
+                                        onValueChange = { targetSearch = it.take(80) },
+                                        label = { Text("Search your ${targetType.name.lowercase()} content") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    if (targetType.name in ownedMore) {
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            enabled = !contentPageBusy && isOnline,
+                                            onClick = {
+                                                val type = targetType.name
+                                                contentPageBusy = true
+                                                scope.launch {
+                                                    service.boostableContentPage(type,ownedPages[type].orEmpty().size)
+                                                        .onSuccess { payload ->
+                                                            val updated = (ownedPages[type].orEmpty() +
+                                                                payload.optJSONArray("items").objectList())
+                                                                .distinctBy { it.optString("id") }
+                                                            ownedPages = ownedPages + (type to updated)
+                                                            ownedMore = if (payload.optBoolean("has_more"))
+                                                                ownedMore + type else ownedMore - type
+                                                            contentError = null
+                                                        }
+                                                        .onFailure { contentError = "Couldn't load more content. Retry." }
+                                                    contentPageBusy = false
+                                                }
+                                            },
+                                        ) { Text(if (contentPageBusy) "Loading…" else "Load more of your content") }
                                     }
                                 }
                                 contentError?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -682,14 +809,24 @@ private fun BoostCampaignColumn(
                                 }
                                 if (audience == BlinkBoostAudienceScope.SELECTED_UNIVERSITY) {
                                     Box {
-                                        OutlinedButton(onClick = { universityMenuOpen = true },
+                                        OutlinedButton(onClick = { universityQuery = ""; universityMenuOpen = true },
                                             modifier = Modifier.fillMaxWidth()) {
                                             Text(selectedUniversity.ifBlank { "Choose university" },
                                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                         DropdownMenu(expanded = universityMenuOpen,
                                             onDismissRequest = { universityMenuOpen = false }) {
-                                            kNigerianUniversitiesList.forEach { university ->
+                                            OutlinedTextField(
+                                                value = universityQuery,
+                                                onValueChange = { universityQuery = it.take(70) },
+                                                label = { Text("Search university") },
+                                                singleLine = true,
+                                                modifier = Modifier.width(300.dp),
+                                            )
+                                            kNigerianUniversitiesList
+                                                .filter { it.contains(universityQuery.trim(), ignoreCase = true) }
+                                                .take(40)
+                                                .forEach { university ->
                                                 DropdownMenuItem(text = { Text(university) }, onClick = {
                                                     selectedUniversity = university
                                                     universityMenuOpen = false
@@ -755,28 +892,44 @@ private fun BoostCampaignColumn(
                                 SectionTitle("6. Review", "Review your estimated reach, price and balance.")
                                 CampaignQuoteCard(quote = quote, quoteLoading = quoteLoading,
                                     balance = balance, formatter = formatter)
+                                quoteError?.let { problem ->
+                                    Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick = { quoteRetryNonce++ }, enabled = isOnline && !quoteLoading) {
+                                        Text("Retry estimate")
+                                    }
+                                }
+                                if (!isOnline) {
+                                    Text("Reconnect to get an updated price.", style = MaterialTheme.typography.bodySmall)
+                                }
                                 if (quote != null && balance != null && balance < quoteCost) {
                                     OutlinedButton(onClick = onGetCoins, modifier = Modifier.fillMaxWidth()) {
                                         Text("Get Blink Coins")
                                     }
                                 }
-                                OutlinedButton(
-                                    onClick = {
-                                        onPaystackBoost(
-                                            targetType.name, targetId, boostPower,
-                                            objective.name, audience.name,
-                                            durationDays, targetUniversity
-                                        )
-                                    },
-                                    enabled = paystackCheckoutAvailable && isOnline &&
-                                        !working && !quoteLoading && quote != null &&
-                                        quoteCost > 0 && targetReady,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("Pay with Paystack • Final price shown at checkout")
+                                if (paystackCheckoutAvailable && cashBoostEnabled) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            onPaystackBoost(
+                                                targetType.name, targetId, boostPower,
+                                                objective.name, audience.name,
+                                                durationDays, targetUniversity
+                                            )
+                                        },
+                                        enabled = isOnline && !working && !quoteLoading &&
+                                            quote != null && quoteCost > 0 && targetReady,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text("Pay with Paystack · Final price shown at checkout")
+                                    }
+                                } else {
+                                    Text(
+                                        "Cash-funded Boost is unavailable. Blink Coins can still be used.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                                 Button(
-                                    onClick = { confirmStart = true },
+                                    onClick = { startError = null; confirmStart = true },
                                     enabled = !working && !quoteLoading && isOnline && quote != null &&
                                         quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                                     modifier = Modifier.fillMaxWidth(),
@@ -803,14 +956,14 @@ private fun BoostCampaignColumn(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (setupStep > 0) {
-                        OutlinedButton(onClick = { setupStep-- }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { setupStep-- }, enabled = !working, modifier = Modifier.weight(1f)) {
                             Text("Back")
                         }
                     }
                     if (setupStep < 5) {
                         Button(
                             onClick = { setupStep++ },
-                            enabled = (setupStep != 0 || targetId.isNotBlank()) &&
+                            enabled = !working && (setupStep != 0 || targetId.isNotBlank()) &&
                                 (setupStep != 1 || audience != BlinkBoostAudienceScope.SELECTED_UNIVERSITY ||
                                     selectedUniversity.isNotBlank()),
                             modifier = Modifier.weight(1f),
@@ -818,6 +971,19 @@ private fun BoostCampaignColumn(
                     }
                 }
             }
+        }
+
+        item {
+            TextButton(
+                onClick = { showManagement = !showManagement },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (showManagement) "Hide analytics and campaigns" else "Manage active Boosts, history and receipts")
+            }
+        }
+        if (showManagement) {
+        analytics?.let { value ->
+            item { BoostAnalyticsCard(value, formatter) }
         }
 
         if (activeCampaigns.isNotEmpty()) {
@@ -829,24 +995,9 @@ private fun BoostCampaignColumn(
                     formatter = formatter,
                     working = working,
                     onCancel = {
-                        val id = campaign.optString("id")
-                        if (id.isNotBlank()) {
-                            scope.launch {
-                                working = true
-                                service.cancelBoostCampaign(id)
-                                    .onSuccess {
-                                        val refund = it.optLong("refunded", 0L)
-                                        it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-                                        message = if (refund > 0) {
-                                            "Boost cancelled. " + formatter.format(refund) + " unused coins were returned."
-                                        } else {
-                                            "Boost cancelled."
-                                        }
-                                        reloadState()
-                                    }
-                                    .onFailure { error = boostUserMessage(it, "Unable to cancel this boost right now.") }
-                                working = false
-                            }
+                        campaign.optString("id").takeIf(String::isNotBlank)?.let { id ->
+                            cancellationError = null
+                            pendingCancelCampaignId = id
                         }
                     },
                 )
@@ -895,11 +1046,60 @@ private fun BoostCampaignColumn(
         if (receipts.isNotEmpty()) {
             item { HorizontalDivider() }
             item { SectionTitle("Growth receipts", "Every Boost reserve/refund and Drop reserve/reward/refund remains auditable.") }
-            items(receipts.take(12), key = { "receipt-" + it.optString("id") }) { receipt ->
+            if (receipts.size > 4) {
+                item {
+                    TextButton(onClick = { showAllReceipts = !showAllReceipts }) {
+                        Text(if (showAllReceipts) "Show fewer receipts"
+                            else "View all ${receipts.size} recent receipts")
+                    }
+                }
+            }
+            items(if (showAllReceipts) receipts else receipts.take(4),
+                key = { "receipt-" + it.optString("id") }) { receipt ->
                 GrowthReceiptCard(receipt, formatter)
             }
         }
+        }
     }
+    }
+
+    pendingCancelCampaignId?.let { campaignId ->
+        AlertDialog(
+            onDismissRequest = { if (!working) pendingCancelCampaignId = null },
+            title = { Text("Cancel this Boost?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Delivery stops and unused reserved Blink Coins are refunded according to the server's settlement rules.")
+                    cancellationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !working && isOnline,
+                    onClick = {
+                        scope.launch {
+                            working = true
+                            service.cancelBoostCampaign(campaignId)
+                                .onSuccess { result ->
+                                    val refund = result.optLong("refunded", 0L)
+                                    result.takeIf { it.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                    message = if (refund > 0) {
+                                        "Boost cancelled. " + formatter.format(refund) + " unused coins were returned."
+                                    } else "Boost cancelled."
+                                    pendingCancelCampaignId = null
+                                    cancellationError = null
+                                    reloadState()
+                                }
+                                .onFailure { cancellationError = boostUserMessage(it, "Unable to cancel this Boost right now.") }
+                            working = false
+                        }
+                    }
+                ) { Text(if (working) "Cancelling…" else "Confirm cancellation") }
+            },
+            dismissButton = {
+                TextButton(enabled = !working, onClick = { pendingCancelCampaignId = null }) { Text("Keep Boost") }
+            },
+        )
     }
 
     if (confirmStart) {
@@ -923,11 +1123,15 @@ private fun BoostCampaignColumn(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    startError?.let { problem ->
+                        Text(problem, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {
                 Button(
-                    enabled = !working && isOnline && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                    enabled = !working && !quoteLoading && isOnline && targetReady &&
+                        quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                     onClick = {
                         scope.launch {
                             working = true
@@ -949,20 +1153,22 @@ private fun BoostCampaignColumn(
                                 targetUniversity = targetUniversity,
                                 requestId = pendingRequestId.orEmpty(),
                             ).onSuccess {
+                                startError = null
                                 confirmStart = false
                                 pendingRequestId = null
                                 pendingRequestFingerprint = null
+                                BoostDraftStore.clear(context, myProfile.id)
                                 val charged = it.optLong("charged", quoteCost)
                                 it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                                 message = "Boost started. " + formatter.format(charged) + " coins were reserved for campaign delivery."
                                 reloadState()
                             }.onFailure {
-                                error = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
+                                startError = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
                             }
                             working = false
                         }
                     },
-                ) { Text("Confirm Boost") }
+                ) { Text(if (working) "Starting…" else if (startError != null) "Retry Boost" else "Confirm Boost") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmStart = false }, enabled = !working) { Text("Cancel") }
@@ -1403,14 +1609,24 @@ private fun SelectablePostTarget(
                     modifier = Modifier.fillMaxWidth().height(125.dp),
                 )
             } else if (post.isReel) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(116.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.Movie, contentDescription = "Reel",
-                        modifier = Modifier.size(38.dp),
-                        tint = MaterialTheme.colorScheme.primary)
+                if (!post.videoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current).data(post.videoUrl)
+                            .decoderFactory(VideoFrameDecoder.Factory()).videoFrameMillis(800).build(),
+                        contentDescription = "Reel video frame",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().height(125.dp),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(116.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Movie, contentDescription = "Reel preview unavailable",
+                            modifier = Modifier.size(38.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1418,12 +1634,48 @@ private fun SelectablePostTarget(
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold)
-                Text("${post.viewsCount} views",
+                Text(
+                    if (post.timeAgo == "Your content") "Preview · view metrics unavailable"
+                    else "${post.viewsCount} views",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) {
                     Text(if (selected) "✓ Selected" else label)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectableListingSummaryTarget(
+    title: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.width(278.dp),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(26.dp))
+            Text(title, maxLines = 3, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            Text(
+                "From your seller inventory · full listing details are not loaded",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) {
+                Text(if (selected) "✓ Selected" else "Boost this Listing")
             }
         }
     }
@@ -1599,7 +1851,7 @@ private fun ActiveCampaignCard(
             val conversion = if (impressions <= 0L) 0.0 else opens.toDouble() * 100.0 / impressions.toDouble()
             LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
             Text(
-                ((progress * 100).toInt()).toString() + "% delivered • " +
+                ((progress * 100).toInt()).toString() + "% of coin budget spent • " +
                     formatter.format(impressions) + " impressions • " +
                     formatter.format(opens) + " opens",
                 style = MaterialTheme.typography.bodySmall,
@@ -1773,7 +2025,11 @@ private fun BalanceCard(
 }
 
 private fun shortGrowthDate(raw: String): String =
-    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
+    runCatching {
+        java.time.OffsetDateTime.parse(raw)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
+    }.getOrElse { raw.replace('T', ' ').take(16).ifBlank { "—" } }
 
 private fun boostUserMessage(error: Throwable, fallback: String): String {
     val raw = error.message.orEmpty()

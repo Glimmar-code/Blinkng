@@ -1351,6 +1351,13 @@ class DesktopSupabaseClient(
         obj.optBoolean("reposted", false) to obj.optInt("repostCount", 0)
     }
 
+    suspend fun fetchContentViewCount(postId: String): Int? = withContext(Dispatchers.IO) {
+        val clean = postId.trim()
+        if (clean.isBlank()) return@withContext null
+        val rows = getArray("/rest/v1/feed_posts?select=view_count&id=eq.${encode(clean)}&limit=1")
+        if (rows.length() == 0) null else rows.optJSONObject(0)?.optInt("view_count", 0)?.coerceAtLeast(0)
+    }
+
     suspend fun recordQualifiedContentView(postId: String): JSONObject = withContext(Dispatchers.IO) {
         val clean = postId.trim()
         require(clean.isNotBlank()) { "Post is required." }

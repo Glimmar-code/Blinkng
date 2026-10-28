@@ -73,6 +73,21 @@ class BlinkDropsService {
         rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", limit.coerceIn(1, 50)))
     }
 
+    /** Server-authoritative pages: MINE is owner-only, AVAILABLE requires a saved eligibility snapshot. */
+    suspend fun page(scope: String, offset: Int, limit: Int = 30) = runCatching {
+        require(scope in setOf("MINE", "AVAILABLE")) { "Unknown Drop list." }
+        rpc("get_blink_drop_page", JSONObject()
+            .put("p_scope", scope)
+            .put("p_offset", offset.coerceAtLeast(0))
+            .put("p_limit", limit.coerceIn(1, 50)))
+    }
+
+    /** Exact item lookup supports older, claimed, cancelled and expired notification targets. */
+    suspend fun detail(dropId: String) = runCatching {
+        require(runCatching { java.util.UUID.fromString(dropId) }.isSuccess) { "Invalid Drop identifier." }
+        rpc("get_blink_drop_by_id", JSONObject().put("p_drop_id", dropId))
+    }
+
     suspend fun discovery(limit: Int = 3): Result<List<BlinkDropDiscovery>> = runCatching {
         val root = rpc(
             "get_blink_drop_discovery",
@@ -175,6 +190,7 @@ class BlinkDropsService {
             message.contains("INSUFFICIENT_BLINK_COINS") -> "You don't have enough BLINK Coins for this Drop."
             message.contains("DROP_REWARD_INVALID") -> "Each person must receive a multiple of 100 BLINK Coins."
             message.contains("DROP_WINNER_COUNT_INVALID") -> "Choose a valid number of recipients."
+            message.contains("DROP_NO_ELIGIBLE_FOLLOWERS") -> "You need at least one eligible follower before organizing a Drop."
             message.contains("DROP_BUDGET_TOO_LARGE") -> "That Drop is above the supported budget."
             message.contains("DROP_DURATION_INVALID") -> "Choose a supported Drop duration."
             message.contains("DROP_TARGET_NOT_OWNED") -> "Choose one of your own active posts, Reels or listings."

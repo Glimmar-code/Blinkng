@@ -278,6 +278,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val coinPurchaseDeepLinkRequests = kotlinx.coroutines.flow.MutableStateFlow(0)
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -285,6 +287,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("open_blink_coin_packs", false) == true) {
+            intent.removeExtra("open_blink_coin_packs")
+            coinPurchaseDeepLinkRequests.value += 1
+            return
+        }
         if (intent?.action == BlinkWebsiteReleaseAlerts.ACTION_OPEN_UPDATE) {
             BlinkWebsiteReleaseAlerts.requestRefresh(openPrompt = true)
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
@@ -650,6 +657,15 @@ class MainActivity : ComponentActivity() {
 
         composeView.setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val coinPurchaseRequest by coinPurchaseDeepLinkRequests.collectAsStateWithLifecycle()
+            var lastCoinPurchaseRequest by remember { mutableIntStateOf(0) }
+            LaunchedEffect(coinPurchaseRequest, uiState.destination, uiState.myProfile.id) {
+                if (coinPurchaseRequest > lastCoinPurchaseRequest &&
+                    uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    lastCoinPurchaseRequest = coinPurchaseRequest
+                    viewModel.buyBlinkCoins()
+                }
+            }
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             // Covers auth/session restoration too: returning users must see the intro.

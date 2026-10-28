@@ -13,6 +13,12 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
 
+import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +37,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.ui.graphics.graphicsLayer
@@ -115,7 +122,43 @@ private data class DropDraftSnapshot(
 )
 
 private object DropDraftStore {
-    var value = DropDraftSnapshot()
+    private fun prefs(context: android.content.Context): android.content.SharedPreferences? {
+        val id = com.example.data.supabase.SupabaseService().getCurrentUserId()
+            ?.takeIf(String::isNotBlank) ?: return null
+        return context.getSharedPreferences("blink_drop_draft_" + id, android.content.Context.MODE_PRIVATE)
+    }
+
+    fun load(context: android.content.Context): DropDraftSnapshot {
+        val raw = prefs(context)?.getString("draft", null) ?: return DropDraftSnapshot()
+        return runCatching {
+            val json = JSONObject(raw)
+            DropDraftSnapshot(
+                targetType = BlinkDropTargetType.valueOf(json.optString("targetType", "POST")),
+                selectedTargetId = json.optString("selectedTargetId"),
+                action = json.optString("action", "LIKE"),
+                rewardText = json.optString("rewardText", "100"),
+                winnerText = json.optString("winnerText", "1"),
+                audience = json.optString("audience", "ALL_CAMPUSES"),
+                durationHours = json.optInt("durationHours", 24),
+            )
+        }.getOrDefault(DropDraftSnapshot())
+    }
+
+    fun save(context: android.content.Context, value: DropDraftSnapshot) {
+        val json = JSONObject()
+            .put("targetType", value.targetType.name)
+            .put("selectedTargetId", value.selectedTargetId)
+            .put("action", value.action)
+            .put("rewardText", value.rewardText)
+            .put("winnerText", value.winnerText)
+            .put("audience", value.audience)
+            .put("durationHours", value.durationHours)
+        prefs(context)?.edit()?.putString("draft", json.toString())?.apply()
+    }
+
+    fun clear(context: android.content.Context) {
+        prefs(context)?.edit()?.remove("draft")?.apply()
+    }
 }
 
 private data class DropTarget(
@@ -145,6 +188,9 @@ private data class DropItem(
     val createdAt: String,
     val endsAt: String,
     val eligible: Boolean,
+    val creatorAvatar: String = "",
+    val previewUrl: String = "",
+    val previewVideoUrl: String = "",
 )
 
 private data class TopGiver(
@@ -179,13 +225,26 @@ fun BlinkDropsRoute(
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var showOrganizer by remember { mutableStateOf(false) }
+    var organizerError by remember { mutableStateOf<String?>(null) }
+    var pendingCancelDropId by remember { mutableStateOf<String?>(null) }
+    var cancellationError by remember { mutableStateOf<String?>(null) }
     var commentDrop by remember { mutableStateOf<DropItem?>(null) }
     var busyDropId by remember { mutableStateOf<String?>(null) }
     var creatingDrop by remember { mutableStateOf(false) }
     var pendingCreateRequestId by remember { mutableStateOf<String?>(null) }
     var pendingCreateFingerprint by remember { mutableStateOf<String?>(null) }
+    var availablePage by remember { mutableStateOf<List<DropItem>?>(null) }
+    var minePage by remember { mutableStateOf<List<DropItem>?>(null) }
+    var availableMore by remember { mutableStateOf(false) }
+    var mineMore by remember { mutableStateOf(false) }
+    var pageBusy by remember { mutableStateOf(false) }
+    var pageError by remember { mutableStateOf<String?>(null) }
+    var notificationDrop by remember(initialDropId) { mutableStateOf<DropItem?>(null) }
+    var notificationError by remember(initialDropId) { mutableStateOf<String?>(null) }
+    var followBusyId by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
+    var showAllReceipts by remember { mutableStateOf(false) }
 
     fun refresh() {
         refreshNonce += 1
@@ -202,13 +261,36 @@ fun BlinkDropsRoute(
             .onFailure {
                 error = it.message ?: "Unable to load BLINK Drops."
             }
+        service.page("AVAILABLE", 0).onSuccess { result ->
+            availablePage = result.optJSONArray("items").toDropItems()
+            availableMore = result.optBoolean("has_more")
+        }.onFailure { availablePage = null; availableMore = false }
+        service.page("MINE", 0).onSuccess { result ->
+            minePage = result.optJSONArray("items").toDropItems()
+            mineMore = result.optBoolean("has_more")
+        }.onFailure { minePage = null; mineMore = false }
         loading = false
+    }
+
+    LaunchedEffect(initialDropId, refreshNonce, state) {
+        if (initialDropId == null || state == null) return@LaunchedEffect
+        notificationError = null
+        val cached = (state?.optJSONArray("active_drops").toDropItems() +
+            state?.optJSONArray("my_drops").toDropItems()).firstOrNull { it.id == initialDropId }
+        service.detail(initialDropId).onSuccess { result ->
+            notificationDrop = if (result.optBoolean("not_found")) cached
+                else JSONArray().put(result).toDropItems().firstOrNull() ?: cached
+            if (notificationDrop == null) notificationError = "This Drop is unavailable or you are not eligible to view it."
+        }.onFailure {
+            notificationDrop = cached
+            if (cached == null) notificationError = "Unable to load this Drop. Refresh to retry."
+        }
     }
 
     val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
     val balance = liveWalletBalance ?: stateBalance
-    val activeDrops = state?.optJSONArray("active_drops").toDropItems()
-    val allMyDrops = state?.optJSONArray("my_drops").toDropItems()
+    val activeDrops = availablePage ?: state?.optJSONArray("active_drops").toDropItems()
+    val allMyDrops = minePage ?: state?.optJSONArray("my_drops").toDropItems()
     val myDrops = allMyDrops
         .filter { historyFilter == "ALL" || it.status.equals(historyFilter, ignoreCase = true) }
         .filter {
@@ -227,6 +309,15 @@ fun BlinkDropsRoute(
     val eligibleCampus = state?.optInt("eligible_followers_my_campus", 0) ?: 0
     val receipts = state?.optJSONArray("receipts").objects()
     val analytics = state?.optJSONObject("analytics")
+    val dropsListState = rememberLazyListState()
+    var deepLinkHandled by remember(initialDropId) { mutableStateOf(false) }
+    LaunchedEffect(initialDropId, notificationDrop) {
+        if (initialDropId != null && notificationDrop != null && !deepLinkHandled) {
+            selectedColumn = DropsColumn.GIVEAWAYS
+            dropsListState.animateScrollToItem(1)
+            deepLinkHandled = true
+        }
+    }
 
     fun complete(drop: DropItem, comment: String? = null) {
         if (busyDropId != null) return
@@ -320,6 +411,7 @@ fun BlinkDropsRoute(
         ) {
             when (selectedColumn) {
             DropsColumn.GIVEAWAYS -> LazyColumn(
+                state = dropsListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -332,8 +424,25 @@ fun BlinkDropsRoute(
                     )
                 }
 
-                analytics?.let { value ->
-                    item { DropAnalyticsCard(value, formatter) }
+                if (initialDropId != null) {
+                    item {
+                        notificationDrop?.let { drop ->
+                            SectionHeader("Opened from notification", "Original Drop details, including completed or expired rewards.")
+                            DropCard(
+                                drop = drop, formatter = formatter, busy = busyDropId == drop.id,
+                                highlighted = true,
+                                onComplete = if (drop.eligible && drop.status == "ACTIVE") ({
+                                    if (drop.action == "COMMENT") commentDrop = drop else complete(drop)
+                                }) else null,
+                                onCancel = if (drop.creatorId == com.example.data.supabase.SupabaseService().getCurrentUserId() &&
+                                    drop.status == "ACTIVE") ({
+                                    pendingCancelDropId = drop.id
+                                    cancellationError = null
+                                }) else null,
+                            )
+                        } ?: Text(notificationError ?: "Loading Drop details…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
 
                 if (!isOnline) {
@@ -380,7 +489,8 @@ fun BlinkDropsRoute(
                         )
                     }
                 } else {
-                    items(activeDrops, key = { "active-drop-${it.id}" }) { drop ->
+                    items(activeDrops.filterNot { it.id == notificationDrop?.id },
+                        key = { "active-drop-${it.id}" }) { drop ->
                         DropCard(
                             drop = drop,
                             formatter = formatter,
@@ -392,6 +502,29 @@ fun BlinkDropsRoute(
                             },
                             onCancel = null,
                         )
+                    }
+                }
+
+                if (availableMore || pageBusy || pageError != null) {
+                    item {
+                        pageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isOnline && !pageBusy && availableMore,
+                            onClick = {
+                                scope.launch {
+                                    pageBusy = true
+                                    pageError = null
+                                    service.page("AVAILABLE", activeDrops.size)
+                                        .onSuccess { result ->
+                                            availablePage = (activeDrops + result.optJSONArray("items").toDropItems())
+                                                .distinctBy { it.id }
+                                            availableMore = result.optBoolean("has_more")
+                                        }.onFailure { pageError = it.message ?: "Could not load more Drops." }
+                                    pageBusy = false
+                                }
+                            }
+                        ) { Text(if (pageBusy) "Loading…" else "Load more available Drops") }
                     }
                 }
 
@@ -444,26 +577,41 @@ fun BlinkDropsRoute(
                             onComplete = null,
                             onCancel = if (drop.status == "ACTIVE") {
                                 {
-                                    busyDropId = drop.id
-                                    scope.launch {
-                                        service.cancelDrop(drop.id)
-                                            .onSuccess { result ->
-                                                result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-                                                message = "Drop cancelled. Unclaimed reserved coins were returned."
-                                                error = null
-                                                refresh()
-                                            }
-                                            .onFailure {
-                                                error = it.message ?: "Unable to cancel this Drop."
-                                            }
-                                        busyDropId = null
-                                    }
+                                    cancellationError = null
+                                    pendingCancelDropId = drop.id
                                 }
                             } else null,
                         )
                     }
                 }
 
+                if (mineMore) {
+                    item {
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isOnline && !pageBusy,
+                            onClick = {
+                                scope.launch {
+                                    pageBusy = true
+                                    service.page("MINE", allMyDrops.size)
+                                        .onSuccess { result ->
+                                            minePage = (allMyDrops + result.optJSONArray("items").toDropItems())
+                                                .distinctBy { it.id }
+                                            mineMore = result.optBoolean("has_more")
+                                            pageError = null
+                                        }.onFailure { pageError = it.message ?: "Could not load more history." }
+                                    pageBusy = false
+                                }
+                            },
+                        ) { Text(if (pageBusy) "Loading…" else "Load more Drop history") }
+                    }
+                }
+                analytics?.let { value ->
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        DropAnalyticsCard(value, formatter)
+                    }
+                }
                 if (receipts.isNotEmpty()) {
                     item {
                         Spacer(Modifier.height(4.dp))
@@ -472,7 +620,16 @@ fun BlinkDropsRoute(
                             "Every Drop reserve, reward and refund stays auditable in your Blink Coin ledger."
                         )
                     }
-                    items(receipts.take(12), key = { "drop-receipt-" + it.optString("id") }) { receipt ->
+                    if (receipts.size > 4) {
+                        item {
+                            TextButton(onClick = { showAllReceipts = !showAllReceipts }) {
+                                Text(if (showAllReceipts) "Show fewer receipts"
+                                    else "View all ${receipts.size} recent receipts")
+                            }
+                        }
+                    }
+                    items(if (showAllReceipts) receipts else receipts.take(4),
+                        key = { "drop-receipt-" + it.optString("id") }) { receipt ->
                         DropReceiptCard(receipt, formatter)
                     }
                 }
@@ -489,15 +646,23 @@ fun BlinkDropsRoute(
                         "Ranked by BLINK Coins successfully distributed, not by how many Drops were created."
                     )
                 }
+                error?.let { value ->
+                    item { StatusCard(value, isError = true) }
+                }
+                message?.let { value ->
+                    item { StatusCard(value, isError = false) }
+                }
                 if (topGivers.isEmpty()) {
                     item { EmptyCard("Top Givers will appear after completed Drops.") }
                 } else {
-                    items(topGivers, key = { "giver-${it.creatorId}" }) { giver ->
+                    itemsIndexed(topGivers, key = { _, giver -> "giver-${giver.creatorId}" }) { index, giver ->
                         TopGiverCard(
                             giver = giver,
+                            rank = index + 1,
                             formatter = formatter,
-                            onFollow = if (giver.following) null else {
+                            onFollow = if (giver.following || followBusyId != null) null else {
                                 {
+                                    followBusyId = giver.creatorId
                                     scope.launch {
                                         service.followCreator(giver.creatorId)
                                             .onSuccess {
@@ -507,6 +672,7 @@ fun BlinkDropsRoute(
                                             .onFailure {
                                                 error = it.message ?: "Unable to follow this creator."
                                             }
+                                        followBusyId = null
                                     }
                                 }
                             }
@@ -516,6 +682,45 @@ fun BlinkDropsRoute(
             }
             }
         }
+    }
+
+    pendingCancelDropId?.let { cancelId ->
+        AlertDialog(
+            onDismissRequest = { if (busyDropId == null) pendingCancelDropId = null },
+            title = { Text("Cancel this Drop?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This stops new claims. Unclaimed reserved coins are returned according to the server's refund rules.")
+                    cancellationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = busyDropId == null && isOnline,
+                    onClick = {
+                        busyDropId = cancelId
+                        scope.launch {
+                            service.cancelDrop(cancelId)
+                                .onSuccess { result ->
+                                    result.takeIf { it.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                    message = "Drop cancelled. Unclaimed reserved coins were returned."
+                                    error = null
+                                    pendingCancelDropId = null
+                                    cancellationError = null
+                                    refresh()
+                                }
+                                .onFailure { cancellationError = it.message ?: "Unable to cancel this Drop." }
+                            busyDropId = null
+                        }
+                    }
+                ) { Text(if (busyDropId != null) "Cancelling…" else "Confirm cancellation") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCancelDropId = null }, enabled = busyDropId == null) {
+                    Text("Keep Drop")
+                }
+            },
+        )
     }
 
     if (showOrganizer) {
@@ -528,8 +733,10 @@ fun BlinkDropsRoute(
             isOnline = isOnline,
             creating = creatingDrop,
             onGetCoins = onGetCoins,
+            publishError = organizerError,
             onDismiss = {
                 if (!creatingDrop) {
+                    organizerError = null
                     showOrganizer = false
                     pendingCreateRequestId = null
                     pendingCreateFingerprint = null
@@ -559,13 +766,14 @@ fun BlinkDropsRoute(
                         val notified = result.optInt("eligible_followers", 0)
                         message = "Drop started. $notified eligible follower${if (notified == 1) "" else "s"} notified."
                         error = null
+                        organizerError = null
                         pendingCreateRequestId = null
                         pendingCreateFingerprint = null
-                        DropDraftStore.value = DropDraftSnapshot()
+                        DropDraftStore.clear(context)
                         showOrganizer = false
                         refresh()
                     }.onFailure {
-                        error = it.message ?: "Unable to create this Drop."
+                        organizerError = it.message ?: "Unable to create this Drop. Please retry."
                     }
                     creatingDrop = false
                 }
@@ -576,7 +784,8 @@ fun BlinkDropsRoute(
     commentDrop?.let { drop ->
         CommentDropDialog(
             reward = drop.rewardPerUser,
-            onDismiss = { commentDrop = null },
+            busy = busyDropId != null,
+            onDismiss = { if (busyDropId == null) commentDrop = null },
             onSubmit = { complete(drop, it) }
         )
     }
@@ -683,7 +892,27 @@ private fun DropCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CardGiftcard, null, tint = MaterialTheme.colorScheme.onSurface)
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    if (drop.creatorAvatar.startsWith("https://")) {
+                        AsyncImage(
+                            model = drop.creatorAvatar, contentDescription = "Creator profile",
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                drop.creatorName.trim().firstOrNull()?.uppercase()
+                                    ?: drop.creatorUsername.trim().firstOrNull()?.uppercase() ?: "B",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -707,6 +936,20 @@ private fun DropCard(
                 }
             }
 
+            val previewSource = drop.previewUrl.takeIf { it.startsWith("https://") }
+                ?: drop.previewVideoUrl.takeIf { it.startsWith("https://") }
+            if (previewSource != null) {
+                val model: Any = if (previewSource == drop.previewVideoUrl) {
+                    ImageRequest.Builder(LocalContext.current).data(previewSource)
+                        .decoderFactory(VideoFrameDecoder.Factory()).videoFrameMillis(800).build()
+                } else previewSource
+                AsyncImage(
+                    model = model,
+                    contentDescription = if (drop.targetType == "REEL") "Reel video preview" else "Drop content preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(132.dp),
+                )
+            }
             Text(
                 "${formatter.format(drop.rewardPerUser)} coins each · ${drop.winnerCount} people",
                 style = MaterialTheme.typography.titleMedium,
@@ -760,7 +1003,7 @@ private fun DropCard(
                             Icon(actionIcon(drop.action), null, modifier = Modifier.size(17.dp))
                         }
                         Spacer(Modifier.width(5.dp))
-                        Text("Complete & earn")
+                        Text(actionLabel(drop.action) + " & claim")
                     }
                 }
                 onCancel?.let {
@@ -842,6 +1085,7 @@ private fun DropReceiptCard(
 @Composable
 private fun TopGiverCard(
     giver: TopGiver,
+    rank: Int,
     formatter: NumberFormat,
     onFollow: (() -> Unit)?,
 ) {
@@ -856,7 +1100,11 @@ private fun TopGiverCard(
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.EmojiEvents, null)
+                    Text(
+                        "#$rank",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
             Spacer(Modifier.width(11.dp))
@@ -887,6 +1135,7 @@ private fun OrganizeDropDialog(
     isOnline: Boolean,
     creating: Boolean,
     onGetCoins: () -> Unit,
+    publishError: String?,
     onDismiss: () -> Unit,
     onCreate: (
         target: DropTarget,
@@ -898,7 +1147,8 @@ private fun OrganizeDropDialog(
     ) -> Unit,
 ) {
     val service = remember { BlinkDropsService() }
-    val draft = remember { DropDraftStore.value }
+    val context = LocalContext.current
+    val draft = remember(context) { DropDraftStore.load(context) }
     var targetType by remember { mutableStateOf(draft.targetType) }
     var selectedTargetId by remember { mutableStateOf(draft.selectedTargetId) }
     var action by remember { mutableStateOf(draft.action) }
@@ -908,6 +1158,8 @@ private fun OrganizeDropDialog(
     var duration by remember { mutableIntStateOf(draft.durationHours) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
+    var quoteError by remember { mutableStateOf<String?>(null) }
+    var quoteRetryNonce by remember { mutableIntStateOf(0) }
     var confirmPublish by remember { mutableStateOf(false) }
 
     val availableTargets = when (targetType) {
@@ -934,8 +1186,10 @@ private fun OrganizeDropDialog(
         winnerText,
         audience,
         duration,
+        isOnline,
+        quoteRetryNonce,
     ) {
-        DropDraftStore.value = DropDraftSnapshot(
+        DropDraftStore.save(context, DropDraftSnapshot(
             targetType = targetType,
             selectedTargetId = selectedTargetId,
             action = action,
@@ -943,9 +1197,11 @@ private fun OrganizeDropDialog(
             winnerText = winnerText,
             audience = audience,
             durationHours = duration,
-        )
+        ))
 
         quote = null
+        quoteError = null
+        quoteLoading = false
         if (
             !isOnline ||
             selectedTarget == null ||
@@ -966,8 +1222,10 @@ private fun OrganizeDropDialog(
             durationHours = duration,
         ).onSuccess {
             quote = it
+            quoteError = null
         }.onFailure {
             quote = null
+            quoteError = "Couldn't verify the Drop budget and eligible followers. Please retry."
         }
         quoteLoading = false
     }
@@ -989,6 +1247,11 @@ private fun OrganizeDropDialog(
         total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
         balance != null &&
         total <= balance &&
+        !quoteLoading &&
+        quote != null &&
+        quoteError == null &&
+        BlinkDropsPolicy.hasEligibleRecipients(eligibleFollowers) &&
+        BlinkDropsPolicy.hasEligibleRecipients(maximumPossibleRecipients) &&
         action in actions.map { it.name }
 
     var setupStep by remember { mutableIntStateOf(0) }
@@ -996,7 +1259,7 @@ private fun OrganizeDropDialog(
 
     Dialog(onDismissRequest = { if (!creating) onDismiss() }) {
         Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(.90f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(.94f).imePadding(),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
@@ -1018,7 +1281,7 @@ private fun OrganizeDropDialog(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     if (!isOnline) {
-                        Text("Offline · Your draft will be kept until you reconnect.",
+                        Text("Offline · Your draft is saved on this device until you reconnect.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall)
                     }
@@ -1187,8 +1450,12 @@ private fun OrganizeDropDialog(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                if (eligibleFollowers == 0) {
-                                    Text("No eligible followers yet. You can save your draft and try when followers become eligible.",
+                                quoteError?.let { problem ->
+                                     Text(problem, color = MaterialTheme.colorScheme.error)
+                                     OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry eligibility check") }
+                                 }
+                                 if (eligibleFollowers == 0) {
+                                    Text("No eligible followers yet. At least one eligible follower is required to publish.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -1222,9 +1489,17 @@ private fun OrganizeDropDialog(
                                     NumberFormat.getIntegerInstance(Locale.US).format(it)
                                 } ?: "—") + " coins")
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                if (!valid && !creating) {
+                                quoteError?.let { problem ->
+                                     Text(problem, color = MaterialTheme.colorScheme.error)
+                                     OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry quote") }
+                                 }
+                                 publishError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                                 if (!valid && !creating) {
                                     Text(when {
                                         !isOnline -> "Reconnect to publish."
+                                         quoteLoading -> "Verifying the rewards and eligibility…"
+                                         quoteError != null || quote == null -> "A verified quote is needed before publishing."
+                                         eligibleFollowers < 1 -> "At least one eligible follower is required."
                                         selectedTarget == null -> "Choose content first."
                                         !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be a multiple of 100."
                                         !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Enter a valid number of recipients."
@@ -1261,7 +1536,8 @@ private fun OrganizeDropDialog(
                             0 -> selectedTarget != null
                             2 -> BlinkDropsPolicy.isRewardValid(reward) &&
                                 BlinkDropsPolicy.isWinnerCountValid(winners) &&
-                                total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET
+                                total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
+                                    (balance ?: -1L) >= total
                             else -> true
                         },
                         modifier = Modifier.weight(1f),
@@ -1324,16 +1600,18 @@ private fun OrganizeDropDialog(
 @Composable
 private fun CommentDropDialog(
     reward: Int,
+    busy: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text("Comment to earn $reward coins") },
         text = {
             OutlinedTextField(
                 value = text,
+                enabled = !busy,
                 onValueChange = { if (it.length <= 2000) text = it },
                 label = { Text("Your comment") },
                 minLines = 3,
@@ -1341,11 +1619,11 @@ private fun CommentDropDialog(
             )
         },
         confirmButton = {
-            Button(onClick = { onSubmit(text.trim()) }, enabled = text.isNotBlank()) {
+            Button(onClick = { onSubmit(text.trim()) }, enabled = !busy && text.isNotBlank()) {
                 Text("Comment & claim")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }
 
@@ -1393,7 +1671,11 @@ private fun EmptyCard(message: String) {
 }
 
 private fun shortDropDate(raw: String): String =
-    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
+    runCatching {
+        java.time.OffsetDateTime.parse(raw)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
+    }.getOrElse { raw.replace('T', ' ').take(16).ifBlank { "—" } }
 
 private fun actionLabel(value: String): String = when (value.uppercase()) {
     "LIKE" -> "Like post"
@@ -1469,6 +1751,9 @@ private fun JSONArray?.toDropItems(): List<DropItem> {
                         createdAt = item.optString("created_at"),
                         endsAt = item.optString("ends_at"),
                         eligible = item.optBoolean("eligible", false),
+                        creatorAvatar = item.optString("creator_avatar"),
+                        previewUrl = item.optString("target_preview_url"),
+                        previewVideoUrl = item.optString("target_video_url"),
                     )
                 )
             }
