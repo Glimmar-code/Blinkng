@@ -144,7 +144,7 @@ class HomeReferenceContractTests(unittest.TestCase):
                  'TextButton(onClick = onCopyLink)')
         starts = [contents.index(icon) for icon in order]
         self.assertEqual(starts, sorted(starts))
-        self.assertIn('"\${BlinkPostFormat.count(displayedViewCount)} views"', contents)
+        self.assertIn('"${BlinkPostFormat.count(displayedViewCount)} views"', contents)
         # The counter must use the delayed authoritative value rather than
         # immediately exposing a freshly recorded backend impression.
         self.assertIn('val displayedViewCount = desktopDisplayedViewCount(post.id, post.viewCount)', DESKTOP)
