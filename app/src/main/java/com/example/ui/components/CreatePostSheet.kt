@@ -83,6 +83,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -101,6 +102,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -869,7 +871,6 @@ fun CreatePostSheet(
         onDismissRequest = ::requestDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
             colorScheme = darkColorScheme(
                     primary = Color.White,
@@ -1962,12 +1963,13 @@ private fun PostPreviewDialog(
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
+        MaterialTheme(colorScheme = lightColorScheme()) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = Color.White,
             tonalElevation = 8.dp,
             shadowElevation = 10.dp
         ) {
@@ -2092,6 +2094,7 @@ private fun PostPreviewDialog(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -2228,12 +2231,17 @@ private fun ComposerTopBar(
             fontSize = 20.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 6.dp)
+            modifier = Modifier.weight(1f).padding(start = 6.dp),
+            textAlign = TextAlign.Center
         )
 
         Button(
             onClick = onSubmit,
-            enabled = canSubmit
+            enabled = canSubmit,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF5245F2),
+                contentColor = Color.White
+            )
         ) {
             if (isSubmitting) {
                 if (uploadProgress != null) {
@@ -2247,7 +2255,7 @@ private fun ComposerTopBar(
                     )
                 }
             } else {
-                Text(if (isEditingReel) "Next" else if (isReel) "Publish Reel" else "Post")
+                Text("Next")
             }
         }
     }
