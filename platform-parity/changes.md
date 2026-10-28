@@ -1,3 +1,11 @@
+## 2026-10-27 — Notification reliability Testlab PR #622
+
+- Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.
+- Android repairs canonical announcement routing, duplicate navigation, notification-only refresh, history pagination, cross-account preference storage and compact card readability.
+- Windows now uses the shared event-matching policy for canonical/legacy notification merging.
+- OS-only differences: Android Firebase channels, Android 15 permissions and touch swipes do not directly apply to Windows.
+- **Not yet release-verified:** CI, Windows packaging, Android emulator, real Firebase/device push and hosted Supabase integration. Keep main unchanged until verification.
+
 ## 2026-10-27 — Server-ranked 30-day Search discovery (Testlab, not live)
 
 - **Shared:** `BlinkTrendingDiscovery`, `BlinkTrendingTags` and `BlinkTrendingCreator` define a common authenticated server-originated 30-day ranking contract. No device may calculate "top users" from incomplete cached posts or use unrelated referral recommendations as a substitute. Shared JVM tests cover honest window labelling and invalid creator rejection.
