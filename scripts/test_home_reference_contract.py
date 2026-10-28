@@ -102,6 +102,28 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('isRefreshingFollowing = true', vm)
         self.assertIn('hasMoreFollowingPosts = fresh.size >= 30', vm)
 
+    def test_filtered_feed_excludes_all_ads_and_repairs_boosted_poll_views(self):
+        home = method_body(HOME, 'private fun PremiumHomeFeed(', 'private fun PremiumNewPostsPill(')
+        self.assertIn('if (filter != PremiumFeedFilter.ALL) {', home)
+        self.assertIn('filteredPosts.mapIndexed { index, post -> PremiumHomeRow.PostRow(post, index) }', home)
+        self.assertIn('filteredAutoPageAttempts < 3', home)
+        self.assertIn('listState.scrollToItem(0)', home)
+        self.assertIn('locallyUnfollowedAuthorIds', home)
+        boosted = method_body(home, 'is PremiumHomeRow.BoostedPostRow -> {', 'is PremiumHomeRow.MarketSponsoredRow -> {')
+        self.assertIn('onVotePoll = onVotePoll', boosted)
+        self.assertIn('trackExposure = isScreenActive', boosted)
+        self.assertNotIn('trackExposure = false', boosted)
+
+    def test_desktop_home_excludes_reels_and_reports_poll_metadata_errors(self):
+        client = (ROOT / 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt').read_text()
+        models = (ROOT / 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopModels.kt').read_text()
+        self.assertIn('else append("&is_reel=eq.false&video_url=is.null")', client)
+        self.assertIn('pollMetadataAvailable = pollLookup.isSuccess', client)
+        self.assertIn('pollMetadataAvailable: Boolean = true', models)
+        self.assertIn('!post.isReel && post.videoUrl.isNullOrBlank()', DESKTOP)
+        self.assertIn('pollMetadataUnavailable', DESKTOP)
+        self.assertIn('autoFilterFetches < 3', DESKTOP)
+
     def test_phone_header_avoids_unnecessary_second_rail(self):
         header = method_body(CHROME, "fun FeedTopBar(", "private fun FeedBrandBlock(")
         # Short widths use compact icons and a compact wordmark, not a
@@ -154,9 +176,10 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('minOf(maxAgeMillis, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)', vm)
         self.assertIn('visibleRefreshAt["$ownerKey:$refreshedScope"]', vm)
         self.assertIn('fun refreshFollowingIfStale()', vm)
-        self.assertIn('else reconcileRefreshedFeed(current.followingPosts, fresh)', vm)
-        self.assertIn('followingRefreshRevision = if (fresh.isEmpty()', vm)
-        self.assertIn('if (fresh.isEmpty()) emptyList()', vm)
+        self.assertIn('reconcileFollowingChronologicalPage(', vm)
+        self.assertIn('val evictedStaleRows =', vm)
+        self.assertIn('followingRefreshRevision = if (evictedStaleRows)', vm)
+        self.assertIn('followingPageEpoch++ // Invalidate', vm)
         self.assertIn('viewModel.refreshIfStale()', MAIN)
         self.assertIn('onFollowingVisible = { viewModel.refreshFollowingIfStale() }', MAIN)
         self.assertIn('if (feedLane == 1 && currentSubTab == 0 && isMainPageActive)', HOME)

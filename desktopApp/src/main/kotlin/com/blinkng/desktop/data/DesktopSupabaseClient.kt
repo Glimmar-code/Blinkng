@@ -999,6 +999,7 @@ class DesktopSupabaseClient(
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,link_url,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
+            else append("&is_reel=eq.false&video_url=is.null")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
                 val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
                 if (tag != null) append("&tags=cs.${encode("{$tag}")}")
@@ -1017,13 +1018,16 @@ class DesktopSupabaseClient(
         // A lack of polls permission must not block all Feed content.
         val pageIds = (0 until rows.length())
             .mapNotNull { rows.optJSONObject(it)?.optString("id")?.takeIf(String::isNotBlank) }
-        val pollPostIds = if (pageIds.isEmpty()) emptySet() else runCatching {
-            val ids = pageIds.joinToString(",")
-            val pollRows = getArray("/rest/v1/polls?select=post_id&post_id=in.($ids)")
-            (0 until pollRows.length()).mapNotNull {
-                pollRows.optJSONObject(it)?.optString("post_id")?.takeIf(String::isNotBlank)
-            }.toSet()
-        }.getOrDefault(emptySet())
+        val pollLookup = runCatching {
+            if (pageIds.isEmpty()) emptySet() else {
+                val ids = pageIds.joinToString(",")
+                val pollRows = getArray("/rest/v1/polls?select=post_id&post_id=in.($ids)")
+                (0 until pollRows.length()).mapNotNull {
+                    pollRows.optJSONObject(it)?.optString("post_id")?.takeIf(String::isNotBlank)
+                }.toSet()
+            }
+        }
+        val pollPostIds = pollLookup.getOrDefault(emptySet())
         (0 until rows.length()).mapNotNull { index ->
             val row = rows.optJSONObject(index) ?: return@mapNotNull null
             val postId = row.optString("id")
@@ -1035,7 +1039,10 @@ class DesktopSupabaseClient(
                 liked = postId in likedIds,
                 bookmarked = postId in bookmarkedIds,
                 reposted = postId in repostedIds,
-            ).copy(hasPoll = postId in pollPostIds)
+            ).copy(
+                hasPoll = postId in pollPostIds,
+                pollMetadataAvailable = pollLookup.isSuccess
+            )
         }
     }
 

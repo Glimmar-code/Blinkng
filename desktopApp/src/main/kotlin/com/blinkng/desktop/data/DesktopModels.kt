@@ -90,6 +90,7 @@ data class DesktopFeedPost(
     val repostCount: Int = 0,
     val linkUrl: String? = null,
     val hasPoll: Boolean = false,
+    val pollMetadataAvailable: Boolean = true,
 )
 
 data class DesktopComment(
