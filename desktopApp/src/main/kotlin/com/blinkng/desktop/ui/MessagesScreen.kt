@@ -156,6 +156,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var photoBusy by remember { mutableStateOf(false) }
     var showStickerTray by remember(myUserId) { mutableStateOf(false) }
     var showTextPollComposer by remember(myUserId) { mutableStateOf(false) }
+    var attachmentMenuOpen by remember(myUserId) { mutableStateOf(false) }
     var pollQuestion by remember(myUserId) { mutableStateOf("") }
     var pollOptionLines by remember(myUserId) { mutableStateOf("") }
     var stickerRevision by remember(myUserId) { mutableStateOf(0) }
@@ -469,9 +470,17 @@ fun MessagesScreen(state: DesktopAppState) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()
+            .background(
+                if (MaterialTheme.colorScheme.background.luminance() < .4f)
+                    Color(0xFF060D16) else MaterialTheme.colorScheme.background
+            )) {
             Box(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)
+                modifier = Modifier.fillMaxWidth()
+                    .background(
+                        if (MaterialTheme.colorScheme.background.luminance() < .4f)
+                            Color(0xFF09131E) else MaterialTheme.colorScheme.surface
+                    ).padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 IconButton(
                     onClick = {
@@ -636,7 +645,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 },
                                 shape = RoundedCornerShape(16.dp),
                                 color = if (MaterialTheme.colorScheme.background.luminance() < .4f) {
-                                    if (mine) Color(0xFF005C4B) else Color(0xFF202C33)
+                                    if (mine) Color(0xFF0879F8) else Color(0xFF1C2A3B)
                                 } else if (mine) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceVariant
                             ) {
@@ -785,7 +794,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                             Text(
                                                 com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
                                                 fontSize = 11.sp,
-                                                color = if (receipt == "READ") Color(0xFF3B82F6)
+                                                color = if (receipt == "READ") Color(0xFF1685FF)
                                                     else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
@@ -933,26 +942,17 @@ fun MessagesScreen(state: DesktopAppState) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                TextButton(
-                    enabled = !photoBusy && myUserId.isNotBlank(),
-                    onClick = { chooseChatPhoto(false) }
-                ) { Text("Photo") }
-                TextButton(
-                    enabled = myUserId.isNotBlank() && !photoBusy,
-                    onClick = { showStickerTray = true }
-                ) { Text("Stickers") }
-                TextButton(
-                    enabled = !photoBusy && myUserId.isNotBlank(),
-                    onClick = { chooseChatPhoto(true) }
-                ) { Text("View once") }
-                TextButton(
-                    enabled = !photoBusy && myUserId.isNotBlank() && draft.isBlank(),
-                    onClick = {
-                        pollQuestion = ""
-                        pollOptionLines = ""
-                        showTextPollComposer = true
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF0879F8),
+                    modifier = Modifier.size(42.dp)
+                        .clickable { attachmentMenuOpen = true }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("+", color = Color.White, fontSize = 27.sp,
+                            fontWeight = FontWeight.Bold)
                     }
-                ) { Text("Poll") }
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draftsByConversation[active.id] = it },
@@ -1171,6 +1171,60 @@ fun MessagesScreen(state: DesktopAppState) {
         }
     }
 
+    if (attachmentMenuOpen) {
+        AlertDialog(
+            onDismissRequest = { attachmentMenuOpen = false },
+            title = { Text("Share with this chat") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Available Windows attachments",
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            enabled = !photoBusy && myUserId.isNotBlank(),
+                            onClick = {
+                                attachmentMenuOpen = false
+                                chooseChatPhoto(false)
+                            }
+                        ) { Text("Gallery") }
+                        Button(
+                            enabled = !photoBusy && myUserId.isNotBlank(),
+                            onClick = {
+                                attachmentMenuOpen = false
+                                chooseChatPhoto(true)
+                            }
+                        ) { Text("View once") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            enabled = myUserId.isNotBlank() && !photoBusy,
+                            onClick = {
+                                attachmentMenuOpen = false
+                                showStickerTray = true
+                            }
+                        ) { Text("Sticker") }
+                        Button(
+                            enabled = myUserId.isNotBlank() && draft.isBlank(),
+                            onClick = {
+                                attachmentMenuOpen = false
+                                pollQuestion = ""
+                                pollOptionLines = ""
+                                showTextPollComposer = true
+                            }
+                        ) { Text("Poll") }
+                    }
+                    Text(
+                        "Video, voice capture and device location use Android's native controls.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { attachmentMenuOpen = false }) { Text("Close") }
+            }
+        )
+    }
     if (showTextPollComposer) {
         selected?.let { target ->
             val prepared = runCatching {
