@@ -13,6 +13,7 @@ import com.example.data.repository.SearchDiscoveryRepository
 import com.example.ui.screens.BlinkUniversalPhotoEditor
 import com.example.media.BlinkReelPoster
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 import com.example.data.local.PersistentTextDraftStore
@@ -202,6 +203,7 @@ fun CreatePostSheet(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val composerCoroutineScope = rememberCoroutineScope()
     val composerScope = profile.id.ifBlank { profile.username }
 
     var text by rememberPersistentTextState(
@@ -219,6 +221,10 @@ fun CreatePostSheet(
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
+    var videoClips by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var combiningClips by remember { mutableStateOf(false) }
+    var combinePercent by remember { mutableStateOf(0) }
+    var combineError by remember { mutableStateOf<String?>(null) }
     var selectedCoverUri by rememberSaveable { mutableStateOf<String?>(null) }
     var coverFrameIndex by rememberSaveable { mutableStateOf(-1) }
     var coverRendering by remember { mutableStateOf(false) }
@@ -309,6 +315,40 @@ fun CreatePostSheet(
         }
     }
 
+    val multiVideoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(BlinkReelClipPolicy.MAX_CLIPS)
+    ) { picked ->
+        val initialPicker = pickerOpenedFromLanding
+        pickerOpenedFromLanding = false
+        if (picked.isEmpty()) {
+            if (initialPicker) showCreateLanding = true
+        } else {
+            picked.forEach { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+            val clips = picked.map(Uri::toString).distinct()
+            selectedImages = emptyList()
+            showPoll = false
+            mode = "reel"
+            if (clips.size == 1) {
+                videoClips = emptyList()
+                selectedVideo = clips.first()
+                selectedCoverUri = null
+                coverFrameIndex = -1
+                reelEditorStage = true
+            } else {
+                videoClips = clips
+                selectedVideo = null
+                combineError = null
+                reelEditorStage = false
+            }
+        }
+    }
+
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -321,6 +361,7 @@ fun CreatePostSheet(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             }
+            videoClips = emptyList()
             selectedVideo = uri.toString()
             selectedCoverUri = null
             coverFrameIndex = -1
@@ -378,6 +419,7 @@ fun CreatePostSheet(
 
     fun restoreDraft(draft: PostDraft) {
         activeDraftId = draft.id
+        videoClips = emptyList()
         text = draft.text
         selectedTags = draft.tags
         selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
@@ -420,6 +462,7 @@ fun CreatePostSheet(
         selectedCoverUri = null
         coverFrameIndex = -1
         activeDraftId = null
+        videoClips = emptyList()
         PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_options", composerScope)
@@ -449,6 +492,11 @@ fun CreatePostSheet(
                 coverFrameIndex = value.optInt("cover_frame_index", -1)
                 selectedVideo = value.optString("video_uri")
                     .takeIf { it.isNotBlank() && it != "null" }
+                value.optJSONArray("video_clips")?.let { rows ->
+                    videoClips = (0 until rows.length()).mapNotNull { index ->
+                        rows.optString(index).takeIf { it.isNotBlank() }
+                    }.take(BlinkReelClipPolicy.MAX_CLIPS)
+                }
                 if (!startInReelMode) mode = value.optString(
                     "mode",
                     if (selectedVideo == null) "post" else "reel"
@@ -487,6 +535,7 @@ fun CreatePostSheet(
         text,
         selectedImages,
         selectedVideo,
+        videoClips,
         selectedCoverUri,
         coverFrameIndex,
         mode,
@@ -513,6 +562,7 @@ fun CreatePostSheet(
         val hasAnything = text.isNotBlank() ||
             selectedImages.isNotEmpty() ||
             selectedVideo != null ||
+            videoClips.isNotEmpty() ||
             pollQuestion.isNotBlank() ||
             pollOptions.any { it.isNotBlank() } ||
             location.isNotBlank() ||
@@ -530,6 +580,7 @@ fun CreatePostSheet(
             val snapshot = JSONObject().apply {
                 put("image_uri", imagePayload(selectedImages) ?: JSONObject.NULL)
                 put("video_uri", selectedVideo ?: JSONObject.NULL)
+                put("video_clips", JSONArray(videoClips))
                 put("cover_uri", selectedCoverUri ?: JSONObject.NULL)
                 put("cover_frame_index", coverFrameIndex)
                 put("mode", mode)
@@ -607,6 +658,7 @@ fun CreatePostSheet(
         selectedVideo != null ||
         pollValid
     val hasComposerInput = cleanText.isNotBlank() ||
+        videoClips.isNotEmpty() ||
         selectedImages.isNotEmpty() ||
         selectedVideo != null ||
         pollQuestion.isNotBlank() ||
@@ -629,7 +681,7 @@ fun CreatePostSheet(
         pollSelected = showPoll,
         pollValid = pollValid,
         allowedInFeed = marketOnlyWarning == null,
-        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits || coverRendering,
+        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits || coverRendering || combiningClips || videoClips.isNotEmpty(),
         isSubmitting = isSubmitting
     )
 
@@ -910,7 +962,64 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            if (showMediaReview) {
+            if (videoClips.size >= 2 && selectedVideo == null) {
+                BlinkReelClipReview(
+                    clips = videoClips,
+                    exporting = combiningClips,
+                    progress = combinePercent,
+                    error = combineError,
+                    onMove = { from, to ->
+                        if (!combiningClips && from in videoClips.indices && to in videoClips.indices) {
+                            videoClips = videoClips.toMutableList().also { list ->
+                                val clip = list.removeAt(from)
+                                list.add(to, clip)
+                            }
+                        }
+                    },
+                    onRemove = { index ->
+                        if (!combiningClips) {
+                            videoClips = videoClips.filterIndexed { i, _ -> i != index }
+                            if (videoClips.size == 1) {
+                                selectedVideo = videoClips.first()
+                                videoClips = emptyList()
+                                reelEditorStage = true
+                            } else if (videoClips.isEmpty()) {
+                                showCreateLanding = true
+                            }
+                        }
+                    },
+                    onAdd = {
+                        multiVideoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    onBack = { if (!combiningClips) showCreateLanding = true },
+                    onExport = {
+                        if (!combiningClips) {
+                            combiningClips = true
+                            combineError = null
+                            combinePercent = 0
+                            composerCoroutineScope.launch {
+                                try {
+                                    val exported = exportReelClipSequence(context, videoClips) {
+                                        combinePercent = it
+                                    }
+                                    selectedVideo = exported
+                                    videoClips = emptyList()
+                                    mode = "reel"
+                                    reelEditorStage = true
+                                    selectedCoverUri = null
+                                    coverFrameIndex = -1
+                                } catch (problem: Exception) {
+                                    combineError = problem.message ?: "Couldn't combine these clips. Try shorter videos."
+                                } finally {
+                                    combiningClips = false
+                                }
+                            }
+                        }
+                    }
+                )
+            } else if (showMediaReview) {
                 BlinkReferenceMediaReview(
                     images = selectedImages,
                     onBack = {
@@ -957,7 +1066,7 @@ fun CreatePostSheet(
                         if (selectedImages.isNotEmpty() || showPoll) {
                             pendingMediaSwitch = "reel"
                         } else {
-                            videoPicker.launch(
+                            multiVideoPicker.launch(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                             )
                         }
