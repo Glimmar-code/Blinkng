@@ -128,7 +128,7 @@ begin
     where contest_id=p_contest and captured_at > now()-interval '30 minutes') then
     return;
   end if;
-  delete from public.blink_contest_rank_baselines where contest_id=p_contest;
+  -- Preserve earlier baseline rows and update only the candidate's own snapshot.
   insert into public.blink_contest_rank_baselines(contest_id,entry_id,rank,votes)
   select p_contest,r.id,r.rank,r.votes
   from (
@@ -140,7 +140,9 @@ begin
     left join public.blink_contest_votes v on v.entry_id=e.id
     where e.contest_id=p_contest and e.status='approved'
     group by e.id
-  ) r where r.rank<=50;
+  ) r where r.rank<=50
+  on conflict(contest_id,entry_id) do update
+    set rank=excluded.rank,votes=excluded.votes,captured_at=now();
 end;
 $$;
 revoke all on function private.blink_capture_rank_baseline(uuid)
