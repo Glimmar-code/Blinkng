@@ -942,21 +942,33 @@ fun CreatePostSheet(
                     onPhoto = {
                         pickerOpenedFromLanding = true
                         showCreateLanding = false
-                        imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        if (selectedVideo != null || showPoll) {
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            imagePicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
                     },
                     onVideo = {
                         pickerOpenedFromLanding = true
                         showCreateLanding = false
-                        videoPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                        )
+                        if (selectedImages.isNotEmpty() || showPoll) {
+                            pendingMediaSwitch = "reel"
+                        } else {
+                            videoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            )
+                        }
                     },
                     onPoll = {
-                        showPoll = true
-                        mode = "post"
                         showCreateLanding = false
+                        if (selectedVideo != null || selectedImages.isNotEmpty()) {
+                            pendingMediaSwitch = "poll"
+                        } else {
+                            showPoll = true
+                            mode = "post"
+                        }
                     },
                     onClassic = {
                         useClassicComposer = true
@@ -966,8 +978,8 @@ fun CreatePostSheet(
                 )
             } else if (showReferenceDetails) {
                 BlinkReferencePostDetails(
-                    text = text,
-                    mediaUri = selectedImages.firstOrNull() ?: selectedCoverUri,
+                    text = text.ifBlank { if (showPoll) pollQuestion else "" },
+                    mediaUri = selectedImages.firstOrNull() ?: selectedCoverUri ?: selectedVideo,
                     tags = effectiveTags,
                     audience = audience,
                     location = location,
@@ -1906,7 +1918,13 @@ fun CreatePostSheet(
 
     pendingMediaSwitch?.let { target ->
         AlertDialog(
-            onDismissRequest = { pendingMediaSwitch = null },
+            onDismissRequest = {
+                pendingMediaSwitch = null
+                if (pickerOpenedFromLanding) {
+                    pickerOpenedFromLanding = false
+                    showCreateLanding = true
+                }
+            },
             title = { Text("Change post type?") },
             text = { Text(
                 when (target) {
@@ -1915,7 +1933,13 @@ fun CreatePostSheet(
                     else -> "Selecting new media will replace the current media or poll. Cancelling the picker keeps it."
                 }
             ) },
-            dismissButton = { TextButton(onClick = { pendingMediaSwitch = null }) { Text("Keep editing") } },
+            dismissButton = { TextButton(onClick = {
+                pendingMediaSwitch = null
+                if (pickerOpenedFromLanding) {
+                    pickerOpenedFromLanding = false
+                    showCreateLanding = true
+                }
+            }) { Text("Keep editing") } },
             confirmButton = {
                 TextButton(onClick = {
                     pendingMediaSwitch = null
