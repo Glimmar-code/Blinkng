@@ -21,6 +21,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.models.PostDraft
+import com.example.data.models.FeedPost
+import com.example.data.models.UserProfile
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,9 +34,9 @@ import org.junit.runner.RunWith
 class BlinkCreatePostVisualAuditTest {
     @get:Rule val rule = createComposeRule()
 
-    private fun capture(name: String) {
+    private fun capture(name: String, tag: String = "create_post_visual_audit") {
         rule.waitForIdle()
-        val image = rule.onNodeWithTag("create_post_visual_audit")
+        val image = rule.onNodeWithTag(tag)
             .captureToImage().asAndroidBitmap()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val values = ContentValues().apply {
@@ -177,4 +179,37 @@ class BlinkCreatePostVisualAuditTest {
         }
         capture("create-post-options-staging.png")
     }
+
+    @Test fun previewUsesActualFeedCardProportionsOnAndroid() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val resource = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
+        rule.setContent {
+            AuditSurface {
+                PostPreviewDialog(
+                    post = FeedPost(
+                        id = "visual-audit-preview",
+                        author = "BLINK User",
+                        authorAvatar = resource,
+                        timeAgo = "Now",
+                        text = "Campus update: welcome to BLINK! #FUTA",
+                        images = listOf(resource, resource),
+                        likes = 0,
+                        commentsCount = 0,
+                        sharesCount = 0,
+                        audience = "Everyone",
+                        category = "Campus Life"
+                    ),
+                    profile = UserProfile(
+                        fullName = "BLINK User",
+                        username = "blink_preview",
+                        avatarUrl = resource,
+                        university = "FUTA"
+                    ),
+                    onDismiss = {}
+                )
+            }
+        }
+        capture("create-post-preview-staging.png", "blink_post_preview_stage")
+    }
+
 }
