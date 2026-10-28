@@ -26,6 +26,14 @@ class ReelExpansionMotionTest {
         assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(-70f, 2500f, 28f, 1100f))
     }
 
+    @Test fun horizontalNavigationRequiresDistanceSpeedAndSameDirection() {
+        assertTrue(ReelExpansionMotion.shouldCompleteFastSwipe(110f, 1600f, 84f, 900f))
+        assertTrue(ReelExpansionMotion.shouldCompleteFastSwipe(-110f, -1600f, 84f, 900f))
+        assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(110f, 200f, 84f, 900f))
+        assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(40f, 1700f, 84f, 900f))
+        assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(-120f, 1700f, 84f, 900f))
+    }
+
     @Test fun invalidMotionCannotTriggerNavigation() {
         assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(Float.NaN, 1500f, 28f, 1100f))
         assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(30f, Float.NaN, 28f, 1100f))

@@ -20,6 +20,100 @@ class ReelsReferenceChromeTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun emptyFeaturedListDoesNotReserveAnEmptyHighlightBanner() {
+        composeRule.setContent {
+            MaterialTheme {
+                ReelsReferenceChrome(
+                    stories = emptyList(),
+                    userAvatar = "",
+                    currentUsername = "current",
+                    isDark = false,
+                    hasUnreadNotifications = false,
+                    selectedTab = "Reels",
+                    onSelectTab = {},
+                    onAddStory = {},
+                    onStoryClick = {},
+                    onProfileClick = {},
+                    onSearch = {},
+                    onGame = {},
+                    onNotifications = {},
+                    onMenu = {},
+                    featuredReels = emptyList(),
+                    autoSlideEnabled = false
+                )
+            }
+        }
+        composeRule.onNodeWithText("Top Reels · New highlights every 12 hours").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Refresh reels").assertExists()
+        composeRule.onNodeWithContentDescription("Create reel").assertExists()
+    }
+
+    @Test
+    fun storyStripOnlyRingsRealUploadsAndOpensTheRealStory() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                ReelsReferenceChrome(
+                    stories = listOf(
+                        Story(id = "story_me", username = "current", avatar = ""),
+                        Story(id = "friend1", username = "aisha", avatar = "",
+                            storyImage = "https://example.com/story.jpg", displayName = "Aisha",
+                            hasUnseen = true)
+                    ),
+                    userAvatar = "",
+                    currentUsername = "current",
+                    isDark = false,
+                    hasUnreadNotifications = false,
+                    selectedTab = "Reels",
+                    onSelectTab = {},
+                    onAddStory = { actions += "add" },
+                    onStoryClick = { actions += it.id },
+                    onProfileClick = {},
+                    onSearch = {},
+                    onGame = {},
+                    onNotifications = {},
+                    onMenu = {},
+                    autoSlideEnabled = false
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Add story").assertExists()
+        composeRule.onNodeWithContentDescription("Open Aisha's story").performClick()
+        composeRule.runOnIdle { assertEquals(listOf("friend1"), actions) }
+    }
+
+    @Test
+    fun uploadedMyStoryOpensViewerInsteadOfAddStory() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                ReelsReferenceChrome(
+                    stories = listOf(
+                        Story(id = "story_me", username = "current", avatar = "",
+                            isUser = true, storyImage = "https://example.com/mine.jpg")
+                    ),
+                    userAvatar = "",
+                    currentUsername = "current",
+                    isDark = false,
+                    hasUnreadNotifications = false,
+                    selectedTab = "Reels",
+                    onSelectTab = {},
+                    onAddStory = { actions += "add" },
+                    onStoryClick = { actions += "open:${it.id}" },
+                    onProfileClick = {},
+                    onSearch = {},
+                    onGame = {},
+                    onNotifications = {},
+                    onMenu = {},
+                    autoSlideEnabled = false
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Open my story").performClick()
+        composeRule.runOnIdle { assertEquals(listOf("open:story_me"), actions) }
+    }
+
+    @Test
     fun previewShowsReferenceNavigationAndRoutesRealActions() {
         var currentTab = "Reels"
         val actions = mutableListOf<String>()
@@ -37,6 +131,8 @@ class ReelsReferenceChromeTest {
                     onStoryClick = { actions += "story:${it.id}" },
                     onProfileClick = { actions += "profile:$it" },
                     onSearch = { actions += "search" },
+                    onRefresh = { actions += "refresh" },
+                    onCreateReel = { actions += "create" },
                     onGame = { actions += "games" },
                     onNotifications = { actions += "notifications" },
                     onMenu = { actions += "menu" },
@@ -56,17 +152,19 @@ class ReelsReferenceChromeTest {
                 )
             }
         }
-        composeRule.onNodeWithText("B L I N K").assertExists()
+        composeRule.onNodeWithText("BLINK").assertExists()
         composeRule.onNodeWithText("Reels").assertExists()
         composeRule.onNodeWithText("Following").assertExists()
         composeRule.onNodeWithText("For You").assertExists()
         composeRule.onNodeWithText("Aisha").assertExists()
         composeRule.onNodeWithText("Campus Vibes").performClick()
+        composeRule.onNodeWithContentDescription("Create reel").performClick()
+        composeRule.onNodeWithContentDescription("Refresh reels").performClick()
         composeRule.onNodeWithContentDescription("Search").performClick()
         composeRule.onNodeWithContentDescription("Menu").performClick()
         composeRule.onNodeWithText("Following").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("featured:reel-1", "search", "menu", "tab:Following"), actions)
+            assertEquals(listOf("featured:reel-1", "create", "refresh", "search", "menu", "tab:Following"), actions)
         }
     }
 }

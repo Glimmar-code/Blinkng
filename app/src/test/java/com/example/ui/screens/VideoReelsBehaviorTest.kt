@@ -44,6 +44,35 @@ class VideoReelsBehaviorTest {
     }
 
     @Test
+    fun reelsTab_isNewestFirst_butForYouPreservesRankedServerOrder() {
+        val ranked = listOf(
+            reel("older").copy(createdAt = "2026-10-20T12:00:00Z"),
+            reel("unknown"),
+            reel("newest").copy(createdAt = "2026-10-27T12:00:00Z"),
+            reel("middle").copy(createdAt = "2026-10-25T12:00:00Z")
+        )
+        assertEquals(listOf("newest", "middle", "older", "unknown"),
+            selectReelsForTab(ranked, emptyList(), "Reels").map { it.id })
+        assertEquals(listOf("older", "unknown", "newest", "middle"),
+            selectReelsForTab(ranked, emptyList(), "For You").map { it.id })
+    }
+
+    @Test
+    fun featuredReelArrivingLaterMaintainsChronologicalReelsLane() {
+        val regular = listOf(
+            reel("old").copy(createdAt = "2026-10-20T12:00:00Z"),
+            reel("middle").copy(createdAt = "2026-10-24T12:00:00Z")
+        )
+        val featured = reel("featured").copy(createdAt = "2026-10-26T12:00:00Z")
+        val combined = (selectReelsForTab(regular, emptyList(), "Reels") + featured)
+            .distinctBy { it.id }
+        assertEquals(
+            listOf("featured", "middle", "old"),
+            selectReelsForTab(combined, emptyList(), "Reels").map { it.id }
+        )
+    }
+
+    @Test
     fun nativeSponsoredCadence_includesExactBoundaryAndRejectsShortLists() {
         assertFalse(shouldInsertSponsoredAfter(4, 8))
         assertTrue(shouldInsertSponsoredAfter(8, 8))
