@@ -51,7 +51,7 @@ private class DeferredReveal(
  * One app-wide view pipeline for posts and reels.
  *
  * Every genuine exposure is written immediately with its own idempotency UUID. The first
- * exposure for one content item opens a single 120-second presentation window. Additional
+ * exposure for one content item opens a single 2-minute presentation window. Additional
  * exposures during that window never restart the timer and never advance the visible counter.
  */
 object ContentViewCoordinator {

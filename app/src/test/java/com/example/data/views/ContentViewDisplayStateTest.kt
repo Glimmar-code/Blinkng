@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ContentViewDisplayStateTest {
     @Test
-    fun `view counts are held for two minutes while recording remains immediate`() {
+    fun `the display counter waits two minutes before revealing a recorded view`() {
         assertEquals(120_000L, VIEW_REFLECTION_DELAY_MS)
     }
 

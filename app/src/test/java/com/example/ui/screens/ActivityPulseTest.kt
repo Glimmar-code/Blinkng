@@ -13,7 +13,7 @@ class ActivityPulseTest {
 
     @Test
     fun communityActivity_usesThirtyToFiftyPerRealOnlineUser() {
-        assertEquals(30..50, communityActivityRange(0, policy))
+        assertEquals(0..0, communityActivityRange(0, policy))
         assertEquals(30..50, communityActivityRange(1, policy))
         assertEquals(60..100, communityActivityRange(2, policy))
         assertEquals(90..150, communityActivityRange(3, policy))
@@ -34,7 +34,7 @@ class ActivityPulseTest {
 
     @Test
     fun rankPulse_usesTenToFifteenPerRankUpAndKeepsBaseline() {
-        assertEquals(10..15, rankPulseRange(0, policy))
+        assertEquals(0..0, rankPulseRange(0, policy))
         assertEquals(10..15, rankPulseRange(1, policy))
         assertEquals(20..30, rankPulseRange(2, policy))
         assertEquals(30..45, rankPulseRange(3, policy))

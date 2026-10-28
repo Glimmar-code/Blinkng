@@ -840,7 +840,7 @@ private fun ReelsContent(
                                 pendingLaunchPositionMs = 0L
                             }
                         },
-                        // Only the current visible page counts; adjacent prefetched pages do not.
+                        // Prefetched pager pages are never qualified exposures.
                         trackExposure = isScreenActive && index == pager.currentPage,
                     )
                 }
@@ -1339,7 +1339,11 @@ private fun ReelPage(
     }
 
     val exposureModifier = if (trackExposure) {
-        Modifier.trackContentExposure(reel.id, displayedViewsCount)
+        Modifier.trackContentExposure(
+            reel.id,
+            displayedViewsCount,
+            playbackActive = isActive && !isPausedByUser && !isBuffering && !reel.videoUrl.isNullOrBlank(),
+        )
     } else {
         Modifier
     }
@@ -2167,7 +2171,11 @@ internal fun InlineReelPreviewCard(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(9f / 16f)
-            .trackContentExposure(reel.id, displayedViewsCount),
+            .trackContentExposure(
+                reel.id,
+                displayedViewsCount,
+                playbackActive = isActive && !previewFinished && !isBuffering && url.isNotBlank(),
+            ),
         shape = RoundedCornerShape(22.dp),
         color = Color.Black,
         tonalElevation = 0.dp
