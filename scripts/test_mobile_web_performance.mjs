@@ -29,7 +29,7 @@ const diagnostics=read('web/performance-diagnostics.js');
 const discovery=read('web/discovery.js');
 const manifest=JSON.parse(read('web/manifest.webmanifest'));
 const html=read('web/index.html');
-assert.ok(sw.includes("blink-web-v28-link-previews"),'Mobile service worker cache version mismatch');
+assert.ok(sw.includes("blink-web-v29-download-landing"),'Mobile service worker cache version mismatch');
 assert.ok(!sw.includes("'./blink-logo.png'"),'Do not precache large 512px PWA icon on each phone');
 assert.ok(manifest.icons.some(icon=>icon.src==='pwa-512.png'),'PWA icon must remain available on demand');
 assert.ok(sw.includes("'./blink-logo-v2.png'"),'Lightweight BLINK logo should remain in offline shell');
