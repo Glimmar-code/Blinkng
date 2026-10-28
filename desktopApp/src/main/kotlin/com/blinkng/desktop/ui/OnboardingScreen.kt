@@ -375,7 +375,7 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                                 label = { Text("Phone / WhatsApp number") },
                                 enabled = !phoneBusy && !phoneVerified, singleLine = true,
                                 modifier = Modifier.fillMaxWidth())
-                            Text("SMS verification is not mandatory until provider activation. Contact syncing remains optional.", color = OnboardingMuted, fontSize = 11.sp)
+                            Text("Entering your number does not send an SMS. Select Send SMS code to verify it. You can finish signup and verify later if SMS is unavailable.", color = OnboardingMuted, fontSize = 11.sp)
                             if (!phoneVerified) {
                                 Button(onClick = {
                                     scope.launch {

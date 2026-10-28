@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -23,6 +24,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import com.blinkng.shared.BlinkPhonePolicy
+import com.example.auth.BlinkPhoneVerificationClient
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -41,6 +46,12 @@ fun BlinkContactDiscoveryCard(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember(accountId) { BlinkContactsDiscoveryClient() }
+    val phoneClient = remember(accountId) { BlinkPhoneVerificationClient() }
+    var phoneVerified by remember(accountId) { mutableStateOf<Boolean?>(null) }
+    var phoneNumber by remember(accountId) { mutableStateOf("") }
+    var phoneCode by remember(accountId) { mutableStateOf("") }
+    var phoneCodeSent by remember(accountId) { mutableStateOf(false) }
+    var phoneBusy by remember(accountId) { mutableStateOf(false) }
     var settings by remember(accountId) { mutableStateOf(BlinkContactsDiscoveryClient.Consent()) }
     var people by remember(accountId) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var working by remember(accountId) { mutableStateOf(false) }
@@ -50,9 +61,11 @@ fun BlinkContactDiscoveryCard(
     fun update(value: BlinkContactsDiscoveryClient.Consent) {
         scope.launch {
             working = true
-            runCatching { client.set(value) }.onSuccess { settings = it; problem = null }
-                .onFailure { problem = it.message ?: "Could not save your choices." }
-            if (!value.syncEnabled) people = emptyList()
+            runCatching { client.set(value) }.onSuccess {
+                settings = it
+                problem = null
+                if (!it.syncEnabled) people = emptyList()
+            }.onFailure { problem = it.message ?: "Could not save your choices." }
             working = false
         }
     }
@@ -71,6 +84,8 @@ fun BlinkContactDiscoveryCard(
     }
     LaunchedEffect(accountId) {
         if (accountId.isBlank()) return@LaunchedEffect
+        runCatching { phoneClient.isCurrentPhoneVerified() }.onSuccess { phoneVerified = it }
+            .onFailure { phoneVerified = null }
         runCatching { client.get() }.onSuccess { settings = it.consent; people = it.people }
             .onFailure { problem = "Contact discovery is currently unavailable." }
     }
@@ -82,6 +97,69 @@ fun BlinkContactDiscoveryCard(
             Text("People from your contacts", style = MaterialTheme.typography.titleMedium)
             Text("Optional: BLINK matches phone numbers with consent. No call history or contact names are collected.",
                 style = MaterialTheme.typography.bodySmall)
+            Text("Turn on contact matching, then tap Find my friends and allow Contacts access. Only BLINK members who verified their number and opted in can appear.",
+                style = MaterialTheme.typography.bodySmall)
+            if (phoneVerified != true) {
+                Text("Verify phone for contact discovery", style = MaterialTheme.typography.titleSmall)
+                Text("A profile number is not verified. You can request an SMS code here, even after finishing signup.",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = phoneNumber,
+                    onValueChange = {
+                        phoneNumber = it.take(24)
+                        phoneCodeSent = false
+                        phoneCode = ""
+                    },
+                    label = { Text("Phone number") },
+                    singleLine = true,
+                    enabled = !phoneBusy,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            phoneBusy = true
+                            runCatching { phoneClient.requestCode(phoneNumber) }
+                                .onSuccess { phoneCodeSent = true; problem = null }
+                                .onFailure { problem = it.message ?: "Could not request an SMS code." }
+                            phoneBusy = false
+                        }
+                    },
+                    enabled = !phoneBusy && !phoneCodeSent && BlinkPhonePolicy.normalize(phoneNumber) != null
+                ) { Text("Send SMS code") }
+                if (phoneCodeSent) {
+                    OutlinedTextField(
+                        value = phoneCode,
+                        onValueChange = { phoneCode = it.filter(Char::isDigit).take(6) },
+                        label = { Text("Six-digit code") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                phoneBusy = true
+                                runCatching { phoneClient.verify(phoneNumber, phoneCode) }
+                                    .onSuccess { confirmed ->
+                                        phoneVerified = confirmed
+                                        if (confirmed) {
+                                            phoneCodeSent = false
+                                            phoneCode = ""
+                                            problem = null
+                                        } else problem = "The phone was not verified. Check the code."
+                                    }
+                                    .onFailure { problem = it.message ?: "Could not verify the SMS code." }
+                                phoneBusy = false
+                            }
+                        },
+                        enabled = !phoneBusy && BlinkPhonePolicy.otpIsValid(phoneCode)
+                    ) { Text("Verify phone") }
+                }
+            } else {
+                Text("Phone verified for BLINK contact discovery", style = MaterialTheme.typography.bodyMedium)
+            }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = settings.syncEnabled, enabled = !working, onCheckedChange = {
                     update(settings.copy(syncEnabled = it))
