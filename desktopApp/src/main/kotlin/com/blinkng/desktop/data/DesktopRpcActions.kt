@@ -87,6 +87,42 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_note", note.take(600)))
     }
 
+    // Free-entry BLINK Contest. All writes enforce authenticated server-side rules.
+    suspend fun contestList(): JSONArray =
+        rpcAny("list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
+    suspend fun contestDetail(id: String): JSONObject =
+        rpc("get_blink_contest", JSONObject().put("p_contest_id", id))
+    suspend fun contestApply(id: String, statement: String, mediaUrl: String): JSONObject =
+        rpc("apply_blink_contest", JSONObject().put("p_contest_id", id)
+            .put("p_statement", statement.trim())
+            .put("p_media_url", mediaUrl.trim().takeIf { it.isNotEmpty() } ?: JSONObject.NULL))
+    suspend fun contestVote(id: String, entry: String): JSONObject =
+        rpc("vote_blink_contest", JSONObject().put("p_contest_id", id).put("p_entry_id", entry))
+    suspend fun adminContestList(): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestEntries(id: String): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_contest_entries",
+            JSONObject().put("p_contest_id", id)) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestSave(data: JSONObject): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_contest",
+            JSONObject().put("p_id", JSONObject.NULL).put("p_data", data))
+    }
+    suspend fun adminContestAction(id: String, action: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_transition_blink_contest",
+            JSONObject().put("p_contest_id", id).put("p_action", action))
+    }
+    suspend fun adminContestReview(id: String, action: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_review_blink_contest_entry",
+            JSONObject().put("p_entry_id", id).put("p_action", action))
+    }
+
     suspend fun getStoreState(): JSONObject = rpc("get_blink_store_state", JSONObject())
 
     suspend fun getEconomyStatus(): JSONObject = rpc("get_blink_economy_status", JSONObject())
