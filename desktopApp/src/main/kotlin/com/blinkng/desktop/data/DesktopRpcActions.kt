@@ -169,6 +169,12 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         rpc("claim_blink_vip_benefit", JSONObject().put("p_benefit", benefit))
 
     suspend fun getBoostableContent(): JSONObject = rpc("get_my_blink_boostable_content", JSONObject())
+    suspend fun getBoostableContentPage(type: String, offset: Int, limit: Int = 40): JSONObject =
+        rpc("get_my_blink_boostable_content_page", JSONObject()
+            .put("p_target_type",type)
+            .put("p_offset",offset.coerceAtLeast(0))
+            .put("p_limit",limit.coerceIn(1,50)))
+
 
     suspend fun getBoostGrowthState(): JSONObject =
         rpc("get_blink_boost_growth_state_v2", JSONObject())
@@ -230,6 +236,14 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         rpc("cancel_blink_boost_campaign", JSONObject().put("p_campaign_id", campaignId.trim()))
 
     suspend fun getDropsState(): JSONObject = rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", 30))
+    suspend fun getDropsPage(scope: String, offset: Int, limit: Int = 30): JSONObject =
+        rpc("get_blink_drop_page", JSONObject()
+            .put("p_scope",scope)
+            .put("p_offset",offset.coerceAtLeast(0))
+            .put("p_limit",limit.coerceIn(1,50)))
+    suspend fun getDropById(id: String): JSONObject =
+        rpc("get_blink_drop_by_id", JSONObject().put("p_drop_id",id))
+
 
     suspend fun recommendBoostPower(input: com.blinkng.shared.BlinkBoostCampaignRequest, budget: Long): JSONObject =
         rpc("recommend_blink_boost_power", JSONObject()
