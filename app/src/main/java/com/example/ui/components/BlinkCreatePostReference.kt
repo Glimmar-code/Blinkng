@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -103,6 +104,7 @@ internal fun BlinkCreatePostLanding(
     onVideo: () -> Unit,
     onPoll: () -> Unit,
     onClassic: () -> Unit,
+    onCamera: () -> Unit,
     onDraft: (PostDraft) -> Unit
 ) {
     val white = Color.White
@@ -200,8 +202,8 @@ internal fun BlinkCreatePostLanding(
             }, enabled = drafts.isNotEmpty()
         )
         BlinkPostMenuRow(
-            title = "Gallery", detail = "Choose photos from your device",
-            icon = Icons.Default.Image, onClick = onPhoto
+            title = "Camera", detail = "Take a photo or record a Reel",
+            icon = Icons.Default.CameraAlt, onClick = onCamera
         )
         BlinkPostMenuRow(
             title = "Classic composer", detail = "Use BLINK's original posting screen",
