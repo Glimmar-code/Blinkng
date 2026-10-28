@@ -4020,6 +4020,14 @@ private fun MessageContent(
                 )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
+                val pdf = message.attachmentMimeType == "application/pdf" ||
+                    message.attachmentName.orEmpty().endsWith(".pdf", ignoreCase = true)
+                var pdfOpen by remember(message.id) { mutableStateOf(false) }
+                if (pdf && pdfOpen) BlinkChatPdfViewer(
+                    url = message.attachedDocumentUrl,
+                    filename = message.attachmentName ?: "Document.pdf",
+                    onDismiss = { pdfOpen = false }
+                )
                 Surface(
                     color = contentColor.copy(alpha = .08f),
                     contentColor = contentColor,
@@ -4027,7 +4035,10 @@ private fun MessageContent(
                     border = BorderStroke(1.dp, contentColor.copy(alpha = .16f)),
                     modifier = Modifier
                         .widthIn(min = 190.dp, max = 240.dp)
-                        .clickable { openExternalUri(context, Uri.parse(message.attachedDocumentUrl)) }
+                        .clickable {
+                            if (pdf) pdfOpen = true else
+                                openExternalUri(context, Uri.parse(message.attachedDocumentUrl))
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
@@ -4044,7 +4055,7 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
+                            Text(if (pdf) "Preview PDF" else "Open document", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
                         }
                     }
                 }
