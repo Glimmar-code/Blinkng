@@ -263,6 +263,7 @@ fun CreatePostSheet(
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
     var showReferenceDetails by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
+    var pickerOpenedFromLanding by rememberSaveable { mutableStateOf(false) }
     var useClassicComposer by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
@@ -283,6 +284,8 @@ fun CreatePostSheet(
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
+        if (uris.isEmpty() && pickerOpenedFromLanding) showCreateLanding = true
+        pickerOpenedFromLanding = false
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
                 runCatching {
@@ -305,6 +308,8 @@ fun CreatePostSheet(
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
+        if (uri == null && pickerOpenedFromLanding) showCreateLanding = true
+        pickerOpenedFromLanding = false
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
@@ -911,12 +916,14 @@ fun CreatePostSheet(
                         showCreateLanding = false
                     },
                     onPhoto = {
+                        pickerOpenedFromLanding = true
                         showCreateLanding = false
                         imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
                     },
                     onVideo = {
+                        pickerOpenedFromLanding = true
                         showCreateLanding = false
                         videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
