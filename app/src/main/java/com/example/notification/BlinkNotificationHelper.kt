@@ -784,7 +784,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context = context,
-            id = MSG_ID_BASE + positiveHash(senderUsername) % 700,
+            id = positiveHash("blink_message_$senderUsername"),
             notification = builder.build()
         )
     }
@@ -872,10 +872,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            MSG_ID_BASE +
-                    positiveHash(
-                        "summary_$senderUsername"
-                    ) % 700,
+            positiveHash("blink_message_summary_$senderUsername"),
             notification
         )
     }
@@ -986,10 +983,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            SOCIAL_ID_BASE +
-                    positiveHash(
-                        stableNotificationKey ?: "$title$body"
-                    ) % 700,
+            positiveHash("blink_social_${stableNotificationKey ?: "$title$body"}"),
             notification
         )
     }
@@ -1110,10 +1104,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            COMMENT_ID_BASE +
-                    positiveHash(
-                        burstKey
-                    ) % 700,
+            positiveHash("blink_comment_$burstKey"),
             notification
         )
     }
@@ -1195,10 +1186,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            MENTION_ID_BASE +
-                    positiveHash(
-                        burstKey
-                    ) % 700,
+            positiveHash("blink_mention_$burstKey"),
             notification
         )
     }
@@ -1270,10 +1258,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            SOCIAL_ID_BASE +
-                    positiveHash(
-                        burstKey
-                    ) % 700,
+            positiveHash("blink_follow_$burstKey"),
             notification
         )
     }
@@ -1348,10 +1333,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            MARKET_ID_BASE +
-                    positiveHash(
-                        "$title$body"
-                    ) % 700,
+            positiveHash("blink_market_$title$body"),
             notification
         )
     }
@@ -1448,10 +1430,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            MARKET_ID_BASE +
-                    positiveHash(
-                        "order_$marketId"
-                    ) % 700,
+            positiveHash("blink_market_order_$marketId"),
             notification
         )
     }
@@ -1483,7 +1462,7 @@ object BlinkNotificationHelper {
 
         notifySafely(
             context,
-            SECURITY_ID_BASE + positiveHash(title + body) % 700,
+            positiveHash("blink_security_$title$body"),
             notification
         )
     }
@@ -1578,10 +1557,7 @@ object BlinkNotificationHelper {
 
         cancelNotification(
             context,
-            MSG_ID_BASE +
-                    positiveHash(
-                        senderUsername
-                    ) % 700
+            positiveHash("blink_message_$senderUsername")
         )
     }
 
@@ -1614,10 +1590,7 @@ object BlinkNotificationHelper {
 
         cancelNotification(
             context,
-            MARKET_ID_BASE +
-                    positiveHash(
-                        "order_$marketId"
-                    ) % 700
+            positiveHash("blink_market_order_$marketId")
         )
     }
 
@@ -1747,8 +1720,6 @@ object BlinkNotificationHelper {
         value: String
     ): Int {
 
-        return value
-            .hashCode()
-            .absoluteValue
+        return value.hashCode() and Int.MAX_VALUE
     }
 }

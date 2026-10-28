@@ -10,6 +10,9 @@ import com.example.util.safeString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,6 +33,25 @@ import java.util.concurrent.TimeUnit
 object NotificationPreferenceStore {
     private const val TAG = "BlinkNotifyPrefs"
     private const val PREFS = "blink_notification_preferences"
+    private val syncMutex = kotlinx.coroutines.sync.Mutex()
+    enum class SyncStatus { SAVING, SYNCED, FAILED }
+    private val _syncStatus = MutableStateFlow<Map<String, SyncStatus>>(emptyMap())
+    val syncStatus: StateFlow<Map<String, SyncStatus>> = _syncStatus
+    private fun updateSyncStatus(uid: String, status: SyncStatus) {
+        if (uid.isNotBlank()) _syncStatus.value = _syncStatus.value + (uid to status)
+    }
+    fun retrySync(context: Context) = syncToServerAsync(context)
+    private fun accountPrefs(context: Context, accountId: String? = null): android.content.SharedPreferences {
+        val appContext = context.applicationContext
+        val uid = accountId ?: runCatching {
+            SupabaseService.initialize(appContext)
+            SupabaseService().getCurrentUserId().orEmpty()
+        }.getOrDefault("")
+        return appContext.getSharedPreferences(
+            "${PREFS}_${uid.ifBlank { "signed_out" }}", Context.MODE_PRIVATE
+        )
+    }
+    private const val PENDING_SYNC = "pending_sync"
     private const val MASTER = "master"
     private const val QUIET_ENABLED = "quiet_enabled"
     private const val QUIET_START = "quiet_start_minute"
@@ -44,7 +66,7 @@ object NotificationPreferenceStore {
         .build()
 
     fun isAllowed(context: Context, type: BlinkNotificationType): Boolean {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = accountPrefs(context)
         if (!prefs.safeBoolean(MASTER, true)) return false
         if (!prefs.safeBoolean(type.preferenceKey, true)) return false
         if (!type.critical && isQuietNow(context)) return false
@@ -62,23 +84,23 @@ object NotificationPreferenceStore {
     }
 
     fun setMasterEnabled(context: Context, enabled: Boolean) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(MASTER, enabled).apply()
+        accountPrefs(context)
+            .edit().putBoolean(MASTER, enabled).putBoolean(PENDING_SYNC, true).apply()
         syncToServerAsync(context)
     }
 
     fun setCategoryEnabled(context: Context, type: BlinkNotificationType, enabled: Boolean) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(type.preferenceKey, enabled).apply()
+        accountPrefs(context)
+            .edit().putBoolean(type.preferenceKey, enabled).putBoolean(PENDING_SYNC, true).apply()
         syncToServerAsync(context)
     }
 
     fun isCategoryEnabled(context: Context, type: BlinkNotificationType): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeBoolean(type.preferenceKey, true)
 
     fun isMasterEnabled(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeBoolean(MASTER, true)
 
     fun setQuietHours(
@@ -88,32 +110,33 @@ object NotificationPreferenceStore {
         endMinute: Int = DEFAULT_QUIET_END,
         timezone: String = ZoneId.systemDefault().id
     ) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .edit()
             .putBoolean(QUIET_ENABLED, enabled)
             .putInt(QUIET_START, startMinute.coerceIn(0, 1439))
             .putInt(QUIET_END, endMinute.coerceIn(0, 1439))
             .putString(TIMEZONE, timezone)
+            .putBoolean(PENDING_SYNC, true)
             .apply()
         syncToServerAsync(context)
     }
 
     fun quietHoursEnabled(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeBoolean(QUIET_ENABLED, false)
 
     fun quietStartMinute(context: Context): Int =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeInt(QUIET_START, DEFAULT_QUIET_START)
             .coerceIn(0, 1439)
 
     fun quietEndMinute(context: Context): Int =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        accountPrefs(context)
             .safeInt(QUIET_END, DEFAULT_QUIET_END)
             .coerceIn(0, 1439)
 
     private fun isQuietNow(context: Context): Boolean {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = accountPrefs(context)
         if (!prefs.safeBoolean(QUIET_ENABLED, false)) return false
         val start = prefs.safeInt(QUIET_START, DEFAULT_QUIET_START).coerceIn(0, 1439)
         val end = prefs.safeInt(QUIET_END, DEFAULT_QUIET_END).coerceIn(0, 1439)
@@ -128,20 +151,33 @@ object NotificationPreferenceStore {
     }
 
     fun refreshFromServerAsync(context: Context) {
-        CoroutineScope(Dispatchers.IO).launch { refreshFromServer(context.applicationContext) }
+        val uid = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        if (uid.isBlank()) return
+        // Never replace offline local choices with a stale server snapshot.
+        if (accountPrefs(context, uid).safeBoolean(PENDING_SYNC, false)) {
+            syncToServerAsync(context)
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch { refreshFromServer(context.applicationContext, uid) }
     }
 
     fun syncToServerAsync(context: Context) {
-        CoroutineScope(Dispatchers.IO).launch { syncToServer(context.applicationContext) }
+        val uid = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        if (uid.isBlank()) return
+        updateSyncStatus(uid, SyncStatus.SAVING)
+        CoroutineScope(Dispatchers.IO).launch {
+            syncMutex.withLock { syncToServer(context.applicationContext, uid) }
+        }
     }
 
-    private suspend fun refreshFromServer(context: Context) {
+    private suspend fun refreshFromServer(context: Context, expectedUid: String) {
         runCatching {
             SupabaseService.initialize(context)
             val service = SupabaseService()
             if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
             val uid = service.getCurrentUserId() ?: return
+            if (uid != expectedUid || accountPrefs(context, uid).safeBoolean(PENDING_SYNC, false)) return
             val request = Request.Builder()
                 .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notification_preferences?select=*&user_id=eq.$uid&limit=1")
                 .addHeader("apikey", SupabaseConfig.anonKey)
@@ -153,7 +189,10 @@ object NotificationPreferenceStore {
                 val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
                 if (rows.length() == 0) return@use
                 val row = rows.getJSONObject(0)
-                val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                // A delayed response from another account must never alter this account.
+                if (SupabaseService().getCurrentUserId() != expectedUid ||
+                    accountPrefs(context, expectedUid).safeBoolean(PENDING_SYNC, false)) return@use
+                val editor = accountPrefs(context, expectedUid).edit()
                 editor.putBoolean(MASTER, row.optBoolean("master_enabled", true))
                 mapOf(
                     "messages" to "messages_enabled",
@@ -182,14 +221,17 @@ object NotificationPreferenceStore {
         }.onFailure { Log.w(TAG, "Unable to refresh notification preferences", it) }
     }
 
-    private suspend fun syncToServer(context: Context) {
+    private suspend fun syncToServer(context: Context, expectedUid: String) {
         runCatching {
             SupabaseService.initialize(context)
             val service = SupabaseService()
-            if (!service.restoreSession()) return
-            val token = SupabaseService.accessToken() ?: return
-            val uid = service.getCurrentUserId() ?: return
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (!service.restoreSession()) throw IllegalStateException("BLINK session unavailable")
+            val token = SupabaseService.accessToken()
+                ?: throw IllegalStateException("BLINK access token unavailable")
+            val uid = service.getCurrentUserId()
+                ?: throw IllegalStateException("BLINK account unavailable")
+            if (uid != expectedUid) throw IllegalStateException("BLINK account changed during sync")
+            val prefs = accountPrefs(context, expectedUid)
             val payload = JSONObject()
                 .put("user_id", uid)
                 .put("master_enabled", prefs.safeBoolean(MASTER, true))
@@ -224,9 +266,16 @@ object NotificationPreferenceStore {
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.w(TAG, "Notification preference sync failed: ${response.code}")
+                    throw IllegalStateException("Notification preference sync failed: ${response.code}")
                 }
             }
-        }.onFailure { Log.w(TAG, "Unable to sync notification preferences", it) }
+            if (SupabaseService().getCurrentUserId() == expectedUid) {
+                accountPrefs(context, expectedUid).edit().putBoolean(PENDING_SYNC, false).apply()
+                updateSyncStatus(expectedUid, SyncStatus.SYNCED)
+            }
+        }.onFailure {
+            updateSyncStatus(expectedUid, SyncStatus.FAILED)
+            Log.w(TAG, "Unable to sync notification preferences", it)
+        }
     }
 }
