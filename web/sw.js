@@ -1,6 +1,6 @@
 // BLINK Phase 3: predictable offline shell, fresh UI assets, and privacy-safe caching.
 // Never store user-specific routes, query-string links, Supabase data or API responses.
-const CACHE='blink-web-v28-link-previews';
+const CACHE='blink-web-v29-download-landing';
 const CACHE_PREFIX='blink-web-';
 const SHELL=[
   './',
@@ -8,6 +8,8 @@ const SHELL=[
   './404.html',
   './styles.css',
   './landing.css',
+  './landing-relaunch.css',
+  './landing-relaunch.js',
   './discovery.js',
   './campuses.json',
   './parity.css',
