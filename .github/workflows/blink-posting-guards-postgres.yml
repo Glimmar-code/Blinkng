@@ -48,7 +48,7 @@ jobs:
       - name: Install isolated PostgreSQL client
         run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
       - name: Create isolated fake users and polls
-        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_posting_guards_fixture.sql
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_posting_guards_fixture.pgfixture
       - name: Apply the exact deployed migrations in disposable database
         run: |
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261028200903_blink_poll_vote_expiration_guard_20261028.sql
