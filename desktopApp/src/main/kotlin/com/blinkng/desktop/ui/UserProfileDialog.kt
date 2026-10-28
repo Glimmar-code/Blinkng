@@ -217,6 +217,22 @@ fun DesktopUserProfileDialog(
                             }
                         }
                         Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        com.blinkng.shared.BlinkVerifiedIdentitySignature.label(
+                            profile.verificationTier,
+                            profile.isVerified &&
+                                (profile.verificationExpiresAtMillis == 0L ||
+                                    profile.verificationExpiresAtMillis > System.currentTimeMillis())
+                        )?.let { signature ->
+                            Surface(
+                                color = if (profile.verificationTier.equals("GOLD", ignoreCase = true))
+                                    Color(0xFF503C17) else Color(0xFF203C59),
+                                shape = RoundedCornerShape(9.dp)
+                            ) {
+                                Text(signature, color = Color.White, fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
+                        }
                         val campus = listOfNotNull(profile.university, profile.faculty, profile.department)
                             .filter { it.isNotBlank() }
                             .joinToString(" • ")
