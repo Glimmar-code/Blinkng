@@ -6,6 +6,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -71,6 +83,10 @@ fun BlinkContactDiscoveryCard(
                 people = it
                 syncedThisSession = true
                 problem = null
+                runCatching { client.get() }.onSuccess { snapshot ->
+                    settings = snapshot.consent
+                    people = snapshot.people
+                }
             }
                 .onFailure { problem = it.message ?: "Contact sync unavailable." }
             working = false
@@ -99,10 +115,14 @@ fun BlinkContactDiscoveryCard(
     }
 
     Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("People from your contacts", style = MaterialTheme.typography.titleMedium)
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Find your people", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (working) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+            }
             Text("Optional: BLINK matches phone numbers with consent. No call history or contact names are collected.",
                 style = MaterialTheme.typography.bodySmall)
             Text("Choose Sync my phone contacts, then tap Find my friends to grant permission. You can switch syncing off or delete your matching data anytime.",
@@ -113,6 +133,12 @@ fun BlinkContactDiscoveryCard(
                     "verified previously can currently appear as matches; the no-SMS " +
                     "discovery backend is not active yet.",
                 style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                if (settings.lastSyncedAt.isBlank()) "Not synced yet"
+                else "Last synced: " + settings.lastSyncedAt.take(10),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = settings.syncEnabled, enabled = serviceReady && !working, onCheckedChange = {
@@ -137,7 +163,7 @@ fun BlinkContactDiscoveryCard(
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
                         PackageManager.PERMISSION_GRANTED) sync()
                     else permission.launch(Manifest.permission.READ_CONTACTS)
-                }, enabled = serviceReady && settings.syncEnabled && !working) { Text("Find my friends") }
+                }, enabled = serviceReady && settings.syncEnabled && !working) { Text(if (settings.lastSyncedAt.isBlank()) "Find my friends" else "Sync contacts again") }
                 TextButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth(),
                     enabled = serviceReady && !working) { Text("Delete synced contacts") }
             }
@@ -149,16 +175,37 @@ fun BlinkContactDiscoveryCard(
                 TextButton(onClick = { scope.launch { refresh() } }) { Text("Retry contact discovery connection") }
             }
             if (syncedThisSession && people.isEmpty()) {
-                Text("No matching BLINK contacts found yet. Your contacts remain private.", style = MaterialTheme.typography.bodySmall)
+                Text("No eligible matches yet. Check back when more contacts join.",
+                    style = MaterialTheme.typography.bodySmall)
             }
             if (people.isNotEmpty()) {
-                Text(people.size.toString() + " friends on BLINK", style = MaterialTheme.typography.titleSmall)
-                people.take(8).forEach { person ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        TextButton(onClick = { onProfile(person.username) }, modifier = Modifier.weight(1f)) {
-                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
+                HorizontalDivider()
+                Text(people.size.toString() + " possible BLINK connections", style = MaterialTheme.typography.titleSmall)
+                Text("Matches are suggestions, not verified phone ownership.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                people.take(12).forEach { person ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(modifier = Modifier.size(42.dp).clip(CircleShape),
+                            shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                            if (person.avatarUrl.isNotBlank()) {
+                                AsyncImage(model = person.avatarUrl, contentDescription = "Profile photo",
+                                    modifier = Modifier.size(42.dp), contentScale = ContentScale.Crop)
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(person.fullName.ifBlank { person.username }.take(1).uppercase())
+                                }
+                            }
                         }
-                        TextButton(onClick = { onFollow(person) }) { Text("Follow") }
+                        Column(Modifier.weight(1f)) {
+                            Text(person.fullName.ifBlank { person.username }, maxLines = 1,
+                                style = MaterialTheme.typography.bodyMedium)
+                            Text("@" + person.username, maxLines = 1,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { onProfile(person.username) }) { Text("View") }
+                        OutlinedButton(onClick = { onFollow(person) }) { Text("Follow") }
                     }
                 }
             }
