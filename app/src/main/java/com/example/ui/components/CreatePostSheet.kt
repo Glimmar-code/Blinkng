@@ -2210,6 +2210,7 @@ fun CreatePostSheet(
     if (showPreviewDialog) {
         PostPreviewDialog(
             post = scheduledPreviewPost(),
+            profile = profile,
             onDismiss = { showPreviewDialog = false }
         )
     }
@@ -2245,15 +2246,18 @@ fun CreatePostSheet(
 @Composable
 private fun PostPreviewDialog(
     post: FeedPost,
+    profile: UserProfile,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         MaterialTheme(colorScheme = lightColorScheme()) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(18.dp),
             color = Color.White,
             tonalElevation = 8.dp,
             shadowElevation = 10.dp
@@ -2264,14 +2268,35 @@ private fun PostPreviewDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Post preview",
+                        "Preview Post",
                         fontWeight = FontWeight.Black,
                         fontSize = 19.sp,
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(onClick = onDismiss) { Text("Done") }
+                    TextButton(onClick = onDismiss) { Text("Back to editor") }
                 }
 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AsyncImage(
+                        model = profile.avatarUrl,
+                        contentDescription = "Your profile photo",
+                        modifier = Modifier.size(46.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            profile.fullName.ifBlank { profile.username },
+                            fontWeight = FontWeight.Bold, maxLines = 1
+                        )
+                        Text("@" + profile.username, color = Color(0xFF77808E),
+                            fontSize = 12.sp)
+                    }
+                }
+                Text(
+                    "Draft preview — not published",
+                    color = Color(0xFF6A62DB), style = MaterialTheme.typography.labelMedium
+                )
                 if (post.audience.isNotBlank()) {
                     Text(
                         "${post.audience} • ${post.category}",
@@ -2288,6 +2313,11 @@ private fun PostPreviewDialog(
                 }
 
                 if (post.images.isNotEmpty()) {
+                    Text(
+                        if (post.images.size == 1) "Photo preview"
+                        else post.images.size.toString() + " photos · swipe to view",
+                        fontSize = 12.sp, color = Color(0xFF717A8B)
+                    )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -2297,8 +2327,8 @@ private fun PostPreviewDialog(
                                 contentDescription = post.altText ?: "Post image",
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier
-                                    .size(156.dp)
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .size(width = 276.dp, height = 260.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                             )
                         }
