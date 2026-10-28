@@ -5,6 +5,11 @@ import org.junit.Test
 
 class ContentViewDisplayStateTest {
     @Test
+    fun `the display counter waits two minutes before revealing a recorded view`() {
+        assertEquals(120_000L, VIEW_REFLECTION_DELAY_MS)
+    }
+
+    @Test
     fun `active window freezes realtime model count at its baseline`() {
         val state = ContentViewDisplayState(
             revealedCounts = emptyMap(),
