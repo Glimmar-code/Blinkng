@@ -64,6 +64,10 @@ internal fun DesktopCreatorStudioDialog(
     var promptTopic by remember(profile.id) { mutableStateOf("") }
     var promptAudience by remember(profile.id) { mutableStateOf("students") }
     var promptKind by remember(profile.id) { mutableStateOf("Post ideas") }
+    var eventName by remember(profile.id) { mutableStateOf("") }
+    var eventTime by remember(profile.id) { mutableStateOf("") }
+    var eventVenue by remember(profile.id) { mutableStateOf("") }
+    var eventNotice by remember(profile.id) { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(22.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -199,6 +203,34 @@ internal fun DesktopCreatorStudioDialog(
                         }) { Text("Open this brief in BLINK AI") }
                     }
                     if (gold) {
+                        item {
+                            HorizontalDivider()
+                            Text("Gold Event Organizer", fontWeight = FontWeight.Bold)
+                            Text("Share a validated invitation draft. No RSVP collection or automatic publishing.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedTextField(eventName, { eventName = it.take(120) },
+                                label = { Text("Event name") }, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(eventTime, { eventTime = it.take(120) },
+                                label = { Text("Confirmed date and time") }, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(eventVenue, { eventVenue = it.take(160) },
+                                label = { Text("Confirmed venue / online format") }, modifier = Modifier.fillMaxWidth())
+                            eventNotice?.let {
+                                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OutlinedButton(onClick = {
+                                try {
+                                    val invite = com.blinkng.shared.BlinkVerifiedCreatorTools.eventInvite(
+                                        eventName, eventTime, eventVenue, promptAudience)
+                                    Toolkit.getDefaultToolkit().systemClipboard
+                                        .setContents(StringSelection(invite), null)
+                                    eventNotice = "Event invitation copied for review and sharing"
+                                } catch (e: IllegalArgumentException) {
+                                    eventNotice = e.message
+                                } catch (_: Exception) {
+                                    eventNotice = "Clipboard unavailable"
+                                }
+                            }) { Text("Copy event invitation") }
+                        }
                         item {
                             HorizontalDivider()
                             Text("Gold Creator Portfolio", fontWeight = FontWeight.Bold)
