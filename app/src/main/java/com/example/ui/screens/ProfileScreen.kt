@@ -210,6 +210,7 @@ fun ProfileScreen(
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
     var showCreatorStudio by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var creatorAiPrompt by remember(profile.id) { mutableStateOf<String?>(null) }
 
     val profileService = remember { SupabaseService() }
     var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
@@ -301,7 +302,14 @@ fun ProfileScreen(
             onDismiss = { showCreatorStudio = false },
             onVerify = onOpenGetVerified,
             onRefresh = onRefreshProfile,
-            onOpenPost = onOpenPost
+            onOpenPost = onOpenPost,
+            onUseAiPrompt = { prompt -> creatorAiPrompt = prompt }
+        )
+    }
+    if (creatorAiPrompt != null && isMe) {
+        com.example.ui.components.BlinkAiSheet(
+            onDismiss = { creatorAiPrompt = null },
+            initialPrompt = creatorAiPrompt
         )
     }
 
