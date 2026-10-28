@@ -290,7 +290,7 @@ end; $$;
 
 
 create function public.admin_list_blink_contest_entries(p_contest_id uuid)
-returns jsonb language plpgsql stable security definer set search_path = '' as $
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
 begin
   perform private.require_blink_admin();
   return coalesce((select jsonb_agg(jsonb_build_object(
@@ -301,7 +301,7 @@ begin
    from public.blink_contest_entries e
    left join public.profiles p on p.id=e.user_id
    where e.contest_id=p_contest_id),'[]'::jsonb);
-end; $;
+end; $$;
 
 -- PUBLIC function EXECUTE is implicit on PostgreSQL; explicitly restrict it.
 revoke all on function public.list_blink_contests() from public,anon,authenticated;
