@@ -24,6 +24,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var insights by remember { mutableStateOf<JSONObject?>(null) }
+    var voteReviewNote by remember { mutableStateOf("") }
+    var paymentReference by remember { mutableStateOf("") }
+    var paymentNote by remember { mutableStateOf("") }
     var selectedContest by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
@@ -51,9 +55,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(selectedContest, revision) {
         entries = emptyList()
+        insights = null
         selectedContest?.let { id ->
             api.adminEntries(id).onSuccess { entries = it.contestObjects() }
                 .onFailure { message = it.message ?: "Cannot load applications." }
+            api.adminInsights(id).onSuccess { insights = it }
+                .onFailure { message = it.message ?: "Cannot load contest insights." }
         }
     }
 
@@ -152,7 +159,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                             TextButton(enabled = !busy, onClick = {
                                 busy = true
                                 scope.launch {
-                                    api.adminTransition(contest.optString("id"), "complete")
+                                    api.adminFinalize(contest.optString("id"))
                                         .onSuccess { message = "Results finalized."; revision++ }
                                         .onFailure { message = it.message ?: "Finalize failed." }
                                     busy = false
@@ -175,6 +182,89 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         if (selectedContest != null) item {
             HorizontalDivider()
             Text("Contest applications", style = MaterialTheme.typography.titleLarge)
+        }
+        if (selectedContest != null) item {
+            val stats = insights
+            Text("Share and voting analytics",style=MaterialTheme.typography.titleLarge)
+            if (stats == null) {
+                Text("Loading contest metrics…")
+            } else {
+                Text("Recorded shares: " + stats.optInt("shares") +
+                    " · Unique sharers: " + stats.optInt("unique_sharers"))
+                Text("Counted votes: " + stats.optInt("counted_votes") +
+                    " · Under review: " + stats.optInt("review_votes") +
+                    " · Invalidated: " + stats.optInt("rejected_votes"))
+                Text("Sharing records user-initiated actions only, not website views.",
+                    style=MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (selectedContest != null) item {
+            val queue = insights?.optJSONArray("review_queue")?.contestObjects().orEmpty()
+            Text("Vote integrity review",style=MaterialTheme.typography.titleLarge)
+            if (queue.isEmpty()) Text("No suspicious votes are pending.")
+            OutlinedTextField(value=voteReviewNote, onValueChange={voteReviewNote=it.take(300)},
+                label={Text("Review reason (at least 8 characters)")},
+                modifier=Modifier.fillMaxWidth())
+        }
+        items(insights?.optJSONArray("review_queue")?.contestObjects().orEmpty(),
+            key = { it.optString("id") }) { vote ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Vote: " + vote.optString("id").take(8) + " · " +
+                        vote.optString("reason"),style=MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                        listOf("approve","invalidate").forEach { action ->
+                            TextButton(enabled=!busy && voteReviewNote.trim().length>=8,
+                                onClick={
+                                    busy=true
+                                    scope.launch {
+                                        api.adminVoteReview(vote.optString("id"),action,voteReviewNote)
+                                            .onSuccess { message="Vote reviewed.";revision++ }
+                                            .onFailure { message=it.message ?: "Vote review failed." }
+                                        busy=false
+                                    }
+                                }) { Text(action.replaceFirstChar { it.uppercase() }) }
+                        }
+                    }
+                }
+            }
+        }
+        if (selectedContest != null) item {
+            Text("Prize payment ledger",style=MaterialTheme.typography.titleLarge)
+            Text("Record confirmed external payments only. This does not send funds.",
+                style=MaterialTheme.typography.bodySmall)
+            OutlinedTextField(value=paymentReference,onValueChange={paymentReference=it.take(150)},
+                label={Text("External payment receipt/reference")},
+                modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(value=paymentNote,onValueChange={paymentNote=it.take(400)},
+                label={Text("Admin payment note (optional)")},
+                modifier=Modifier.fillMaxWidth())
+        }
+        items(insights?.optJSONArray("prizes")?.contestObjects().orEmpty(),
+            key = { it.optString("id") }) { prize ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("#" + prize.optInt("place") + " @" + prize.optString("username") +
+                        " · ₦" + prize.optInt("amount_ngn") + " · " +
+                        prize.optString("payment_status"))
+                    Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                        listOf("processing","failed","paid").forEach { action ->
+                            TextButton(
+                                enabled=!busy && prize.optString("payment_status") != "paid" &&
+                                    (action != "paid" || paymentReference.trim().length>=6),
+                                onClick={
+                                    busy=true
+                                    scope.launch {
+                                        api.adminPrize(prize.optString("id"),action,paymentReference,paymentNote)
+                                            .onSuccess { message="Prize status recorded, not transferred.";revision++ }
+                                            .onFailure { message=it.message ?: "Unable to save prize status." }
+                                        busy=false
+                                    }
+                                }) { Text(action.replaceFirstChar { it.uppercase() }) }
+                        }
+                    }
+                }
+            }
         }
         items(entries, key = { it.optString("id") }) { entry ->
             ElevatedCard(Modifier.fillMaxWidth()) {

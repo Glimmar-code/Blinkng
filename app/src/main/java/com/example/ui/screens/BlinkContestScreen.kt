@@ -155,6 +155,7 @@ fun BlinkContestScreen(
                 val own = d.optString("my_entry_id", "").takeUnless { it == "null" }.orEmpty()
                 val myVote = d.optString("my_vote_entry_id", "").takeUnless { it == "null" }.orEmpty()
                 val top = d.optJSONArray("leaderboard")?.contestObjects().orEmpty()
+                val winners = d.optJSONArray("winners")?.contestObjects().orEmpty()
                 LazyColumn(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 115.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -170,6 +171,16 @@ fun BlinkContestScreen(
                         Text("Applications close " + dateLabel(c.optString("registration_closes_at")))
                         Text("Voting closes " + dateLabel(c.optString("voting_closes_at")))
                         if (c.optString("rules").isNotBlank()) Text("Rules: " + c.optString("rules"))
+                        if (status == "completed") {
+                            Text("Official winners",fontWeight=FontWeight.Bold,fontSize=20.sp)
+                            if (winners.isEmpty()) Text("No prize winners recorded.")
+                            winners.forEach { w ->
+                                Text("#" + w.optInt("place") + " @" + w.optString("username") +
+                                    " · " + cash(w.optInt("prize_amount")))
+                                Text("Prize status: " + w.optString("payment_status") +
+                                    " (admin-recorded)",fontSize=12.sp)
+                            }
+                        }
                         Text("One free vote per account. Self-voting is not allowed.", fontSize = 12.sp)
                     }
                     if (own.isNotBlank()) item {
@@ -238,7 +249,12 @@ fun BlinkContestScreen(
                                             busy = true; error = null; notice = null
                                             scope.launch {
                                                 api.vote(c.optString("id"), candidate.optString("id"))
-                                                    .onSuccess { notice = "Your free vote was recorded."; revision++ }
+                                                    .onSuccess {
+                                                        notice = if (it.optString("vote_status") == "under_review")
+                                                            "Your free vote was received and is pending integrity review."
+                                                        else "Your free vote was counted."
+                                                        revision++
+                                                    }
                                                     .onFailure { error = it.message }
                                                 busy = false
                                             }
@@ -274,7 +290,12 @@ fun BlinkContestScreen(
                                         busy = true; error = null; notice = null
                                         scope.launch {
                                             api.vote(c.optString("id"), candidate.optString("id"))
-                                                .onSuccess { notice = "Your vote was counted."; revision++ }
+                                                .onSuccess {
+                                                    notice = if (it.optString("vote_status") == "under_review")
+                                                        "Vote received; awaiting integrity review."
+                                                    else "Your free vote was counted."
+                                                    revision++
+                                                }
                                                 .onFailure { error = it.message }
                                             busy = false
                                         }
