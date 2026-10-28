@@ -31,6 +31,7 @@ document as 300 shipped animations.** Keep a single PR and merge to main only wh
 - Profile selection indicators and entrance content respect the system motion preference.
 - Search results/chips, Connect tabs, channel image actions, notifications and composer tiles have shared feedback.
 - Wallet, Verification, Boost, Drops and seller profile interactions gain reduced-motion-safe feedback; decorative wallet animation loops stop when disabled.
+- Menu icons, Edit Profile sections, Items tiles, Game study panes, Professional Center navigation and Admin insight panels are covered by the shared motion policy.
 - No transaction, view-count, reward, verification, payment, call-signaling, or data contract changes.
 
 ## Follow-up surface implementation queue (not yet shipped)

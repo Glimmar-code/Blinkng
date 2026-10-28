@@ -6,6 +6,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -241,11 +244,18 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
                 }
             }
 
+            val reduceCenterMotion = rememberBlinkReduceMotion()
             AnimatedContent(
                 targetState = section,
                 transitionSpec = {
-                    (slideInHorizontally { it / 5 } + fadeIn() + scaleIn(initialScale = .98f)) togetherWith
-                        (slideOutHorizontally { -it / 7 } + fadeOut() + scaleOut(targetScale = .98f))
+                    if (reduceCenterMotion) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        // Keep text and form fields sharp; reserve positional
+                        // motion for small parallax, without scaling the entire form.
+                        (slideInHorizontally { it / 5 } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -it / 7 } + fadeOut())
+                    }
                 },
                 label = "professionalCenterSection"
             ) { selected ->

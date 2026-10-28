@@ -14,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import com.example.ui.components.blinkSmoothSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -1649,7 +1650,7 @@ private fun EditorSection(
 
     Surface(
         modifier =
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().blinkSmoothSize(),
         shape =
             RoundedCornerShape(
                 19.dp
