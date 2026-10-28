@@ -2305,7 +2305,7 @@ fun getCurrentUserId(): String? {
         if (pollIds.isNotEmpty()) {
             val pollRows = executeRequest(
                 newRequestBuilder(
-                    "/rest/v1/polls?id=in.(${pollIds.joinToString(",")})&select=id,question",
+                    "/rest/v1/polls?id=in.(${pollIds.joinToString(",")})&select=id,question,expires_at,allows_multiple",
                     true
                 ).get().build()
             ).use { response ->
@@ -2374,6 +2374,8 @@ fun getCurrentUserId(): String? {
                 }
                 pollDataById[pollId] = JSONObject().apply {
                     put("question", pollRow.cleanString("question"))
+                    put("expires_at", pollRow.cleanString("expires_at"))
+                    put("allows_multiple", pollRow.optBoolean("allows_multiple", false))
                     put("options", options)
                     put("total_votes", totalVotes)
                     put("has_voted", votedOptionByPoll.containsKey(pollId))
@@ -2589,6 +2591,10 @@ fun getCurrentUserId(): String? {
                             put("post_id", postId)
                             put("question", poll.question)
                             put("allows_multiple", false)
+                            poll.expiresAtMillis?.let { expiry ->
+                                require(expiry > System.currentTimeMillis()) { "Poll must expire in the future." }
+                                put("expires_at", java.time.Instant.ofEpochMilli(expiry).toString())
+                            }
                         }
                         executeRequest(
                             newRequestBuilder("/rest/v1/polls", true)
@@ -3388,8 +3394,15 @@ suspend fun uploadPostMedia(
 
     suspend fun votePoll(postId: String, optionId: String, updatedPoll: PostPoll): Boolean = withContext(Dispatchers.IO) {
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-        val pollRaw=executeRequest(newRequestBuilder("/rest/v1/polls?post_id=eq.${encodeValue(postId)}&select=id&limit=1",true).get().build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Poll lookup failed."));raw}
-        val pollId=JSONArray(pollRaw).optJSONObject(0)?.optString("id") ?: throw IllegalStateException("Post has no poll.")
+        val pollRaw=executeRequest(newRequestBuilder("/rest/v1/polls?post_id=eq.${encodeValue(postId)}&select=id,expires_at&limit=1",true).get().build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Poll lookup failed."));raw}
+        val pollRow = JSONArray(pollRaw).optJSONObject(0)
+            ?: throw IllegalStateException("Post has no poll.")
+        val pollId = pollRow.optString("id")
+        val expiry = pollRow.cleanString("expires_at")
+            .takeIf { it.isNotBlank() }?.let(::parseTimestampMillis)
+        if (expiry != null && System.currentTimeMillis() >= expiry) {
+            throw IllegalStateException("This poll has closed.")
+        }
         val exists=executeRequest(newRequestBuilder("/rest/v1/poll_votes?poll_id=eq.${encodeValue(pollId)}&user_id=eq.${encodeValue(uid)}&select=id",true).get().build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Vote lookup failed."));raw!="[]"}
         if(exists) throw IllegalStateException("You have already voted in this poll.")
         val body=JSONObject().apply{put("poll_id",pollId);put("option_id",optionId);put("user_id",uid)}
@@ -4237,7 +4250,10 @@ suspend fun uploadPostMedia(
                     question = question,
                     options = options,
                     totalVotes = pollObj.optInt("total_votes", options.sumOf { it.votes }),
-                    hasVoted = pollObj.optBoolean("has_voted", options.any { it.isVotedByMe })
+                    hasVoted = pollObj.optBoolean("has_voted", options.any { it.isVotedByMe }),
+                    allowsMultiple = pollObj.optBoolean("allows_multiple", false),
+                    expiresAtMillis = pollObj.cleanString("expires_at")
+                        .takeIf { it.isNotBlank() }?.let(::parseTimestampMillis)
                 )
             }
         }
