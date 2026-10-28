@@ -91,6 +91,9 @@ try {
   assert.equal((await db.query(`select * from public.blink_contact_matches_for('${owner}')`)).rows.length, 0,
     'disabling discoverability removes directory matches');
 
+  await db.exec(`select public.blink_contact_clear_imports('${owner}');`);
+  const cleared = await db.query(`select * from private.blink_contact_join_alerts where owner_id='${owner}'`);
+  assert.equal(cleared.rows.length, 0, 'revoking sync deletes derived contact alert records');
   console.log('PASS mutual no-SMS contacts: RLS, reciprocity, dedup, blocks, revocation');
 } finally {
   await db.close();
