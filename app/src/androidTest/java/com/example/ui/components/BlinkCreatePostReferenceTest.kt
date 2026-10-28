@@ -125,6 +125,7 @@ class BlinkCreatePostReferenceTest {
                     onPreview = { selected += "preview" },
                     onShareCaption = { selected += "share" },
                     isSubmitting = false,
+                    canPublish = true,
                     uploadProgress = null
                 )
             }
