@@ -72,7 +72,7 @@ class BlinkCreatePostVisualAuditTest {
                 BlinkCreatePostLanding(
                     drafts = listOf(PostDraft(id = "audit-draft", text = "Campus news")),
                     onClose = {}, onText = {}, onPhoto = {}, onVideo = {},
-                    onPoll = {}, onClassic = {}, onDraft = {}
+                    onPoll = {}, onClassic = {}, onCamera = {}, onDraft = {}
                 )
             }
         }
@@ -85,7 +85,7 @@ class BlinkCreatePostVisualAuditTest {
                 BlinkCreatePostLanding(
                     drafts = emptyList(),
                     onClose = {}, onText = {}, onPhoto = {}, onVideo = {},
-                    onPoll = {}, onClassic = {}, onDraft = {}
+                    onPoll = {}, onClassic = {}, onCamera = {}, onDraft = {}
                 )
             }
         }
