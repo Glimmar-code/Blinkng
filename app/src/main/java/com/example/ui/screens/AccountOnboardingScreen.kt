@@ -587,8 +587,15 @@ fun AccountOnboardingScreen(
                         )
                         Spacer(Modifier.height(18.dp))
 
-                        val birthdayValid = birthDate.isBlank() ||
-                            Regex("""\d{4}-\d{2}-\d{2}""").matches(birthDate)
+                        val birthdayValid = BlinkOnboardingPolicy.validOptionalBirthday(birthDate)
+                        if (!birthdayValid) {
+                            Text(
+                                "Enter a real date in YYYY-MM-DD format, not a future date.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
 
                         PrimaryOnboardingButton(
                             text = if (saving) "Saving..." else "Continue",
