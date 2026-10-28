@@ -1,6 +1,14 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -77,17 +85,35 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (rows.isEmpty()) item { Text("No contests in this section yet.") }
                 items(rows, key = { it.optString("id") }) { c ->
-                    ElevatedCard(Modifier.fillMaxWidth().clickable {
-                        selected = c.optString("id"); statement = ""; mediaUrl = ""; message = ""
-                    }) {
-                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(c.optString("title"), style = MaterialTheme.typography.titleLarge)
-                            Text(BlinkContestPolicy.statusLabel(c.optString("status")))
-                            Text(c.optString("description"), maxLines = 2)
-                            Text("1st " + prize(c.optInt("prize_first")) +
-                                " · 2nd " + prize(c.optInt("prize_second")) +
-                                " · 3rd " + prize(c.optInt("prize_third")), fontWeight = FontWeight.Bold)
-                            Text(c.optInt("contestants").toString() + " contestants · Free entry · Free voting")
+                    Surface(
+                        color = Color(0xFF0B1626), shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            selected = c.optString("id"); statement = ""; mediaUrl = ""; message = ""
+                        }
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            val banner = c.optString("banner_url")
+                            if (banner.startsWith("https://")) AsyncImage(
+                                model = banner, contentDescription = "Contest cover",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(105.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                            Column(Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("BLINK CONTEST  ·  FREE ENTRY / FREE VOTING",
+                                    color = Color(0xFF69B9FF), fontSize = 10.sp)
+                                Text(c.optString("title"), color = Color.White,
+                                    style = MaterialTheme.typography.titleLarge)
+                                Text(c.optString("description"), color = Color(0xFFCDD9EB), maxLines = 2)
+                                Text("🥇 " + prize(c.optInt("prize_first")) +
+                                    "    🥈 " + prize(c.optInt("prize_second")) +
+                                    "    🥉 " + prize(c.optInt("prize_third")),
+                                    color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(c.optInt("contestants").toString() +
+                                    " contestants · View contest →",
+                                    color = Color(0xFF8BCBFF), fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -115,10 +141,24 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             Text("Official winners",style=MaterialTheme.typography.titleLarge)
                             if (winners.isEmpty()) Text("No prize winners were recorded.")
                             winners.forEach { winner ->
-                                Text("#" + winner.optInt("place") + " @" + winner.optString("username") +
-                                    " · " + prize(winner.optInt("prize_amount")))
-                                Text("Prize status: " + winner.optString("payment_status") +
-                                    " (admin-recorded)")
+                                Surface(color = Color(0xFF0B1626),
+                                    shape = RoundedCornerShape(12.dp)) {
+                                    Row(Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        Text(when (winner.optInt("place")) {
+                                            1 -> "🥇"; 2 -> "🥈"; else -> "🥉" }, fontSize = 25.sp)
+                                        Column {
+                                            Text("@" + winner.optString("username"),
+                                                color = Color.White, fontWeight = FontWeight.Bold)
+                                            Text(prize(winner.optInt("prize_amount")),
+                                                color = Color(0xFF8BCBFF))
+                                            Text("Payment: " + winner.optString("payment_status") +
+                                                " (admin-recorded)", color = Color(0xFFB7C7DA),
+                                                fontSize = 11.sp)
+                                        }
+                                    }
+                                }
                             }
                         }
                         Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
@@ -156,13 +196,48 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             }
                         }
                     }
+                    if (leaders.isNotEmpty()) item {
+                        Text("Top three leaders", style = MaterialTheme.typography.titleLarge)
+                        Row(Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.Bottom) {
+                            listOf(1, 0, 2).forEach { index ->
+                                val entry = leaders.getOrNull(index)
+                                if (entry == null) Spacer(Modifier.weight(1f))
+                                else {
+                                    Column(
+                                        Modifier.weight(1f).height(
+                                            if (index == 0) 140.dp else 165.dp
+                                        ).clip(RoundedCornerShape(14.dp))
+                                            .background(Color(0xFF102843)).padding(10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Text(when(entry.optInt("rank")) {
+                                            1 -> "🥇"; 2 -> "🥈"; else -> "🥉" })
+                                        DesktopContestAvatar(entry.optString("avatar_url"),
+                                            entry.optString("username"), 48.dp)
+                                        Text("@" + entry.optString("username"),
+                                            color = Color.White, maxLines = 1)
+                                        Text(entry.optInt("votes").toString() + " votes",
+                                            color = Color(0xFF9ACFFF), fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     item { Text("Top 20 · " + d.optInt("total_ranked") + " ranked contestants",
                         style = MaterialTheme.typography.titleLarge) }
                     if (leaders.isEmpty()) item { Text("No approved contestants yet.") }
                     items(leaders, key = { it.optString("id") }) { entry ->
                         ElevatedCard {
                             Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("#" + entry.optInt("rank") + "  @" + entry.optString("username"),
+                                Text("#" + entry.optInt("rank"), fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(10.dp))
+                                DesktopContestAvatar(entry.optString("avatar_url"),
+                                    entry.optString("username"), 42.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text("@" + entry.optString("username"),
                                     modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                                 Text(entry.optInt("votes").toString() + " votes")
                                 Spacer(Modifier.width(16.dp))
@@ -424,5 +499,17 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                 Text(entry.optString("statement"))
             }
         }
+    }
+}
+
+@Composable
+private fun DesktopContestAvatar(url: String, username: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).clip(CircleShape).background(Color(0xFF28415D)),
+        contentAlignment = Alignment.Center) {
+        if (url.startsWith("https://")) AsyncImage(
+            model = url, contentDescription = "Contestant @" + username,
+            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+        ) else Text(username.take(1).uppercase().ifBlank { "B" }, color = Color.White,
+            fontWeight = FontWeight.Bold)
     }
 }
