@@ -44,6 +44,9 @@ document as 300 shipped animations.** Keep a single PR and merge to main only wh
 - Connect match stages, request statuses, choices and entrance animations respect reduced motion.
 - Verification tier choice, Boost steps and Drops steps use short, reduced-motion-safe transitions.
 - Android instrumented regression test import errors were corrected (previously failed before device testing).
+- Channel list to detail uses a directional transition while remembering the directory's scroll position; no replacement blank launch screen.
+- Voice recording indicator tracks the real recording timer, and call labels cross-fade only on actual call state changes.
+- Connect segmented mode selection responds to reduced-motion preferences.
 
 ## Follow-up surface implementation queue (not yet shipped)
 

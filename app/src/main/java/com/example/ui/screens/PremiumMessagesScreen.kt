@@ -4266,6 +4266,12 @@ private fun MessageComposer(
     onVoiceStop: () -> Unit,
     onVoiceCancel: () -> Unit
 ) {
+    val reducedVoiceMotion = rememberBlinkReduceMotion()
+    val voiceIndicatorAlpha by animateFloatAsState(
+        targetValue = if (isRecording && !reducedVoiceMotion && recordingSeconds % 2 == 0) 1f else .55f,
+        animationSpec = tween(if (reducedVoiceMotion) 0 else 240),
+        label = "recordingVoiceStatus"
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -4315,7 +4321,7 @@ private fun MessageComposer(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = palette.danger,
+                            color = palette.danger.copy(alpha = voiceIndicatorAlpha),
                             modifier = Modifier.size(9.dp)
                         ) {}
                         Spacer(Modifier.width(9.dp))

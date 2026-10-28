@@ -1,5 +1,15 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -105,21 +116,42 @@ fun BlinkCommunitiesPanel(
         onDispose { onChannelOpenChange(false) }
     }
 
-    selectedChannel?.let { channel ->
-        BlinkChannelDetail(
-            channel = channel, backend = backend,
-            viewerProfile = viewerProfile,
-            onBack = { selectedChannel = null }, modifier = modifier,
-            initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId },
-            onChannelEdited = { edited ->
-                selectedChannel = edited
-                communities = communities.map { if (it.id == edited.id) edited else it }
+    // Keep the directory's actual LazyListState outside the route transition:
+    // opening and closing a Channel must restore the same visible rows.
+    val directoryScrollState = rememberLazyListState()
+    val reduceRouteMotion = rememberBlinkReduceMotion()
+    AnimatedContent(
+        targetState = selectedChannel,
+        transitionSpec = {
+            if (reduceRouteMotion) {
+                EnterTransition.None togetherWith ExitTransition.None
+            } else {
+                (slideInHorizontally(
+                    initialOffsetX = { if (targetState != null) it else -it / 5 },
+                    animationSpec = tween(240)
+                ) + fadeIn(tween(180))) togetherWith
+                    (slideOutHorizontally(
+                        targetOffsetX = { if (initialState != null) it else -it / 5 },
+                        animationSpec = tween(210)
+                    ) + fadeOut(tween(140)))
             }
-        )
-        return
-    }
-
+        },
+        label = "channelDirectoryToDetail"
+    ) { channel ->
+        if (channel != null) {
+            BlinkChannelDetail(
+                channel = channel, backend = backend,
+                viewerProfile = viewerProfile,
+                onBack = { selectedChannel = null }, modifier = modifier,
+                initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId },
+                onChannelEdited = { edited ->
+                    selectedChannel = edited
+                    communities = communities.map { if (it.id == edited.id) edited else it }
+                }
+            )
+        } else {
     LazyColumn(
+        state = directoryScrollState,
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -335,5 +367,7 @@ fun BlinkCommunitiesPanel(
                 }
             }
         )
+    }
+        }
     }
 }

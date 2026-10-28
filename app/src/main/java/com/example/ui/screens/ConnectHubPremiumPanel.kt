@@ -2326,6 +2326,7 @@ private fun connectDirectoryGroup(item: ConnectDirectoryCategory): String {
 
 @Composable
 private fun SegmentedModeSwitch(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val reduceMotion = rememberBlinkReduceMotion()
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
@@ -2335,10 +2336,14 @@ private fun SegmentedModeSwitch(options: List<String>, selected: Int, onSelect: 
                 val isSelected = selected == i
                 val bg by animateColorAsState(
                     targetValue = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                    animationSpec = tween(200),
+                    animationSpec = tween(if (reduceMotion) 0 else 200),
                     label = "segBg"
                 )
-                val elevation by animateDpAsState(if (isSelected) 2.dp else 0.dp, label = "segElevation")
+                val elevation by animateDpAsState(
+                    targetValue = if (isSelected) 2.dp else 0.dp,
+                    animationSpec = tween(if (reduceMotion) 0 else 180),
+                    label = "segElevation"
+                )
                 Surface(
                     modifier = Modifier
                         .weight(1f)

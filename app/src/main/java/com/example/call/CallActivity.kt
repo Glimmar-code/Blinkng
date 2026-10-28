@@ -931,10 +931,14 @@ private fun CallScreen(
                         Text("@$peerUsername", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                     Spacer(Modifier.size(8.dp))
-                    Text(
-                        if (statusText == "Connected" && elapsedSeconds > 0) formatDuration(elapsedSeconds) else statusText,
-                        color = if (errorText == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
-                    )
+                    BlinkFadeThrough(targetState = statusText, label = "authoritativeCallStatus") { confirmed ->
+                        Text(
+                            if (confirmed == "Connected" && elapsedSeconds > 0)
+                                formatDuration(elapsedSeconds) else confirmed,
+                            color = if (errorText == null)
+                                MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                        )
+                    }
                     if (!errorText.isNullOrBlank()) {
                         Spacer(Modifier.size(4.dp))
                         Text(errorText, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
