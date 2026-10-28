@@ -258,6 +258,7 @@ fun CreatePostSheet(
     var reelEditorStage by rememberSaveable { mutableStateOf(startInReelMode) }
     var showCreateLanding by rememberSaveable { mutableStateOf(!startInReelMode) }
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
+    var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -1341,6 +1342,38 @@ fun CreatePostSheet(
                     )
                 }
 
+                BlinkReferenceComposerToolbar(
+                    enabled = !isSubmitting,
+                    onPhoto = {
+                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
+                        else imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onVideo = {
+                        if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
+                        else videoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    onPoll = {
+                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        else {
+                            showPoll = !showPoll
+                            if (showPoll) mode = "post"
+                        }
+                    },
+                    onEmoji = { if (text.length < 4998) text += " 😊" },
+                    onTag = { if (text.length < 4999) text += if (text.isBlank()) "#" else " #" },
+                    onMention = { if (text.length < 4999) text += if (text.isBlank()) "@" else " @" },
+                    onLocation = { showAdvancedSettings = true }
+                )
+                TextButton(
+                    onClick = { showLegacyPostActions = !showLegacyPostActions },
+                    enabled = !isSubmitting,
+                    modifier = Modifier.padding(start = 8.dp)
+                ) { Text(if (showLegacyPostActions) "Hide more tools" else "More tools") }
+                if (showLegacyPostActions) {
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
@@ -1370,6 +1403,7 @@ fun CreatePostSheet(
                     onLink = { showAdvancedSettings = true },
                     onLocation = { showAdvancedSettings = true }
                 )
+                }
 
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
