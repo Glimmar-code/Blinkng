@@ -75,22 +75,28 @@ Deno.serve(async request => {
     return canonical(profile?.phone ?? "");
   };
   const key = await hmacKey(pepper);
+  const dispatchPushFor = async (notificationId: string) => {
+    if (!isUuid(notificationId)) return;
+    try {
+      await fetch(url + "/functions/v1/send-activity-notification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json", "apikey": secret,
+          "Authorization": "Bearer " + secret,
+        },
+        body: JSON.stringify({ notification_id: notificationId }),
+      });
+    } catch {
+      // Trusted push worker will re-check privacy authorization and deduplicate.
+    }
+  };
   const dispatchNewContactAlerts = async () => {
     // Only after reciprocal opt-in matching and joined-alert authorization checks.
     const { data: ids, error } = await admin.rpc("blink_contact_my_recent_push_ids", { p_joiner: uid });
     if (error || !Array.isArray(ids)) return;
     for (const row of ids.slice(0, 100)) {
       const notificationId = String(row?.notification_id ?? "");
-      if (!isUuid(notificationId)) continue;
-      try {
-        await fetch(url + "/functions/v1/send-activity-notification", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": secret, "Authorization": "Bearer " + secret },
-          body: JSON.stringify({ notification_id: notificationId }),
-        });
-      } catch {
-        // Existing dispatch deduplication allows trusted retry by a server worker.
-      }
+      await dispatchPushFor(notificationId);
     }
   };
   const freshSettings = async () => {
@@ -179,6 +185,15 @@ Deno.serve(async request => {
         const alerts = await admin.rpc("blink_contact_notify_my_join", { p_joiner: uid });
         if (alerts.error) throw alerts.error;
         await dispatchNewContactAlerts();
+      }
+      // If an established user imports a recent joiner last, notify them now.
+      // The SQL routine returns only that user's authorized recent notifications.
+      const recent = await admin.rpc("blink_contact_notify_recent_matches", { p_owner: uid });
+      if (recent.error) throw recent.error;
+      if (Array.isArray(recent.data)) {
+        for (const item of recent.data.slice(0, 100)) {
+          await dispatchPushFor(String(item?.notification_id ?? ""));
+        }
       }
       const result = await admin.rpc("blink_contact_matches_for", { p_user: uid });
       if (result.error) throw result.error;
