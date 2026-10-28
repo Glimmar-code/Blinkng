@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
@@ -630,5 +631,79 @@ internal fun BlinkReferenceMediaReview(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
         ) { Text("Next (" + images.size + ")", color = Color.White) }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/** Interactive clip order screen before rendering one playable Reel. */
+@Composable
+internal fun BlinkReelClipReview(
+    clips: List<String>,
+    exporting: Boolean,
+    progress: Int,
+    error: String?,
+    onMove: (Int, Int) -> Unit,
+    onRemove: (Int) -> Unit,
+    onAdd: () -> Unit,
+    onExport: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color.Black)
+            .verticalScroll(rememberScrollState()).testTag("blink_reel_clip_review")
+            .padding(horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, enabled = !exporting) {
+                Icon(Icons.Default.Close, contentDescription = "Close clip editor", tint = Color.White)
+            }
+            Text("Arrange Video Clips", color = Color.White, fontSize = 18.sp,
+                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("${clips.size}/4", color = Color(0xFF9596FF))
+        }
+        Text("Select 2–4 videos. Arrange them and combine into a single Reel (maximum 3 minutes).",
+            color = Color(0xFFB3BAC6), fontSize = 12.sp)
+        clips.forEachIndexed { index, clip ->
+            Surface(color = Color(0xFF1B1F28), shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.VideoLibrary, contentDescription = null,
+                        tint = Color(0xFFFC597A), modifier = Modifier.size(26.dp))
+                    Spacer(Modifier.width(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Clip ${index + 1}", color = Color.White,
+                            fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text(clip.substringAfterLast('/').take(24),
+                            color = Color(0xFF9DA5B3), fontSize = 10.sp, maxLines = 1)
+                    }
+                    TextButton(onClick = { onMove(index, index - 1) },
+                        enabled = !exporting && index > 0) { Text("↑", color = Color.White) }
+                    TextButton(onClick = { onMove(index, index + 1) },
+                        enabled = !exporting && index < clips.lastIndex) { Text("↓", color = Color.White) }
+                    IconButton(onClick = { onRemove(index) }, enabled = !exporting) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove clip ${index + 1}",
+                            tint = Color.White)
+                    }
+                }
+            }
+        }
+        OutlinedButton(modifier = Modifier.fillMaxWidth(),
+            enabled = !exporting && clips.size < BlinkReelClipPolicy.MAX_CLIPS,
+            onClick = onAdd) { Text("Add more clips") }
+        if (exporting) {
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth()
+            )
+            Text("Combining: ${progress.coerceIn(0, 100)}%",
+                color = Color.White, fontSize = 12.sp)
+        }
+        error?.let { Text(it, color = Color(0xFFFFA1A6), fontSize = 12.sp) }
+        Button(modifier = Modifier.fillMaxWidth().height(50.dp),
+            enabled = !exporting && clips.size in 2..BlinkReelClipPolicy.MAX_CLIPS,
+            onClick = onExport,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2)),
+            shape = RoundedCornerShape(13.dp)) {
+            Text("Combine & Edit Reel", color = Color.White, fontWeight = FontWeight.Bold)
+        }
     }
 }
