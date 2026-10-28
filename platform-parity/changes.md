@@ -1,10 +1,17 @@
-## 2026-10-28 — BLINK Contest free participation (Testlab only)
+## 2026-10-28 — BLINK Contest free entry, contestant sharing and deep vote links (Testlab PR #638)
 
-- **Shared contract:** One free vote per authenticated account per contest; no self-voting, paid entry, paid votes, coins or verification multipliers. The backend enforces eligibility, vote uniqueness, registration windows, voting windows, moderation, audit-relevant entry status and server-ranked top-20 plus personal rank. Android and Windows use the same Supabase RPCs and `BlinkContestPolicy` labels.
-- **Android:** Fourth main tab changes from Connect to Contest, with Upcoming/Ongoing/Winners sections, prize amounts, applications, voting, live-requested rankings and admin contest manager. The original Connect discovery tools are preserved via "Find people & campus connections" rather than deleted.
-- **Windows:** The Connect primary route becomes Contest, with an explicit People discovery sidebar destination, equivalent contest/entry/voting UI, and an admin-only Contest admin route.
-- **Backend migration:** `20261028185000_blink_contests_free_entry.sql` creates three RLS-protected contest tables and authenticated/admin RPCs. Direct table grants are revoked for untrusted clients; write paths are server-authoritative. No production schema has been modified by this branch.
-- **Release hold:** Database SQL requires isolated staging execution, privilege/role tests, PostgreSQL function compilation, concurrent vote tests, app integration tests, current-head Android and Windows compilation, and signed runtime validation. Do not apply to production or merge main until these pass. Prize award payouts and advanced fake-account investigations are not represented as completed automation.
+- **Shared/backend:** Authenticated free-entry and one-vote-per-account, self-vote rejection, scheduled windows, top-20 and full approved-candidate public lookup (including users outside the top 20). Admin approval and contest management remain server-authoritative; prizes are informational, not automatic payouts.
+- **Android:** Fourth primary page is Contest; original Connect is available from inside it. Each contestant has Share; a generated portrait PNG flyer features the public profile photo, contest, current rank/votes and a shareable candidate-specific vote URL. Verified links route into BLINK, resume through login/signup and open the chosen contestant; the user must tap Vote manually.
+- **Windows:** Contest shares the same ranking/entry backend and shows the personalized preview, with copy voting message and save PNG export; People discovery remains separately reachable.
+- **Web/Cloudflare:** /contest/{contest_uuid}/{entry_uuid} serves an approved-contestant invitation with Open BLINK to vote, APK download and copyable URL. Installation via APK cannot reliably reopen an app automatically; the page retains the link and provides an explicit post-install Open action.
+- **Release hold:** No production migration, live voting, link-verification guarantee, deployed website or merged PR is claimed. Backend fixture, Android+Windows compilation, security/permissions, route and device testing must pass before main.
+
+## 2026-10-28 — Full-app audit Search and credential recovery (PR #635)
+
+- **Search:** Android and Windows both expose a 30-day-first trending-tags entry point and retain truthful seven-day fallback until the new authenticated RPC is deployed. No fabricated trends or creators. The staged backend excludes expired verification badges.
+- **Android recovery security:** New password and confirmation are transient Compose state, never encrypted long-lived draft fields. Legacy encrypted password-reset draft keys are actively cleared without reading the saved values.
+- **PARITY-EXCEPTION: android-password-reset-deep-link:** Android OS intent dispatch now sends both `blink://auth/reset-password` and legacy `blink://reset-password` to its dedicated token-verifying reset screen. Windows does not implement Android intent filters and must use its own authorized browser/desktop recovery callback. No shared account, password, session, or backend permission semantics were changed.
+- **Validation gate:** Staged SQL fixture, source regressions and Android recovery-link Robolectric tests have been added. Independent PostgreSQL role/privacy integration, latest-head Android/Windows CI and end-to-end recovery email/device verification remain required. Main and hosted Supabase are untouched.
 
 ## 2026-10-27 — Notification reliability Testlab PR #622
 

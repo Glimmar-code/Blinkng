@@ -52,6 +52,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -97,6 +98,7 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkTextSecondary
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.discovery.BlinkBirthdayPolicy
 import com.blinkng.shared.BlinkPhonePolicy
 import com.example.auth.BlinkPhoneVerificationClient
 import kotlinx.coroutines.delay
@@ -154,10 +156,13 @@ fun AccountOnboardingScreen(
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
-    var phoneNumber by rememberSaveable(profile.id) { mutableStateOf("") }
-    var phoneCode by rememberSaveable(profile.id) { mutableStateOf("") }
-    var phoneCodeSent by rememberSaveable(profile.id) { mutableStateOf(false) }
-    var phoneVerified by rememberSaveable(profile.id) { mutableStateOf(false) }
+    // Do not retain private phone or OTP-flow state in Android savedInstanceState.
+    var phoneNumber by remember(profile.id) { mutableStateOf("") }
+    // SMS one-time codes must not enter Android savedInstanceState bundles.
+    var phoneCode by remember(profile.id) { mutableStateOf("") }
+    var phoneCodeSent by remember(profile.id) { mutableStateOf(false) }
+    // A verified badge must be earned from this live OTP response, not restored UI state.
+    var phoneVerified by remember(profile.id) { mutableStateOf(false) }
     var phoneBusy by remember { mutableStateOf(false) }
     var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
@@ -528,7 +533,7 @@ fun AccountOnboardingScreen(
                                 birthDate = value.filter { it.isDigit() || it == '-' }.take(10)
                                 error = null
                             },
-                            label = { Text("Birthday (optional)") },
+                            label = { Text("Birthday (required)") },
                             placeholder = { Text("YYYY-MM-DD") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
@@ -587,8 +592,15 @@ fun AccountOnboardingScreen(
                         )
                         Spacer(Modifier.height(18.dp))
 
-                        val birthdayValid = birthDate.isBlank() ||
-                            Regex("""\d{4}-\d{2}-\d{2}""").matches(birthDate)
+                        val birthdayValid = BlinkBirthdayPolicy.isValid(birthDate)
+                        if (!birthdayValid) {
+                            Text(
+                                "Enter a real date in YYYY-MM-DD format, not a future date.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
 
                         PrimaryOnboardingButton(
                             text = if (saving) "Saving..." else "Continue",

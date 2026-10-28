@@ -62,6 +62,16 @@ class PasswordResetActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // This Activity uses singleTask, so a second recovery email can arrive
+        // while the first link's UI is open. Never submit with the old token.
+        // Recreate from the new Intent to discard the previous recovery session
+        // and both transient password fields before showing the new link.
+        setIntent(intent)
+        recreate()
+    }
+
     private fun finishResetAndRequireFreshSignIn(showSuccess: Boolean = true) {
         // Password recovery uses its own one-use access token and never imports it into
         // SupabaseService. Therefore cancellation/completion must not erase an unrelated

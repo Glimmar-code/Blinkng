@@ -61,7 +61,11 @@ object PasswordRecoveryClient {
 
     /** Parse the implicit-flow recovery session Supabase adds to the redirect fragment. */
     fun parseRecoveryLink(uri: Uri?): Result<RecoverySession> {
-        if (uri == null || uri.scheme != "blink" || uri.host != "auth" || uri.path != "/reset-password") {
+        val validDestination = uri != null && uri.scheme.equals("blink", ignoreCase = true) &&
+            ((uri.host.equals("auth", ignoreCase = true) && uri.path == "/reset-password") ||
+                (uri.host.equals("reset-password", ignoreCase = true) &&
+                    uri.path.orEmpty() in setOf("", "/")))
+        if (!validDestination || uri == null) {
             return Result.failure(IllegalArgumentException("This password reset link is invalid."))
         }
 
