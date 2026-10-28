@@ -426,6 +426,23 @@ fun ConnectSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {
+                // Contacts appear in the main Connect discovery list, not in a hidden settings page.
+                // Matches are server-authorized and unavailable until consent backend is online.
+                if (current?.id?.isNotBlank() == true) {
+                    item(key = "connect_device_contacts", contentType = "contact_discovery") {
+                        com.example.ui.components.BlinkContactDiscoveryCard(
+                            accountId = current.id,
+                            onProfile = onProfileClick,
+                            onFollow = { person ->
+                                if (person.id.isNotBlank()) {
+                                    followScope.launch {
+                                        FollowStateStore.setFollowing(person.id, true)
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
                 if (policy.enabled) {
                     item(key = "connect_community_activity", contentType = "activity_pulse") {
                         Surface(
