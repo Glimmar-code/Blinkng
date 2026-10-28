@@ -52,7 +52,9 @@ fun BlinkCommunitiesPanel(
     val ownerId = service.getCurrentUserId().orEmpty()
     var viewerProfile by remember(ownerId) { mutableStateOf<UserProfile?>(null) }
     LaunchedEffect(ownerId) {
-        viewerProfile = if (ownerId.isNotBlank()) service.fetchProfileById(ownerId) else null
+        viewerProfile = if (ownerId.isNotBlank()) {
+            runCatching { service.fetchProfileById(ownerId) }.getOrNull()
+        } else null
     }
     // Never carry a previous account's private communities, roster or draft
     // through a logout/login or Switch Account transition.
