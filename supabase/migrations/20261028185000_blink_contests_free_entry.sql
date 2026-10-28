@@ -101,6 +101,65 @@ grant select, insert, update, delete on table public.blink_contest_entries to se
 grant select, insert, update, delete on table public.blink_contest_votes to service_role;
 grant select, insert, update, delete on table public.blink_contest_prizes to service_role;
 
+-- Historical leaderboard baseline: at most 50 rank rows refreshed once per
+-- 30-minute activity window. This is not a fabricated rank-change indicator.
+create table public.blink_contest_rank_baselines (
+  contest_id uuid not null references public.blink_contests(id) on delete cascade,
+  entry_id uuid not null references public.blink_contest_entries(id) on delete cascade,
+  rank integer not null check (rank between 1 and 50),
+  votes integer not null check (votes >= 0),
+  captured_at timestamptz not null default now(),
+  primary key(contest_id,entry_id)
+);
+create index blink_contest_baseline_fresh_idx
+  on public.blink_contest_rank_baselines(contest_id,captured_at desc);
+alter table public.blink_contest_rank_baselines enable row level security;
+revoke all on public.blink_contest_rank_baselines from public,anon,authenticated;
+grant select,insert,update,delete on public.blink_contest_rank_baselines to service_role;
+
+create function private.blink_capture_rank_baseline(p_contest uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  -- Prevent simultaneous writers from multiplying expensive rankings.
+  if not pg_try_advisory_xact_lock(hashtextextended(p_contest::text, 90210)) then
+    return;
+  end if;
+  if exists(select 1 from public.blink_contest_rank_baselines
+    where contest_id=p_contest and captured_at > now()-interval '30 minutes') then
+    return;
+  end if;
+  delete from public.blink_contest_rank_baselines where contest_id=p_contest;
+  insert into public.blink_contest_rank_baselines(contest_id,entry_id,rank,votes)
+  select p_contest,r.id,r.rank,r.votes
+  from (
+    select e.id, row_number() over (
+      order by count(v.id) filter (where v.review_status='valid') desc,
+        e.submitted_at asc, e.id asc)::integer rank,
+      count(v.id) filter (where v.review_status='valid')::integer votes
+    from public.blink_contest_entries e
+    left join public.blink_contest_votes v on v.entry_id=e.id
+    where e.contest_id=p_contest and e.status='approved'
+    group by e.id
+  ) r where r.rank<=50;
+end;
+$$;
+revoke all on function private.blink_capture_rank_baseline(uuid)
+  from public,anon,authenticated;
+grant execute on function private.blink_capture_rank_baseline(uuid) to service_role;
+
+create function private.blink_rank_baseline_vote_trigger()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.blink_capture_rank_baseline(new.contest_id);
+  return new;
+end;
+$$;
+revoke all on function private.blink_rank_baseline_vote_trigger()
+  from public,anon,authenticated;
+create trigger blink_contest_rank_baseline_vote
+after insert or update of review_status on public.blink_contest_votes
+for each row execute function private.blink_rank_baseline_vote_trigger();
+
 create function public.list_blink_contests()
 returns jsonb language sql stable security definer set search_path = '' as $$
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -148,7 +207,9 @@ begin
     coalesce((select jsonb_agg(jsonb_build_object(
       'id',r.id,'user_id',r.user_id,'username',p.username,
       'avatar_url',p.avatar_url,'statement',r.statement,'media_url',r.media_url,
-      'votes',r.votes,'rank',r.rank) order by r.rank)
+      'votes',r.votes,'rank',r.rank,
+      'rank_delta',(select b.rank-r.rank from public.blink_contest_rank_baselines b
+         where b.contest_id=p_contest_id and b.entry_id=r.id)) order by r.rank)
       from ranking r left join public.profiles p on p.id=r.user_id
       where r.rank<=20),'[]'::jsonb),
     (select rank from ranking where user_id=auth.uid()),
@@ -163,7 +224,10 @@ begin
   return jsonb_build_object(
     'contest',(select value from jsonb_array_elements(public.list_blink_contests()) as j(value)
        where value->>'id'=p_contest_id::text limit 1),
-    'leaderboard',v_top,'my_rank',v_myrank,'my_entry_id',v_entry,
+    'leaderboard',v_top,'my_rank',v_myrank,
+    'my_rank_delta',(select b.rank-v_myrank from public.blink_contest_rank_baselines b
+        where b.contest_id=p_contest_id and b.entry_id=v_entry),
+    'my_entry_id',v_entry,
     'my_vote_entry_id',v_vote,'total_ranked',v_total,
     'my_entry_status',(select status from public.blink_contest_entries
        where id=v_entry),
@@ -366,6 +430,8 @@ begin
     'username',p.username,'name',coalesce(nullif(p.full_name,''),p.username),
     'avatar_url',p.avatar_url,'statement',r.statement,'media_url',r.media_url,
     'votes',r.votes,'rank',r.rank,
+    'rank_delta',(select b.rank-r.rank from public.blink_contest_rank_baselines b
+      where b.contest_id=p_contest_id and b.entry_id=r.id),
     'contest_title',c.title,
     'contest_status',case when c.status='paused' then 'paused'
        when c.status='completed' then 'completed'
