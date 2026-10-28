@@ -91,6 +91,16 @@ try {
   assert.equal((await db.query(`select * from public.blink_contact_matches_for('${owner}')`)).rows.length, 0,
     'disabling discoverability removes directory matches');
 
+  // The established member can sync AFTER the new member and must still get
+  // a privacy-authorized notification without requiring the joiner to reopen BLINK.
+  await db.exec(`update public.blink_contact_settings set join_alerts=true where user_id='${owner}';
+    update public.blink_contact_settings set discoverable=true where user_id='${joiner}';
+    select public.blink_contact_upsert_opted_in('${joiner}','${digest}');
+    select public.blink_contact_replace_imports('${owner}',array['${digest}']::text[]);`);
+  const lateAlerts = await db.query(`select notification_id
+    from public.blink_contact_notify_recent_matches('${owner}')`);
+  assert.equal(lateAlerts.rows.length, 1, 'late importing owner receives one possible-contact alert');
+  assert.ok(lateAlerts.rows[0].notification_id);
   await db.exec(`select public.blink_contact_clear_imports('${owner}');`);
   const cleared = await db.query(`select * from private.blink_contact_join_alerts where owner_id='${owner}'`);
   assert.equal(cleared.rows.length, 0, 'revoking sync deletes derived contact alert records');
