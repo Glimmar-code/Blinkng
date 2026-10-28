@@ -262,6 +262,7 @@ fun CreatePostSheet(
     var showCreateLanding by rememberSaveable { mutableStateOf(!startInReelMode) }
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
     var showReferenceDetails by rememberSaveable { mutableStateOf(false) }
+    var showMediaReview by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
     var pickerOpenedFromLanding by rememberSaveable { mutableStateOf(false) }
     var useClassicComposer by rememberSaveable { mutableStateOf(false) }
@@ -284,7 +285,8 @@ fun CreatePostSheet(
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
-        if (uris.isEmpty() && pickerOpenedFromLanding) showCreateLanding = true
+        val initialPicker = pickerOpenedFromLanding
+        if (uris.isEmpty() && initialPicker) showCreateLanding = true
         pickerOpenedFromLanding = false
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
@@ -302,6 +304,7 @@ fun CreatePostSheet(
             showPoll = false
             reelEditorStage = false
             mode = "post"
+            if (initialPicker) showMediaReview = true
         }
     }
 
@@ -906,7 +909,28 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            if (showCreateLanding) {
+            if (showMediaReview) {
+                BlinkReferenceMediaReview(
+                    images = selectedImages,
+                    onBack = {
+                        showMediaReview = false
+                        showCreateLanding = true
+                    },
+                    onRemove = { index ->
+                        selectedImages = selectedImages.filterIndexed { i, _ -> i != index }
+                        if (selectedImages.isEmpty()) {
+                            showMediaReview = false
+                            showCreateLanding = true
+                        }
+                    },
+                    onAddMore = {
+                        imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onNext = { showMediaReview = false }
+                )
+            } else if (showCreateLanding) {
                 BlinkCreatePostLanding(
                     drafts = savedDrafts,
                     onClose = ::requestDismiss,
