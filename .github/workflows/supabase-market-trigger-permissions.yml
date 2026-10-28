@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/20261028091500_restrict_market_trigger_api_execution.sql'
-      - 'supabase/tests/market_trigger_privileges_*.sql'
+      - 'supabase/tests/market_trigger_privileges_*'
       - '.github/workflows/supabase-market-trigger-permissions.yml'
   push:
     branches: [main, 'Testlab-*']
     paths:
       - 'supabase/migrations/20261028091500_restrict_market_trigger_api_execution.sql'
-      - 'supabase/tests/market_trigger_privileges_*.sql'
+      - 'supabase/tests/market_trigger_privileges_*'
       - '.github/workflows/supabase-market-trigger-permissions.yml'
   workflow_dispatch:
 
@@ -47,7 +47,7 @@ jobs:
       - name: Ensure PostgreSQL client is installed
         run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
       - name: Create isolated fake seller-trigger fixture
-        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/market_trigger_privileges_fixture.sql
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/market_trigger_privileges_fixture.pgfixture
       - name: Apply proposed migration to disposable PostgreSQL
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261028091500_restrict_market_trigger_api_execution.sql
       - name: Prove public RPC denial and preserved trigger execution
