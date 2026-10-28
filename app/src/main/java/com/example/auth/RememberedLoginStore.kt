@@ -95,8 +95,11 @@ object RememberedLoginStore {
         val identifier = obj.optString("identifier").trim()
         // Rewrite once to remove passwords left by old BLINK versions. Never
         // expose a legacy password to a Composable or restore it into fields.
-        if (obj.has("password")) save(context, identifier, "")
-        Login(identifier)
+        if (obj.has("password")) {
+            if (identifier.isBlank()) clear(context)
+            else save(context, identifier, "")
+        }
+        Login(identifier).takeIf { it.identifier.isNotBlank() }
     } catch (_: Exception) {
         clear(context)
         null
