@@ -278,6 +278,8 @@ private fun mergeStablePremiumFeed(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PremiumFeedScreen(
+    contestTarget: com.example.sharing.ContestVoteTarget? = null,
+    onContestTargetOpened: () -> Unit = {},
     posts: List<FeedPost>,
     followingPosts: List<FeedPost> = emptyList(),
     reels: List<FeedPost>,
@@ -616,7 +618,13 @@ fun PremiumFeedScreen(
             Box(
                 Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
                     .statusBarsPadding()
-            ) { BlinkContestScreen(onDiscoverPeople = { showContestPeople = true }) }
+            ) {
+                BlinkContestScreen(
+                    onDiscoverPeople = { showContestPeople = true },
+                    target = contestTarget,
+                    onTargetHandled = onContestTargetOpened
+                )
+            }
         }
 
         3 -> PremiumGameHost(
