@@ -2508,8 +2508,10 @@ internal fun PostPreviewDialog(
                     )
                     OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth().height(46.dp)
-                    ) { Text("Back to editor", color = Color.White) }
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .55f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) { Text("Back to editor") }
                 }
             }
         }
