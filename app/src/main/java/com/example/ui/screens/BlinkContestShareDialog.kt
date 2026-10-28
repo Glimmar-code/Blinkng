@@ -78,7 +78,16 @@ private fun loadAvatar(url: String): Bitmap? {
             if (!response.isSuccessful) return@use null
             val body = response.body ?: return@use null
             if (body.contentLength() > 3_000_000) return@use null
-            val bytes = body.byteStream().use { input -> input.readNBytes(3_000_001) }
+            val bytes = body.byteStream().use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(16 * 1024)
+                while (output.size() <= 3_000_000) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
             if (bytes.size > 3_000_000) return@use null
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
