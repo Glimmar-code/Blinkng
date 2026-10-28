@@ -29,7 +29,8 @@ class BlinkContactsDiscoveryClient {
     data class Consent(
         val syncEnabled: Boolean = false,
         val discoverable: Boolean = false,
-        val joinAlerts: Boolean = false
+        val joinAlerts: Boolean = false,
+        val lastSyncedAt: String = ""
     )
     data class Snapshot(val consent: Consent, val people: List<UserProfile>)
 
@@ -73,7 +74,8 @@ class BlinkContactsDiscoveryClient {
     private fun consent(body: JSONObject?): Consent = Consent(
         syncEnabled = body?.optBoolean("sync_enabled") == true,
         discoverable = body?.optBoolean("discoverable") == true,
-        joinAlerts = body?.optBoolean("join_alerts") == true
+        joinAlerts = body?.optBoolean("join_alerts") == true,
+        lastSyncedAt = body?.optString("last_synced_at").orEmpty().takeUnless { it == "null" }.orEmpty()
     )
 
     suspend fun get(): Snapshot {
