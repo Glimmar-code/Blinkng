@@ -150,7 +150,7 @@ internal fun BlinkChatPhotoAlbumBubble(
                             MessageStatus.DELIVERED -> "Delivered"
                             else -> "Sent"
                         },
-                        tint = if (status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue)
+                        tint = if (status == MessageStatus.READ) Color(0xFF1685FF)
                             else palette.textSecondary,
                         modifier = Modifier.size(15.dp)
                     )

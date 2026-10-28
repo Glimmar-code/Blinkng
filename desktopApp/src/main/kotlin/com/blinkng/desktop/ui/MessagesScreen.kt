@@ -2035,7 +2035,7 @@ private fun DesktopInboxPanel(
                                     Text(
                                         com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
                                         fontSize = 12.sp,
-                                        color = if (receipt == "READ") Color(0xFF3B82F6)
+                                        color = if (receipt == "READ") Color(0xFF1685FF)
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(end = 5.dp)
                                     )

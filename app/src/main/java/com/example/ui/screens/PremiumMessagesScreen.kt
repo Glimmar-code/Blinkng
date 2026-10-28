@@ -3807,7 +3807,7 @@ private fun MessageBubble(
                                         else -> "Sent"
                                     },
                                     tint = if (confirmedStatus == MessageStatus.READ)
-                                        Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
+                                        Color(0xFF1685FF) else palette.textSecondary,
                                     modifier = Modifier.size(15.dp)
                                 )
                             }
