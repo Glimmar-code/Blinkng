@@ -57,6 +57,7 @@ fun BlinkContactDiscoveryCard(
     var people by remember(accountId) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var working by remember(accountId) { mutableStateOf(false) }
     var serviceReady by remember(accountId) { mutableStateOf(false) }
+    var mutualMatchingReady by remember(accountId) { mutableStateOf(false) }
     var syncedThisSession by remember(accountId) { mutableStateOf(false) }
     var problem by remember(accountId) { mutableStateOf<String?>(null) }
     var confirmDelete by remember(accountId) { mutableStateOf(false) }
@@ -102,9 +103,11 @@ fun BlinkContactDiscoveryCard(
             settings = it.consent
             people = it.people
             serviceReady = true
+            mutualMatchingReady = it.mutualMatchingReady
             problem = null
         }.onFailure {
             serviceReady = false
+            mutualMatchingReady = false
             problem = it.message ?: "Contact discovery is currently unavailable."
         }
         working = false
@@ -129,9 +132,8 @@ fun BlinkContactDiscoveryCard(
                 style = MaterialTheme.typography.bodySmall)
             Text(
                 "No SMS verification is required to sync your own contacts. " +
-                    "Only members who have opted in and whose phone ownership was " +
-                    "verified previously can currently appear as matches; the no-SMS " +
-                    "discovery backend is not active yet.",
+                    "A possible match appears only when both members explicitly opt in " +
+                    "and have each other's number saved. No SMS or ownership verification is used.",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
@@ -147,10 +149,13 @@ fun BlinkContactDiscoveryCard(
                 Text("Sync my phone contacts", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = settings.discoverable, enabled = false, onCheckedChange = {
+                Checkbox(checked = settings.discoverable,
+                    enabled = mutualMatchingReady && serviceReady && !working && settings.syncEnabled,
+                    onCheckedChange = {
                     update(settings.copy(discoverable = it))
                 })
-                Text("Let my contacts find me (temporarily unavailable without phone ownership proof)", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(if (mutualMatchingReady) "Let mutual contacts find me" else "Matching service not ready",
+                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = settings.joinAlerts, enabled = serviceReady && !working && settings.syncEnabled, onCheckedChange = {
