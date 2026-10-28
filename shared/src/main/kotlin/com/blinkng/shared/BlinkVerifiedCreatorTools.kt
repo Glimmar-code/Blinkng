@@ -26,6 +26,21 @@ object BlinkVerifiedCreatorTools {
         }
     }
 
+    /** Private draft preview; venue/date are supplied by the organizer, not guessed. */
+    fun eventInvite(title: String, whenText: String, venue: String, audience: String): String {
+        require(title.trim().length in 3..120) { "Add a clear event name" }
+        require(whenText.trim().isNotBlank()) { "Add a confirmed event date and time" }
+        require(venue.trim().isNotBlank()) { "Add a confirmed venue or safe online meeting format" }
+        return buildString {
+            appendLine("BLINK Event · ${title.trim().take(120)}")
+            appendLine("When: ${whenText.trim().take(120)}")
+            appendLine("Where: ${venue.trim().take(160)}")
+            if (audience.isNotBlank()) appendLine("For: ${audience.trim().take(80)}")
+            appendLine("Contact the organizer for accessibility, entry and any changes.")
+            appendLine("Organizer draft — confirm details before sharing. Not an RSVP ticket.")
+        }.trim()
+    }
+
     /** Public portfolio copy only; no private phone/email, fake metrics or external API. */
     fun portfolio(
         username: String, displayName: String, headline: String,
