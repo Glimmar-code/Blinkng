@@ -352,8 +352,13 @@ fun BlinkReferenceSignInScreen(
     // Existing Android Keystore-protected Supabase sessions keep users signed in.
     // A saved password is not needed for future launches; migrate only the identifier.
     val stored = remember { RememberedLoginStore.load(context) }
-    var identifier by rememberSaveable {
-        mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier)
+    // The modern sign-in path stores just the last identifier in the session
+    // store; old encrypted password records are a one-time migration only.
+    val preferredIdentifier = stored?.identifier?.takeIf(String::isNotBlank)
+        ?: AccountSessionStore.lastIdentifier(context).takeIf(String::isNotBlank)
+        ?: initialIdentifier
+    var identifier by rememberSaveable(initialIdentifier, preferredIdentifier) {
+        mutableStateOf(preferredIdentifier)
     }
     var password by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
