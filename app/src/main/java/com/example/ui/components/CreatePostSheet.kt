@@ -949,8 +949,26 @@ fun CreatePostSheet(
         }
     }
 
+    fun navigateBack() {
+        if (isSubmitting) return
+        when {
+            showPublishOptions && !useClassicComposer -> {
+                showPublishOptions = false
+                showReferenceDetails = true
+            }
+            showReferenceDetails && !useClassicComposer -> showReferenceDetails = false
+            showMediaReview && !useClassicComposer -> {
+                showMediaReview = false
+                showCreateLanding = true
+            }
+            videoClips.isNotEmpty() && !showCreateLanding && !useClassicComposer ->
+                showCreateLanding = true
+            else -> requestDismiss()
+        }
+    }
+
     Dialog(
-        onDismissRequest = ::requestDismiss,
+        onDismissRequest = ::navigateBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         val outerScheme = MaterialTheme.colorScheme
@@ -1160,7 +1178,7 @@ fun CreatePostSheet(
                 )
             } else if (visibleStage == "publish") {
                 BlinkCreatePostPublishOptions(
-                    onBack = { showPublishOptions = false },
+                    onBack = { showPublishOptions = false; showReferenceDetails = true },
                     onPost = ::submit,
                     onSaveDraft = {
                         saveDraft()
