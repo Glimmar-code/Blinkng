@@ -493,7 +493,7 @@ fun ProfileScreen(
             LazyColumn(
                 state = scrollState,
                 contentPadding = PaddingValues(bottom = 24.dp),
-                modifier = Modifier.fillMaxSize().statusBarsPadding()
+                modifier = Modifier.fillMaxSize().statusBarsPadding().testTag("profile_content_list")
             ) {
 
                 // ============================================================
