@@ -2771,12 +2771,15 @@ private fun PollComposer(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Poll, contentDescription = null)
                 Spacer(Modifier.width(7.dp))
-                Text("Poll", fontWeight = FontWeight.Bold)
+                Text("Create Poll", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(options.size.toString() + " / 4 options",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             OutlinedTextField(
                 value = question,
-                onValueChange = onQuestionChanged,
+                onValueChange = { onQuestionChanged(it.take(240)) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 enabled = enabled,
                 modifier = Modifier
@@ -2849,6 +2852,22 @@ private fun PollComposer(
                         )
                     }
             }
+            val meaningfulOptions = options.map(String::trim).filter(String::isNotBlank)
+            val duplicateOptions = meaningfulOptions.size !=
+                meaningfulOptions.map { it.lowercase() }.distinct().size
+            if (duplicateOptions) {
+                Text(
+                    "Poll answers must be different.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            Text(
+                "Voting closes after the selected duration. Results stay visible when the poll closes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             if (options.size < 4) {
                 TextButton(
                     onClick = { onOptionsChanged(options + "") },
