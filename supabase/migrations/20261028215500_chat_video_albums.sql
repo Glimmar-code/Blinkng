@@ -14,4 +14,15 @@ alter table public.messages add constraint blink_chat_album_invariants_v1
       and image_album_position < image_album_size
     )
   );
+
+-- Explicit capability check: old clients continue to send ordinary videos,
+-- and new clients only send album columns after this migration is active.
+create function public.blink_chat_video_album_supported()
+returns boolean language sql stable security invoker set search_path='' as $
+  select true;
+$;
+revoke all on function public.blink_chat_video_album_supported()
+  from public, anon, authenticated;
+grant execute on function public.blink_chat_video_album_supported() to authenticated;
+notify pgrst, 'reload schema';
 commit;
