@@ -150,7 +150,7 @@ grant execute on function public.get_profile_detail(text) to authenticated;
 -- timeline page the mobile or desktop client has currently loaded.
 create or replace function public.get_profile_content_metrics(p_profile_id uuid)
 returns jsonb language plpgsql stable security definer
-set search_path = public, pg_temp as $
+set search_path = public, pg_temp as $$
 declare
   v_viewer uuid := auth.uid();
 begin
@@ -173,7 +173,7 @@ begin
     from public.feed_posts f where f.user_id = p_profile_id
       and f.is_active = true and coalesce(f.is_flagged,false) = false
   );
-end; $;
+end; $$;
 revoke all on function public.get_profile_content_metrics(uuid) from public, anon;
 grant execute on function public.get_profile_content_metrics(uuid) to authenticated;
 commit;
