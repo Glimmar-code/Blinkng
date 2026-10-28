@@ -365,6 +365,9 @@ fun MarketScreen(
             item {
                 MarketSellerInsightsPanel(
                     sellerId = viewerId,
+                    loadedItems = items,
+                    isGold = sellerVerificationActive && verificationBadge == VerificationBadge.GOLD,
+                    onOpenListing = onItemClick,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
