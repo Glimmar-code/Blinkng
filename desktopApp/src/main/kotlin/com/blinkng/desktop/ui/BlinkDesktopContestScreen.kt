@@ -36,7 +36,17 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
+    var ownCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var sharingCandidate by remember { mutableStateOf<JSONObject?>(null) }
 
+    LaunchedEffect(selected, detail?.optString("my_entry_id"), revision) {
+        ownCandidate = null
+        val contest = selected
+        val mine = detail?.optString("my_entry_id")?.takeUnless { it == "null" }.orEmpty()
+        if (contest != null && mine.isNotBlank() && detail?.optString("my_entry_status") == "approved") {
+            runCatching { api.contestCandidate(contest, mine) }.onSuccess { ownCandidate = it }
+        }
+    }
     LaunchedEffect(revision) {
         runCatching { api.contestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
@@ -124,6 +134,17 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             }) { Text("Apply for free") }
                         }
                     }
+                    if (ownCandidate != null && leaders.none { it.optString("id") == own }) item {
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Your position: #" + ownCandidate!!.optInt("rank"),
+                                    modifier = Modifier.weight(1f))
+                                OutlinedButton(onClick = { sharingCandidate = ownCandidate }) {
+                                    Text("Share my flyer")
+                                }
+                            }
+                        }
+                    }
                     item { Text("Top 20 · " + d.optInt("total_ranked") + " ranked contestants",
                         style = MaterialTheme.typography.titleLarge) }
                     if (leaders.isEmpty()) item { Text("No approved contestants yet.") }
@@ -134,6 +155,14 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                                 Text(entry.optInt("votes").toString() + " votes")
                                 Spacer(Modifier.width(16.dp))
+                                OutlinedButton(onClick = {
+                                    scope.launch {
+                                        runCatching { api.contestCandidate(c.optString("id"), entry.optString("id")) }
+                                            .onSuccess { sharingCandidate = it }
+                                            .onFailure { message = it.message.orEmpty() }
+                                    }
+                                }) { Text("Share") }
+                                Spacer(Modifier.width(10.dp))
                                 Button(enabled = !busy && BlinkContestPolicy.canVote(
                                     status, voted, own, entry.optString("id")), onClick = {
                                     busy = true
@@ -151,6 +180,9 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+    sharingCandidate?.let { candidate ->
+        BlinkDesktopContestShareDialog(candidate, onDismiss = { sharingCandidate = null })
     }
 }
 
