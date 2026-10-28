@@ -1340,7 +1340,7 @@ private fun ReelPage(
         Modifier.trackContentExposure(
             reel.id,
             displayedViewsCount,
-            playbackActive = isActive && !isPausedByUser && !isBuffering && !url.isNullOrBlank(),
+            playbackActive = isActive && !isPausedByUser && !isBuffering && !reel.videoUrl.isNullOrBlank(),
         )
     } else {
         Modifier
