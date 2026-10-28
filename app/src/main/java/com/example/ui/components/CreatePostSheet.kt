@@ -206,6 +206,7 @@ fun CreatePostSheet(
         scope = composerScope
     )
     var selectedTags by rememberPersistentStringListState("create_post_tags", emptyList(), composerScope)
+    var recentUsedTags by rememberPersistentStringListState("create_post_recent_tags", emptyList(), composerScope)
     var tagInput by rememberSaveable { mutableStateOf("") }
     var tagWarning by rememberSaveable { mutableStateOf<String?>(null) }
     var showMoreTrendingTags by rememberSaveable { mutableStateOf(false) }
@@ -389,6 +390,12 @@ fun CreatePostSheet(
         clientRequestId = UUID.randomUUID().toString()
         showCreateLanding = false
         showPublishOptions = false
+    }
+
+    fun addSelectedTag(tag: String) {
+        val normalized = BlinkSmartTags.normalize(tag) ?: return
+        selectedTags = BlinkSmartTags.add(selectedTags, normalized)
+        recentUsedTags = (listOf(normalized) + recentUsedTags.filterNot { it == normalized }).take(8)
     }
 
     fun clearComposerPersistence() {
@@ -1418,6 +1425,22 @@ fun CreatePostSheet(
                             }
                         }
                         Text("Optional: use up to 5 relevant tags to help discovery.", style = MaterialTheme.typography.bodySmall)
+                        if (recentUsedTags.isNotEmpty()) {
+                            Text("Recent tags", style = MaterialTheme.typography.labelMedium)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(recentUsedTags, key = { "recent:" + it }) { tag ->
+                                    AssistChip(
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS) {
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            } else addSelectedTag(tag)
+                                        },
+                                        label = { Text("#" + tag) },
+                                        enabled = !isSubmitting
+                                    )
+                                }
+                            }
+                        }
                         if (suggestedTags.isNotEmpty()) {
                             Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1427,7 +1450,7 @@ fun CreatePostSheet(
                                             if (allTags.size >= BlinkSmartTags.MAX_TAGS) {
                                                 tagWarning = "Maximum 5 hashtags per post."
                                             } else {
-                                                selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                                addSelectedTag(tag)
                                             }
                                         },
                                         label = { Text("#$tag +") },
@@ -1444,7 +1467,7 @@ fun CreatePostSheet(
                                         onClick = {
                                             if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
                                                 tagWarning = "Maximum 5 hashtags per post."
-                                            else selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                            else addSelectedTag(tag)
                                         },
                                         label = { Text("#$tag") },
                                         enabled = !isSubmitting
@@ -1468,7 +1491,7 @@ fun CreatePostSheet(
                                 when {
                                     tag == null -> tagWarning = "Use 2–32 letters, numbers or underscores."
                                     tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS -> tagWarning = "Maximum 5 hashtags per post."
-                                    else -> { selectedTags = BlinkSmartTags.add(selectedTags, tag); tagInput = "" }
+                                    else -> { addSelectedTag(tag); tagInput = "" }
                                 }
                             }, enabled = !isSubmitting) { Text("Add") }
                         }
