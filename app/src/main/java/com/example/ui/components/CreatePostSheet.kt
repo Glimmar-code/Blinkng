@@ -332,7 +332,7 @@ fun CreatePostSheet(
     ) { success ->
         val photo = pendingCameraCaptureUri
         if (success && photo != null) {
-            selectedImages = (selectedImages + photo).distinct().take(10)
+            selectedImages = listOf(photo)
             selectedVideo = null
             videoClips = emptyList()
             showPoll = false
