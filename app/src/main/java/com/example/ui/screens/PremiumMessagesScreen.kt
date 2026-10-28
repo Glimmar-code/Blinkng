@@ -8,6 +8,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import com.blinkng.shared.BlinkChatMediaAccessPolicy
 
 import com.example.ui.components.BlinkSkeletonChatHistory
+import com.example.ui.components.blinkPressFeedback
 
 import android.Manifest
 import com.example.data.local.PersistentTextDraftStore
@@ -55,6 +56,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -286,6 +288,7 @@ fun PremiumMessagesScreen(
     showInboxBehindChat: Boolean = true
 ) {
     val context = LocalContext.current
+    val reduceRouteMotion = rememberBlinkReduceMotion()
     val preferences = remember(context.applicationContext) {
         context.applicationContext.getSharedPreferences(MESSAGE_PREFERENCES, Context.MODE_PRIVATE)
     }
@@ -334,8 +337,14 @@ fun PremiumMessagesScreen(
         AnimatedContent(
             targetState = activeCall,
             transitionSpec = {
-                (fadeIn(tween(260)) + scaleIn(initialScale = .985f)) togetherWith
-                    (fadeOut(tween(180)) + scaleOut(targetScale = 1.015f))
+                if (reduceRouteMotion) {
+                    androidx.compose.animation.EnterTransition.None togetherWith
+                        androidx.compose.animation.ExitTransition.None
+                } else {
+                    // Do not scale the live-call surface: native video renderers
+                    // and chat text should never become soft or jittery.
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(140))
+                }
             },
             label = "message_call_transition"
         ) { call ->
@@ -383,11 +392,15 @@ fun PremiumMessagesScreen(
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
-                        enter = slideInHorizontally(
+                        enter = if (reduceRouteMotion) {
+                            androidx.compose.animation.EnterTransition.None
+                        } else slideInHorizontally(
                             initialOffsetX = { it },
                             animationSpec = tween(260, easing = FastOutSlowInEasing)
                         ),
-                        exit = slideOutHorizontally(
+                        exit = if (reduceRouteMotion) {
+                            androidx.compose.animation.ExitTransition.None
+                        } else slideOutHorizontally(
                             targetOffsetX = { it },
                             animationSpec = tween(240, easing = FastOutSlowInEasing)
                         )
@@ -1433,6 +1446,7 @@ private fun ConversationCard(
         )
     }
 
+    val pressInteraction = remember { MutableInteractionSource() }
     Surface(
         color = palette.glassElevated.copy(alpha = if (palette.isLight) .88f else .66f),
         contentColor = palette.textPrimary,
@@ -1442,7 +1456,12 @@ private fun ConversationCard(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 80.dp)
-            .clickable(onClick = onOpen)
+            .blinkPressFeedback(pressInteraction)
+            .clickable(
+                interactionSource = pressInteraction,
+                indication = null,
+                onClick = onOpen
+            )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -3702,18 +3721,29 @@ private fun MessageBubble(
                                 MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
                             )) {
                             Spacer(Modifier.width(3.dp))
-                            Icon(
-                                imageVector = if (message.status == MessageStatus.SENT)
-                                    Icons.Default.Check else Icons.Default.DoneAll,
-                                contentDescription = when (message.status) {
-                                    MessageStatus.READ -> "Read"
-                                    MessageStatus.DELIVERED -> "Delivered"
-                                    else -> "Sent"
+                            AnimatedContent(
+                                targetState = message.status,
+                                transitionSpec = {
+                                    if (reducedMotion) {
+                                        androidx.compose.animation.EnterTransition.None togetherWith
+                                            androidx.compose.animation.ExitTransition.None
+                                    } else fadeIn(tween(140)) togetherWith fadeOut(tween(100))
                                 },
-                                tint = if (message.status == MessageStatus.READ)
-                                    Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
-                                modifier = Modifier.size(15.dp)
-                            )
+                                label = "chatAuthoritativeReceipt"
+                            ) { confirmedStatus ->
+                                Icon(
+                                    imageVector = if (confirmedStatus == MessageStatus.SENT)
+                                        Icons.Default.Check else Icons.Default.DoneAll,
+                                    contentDescription = when (confirmedStatus) {
+                                        MessageStatus.READ -> "Read"
+                                        MessageStatus.DELIVERED -> "Delivered"
+                                        else -> "Sent"
+                                    },
+                                    tint = if (confirmedStatus == MessageStatus.READ)
+                                        Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -4236,6 +4266,12 @@ private fun MessageComposer(
     onVoiceStop: () -> Unit,
     onVoiceCancel: () -> Unit
 ) {
+    val reducedVoiceMotion = rememberBlinkReduceMotion()
+    val voiceIndicatorAlpha by animateFloatAsState(
+        targetValue = if (isRecording && !reducedVoiceMotion && recordingSeconds % 2 == 0) 1f else .55f,
+        animationSpec = tween(if (reducedVoiceMotion) 0 else 240),
+        label = "recordingVoiceStatus"
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -4285,7 +4321,7 @@ private fun MessageComposer(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = palette.danger,
+                            color = palette.danger.copy(alpha = voiceIndicatorAlpha),
                             modifier = Modifier.size(9.dp)
                         ) {}
                         Spacer(Modifier.width(9.dp))

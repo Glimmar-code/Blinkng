@@ -41,6 +41,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.components.*
+import com.example.performance.rememberBlinkReduceMotion
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -668,6 +669,7 @@ class MainActivity : ComponentActivity() {
             }
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            val reduceAppMotion = rememberBlinkReduceMotion()
             // Covers auth/session restoration too: returning users must see the intro.
             var showStartupIntro by remember { mutableStateOf(true) }
             var introAnimationFinished by remember { mutableStateOf(false) }
@@ -887,11 +889,37 @@ class MainActivity : ComponentActivity() {
                         AnimatedContent(
                             targetState = uiState.destination,
                             transitionSpec = {
-                                if (initialState == AppDestination.SPLASH || targetState == AppDestination.SPLASH) {
+                                if (initialState == AppDestination.SPLASH || targetState == AppDestination.SPLASH ||
+                                    reduceAppMotion) {
+                                    // Never animate over the approved Beyond LINK -> BLINK launch frame.
                                     EnterTransition.None togetherWith ExitTransition.None
+                                } else if (
+                                    initialState in setOf(
+                                        AppDestination.ONBOARDING, AppDestination.SIGN_IN,
+                                        AppDestination.SIGN_UP, AppDestination.RESET_PASSWORD,
+                                        AppDestination.PROFILE_SETUP
+                                    ) && targetState in setOf(
+                                        AppDestination.ONBOARDING, AppDestination.SIGN_IN,
+                                        AppDestination.SIGN_UP, AppDestination.RESET_PASSWORD,
+                                        AppDestination.PROFILE_SETUP
+                                    )
+                                ) {
+                                    val forward = targetState != AppDestination.ONBOARDING &&
+                                        targetState != AppDestination.SIGN_IN
+                                    (
+                                        slideInHorizontally(
+                                            animationSpec = tween(230),
+                                            initialOffsetX = { if (forward) it / 5 else -it / 5 }
+                                        ) + fadeIn(animationSpec = tween(180))
+                                    ) togetherWith (
+                                        slideOutHorizontally(
+                                            animationSpec = tween(190),
+                                            targetOffsetX = { if (forward) -it / 8 else it / 8 }
+                                        ) + fadeOut(animationSpec = tween(150))
+                                    )
                                 } else {
                                     fadeIn(animationSpec = tween(160)) togetherWith
-                                            fadeOut(animationSpec = tween(120))
+                                        fadeOut(animationSpec = tween(120))
                                 }
                             },
                             label = "AppNavigation"

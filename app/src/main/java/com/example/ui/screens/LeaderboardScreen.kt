@@ -11,6 +11,9 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -563,6 +566,7 @@ private fun LeaderboardRow(
     onProfileClick: (String) -> Unit,
     onShare: (LeaderboardUser) -> Unit
 ) {
+    val pressInteraction = remember { MutableInteractionSource() }
     val cardColor by animateColorAsState(
         targetValue = if (isCurrentUser) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .35f)
             else MaterialTheme.colorScheme.surface,
@@ -573,7 +577,12 @@ private fun LeaderboardRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .clickable { onProfileClick(user.username) },
+            .blinkPressFeedback(pressInteraction)
+            .clickable(
+                interactionSource = pressInteraction,
+                indication = LocalIndication.current,
+                onClick = { onProfileClick(user.username) }
+            ),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(
             if (isCurrentUser) 1.5.dp else 1.dp,

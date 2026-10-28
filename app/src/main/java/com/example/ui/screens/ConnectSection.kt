@@ -14,6 +14,10 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
+import com.example.ui.components.blinkPressFeedback
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -854,18 +858,22 @@ private fun ConnectTopTab(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val reduceMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
     val background by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        animationSpec = tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.ContentReveal),
         label = "connectTopTabBackground"
     )
     val foreground by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        animationSpec = tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.ContentReveal),
         label = "connectTopTabText"
     )
     Surface(
-        modifier = Modifier.clickable(onClick = onClick).height(48.dp),
+        modifier = Modifier.blinkPressFeedback(interaction)
+            .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+            .height(48.dp),
         shape = RoundedCornerShape(100.dp),
         color = background
     ) {
@@ -890,6 +898,7 @@ private fun LiveProfileCard(
     onProfileClick: () -> Unit,
     onMessage: () -> Unit
 ) {
+    val avatarInteraction = remember { MutableInteractionSource() }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -906,7 +915,12 @@ private fun LiveProfileCard(
                     modifier = Modifier
                         .size(54.dp)
                         .clip(CircleShape)
-                        .clickable(onClick = onProfileClick),
+                        .blinkPressFeedback(avatarInteraction)
+                        .clickable(
+                            interactionSource = avatarInteraction,
+                            indication = LocalIndication.current,
+                            onClick = onProfileClick
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (profile.avatarUrl.isBlank()) {

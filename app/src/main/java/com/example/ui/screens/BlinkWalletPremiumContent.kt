@@ -14,6 +14,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.blinkSmoothSize
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -64,15 +68,18 @@ private fun WalletLogo() {
 @Composable
 private fun CoinArtwork(modifier: Modifier = Modifier) {
     val reduceMotion = com.example.performance.rememberBlinkReduceMotion()
-    val floatTransition = rememberInfiniteTransition(label = "wallet_coin_float")
-    val floatOffset by floatTransition.animateFloat(
-        initialValue = -2f,
-        targetValue = 3f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 2400), RepeatMode.Reverse),
-        label = "coin_hover"
-    )
+    val floatOffset = if (reduceMotion) 0f else {
+        val floatTransition = rememberInfiniteTransition(label = "wallet_coin_float")
+        val animated by floatTransition.animateFloat(
+            initialValue = -2f,
+            targetValue = 3f,
+            animationSpec = infiniteRepeatable(tween(durationMillis = 2400), RepeatMode.Reverse),
+            label = "coin_hover"
+        )
+        animated
+    }
     Box(modifier.graphicsLayer {
-        translationY = if (reduceMotion) 0f else floatOffset
+        translationY = floatOffset
     }, contentAlignment = Alignment.Center) {
         Box(Modifier.size(68.dp).background(
             Brush.radialGradient(listOf(violet.copy(alpha = .48f), Color.Transparent)), CircleShape))
@@ -92,7 +99,7 @@ private fun NeonCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(24.dp)
-    Box(modifier.clip(shape).background(if (hero)
+    Box(modifier.blinkSmoothSize().clip(shape).background(if (hero)
         Brush.linearGradient(listOf(Color(0xFF0642AA), Color(0xFF110C32), Color(0xFF4A048E)))
         else Brush.linearGradient(listOf(panel, Color(0xFF0C0C22), Color(0xFF210D39))))
         .border(1.dp, if (hero) rim else Brush.linearGradient(
@@ -113,7 +120,10 @@ private fun NeonRow(
     locked: Boolean = false
 ) {
     val shape = RoundedCornerShape(17.dp)
-    val click = if (action == null) Modifier else Modifier.clickable(onClick = action)
+    val interaction = remember { MutableInteractionSource() }
+    val click = if (action == null) Modifier else Modifier
+        .blinkPressFeedback(interaction)
+        .clickable(interactionSource = interaction, indication = null, onClick = action)
     Row(
         modifier.fillMaxWidth().clip(shape)
             .background(Brush.horizontalGradient(listOf(Color(0xFF1A1333), Color(0xFF110C2A))))
@@ -147,18 +157,28 @@ private fun GradientButton(
     onClick: () -> Unit
 ) {
     val reduceMotion = com.example.performance.rememberBlinkReduceMotion()
-    val glow = rememberInfiniteTransition(label = "wallet_button_glow")
-    val glowAlpha by glow.animateFloat(
-        initialValue = .5f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 2100), RepeatMode.Reverse),
-        label = "cta_glow"
-    )
+    val glowAlpha = if (reduceMotion) .8f else {
+        val glow = rememberInfiniteTransition(label = "wallet_button_glow")
+        val animated by glow.animateFloat(
+            initialValue = .5f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(durationMillis = 2100), RepeatMode.Reverse),
+            label = "cta_glow"
+        )
+        animated
+    }
+    val interaction = remember { MutableInteractionSource() }
     Row(Modifier.fillMaxWidth().heightIn(min = 65.dp)
         .clip(RoundedCornerShape(20.dp))
         .background(if (enabled) neon else Brush.horizontalGradient(listOf(Color(0xFF262038), Color(0xFF39304B))))
         .border(1.dp, if (enabled) Color(0xFFBD96FF).copy(alpha = if (reduceMotion) .8f else glowAlpha) else Color(0xFF484060), RoundedCornerShape(20.dp))
-        .clickable(enabled = enabled, onClick = onClick)
+        .blinkPressFeedback(interaction, enabled = enabled)
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            onClick = onClick
+        )
         .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center) {
@@ -200,6 +220,7 @@ internal fun BlinkWalletPremiumContent(
 ) {
     var page by remember(accountId) { mutableIntStateOf(0) }
     var filter by remember(accountId) { mutableIntStateOf(0) }
+    val reduceMotion = rememberBlinkReduceMotion()
     val scope = rememberCoroutineScope()
     BackHandler { if (page == 0) onBack() else page = 0 }
     val allTitles = listOf("Coins & Wallet", "Earn Coins", "Rewards", "Get Verified", "History")
@@ -224,7 +245,11 @@ internal fun BlinkWalletPremiumContent(
                 Icon(Icons.Rounded.Refresh, "Refresh Coins and rewards", tint = Color(0xFFC67EFF))
             }
         }
-        Crossfade(targetState = page, animationSpec = tween(230), label = "wallet_pages") { current ->
+        Crossfade(
+            targetState = page,
+            animationSpec = tween(if (reduceMotion) 0 else 230),
+            label = "wallet_pages"
+        ) { current ->
             val listState = rememberLazyListState()
             LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = listState,
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 28.dp),
@@ -245,8 +270,14 @@ internal fun BlinkWalletPremiumContent(
                                     Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text("Your BLINK Coins", color = soft)
-                                        Text(balance?.let(::comma) ?: "—", fontSize = 30.sp,
-                                            fontWeight = FontWeight.Black, color = Color.White)
+                                        Crossfade(
+                                            targetState = balance,
+                                            animationSpec = tween(if (reduceMotion) 0 else 160),
+                                            label = "serverConfirmedCoinBalance"
+                                        ) { confirmed ->
+                                            Text(confirmed?.let(::comma) ?: "—", fontSize = 30.sp,
+                                                fontWeight = FontWeight.Black, color = Color.White)
+                                        }
                                         Text("🟡 Coins", color = gold, fontWeight = FontWeight.SemiBold)
                                     }
                                     IconButton(onClick = {
