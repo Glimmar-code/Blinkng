@@ -26,7 +26,9 @@ class BlinkContactsPermissionInstrumentedTest {
         val wasGranted = ContextCompat.checkSelfPermission(context, permission) ==
             PackageManager.PERMISSION_GRANTED
         try {
-            instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, permission)
+            if (wasGranted) {
+                instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, permission)
+            }
             assertEquals(PackageManager.PERMISSION_DENIED,
                 ContextCompat.checkSelfPermission(context, permission))
             val error = runCatching {
