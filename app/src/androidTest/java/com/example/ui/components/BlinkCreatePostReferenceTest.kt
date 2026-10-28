@@ -30,6 +30,7 @@ class BlinkCreatePostReferenceTest {
                     onPhoto = { selected += "photo" },
                     onVideo = { selected += "video" },
                     onPoll = { selected += "poll" },
+                    onClassic = { selected += "classic" },
                     onDraft = { selected += "draft" }
                 )
             }
@@ -49,7 +50,7 @@ class BlinkCreatePostReferenceTest {
                 BlinkCreatePostLanding(
                     drafts = listOf(PostDraft(id = "draft123", text = "My campus update")),
                     onClose = {}, onText = {}, onPhoto = {}, onVideo = {}, onPoll = {},
-                    onDraft = { openedId = it.id }
+                    onClassic = {}, onDraft = { openedId = it.id }
                 )
             }
         }
