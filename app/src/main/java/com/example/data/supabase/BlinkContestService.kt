@@ -77,6 +77,27 @@ class BlinkContestService {
         JSONObject(call("admin_transition_blink_contest", JSONObject()
             .put("p_contest_id", id).put("p_action", action)))
     }
+    suspend fun recordShare(contestId: String, entryId: String, channel: String): Result<JSONObject> = runCatching {
+        JSONObject(call("record_blink_contest_share", JSONObject()
+            .put("p_contest_id", contestId).put("p_entry_id", entryId)
+            .put("p_channel", channel)))
+    }
+    suspend fun adminInsights(contestId: String): Result<JSONObject> = runCatching {
+        JSONObject(call("admin_blink_contest_insights", JSONObject().put("p_contest_id", contestId)))
+    }
+    suspend fun adminVoteReview(id: String, action: String, reason: String): Result<JSONObject> = runCatching {
+        JSONObject(call("admin_review_blink_contest_vote", JSONObject().put("p_vote_id", id)
+            .put("p_action", action).put("p_reason", reason)))
+    }
+    suspend fun adminFinalize(contestId: String): Result<JSONObject> = runCatching {
+        JSONObject(call("admin_finalize_blink_contest", JSONObject().put("p_contest_id", contestId)))
+    }
+    suspend fun adminPrize(id: String, status: String, receipt: String, note: String): Result<JSONObject> = runCatching {
+        JSONObject(call("admin_record_blink_contest_prize", JSONObject().put("p_prize_id", id)
+            .put("p_status", status)
+            .put("p_reference", receipt.trim().ifBlank { JSONObject.NULL })
+            .put("p_note", note.trim())))
+    }
     suspend fun adminReview(entryId: String, action: String): Result<JSONObject> = runCatching {
         JSONObject(call("admin_review_blink_contest_entry", JSONObject()
             .put("p_entry_id", entryId).put("p_action", action)))

@@ -120,6 +120,28 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         return rpc("admin_transition_blink_contest",
             JSONObject().put("p_contest_id", id).put("p_action", action))
     }
+    suspend fun contestRecordShare(contestId: String, entryId: String, channel: String): JSONObject =
+        rpc("record_blink_contest_share", JSONObject().put("p_contest_id", contestId)
+            .put("p_entry_id", entryId).put("p_channel", channel))
+    suspend fun adminContestInsights(id: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_blink_contest_insights", JSONObject().put("p_contest_id", id))
+    }
+    suspend fun adminContestVoteReview(id: String, action: String, reason: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_review_blink_contest_vote", JSONObject().put("p_vote_id", id)
+            .put("p_action", action).put("p_reason", reason))
+    }
+    suspend fun adminContestFinalize(id: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_finalize_blink_contest", JSONObject().put("p_contest_id", id))
+    }
+    suspend fun adminContestPrize(id: String, status: String, reference: String, note: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_record_blink_contest_prize", JSONObject().put("p_prize_id", id)
+            .put("p_status", status).put("p_reference", reference.ifBlank { JSONObject.NULL })
+            .put("p_note", note))
+    }
     suspend fun adminContestReview(id: String, action: String): JSONObject {
         requireAdmin()
         return rpc("admin_review_blink_contest_entry",
