@@ -3,6 +3,8 @@ package com.example.ui.screens
 import com.example.ui.components.BlinkSkeletonList
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -1299,14 +1301,19 @@ private fun OrganizeDropDialog(
                     }
                 }
 
+                val reduceStepMotion = rememberBlinkReduceMotion()
                 AnimatedContent(
                     targetState = setupStep,
                     modifier = Modifier.weight(1f),
                     transitionSpec = {
-                        (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
-                            fadeIn(tween(210))) togetherWith
-                            (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
-                                fadeOut(tween(160)))
+                        if (reduceStepMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                                fadeIn(tween(210))) togetherWith
+                                (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                    fadeOut(tween(160)))
+                        }
                     },
                     label = "drop-setup-step",
                 ) { stage ->

@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import com.example.ui.components.blinkSmoothSize
+import com.example.ui.components.BlinkFadeThrough
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -53,7 +55,7 @@ internal fun MarketOrdersPanel(userId: String, modifier: Modifier = Modifier) {
     }
     if (userId.isBlank()) return
 
-    Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    Card(modifier = modifier.fillMaxWidth().blinkSmoothSize(), shape = RoundedCornerShape(18.dp)) {
         Column(
             modifier = Modifier.padding(15.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -88,8 +90,10 @@ internal fun MarketOrdersPanel(userId: String, modifier: Modifier = Modifier) {
             visibleOrders.forEach { order ->
                 val id = order.optString("id")
                 val status = order.optString("status").ifBlank { "pending" }
-                Text("Order • ${status.replaceFirstChar { it.uppercase() }}",
-                    fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                BlinkFadeThrough(targetState = status, label = "marketConfirmedOrderStatus") { confirmed ->
+                    Text("Order • ${confirmed.replaceFirstChar { it.uppercase() }}",
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
                 Text("₦${order.optLong("total_price")} · ${order.optInt("quantity")} item(s)",
                     style = MaterialTheme.typography.bodyMedium)
                 TextButton(onClick = {

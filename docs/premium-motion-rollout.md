@@ -34,6 +34,17 @@ document as 300 shipped animations.** Keep a single PR and merge to main only wh
 - Menu icons, Edit Profile sections, Items tiles, Game study panes, Professional Center navigation and Admin insight panels are covered by the shared motion policy.
 - No transaction, view-count, reward, verification, payment, call-signaling, or data contract changes.
 
+## Third Testlab increment
+
+- New Feed posts revealed by the user fade into place with no row-height animation; established scroll keys, saved position and qualified view counting are unchanged.
+- Reel action counts and caption expansion obey reduced motion without remounting the video player.
+- Existing picture and story viewers now avoid decorative transitions when system motion is disabled.
+- Chat delivery/read glyphs, confirmed Channel reactions and Market order status changes transition from real backend responses only.
+- Profile avatar reveal and product gallery selection gain small motion.
+- Connect match stages, request statuses, choices and entrance animations respect reduced motion.
+- Verification tier choice, Boost steps and Drops steps use short, reduced-motion-safe transitions.
+- Android instrumented regression test import errors were corrected (previously failed before device testing).
+
 ## Follow-up surface implementation queue (not yet shipped)
 
 1. Navigation: full-screen back gestures, scroll-position conservation, overlay layering.

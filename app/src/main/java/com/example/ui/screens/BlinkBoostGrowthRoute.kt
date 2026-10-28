@@ -5,6 +5,8 @@ import com.example.ui.components.BlinkSkeletonTargetRow
 import com.example.ui.components.BlinkSkeletonMetricStrip
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -648,13 +650,18 @@ private fun BoostCampaignColumn(
                     progress = { (setupStep + 1) / 6f },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val reduceStepMotion = rememberBlinkReduceMotion()
                 AnimatedContent(
                     targetState = setupStep,
                     transitionSpec = {
-                        (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
-                            fadeIn(tween(200))) togetherWith
-                            (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
-                                fadeOut(tween(150)))
+                        if (reduceStepMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                                fadeIn(tween(200))) togetherWith
+                                (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                    fadeOut(tween(150)))
+                        }
                     },
                     label = "boost-campaign-step",
                 ) { stage ->
