@@ -1,3 +1,32 @@
+## 2026-10-28 — Included active verified signature (PR #629, Testlab)
+
+- **Shared policy:** `BlinkVerifiedIdentitySignature.label` emits a branded Blue/Gold member signature only when active, no identity-vetting claim, no paid Store cosmetic inventory grant.
+- **Android/Windows:** Both profile headers render the same subscription-derived signature with platform-native compact styling. Existing purchased rings/banners, creator cosmetics, owner privacy, and payment/renewal contracts remain unchanged.
+- **Test:** Shared Kotlin regression verifies expiry and unverified users never receive the signature. Live device visual verification and current-head full builds remain outstanding.
+
+## 2026-10-28 — Gold Channel Pro and creator workspace parity (PR #629, Testlab)
+
+- **Shared Kotlin:** `BlinkVerifiedChannelPro` computes only loaded update stats (no private followers or fabricated lifetime metrics), validates future UTC schedule presets and produces editable Channel templates. `BlinkVerifiedCreatorTools` creates bounded AI briefs, public portfolio copy and confirmed-data event invitations.
+- **Android:** Active Gold Channel admins can view loaded-update Pro stats and prefill Channel drafts/scheduled UTC time. Blue/Gold owners can open existing BLINK AI with a prefilled prompt, never auto-send. Gold Creator Studio adds portfolio sharing and event invitation sharing through Android share chooser.
+- **Windows:** Same shared Channel Pro stats, template and schedule prefill. Creator Studio opens the existing Windows BLINK AI with prefilled text only. Gold public portfolio/event copy uses the Windows clipboard. No synthetic backend records or new privileges.
+- **Safety:** Existing Channel role permissions, paid Store ownership, post scheduling, subscription prices, Coins/HP, boost pricing, XP and discovery rank remain unchanged. Latest-head unit/build/smoke tests required before main. Pending Gold credits, premium queue SLAs and VIP cosmetic grants must NOT be advertised as delivered entitlements.
+
+## 2026-10-28 — Gold Merchant Pro listing-health diagnostics (Testlab PR #629)
+
+- **Shared-first:** `BlinkMerchantInsightsPolicy` provides deduplicated, read-only listing health from the user's own loaded Market items, with nullable unknown quantities/view/save counts. No new database writes, RLS, payments or automatic promotion.
+- **Android:** Adds a Gold Merchant Pro card within the existing approved-seller dashboard for active Gold accounts. The card highlights low-stock items, missing listing photos, most viewed loaded items and represented categories; tapping a listing opens its existing product detail.
+- **Windows:** Adds the same Gold Merchant Pro diagnostic panel beside the seller dashboard; desktop parses optional quantity/views/saves fields when present rather than fabricating values. Dashboard and seller approval remain unchanged.
+- **Limitations:** Marketplace search, ranking filters and pagination may hide other seller listings. These figures are a *loaded-listing snapshot*, not shop-wide inventory, revenue, lifetime performance or reach guarantees. Full catalog-wide insights and merchant inbox tools remain roadmap items.
+- **Tests:** Shared Kotlin unit tests cover deduplication, sold-stock exclusion, unavailable values, and no-image flags. Require fresh latest-head Android + Windows build and device checks before merging.
+
+## 2026-10-27 — Verified creator membership value (Testlab PR #629, not merged)
+
+- **Shared-first:** `BlinkCreatorStudioPolicy` computes unique loaded post/Reel aggregates, honest qualified views, interaction totals, top content and top tags. Both clients pass their real post models through thin adapters. No new backend/RLS/checkout paths.
+- **Android:** Creator Studio on owner's profile: free baseline counters; active Blue content analytics; active Gold hashtags and Android share intent for performance reports. Get Verified and Wallet describe actually implemented benefits, not speculative reach.
+- **Windows:** Creator Studio on owner's desktop profile with matching shared counts, Blue performance and Gold top tags/report clipboard export. Desktop post API currently omits aggregate saves, so saves are shown as unavailable instead of fabricated. Desktop tier resolves the canonical `verification_badge` field with legacy `verification_tier` fallback.
+- **Parity limitation:** Android uses currently loaded profile posts, Windows loads a paginated profile content list, so snapshot sizes may differ. Neither platform calls snapshots lifetime/unique audience analytics. Desktop requires the server-reported verified flag plus a Blue/Gold tier; production should be retested for expiry-state propagation.
+- **Testlab hold:** Android unit/lint/assemble, Windows build and user-flows must pass on the latest PR head. Unfinished items (Channel Pro, Merchant Pro, Gold promotions/AI and advanced scheduling) are roadmap proposals, NOT subscriber entitlements in this PR.
+
 ## 2026-10-27 — WebRTC Android 15 JNI call-crash repair (passed Testlab, main promotion pending)
 
 - **Observed failure:** Redmi/Android 15 SIGABRT during `libjingle_peerconnection_so.so` `JNI_OnLoad` inside `PeerConnectionFactory.initialize`; this is a native Java-class lookup failure and cannot be recovered by catching Kotlin exceptions.

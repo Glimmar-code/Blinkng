@@ -465,15 +465,15 @@ internal fun BlinkWalletPremiumContent(
                         }
                         item {
                             NeonCard {
-                                WalletHeading("What You Get", "Be real. Be seen. Be BLINK.")
+                                WalletHeading("What You Get", "Tools worth using, beyond the badge.")
                                 NeonRow(Icons.Rounded.Verified, "Verified Badge",
                                     "Display the official blue badge on your profile.")
-                                NeonRow(Icons.Rounded.Shield, "More Profile Trust",
-                                    "Let others recognize your verified account.")
-                                NeonRow(Icons.Rounded.BarChart, "Better Visibility",
-                                    "See BLINK's verified account benefits.")
-                                NeonRow(Icons.Rounded.Star, "Stand Out on BLINK",
-                                    "Join verified creators on BLINK.")
+                                NeonRow(Icons.Rounded.Shield, "Creator Studio",
+                                    "Analyze real views and interactions from loaded posts and Reels.")
+                                NeonRow(Icons.Rounded.BarChart, "Top Content Insights",
+                                    "See your best performing loaded posts and Reels.")
+                                NeonRow(Icons.Rounded.Star, "Gold Creator Reports",
+                                    "Gold adds hashtag analysis and shareable performance reports.")
                             }
                         }
                         item {

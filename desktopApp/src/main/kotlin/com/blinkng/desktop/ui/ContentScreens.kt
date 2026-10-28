@@ -1766,6 +1766,19 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (sellerReady &&
+            state.profile?.isVerified == true &&
+            state.profile?.verificationTier?.equals("GOLD", ignoreCase = true) == true &&
+            (state.profile?.verificationExpiresAtMillis == 0L ||
+                (state.profile?.verificationExpiresAtMillis ?: 0L) > System.currentTimeMillis())
+        ) {
+            item(key = "gold_merchant_pro") {
+                DesktopMerchantProPanel(
+                    sellerId = state.profile?.id.orEmpty(),
+                    loadedMarketItems = itemsList
+                )
+            }
+        }
         if (showSellerEnrollment) {
             item {
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
