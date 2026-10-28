@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,6 +52,7 @@ fun BlinkContestScreen(
     var invitedCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var ownCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var flyerCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var inspectedCandidate by remember { mutableStateOf<JSONObject?>(null) }
 
     LaunchedEffect(target?.contestId, target?.entryId) {
         if (target != null) {
@@ -120,29 +126,11 @@ fun BlinkContestScreen(
                         modifier = Modifier.padding(18.dp))
                 }
                 items(rows, key = { it.optString("id") }) { contest ->
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            selectedId = contest.optString("id")
-                            statement = ""; mediaUrl = ""; notice = null
-                        }
-                    ) {
-                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Text(contest.optString("title"), fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                            Text(BlinkContestPolicy.statusLabel(contest.optString("status")),
-                                color = MaterialTheme.colorScheme.primary)
-                            Text(contest.optString("description"), maxLines = 3)
-                            Text(
-                                "1st " + cash(contest.optInt("prize_first")) +
-                                    " · 2nd " + cash(contest.optInt("prize_second")) +
-                                    " · 3rd " + cash(contest.optInt("prize_third")),
-                                fontWeight = FontWeight.SemiBold, fontSize = 13.sp
-                            )
-                            Text(contest.optInt("contestants").toString() +
-                                " contestants · Free entry · Free voting", fontSize = 12.sp)
-                            Text("Voting: " + dateLabel(contest.optString("voting_opens_at")) +
-                                " to " + dateLabel(contest.optString("voting_closes_at")), fontSize = 12.sp)
-                        }
+                    BlinkContestHeroCard(contest) {
+                        selectedId = contest.optString("id")
+                        statement = ""; mediaUrl = ""; notice = null
                     }
+
                 }
             }
         } else {
@@ -161,6 +149,12 @@ fun BlinkContestScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
+                        val cover = c.optString("banner_url")
+                        if (cover.startsWith("https://")) AsyncImage(
+                            model = cover, contentDescription = "Contest cover",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(190.dp)
+                        )
                         Text(c.optString("title"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         Text(BlinkContestPolicy.statusLabel(status),
                             color = MaterialTheme.colorScheme.primary)
@@ -169,27 +163,38 @@ fun BlinkContestScreen(
                             " · 2nd " + cash(c.optInt("prize_second")) +
                             " · 3rd " + cash(c.optInt("prize_third")), fontWeight = FontWeight.Bold)
                         Text("Applications close " + dateLabel(c.optString("registration_closes_at")))
-                        Text("Voting closes " + dateLabel(c.optString("voting_closes_at")))
+                        Surface(color = Color(0xFF0B1626),
+                            shape = RoundedCornerShape(12.dp)) {
+                            Box(Modifier.padding(12.dp)) {
+                                BlinkContestCountdown(c.optString("voting_closes_at"))
+                            }
+                        }
                         if (c.optString("rules").isNotBlank()) Text("Rules: " + c.optString("rules"))
                         if (status == "completed") {
                             Text("Official winners",fontWeight=FontWeight.Bold,fontSize=20.sp)
                             if (winners.isEmpty()) Text("No prize winners recorded.")
-                            winners.forEach { w ->
-                                Text("#" + w.optInt("place") + " @" + w.optString("username") +
-                                    " · " + cash(w.optInt("prize_amount")))
-                                Text("Prize status: " + w.optString("payment_status") +
-                                    " (admin-recorded)",fontSize=12.sp)
-                            }
+                            winners.forEach { w -> BlinkContestWinnerCard(w) }
                         }
                         Text("One free vote per account. Self-voting is not allowed.", fontSize = 12.sp)
                     }
                     if (own.isNotBlank()) item {
-                        ElevatedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(14.dp)) {
-                                Text("Your entry: " + d.optString("my_entry_status"),
-                                    fontWeight = FontWeight.SemiBold)
+                        Surface(shape = RoundedCornerShape(15.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(15.dp)) {
+                                Text("Your application", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                                val entryStatus = d.optString("my_entry_status")
+                                Text(
+                                    when(entryStatus) {
+                                        "pending" -> "Under review · No voting until approved"
+                                        "approved" -> "Approved · Your entry is public"
+                                        "rejected" -> "Not approved · Contact contest support for clarification"
+                                        "disqualified" -> "Disqualified · No longer eligible"
+                                        else -> entryStatus
+                                    }, color = MaterialTheme.colorScheme.primary
+                                )
                                 Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
-                                     else "#" + d.optInt("my_rank"))
+                                    else "#" + d.optInt("my_rank"))
                             }
                         }
                     }
@@ -228,7 +233,7 @@ fun BlinkContestScreen(
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp)) {
                                 Text("Your contestant profile", fontWeight = FontWeight.Bold)
-                                Text("Rank #" + me.optInt("rank") + " · " + me.optInt("votes") + " votes")
+                                BlinkContestCandidateSpotlight(me) { inspectedCandidate = me }
                                 Button(onClick = { flyerCandidate = me }) { Text("Share my personalized flyer") }
                             }
                         }
@@ -238,9 +243,7 @@ fun BlinkContestScreen(
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("You were invited to vote for", fontWeight = FontWeight.SemiBold)
-                                Text("@" + candidate.optString("username"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                Text("Rank #" + candidate.optInt("rank") + " · " +
-                                    candidate.optInt("votes") + " votes")
+                                BlinkContestCandidateSpotlight(candidate) { inspectedCandidate = candidate }
                                 Text(candidate.optString("statement"), maxLines = 3)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
@@ -265,6 +268,9 @@ fun BlinkContestScreen(
                             }
                         }
                     }
+                    if (top.isNotEmpty()) item {
+                        BlinkContestPodium(top) { inspectedCandidate = it }
+                    }
                     item {
                         Text("Top 20 · " + d.optInt("total_ranked") + " ranked contestants",
                             fontSize = 19.sp, fontWeight = FontWeight.Bold)
@@ -275,11 +281,18 @@ fun BlinkContestScreen(
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("#" + candidate.optInt("rank"), fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(12.dp))
+                                Spacer(Modifier.width(6.dp))
+                                BlinkContestAvatar(candidate.optString("avatar_url"),
+                                    candidate.optString("username"), 42.dp)
+                                Spacer(Modifier.width(8.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("@" + candidate.optString("username"), fontWeight = FontWeight.Medium)
                                     Text(candidate.optInt("votes").toString() + " votes", fontSize = 12.sp)
                                     Text(candidate.optString("statement"), fontSize = 12.sp, maxLines = 2)
+                                    Text("View profile", color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 11.sp, modifier = Modifier.clickable {
+                                            inspectedCandidate = candidate
+                                        })
                                 }
                                 OutlinedButton(onClick = { flyerCandidate = candidate }) { Text("Share") }
                                 Spacer(Modifier.width(6.dp))
@@ -307,6 +320,75 @@ fun BlinkContestScreen(
                 }
             }
         }
+    }
+    inspectedCandidate?.let { candidate ->
+        val votes = candidate.optInt("votes")
+        val highest = detail?.optJSONArray("leaderboard")
+            ?.optJSONObject(0)?.optInt("votes")?.coerceAtLeast(1) ?: 1
+        AlertDialog(
+            onDismissRequest = { inspectedCandidate = null },
+            title = { Text("Contestant profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BlinkContestAvatar(candidate.optString("avatar_url"),
+                            candidate.optString("username"), 70.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("@" + candidate.optString("username"),
+                                fontWeight = FontWeight.Bold)
+                            Text("Rank #" + candidate.optInt("rank") + " · " +
+                                votes + " votes", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Text(candidate.optString("statement"), maxLines = 6)
+                    Text("Votes relative to current leader", fontSize = 11.sp)
+                    LinearProgressIndicator(
+                        progress = { (votes.toFloat() / highest).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF1685FF)
+                    )
+                    val image = candidate.optString("media_url")
+                    if (image.startsWith("https://") &&
+                        (image.contains(".jpg",true) || image.contains(".png",true) ||
+                         image.contains(".webp",true) || image.contains(".jpeg",true))) {
+                        AsyncImage(model = image, contentDescription = "Contestant entry photo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp))
+                    }
+                    Text("One free vote per account. Self-voting isn't permitted.",
+                        fontSize = 11.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy && BlinkContestPolicy.canVote(
+                        detail?.optJSONObject("contest")?.optString("status").orEmpty(),
+                        detail?.optString("my_vote_entry_id").orEmpty(),
+                        detail?.optString("my_entry_id").orEmpty(),
+                        candidate.optString("id")),
+                    onClick = {
+                        val contestId = selectedId ?: return@TextButton
+                        busy = true
+                        scope.launch {
+                            api.vote(contestId, candidate.optString("id"))
+                                .onSuccess {
+                                    notice = if (it.optString("vote_status") == "under_review")
+                                        "Vote received; pending review." else "Free vote counted."
+                                    revision++; inspectedCandidate = null
+                                }.onFailure { error = it.message }
+                            busy = false
+                        }
+                    }
+                ) { Text("Vote free") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    flyerCandidate = candidate
+                    inspectedCandidate = null
+                }) { Text("Share flyer") }
+            }
+        )
     }
     flyerCandidate?.let { candidate ->
         BlinkContestShareDialog(candidate = candidate, onDismiss = { flyerCandidate = null })
