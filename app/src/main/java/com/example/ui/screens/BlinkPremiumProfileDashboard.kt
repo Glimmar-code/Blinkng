@@ -162,6 +162,21 @@ internal fun BlinkPremiumProfileDashboard(
                 }
                 Text("@${profile.username}", color = softInk, fontSize = 12.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
+                com.blinkng.shared.BlinkVerifiedIdentitySignature.label(
+                    profile.verificationBadge.name, profile.hasActiveMarketVerification()
+                )?.let { signature ->
+                    Surface(
+                        color = if (profile.verificationBadge == VerificationBadge.GOLD)
+                            Color(0xFF6B4A12).copy(alpha = .55f)
+                        else Color(0xFF174B71).copy(alpha = .48f),
+                        shape = RoundedCornerShape(9.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .22f))
+                    ) {
+                        Text(signature, color = ink, fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                }
                 if (!isMe) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         ProfileFollowInteractButton(
