@@ -487,6 +487,16 @@ internal fun BlinkReferencePostDetails(
                 )
             }
         }
+        FilterChip(
+            selected = false,
+            onClick = {},
+            enabled = false,
+            label = { Text("Only me · Requires secure rollout") }
+        )
+        Text(
+            "Only me will become available after server access, media privacy, and discovery checks pass. Until then, save a draft instead.",
+            color = Color(0xFFB1B8C7), fontSize = 11.sp
+        )
         Text("Post category", color = Color.White, fontWeight = FontWeight.SemiBold)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
