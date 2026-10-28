@@ -1005,7 +1005,6 @@ fun PostCard(
     }
 }
 
-@Composable
 internal fun pollVotingClosed(expiresAtMillis: Long?, nowMillis: Long): Boolean =
     expiresAtMillis != null && nowMillis >= expiresAtMillis
 
