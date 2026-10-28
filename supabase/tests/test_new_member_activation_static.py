@@ -43,7 +43,7 @@ class NewMemberTests(unittest.TestCase):
         card = source("app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt")
         for s in ("blink_contact_settings", "blink_contact_imports", "enable row level security", "to service_role"):
             self.assertIn(s, migration)
-        for s in ("BLINK_CONTACT_HMAC_SECRET", "auth.getUser(jwt)", "phone_confirmed_at"):
+        for s in ("BLINK_CONTACT_HMAC_SECRET", "auth.getUser(jwt)", "blink_contact_upsert_opted_in"):
             self.assertIn(s, edge)
         self.assertIn("READ_CONTACTS", app)
         self.assertIn("numbers.isEmpty()", app)
