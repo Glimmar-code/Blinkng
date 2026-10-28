@@ -36,6 +36,7 @@ internal fun DesktopCreatorStudioDialog(
     loading: Boolean,
     onDismiss: () -> Unit,
     onRefresh: () -> Unit,
+    onUseAiPrompt: (String) -> Unit = {},
 ) {
     val summary = BlinkCreatorStudioPolicy.summarize(
         posts.filter { it.userId == profile.id }.map { post ->
@@ -60,6 +61,9 @@ internal fun DesktopCreatorStudioDialog(
     val member = profile.isVerified && notExpired && tier in setOf("BLUE", "GOLD")
     val gold = member && tier == "GOLD"
     var clipboardStatus by remember { mutableStateOf<String?>(null) }
+    var promptTopic by remember(profile.id) { mutableStateOf("") }
+    var promptAudience by remember(profile.id) { mutableStateOf("students") }
+    var promptKind by remember(profile.id) { mutableStateOf("Post ideas") }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(22.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -167,6 +171,50 @@ internal fun DesktopCreatorStudioDialog(
                         item {
                             Text("Gold adds hashtag analysis and a copyable performance report.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (member) {
+                    item {
+                        HorizontalDivider()
+                        Text("BLINK AI creator workspace", fontWeight = FontWeight.Bold)
+                        Text("Prepare a prompt for the existing BLINK AI. You choose when to Send; " +
+                            "service availability and existing limits still apply.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedTextField(promptTopic, { promptTopic = it.take(160) },
+                            label = { Text("Creative topic") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(promptAudience, { promptAudience = it.take(80) },
+                            label = { Text("Audience") }, modifier = Modifier.fillMaxWidth())
+                    }
+                    items(com.blinkng.shared.BlinkVerifiedCreatorTools.promptKinds) { kind ->
+                        FilterChip(selected = promptKind == kind, onClick = { promptKind = kind },
+                            label = { Text(kind) })
+                    }
+                    item {
+                        Button(onClick = {
+                            val prompt = com.blinkng.shared.BlinkVerifiedCreatorTools.prompt(
+                                promptKind, promptTopic, promptAudience)
+                            onDismiss()
+                            onUseAiPrompt(prompt)
+                        }) { Text("Open this brief in BLINK AI") }
+                    }
+                    if (gold) {
+                        item {
+                            HorizontalDivider()
+                            Text("Gold Creator Portfolio", fontWeight = FontWeight.Bold)
+                            val portfolio = com.blinkng.shared.BlinkVerifiedCreatorTools.portfolio(
+                                profile.username, profile.fullName,
+                                profile.professionalHeadline.orEmpty(), profile.bio.orEmpty(),
+                                summary.topTags.firstOrNull()?.tag
+                            )
+                            Text(portfolio)
+                            OutlinedButton(onClick = {
+                                try {
+                                    Toolkit.getDefaultToolkit().systemClipboard
+                                        .setContents(StringSelection(portfolio), null)
+                                    clipboardStatus = "Portfolio copied"
+                                } catch (_: Exception) { clipboardStatus = "Clipboard unavailable" }
+                            }) { Text("Copy public portfolio") }
                         }
                     }
                 }
