@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -312,7 +313,8 @@ fun BlinkChannelDetail(
                         mediaError = result.isFailure || signedMedia.isNullOrBlank()
                     }
                 }
-                Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                val mediaInteraction = remember(update.id) { MutableInteractionSource() }
+                Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp).blinkSmoothSize(),
                     shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(channel.name, style = MaterialTheme.typography.labelLarge,
@@ -322,7 +324,11 @@ fun BlinkChannelDetail(
                         if (update.mediaKind == "image" && signedMedia != null) {
                             androidx.compose.foundation.layout.Box(
                                 modifier = Modifier.fillMaxWidth()
-                                    .clickable { mediaUpdateId = update.id }
+                                    .blinkPressFeedback(mediaInteraction)
+                                    .clickable(
+                                        interactionSource = mediaInteraction,
+                                        indication = null
+                                    ) { mediaUpdateId = update.id }
                             ) { AsyncImage(
                                 model = signedMedia,
                                 contentDescription = "Channel image",

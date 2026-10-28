@@ -95,6 +95,7 @@ import com.example.ui.components.ProfileOwnerInsightsCard
 import com.example.ui.components.ProfileReportDialog
 import com.example.ui.components.PostCard
 import com.example.ui.components.shimmerBackground
+import com.example.ui.components.blinkPressFeedback
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.BlinkPremiumAvatarFrame
@@ -1476,15 +1477,16 @@ private fun EntranceItem(
     fromRight: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val reduceMotion = rememberBlinkReduceMotion()
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(
+        enter = if (reduceMotion) EnterTransition.None else fadeIn(
             animationSpec = tween(320, delayMillis = delayMillis, easing = FastOutSlowInEasing)
         ) + slideInHorizontally(
             animationSpec = tween(360, delayMillis = delayMillis, easing = FastOutSlowInEasing),
             initialOffsetX = { full -> if (fromRight) full / 4 else -full / 4 }
         ),
-        exit = fadeOut()
+        exit = if (reduceMotion) ExitTransition.None else fadeOut()
     ) {
         content()
     }
@@ -1504,17 +1506,18 @@ private fun AnimatedTabRow(
     textPrimary: Color
 ) {
     val density = LocalDensity.current
+    val reduceMotion = rememberBlinkReduceMotion()
     val tabOffsets = remember { mutableStateMapOf<Int, Pair<Dp, Dp>>() } // index -> (x, width)
     val scrollState = rememberLazyListState()
 
     val indicatorX by animateDpAsState(
         targetValue = tabOffsets[selectedTab]?.first ?: 0.dp,
-        animationSpec = ProfileMotion.TabIndicatorSpec,
+        animationSpec = if (reduceMotion) snap() else ProfileMotion.TabIndicatorSpec,
         label = "tabIndicatorX"
     )
     val indicatorWidth by animateDpAsState(
         targetValue = tabOffsets[selectedTab]?.second ?: 0.dp,
-        animationSpec = ProfileMotion.TabIndicatorSpec,
+        animationSpec = if (reduceMotion) snap() else ProfileMotion.TabIndicatorSpec,
         label = "tabIndicatorWidth"
     )
 
@@ -1542,9 +1545,10 @@ private fun AnimatedTabRow(
         ) {
             items(tabs.indices.toList(), key = { it }) { index ->
                 val selected = selectedTab == index
+                val tabInteraction = remember { MutableInteractionSource() }
                 val textColor by animateColorAsState(
                     targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else textPrimary,
-                    animationSpec = tween(220),
+                    animationSpec = tween(if (reduceMotion) 0 else 220),
                     label = "tabTextColor"
                 )
 
@@ -1553,8 +1557,9 @@ private fun AnimatedTabRow(
                     color = Color.Transparent,
                     border = BorderStroke(1.dp, if (selected) Color.Transparent else borderColor),
                     modifier = Modifier
+                        .blinkPressFeedback(tabInteraction)
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = tabInteraction,
                             indication = null
                         ) { onTabSelected(index) }
                         .onGloballyPositioned { coords ->
@@ -1577,7 +1582,8 @@ private fun AnimatedTabRow(
 
         // Auto-scroll the row so the active tab stays in view.
         LaunchedEffect(selectedTab) {
-            scrollState.animateScrollToItem(
+            if (reduceMotion) scrollState.scrollToItem((selectedTab - 1).coerceAtLeast(0))
+            else scrollState.animateScrollToItem(
                 index = (selectedTab - 1).coerceAtLeast(0)
             )
         }

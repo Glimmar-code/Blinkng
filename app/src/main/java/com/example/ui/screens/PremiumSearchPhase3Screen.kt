@@ -19,6 +19,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
+import com.example.ui.components.blinkPressFeedback
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -535,11 +539,14 @@ private fun Phase3SearchContent(
             }
         }
 
+        val reduceHeroMotion = rememberBlinkReduceMotion()
         AnimatedVisibility(
             visible = heroResult != null,
             modifier = Modifier.fillMaxSize().zIndex(20f),
-            enter = fadeIn(tween(160)) + scaleIn(tween(180), initialScale = 0.985f),
-            exit = fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.985f),
+            enter = if (reduceHeroMotion) androidx.compose.animation.EnterTransition.None
+                else fadeIn(tween(160)) + scaleIn(tween(180), initialScale = 0.985f),
+            exit = if (reduceHeroMotion) androidx.compose.animation.ExitTransition.None
+                else fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.985f),
         ) { heroResult?.let(::SearchHeroCard) }
     }
 
@@ -719,8 +726,13 @@ private fun Phase3SearchField(
 @Composable
 private fun Phase3Chip(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
     val colors = BlinkThemeTokens.colors
+    val interaction = remember { MutableInteractionSource() }
     Surface(
-        onClick = onClick,
+        modifier = Modifier.blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction,
+            indication = LocalIndication.current,
+            onClick = onClick
+        ),
         shape = RoundedCornerShape(14.dp),
         color = if (selected) colors.primaryBright.copy(alpha = 0.14f) else colors.surfaceElevated,
         border = BorderStroke(1.dp, if (selected) colors.primaryBright.copy(alpha = 0.34f) else colors.borderSoft),
@@ -736,8 +748,13 @@ private fun Phase3Chip(label: String, icon: ImageVector, selected: Boolean, onCl
 @Composable
 private fun Phase3FilterChip(label: String, icon: ImageVector, active: Boolean, onClick: () -> Unit) {
     val colors = BlinkThemeTokens.colors
+    val interaction = remember { MutableInteractionSource() }
     Surface(
-        onClick = onClick,
+        modifier = Modifier.blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction,
+            indication = LocalIndication.current,
+            onClick = onClick
+        ),
         shape = RoundedCornerShape(12.dp),
         color = if (active) colors.primary.copy(alpha = 0.10f) else colors.surface,
         border = BorderStroke(1.dp, if (active) colors.primaryBright.copy(alpha = 0.28f) else colors.borderSoft),
@@ -863,8 +880,13 @@ private fun SearchRealFeedCard(
 @Composable
 private fun DiscoveryCard(result: DiscoveryResult, autoplay: Boolean, onClick: () -> Unit) {
     val colors = BlinkThemeTokens.colors
+    val interaction = remember { MutableInteractionSource() }
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction,
+            indication = LocalIndication.current,
+            onClick = onClick
+        ),
         shape = RoundedCornerShape(19.dp),
         color = colors.surfaceElevated,
         border = BorderStroke(1.dp, colors.borderSoft),
