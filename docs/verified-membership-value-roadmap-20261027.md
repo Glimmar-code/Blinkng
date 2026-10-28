@@ -23,6 +23,7 @@
 - Gold event organizer creates an invitation from an explicitly supplied name, time and venue; Android sends via chooser and Windows copies text. It does not create public RSVP records, calendar bookings or guaranteed attendance.
 - Profile deep-link Robolectric regression tests were adjusted to scroll the actual LazyColumn when the new owner dashboard pushes tabs below the first viewport; the test remains an actual selected-tab assertion.
 - Existing post and Channel scheduling, cosmetic Store items, photo/voice/reel editors and seller permissions are preserved; they are NOT falsely relabeled as newly implemented verification-exclusive backend grants.
+- Blue/Gold profiles now show an active-membership signature on Android and Windows, using shared `BlinkVerifiedIdentitySignature`. This included cosmetic is **not** a premium Coin Store ring/banner/effect grant and cannot bypass Store ownership.
 
 ## Entitlements requiring separate provider/backend work before activation
 - Monthly Gold promotion credits: **NOT funded/active**. Requires an owner-approved credit value, immutable ledger, verified payment/renewal lifecycle, idempotent issuance, spending debits, refunds, expiry, anti-fraud, user receipts and staging tests. No UI should claim issued credits.
