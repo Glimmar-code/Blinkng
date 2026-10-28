@@ -129,8 +129,8 @@ begin
     where contest_id=p_contest_id and voter_id=auth.uid();
 
   return jsonb_build_object(
-    'contest',(select item from jsonb_array_elements(public.list_blink_contests()) item
-       where item->>'id'=p_contest_id::text limit 1),
+    'contest',(select value from jsonb_array_elements(public.list_blink_contests()) as j(value)
+       where value->>'id'=p_contest_id::text limit 1),
     'leaderboard',v_top,'my_rank',v_myrank,'my_entry_id',v_entry,
     'my_vote_entry_id',v_vote,'total_ranked',v_total,
     'my_entry_status',(select status from public.blink_contest_entries
@@ -142,7 +142,8 @@ create function public.apply_blink_contest(p_contest_id uuid,p_statement text,p_
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare c public.blink_contests%rowtype; u uuid:=auth.uid(); v_id uuid; v_uni text;
 begin
-  if u is null then raise exception 'SIGN_IN_REQUIRED' using errcode='42501'; end if;
+  if u is null or coalesce(auth.jwt()->>'is_anonymous','false')='true' then
+    raise exception 'SIGN_IN_REQUIRED' using errcode='42501'; end if;
   if p_statement is null or length(trim(p_statement)) not between 10 and 500
     then raise exception 'INVALID_ENTRY'; end if;
   if p_media_url is not null and
@@ -199,11 +200,11 @@ create function public.admin_save_blink_contest(p_id uuid,p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare u uuid:=private.require_blink_admin(); c public.blink_contests%rowtype;
   ro timestamptz; rc timestamptz; vo timestamptz; vc timestamptz; ra timestamptz;
-  f int; s int; t int; title text;
+  f int; s int; t int; v_title text;
 begin
   if p_data is null or jsonb_typeof(p_data)<>'object'
     or octet_length(p_data::text)>10000 then raise exception 'INVALID_CONTEST'; end if;
-  title:=trim(coalesce(p_data->>'title',''));
+  v_title:=trim(coalesce(p_data->>'title',''));
   ro:=(p_data->>'registration_opens_at')::timestamptz;
   rc:=(p_data->>'registration_closes_at')::timestamptz;
   vo:=(p_data->>'voting_opens_at')::timestamptz;
@@ -212,7 +213,7 @@ begin
   f:=coalesce((p_data->>'prize_first')::int,0);
   s:=coalesce((p_data->>'prize_second')::int,0);
   t:=coalesce((p_data->>'prize_third')::int,0);
-  if length(title) not between 4 and 100 or f<0 or s<0 or t<0
+  if length(v_title) not between 4 and 100 or f<0 or s<0 or t<0
      or ro is null or rc is null or vo is null or vc is null or ra is null
      or not (ro<rc and rc<=vo and vo<vc and vc<=ra)
      then raise exception 'INVALID_CONTEST_CONFIGURATION'; end if;
@@ -220,7 +221,7 @@ begin
     select * into c from public.blink_contests where id=p_id for update;
     if not found or c.status<>'draft' then raise exception 'ONLY_DRAFTS_EDITABLE'; end if;
     update public.blink_contests set
-      title=title, description=coalesce(p_data->>'description',''),
+      title=v_title, description=coalesce(p_data->>'description',''),
       rules=coalesce(p_data->>'rules',''),category=coalesce(p_data->>'category','General'),
       banner_url=nullif(p_data->>'banner_url',''),
       university=nullif(p_data->>'university',''),
@@ -235,7 +236,7 @@ begin
       university,registration_opens_at,registration_closes_at,voting_opens_at,
       voting_closes_at,results_at,prize_first,prize_second,prize_third,
       max_entries,auto_approve,created_by)
-    values(title,coalesce(p_data->>'description',''),coalesce(p_data->>'rules',''),
+    values(v_title,coalesce(p_data->>'description',''),coalesce(p_data->>'rules',''),
       coalesce(p_data->>'category','General'),nullif(p_data->>'banner_url',''),
       nullif(p_data->>'university',''),ro,rc,vo,vc,ra,f,s,t,
       nullif(p_data->>'max_entries','')::integer,
@@ -285,12 +286,28 @@ begin
   return to_jsonb(e);
 end; $$;
 
+
+create function public.admin_list_blink_contest_entries(p_contest_id uuid)
+returns jsonb language plpgsql stable security definer set search_path = '' as $
+begin
+  perform private.require_blink_admin();
+  return coalesce((select jsonb_agg(jsonb_build_object(
+     'id',e.id,'contest_id',e.contest_id,'user_id',e.user_id,
+     'username',p.username,'statement',e.statement,'media_url',e.media_url,
+     'status',e.status,'submitted_at',e.submitted_at)
+     order by e.submitted_at desc)
+   from public.blink_contest_entries e
+   left join public.profiles p on p.id=e.user_id
+   where e.contest_id=p_contest_id),'[]'::jsonb);
+end; $;
+
 -- PUBLIC function EXECUTE is implicit on PostgreSQL; explicitly restrict it.
 revoke all on function public.list_blink_contests() from public,anon,authenticated;
 revoke all on function public.get_blink_contest(uuid) from public,anon,authenticated;
 revoke all on function public.apply_blink_contest(uuid,text,text) from public,anon,authenticated;
 revoke all on function public.vote_blink_contest(uuid,uuid) from public,anon,authenticated;
 revoke all on function public.admin_list_blink_contests() from public,anon,authenticated;
+revoke all on function public.admin_list_blink_contest_entries(uuid) from public,anon,authenticated;
 revoke all on function public.admin_save_blink_contest(uuid,jsonb) from public,anon,authenticated;
 revoke all on function public.admin_transition_blink_contest(uuid,text) from public,anon,authenticated;
 revoke all on function public.admin_review_blink_contest_entry(uuid,text) from public,anon,authenticated;
@@ -298,6 +315,7 @@ grant execute on function public.list_blink_contests(),public.get_blink_contest(
 grant execute on function public.apply_blink_contest(uuid,text,text),
   public.vote_blink_contest(uuid,uuid),
   public.admin_list_blink_contests(),
+  public.admin_list_blink_contest_entries(uuid),
   public.admin_save_blink_contest(uuid,jsonb),
   public.admin_transition_blink_contest(uuid,text),
   public.admin_review_blink_contest_entry(uuid,text) to authenticated;
