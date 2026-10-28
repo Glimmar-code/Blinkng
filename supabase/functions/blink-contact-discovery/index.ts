@@ -65,11 +65,17 @@ Deno.serve(async request => {
   }
   const uid = user.id;
   const action = String(data.action ?? "");
-  const verifiedPhone = canonical(user.phone ?? "") &&
-    user.phone_confirmed_at && !!user.phone_confirmed_at;
+  // Profile phone is self-declared; it is NOT Supabase Auth phone ownership proof.
+  // Reciprocal, consented contact imports are mandatory before revealing matches.
+  const profileNumber = async () => {
+    const { data: profile, error } = await admin.from("profiles")
+      .select("phone").eq("id", uid).maybeSingle();
+    if (error) throw error;
+    return canonical(profile?.phone ?? "");
+  };
   const key = await hmacKey(pepper);
   const dispatchNewContactAlerts = async () => {
-    // This path only runs after server-side phone ownership and privacy consent checks.
+    // Only after reciprocal opt-in matching and joined-alert authorization checks.
     const { data: ids, error } = await admin.rpc("blink_contact_my_recent_push_ids", { p_joiner: uid });
     if (error || !Array.isArray(ids)) return;
     for (const row of ids.slice(0, 100)) {
@@ -115,8 +121,12 @@ Deno.serve(async request => {
           typeof data.join_alerts !== "boolean") {
         return json({ error: "Explicit consent choices are required" }, 400, origin);
       }
-      if (data.discoverable && !verifiedPhone) {
-        return json({ error: "Verify your phone number first" }, 409, origin);
+      const ownPhone = await profileNumber();
+      if (data.discoverable && !data.sync_enabled) {
+        return json({ error: "Enable contact sync before discoverability" }, 400, origin);
+      }
+      if (data.discoverable && !ownPhone) {
+        return json({ error: "Add a phone number to your profile first" }, 409, origin);
       }
       const settings = {
         user_id: uid,
@@ -133,9 +143,9 @@ Deno.serve(async request => {
         if (error) throw error;
       }
       // Setting discoverable=false immediately removes this account from phone matches.
-      const { error: directoryError } = await admin.rpc("blink_contact_upsert_verified", {
+      const { error: directoryError } = await admin.rpc("blink_contact_upsert_opted_in", {
         p_user: uid,
-        p_hmac: verifiedPhone ? await phoneHash(key, canonical(user.phone)!) : "0".repeat(64),
+        p_hmac: settings.discoverable && ownPhone ? await phoneHash(key, ownPhone) : "0".repeat(64),
       });
       if (directoryError) throw directoryError;
       if (data.discoverable) await dispatchNewContactAlerts();
@@ -156,6 +166,19 @@ Deno.serve(async request => {
       const hashes = await Promise.all(clean.map(phone => phoneHash(key, phone)));
       const { error } = await admin.rpc("blink_contact_replace_imports", { p_owner: uid, p_hashes: hashes });
       if (error) throw error;
+      // The other participant may have imported their numbers before ours.
+      // Reevaluate the mutual match only AFTER this fresh import.
+      if (settings.discoverable) {
+        const ownPhone = await profileNumber();
+        if (!ownPhone) return json({ error: "Your profile phone is missing" }, 409, origin);
+        const directory = await admin.rpc("blink_contact_upsert_opted_in", {
+          p_user: uid, p_hmac: await phoneHash(key, ownPhone),
+        });
+        if (directory.error) throw directory.error;
+        const alerts = await admin.rpc("blink_contact_notify_my_join", { p_joiner: uid });
+        if (alerts.error) throw alerts.error;
+        await dispatchNewContactAlerts();
+      }
       const result = await admin.rpc("blink_contact_matches_for", { p_user: uid });
       if (result.error) throw result.error;
       return json({ matched: result.data || [], synced: hashes.length }, 200, origin);
@@ -168,7 +191,7 @@ Deno.serve(async request => {
       if (preferenceError) throw preferenceError;
       const cleanup = await Promise.all([
         admin.rpc("blink_contact_clear_imports", { p_owner: uid }),
-        admin.rpc("blink_contact_upsert_verified", { p_user: uid, p_hmac: "0".repeat(64) }),
+        admin.rpc("blink_contact_upsert_opted_in", { p_user: uid, p_hmac: "0".repeat(64) }),
       ]);
       if (cleanup.some(x => x.error)) throw Error("Contact data could not be deleted");
       return json({ deleted: true }, 200, origin);
