@@ -1,3 +1,10 @@
+## 2026-10-28 — Full-app audit Search and credential recovery (PR #635)
+
+- **Search:** Android and Windows both expose a 30-day-first trending-tags entry point and retain truthful seven-day fallback until the new authenticated RPC is deployed. No fabricated trends or creators. The staged backend excludes expired verification badges.
+- **Android recovery security:** New password and confirmation are transient Compose state, never encrypted long-lived draft fields. Legacy encrypted password-reset draft keys are actively cleared without reading the saved values.
+- **PARITY-EXCEPTION: android-password-reset-deep-link:** Android OS intent dispatch now sends both `blink://auth/reset-password` and legacy `blink://reset-password` to its dedicated token-verifying reset screen. Windows does not implement Android intent filters and must use its own authorized browser/desktop recovery callback. No shared account, password, session, or backend permission semantics were changed.
+- **Validation gate:** Staged SQL fixture, source regressions and Android recovery-link Robolectric tests have been added. Independent PostgreSQL role/privacy integration, latest-head Android/Windows CI and end-to-end recovery email/device verification remain required. Main and hosted Supabase are untouched.
+
 ## 2026-10-27 — Notification reliability Testlab PR #622
 
 - Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.
