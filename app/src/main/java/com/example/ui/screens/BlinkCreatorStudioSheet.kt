@@ -51,6 +51,10 @@ internal fun BlinkCreatorStudioSheet(
     var creatorTopic by remember(profile.id) { mutableStateOf("") }
     var creatorAudience by remember(profile.id) { mutableStateOf("students") }
     var selectedCreatorTool by remember(profile.id) { mutableStateOf("Post ideas") }
+    var eventName by remember(profile.id) { mutableStateOf("") }
+    var eventTime by remember(profile.id) { mutableStateOf("") }
+    var eventVenue by remember(profile.id) { mutableStateOf("") }
+    var eventNotice by remember(profile.id) { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -281,6 +285,40 @@ internal fun BlinkCreatorStudioSheet(
                     }
                 }
                 if (isGold) {
+                    item {
+                        StudioFeatureCard(
+                            title = "Gold Event Organizer",
+                            description = "Create an invitation using confirmed event details. " +
+                                "You decide when and where to share it. This doesn't collect RSVPs."
+                        ) {
+                            OutlinedTextField(eventName, { eventName = it.take(120) },
+                                label = { Text("Event name") }, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(eventTime, { eventTime = it.take(120) },
+                                label = { Text("Confirmed date and time") }, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(eventVenue, { eventVenue = it.take(160) },
+                                label = { Text("Confirmed venue or online format") },
+                                modifier = Modifier.fillMaxWidth())
+                            eventNotice?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            OutlinedButton(onClick = {
+                                try {
+                                    val invite = com.blinkng.shared.BlinkVerifiedCreatorTools.eventInvite(
+                                        eventName, eventTime, eventVenue, creatorAudience)
+                                    eventNotice = null
+                                    context.startActivity(Intent.createChooser(
+                                        Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, invite)
+                                        }, "Share event invitation"))
+                                } catch (e: IllegalArgumentException) {
+                                    eventNotice = e.message
+                                } catch (_: Exception) {
+                                    eventNotice = "No compatible sharing app is available."
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Review and share event invitation")
+                            }
+                        }
+                    }
                     item {
                         StudioFeatureCard(
                             title = "Gold Creator Portfolio",
