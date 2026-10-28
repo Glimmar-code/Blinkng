@@ -1845,8 +1845,19 @@ private fun PremiumChatDetail(
         onPresenceChange("online")
     }
     var pendingVideoReview by remember(conversation.id) { mutableStateOf<Uri?>(null) }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) pendingVideoReview = uri
+    // Android's media picker allows 1–10 videos without broad storage access.
+    // Every selected video must pass the existing explicit edit/review dialog.
+    var pendingVideoBatch by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
+    val videoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        pendingVideoBatch = uris.take(10)
+        pendingVideoReview = pendingVideoBatch.firstOrNull()
+        if (pendingVideoBatch.size > 1) {
+            Toast.makeText(context,
+                "Review ${pendingVideoBatch.size} videos individually before sending.",
+                Toast.LENGTH_SHORT).show()
+        }
         onPresenceChange("online")
     }
     var pendingFileReview by remember(conversation.id) { mutableStateOf<Pair<Uri, Boolean>?>(null) }
@@ -3044,11 +3055,15 @@ private fun PremiumChatDetail(
         BlinkChatVideoEditorDialog(
             sourceUri = selected,
             onSend = { finalVideo ->
-                pendingVideoReview = null
-                onPresenceChange("uploading")
+                val remaining = pendingVideoBatch.drop(1)
+                pendingVideoBatch = remaining
+                pendingVideoReview = remaining.firstOrNull()
+                onPresenceChange(if (remaining.isEmpty()) "uploading" else "online")
                 onSendVideo(finalVideo)
             },
             onDismiss = {
+                // A cancellation never silently uploads any remaining selected video.
+                pendingVideoBatch = emptyList()
                 pendingVideoReview = null
                 onPresenceChange("online")
             }
@@ -3132,7 +3147,9 @@ private fun PremiumChatDetail(
             },
             onVideo = {
                 showAttachmentSheet = false
-                videoPicker.launch("video/*")
+                videoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                )
             },
             onSticker = {
                 showAttachmentSheet = false
