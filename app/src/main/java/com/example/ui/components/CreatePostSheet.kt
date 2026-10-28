@@ -2244,7 +2244,7 @@ fun CreatePostSheet(
 
 
 @Composable
-private fun PostPreviewDialog(
+internal fun PostPreviewDialog(
     post: FeedPost,
     profile: UserProfile,
     onDismiss: () -> Unit
@@ -2749,7 +2749,7 @@ private fun SelectedImagePreview(
 }
 
 @Composable
-private fun PollComposer(
+internal fun PollComposer(
     question: String,
     onQuestionChanged: (String) -> Unit,
     options: List<String>,
