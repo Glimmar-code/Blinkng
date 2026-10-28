@@ -232,11 +232,12 @@ fun BlinkUniversalPhotoEditor(
         }
     }
     val photoControls = listOf(
-        "ADJUST" to Icons.Default.Tune,
         "CROP" to Icons.Default.Crop,
-        "DRAW" to Icons.Default.Brush,
+        "FILTER" to Icons.Default.AutoAwesome,
+        "ADJUST" to Icons.Default.Tune,
+        "TEXT" to Icons.Default.TextFields,
         "STICKER" to Icons.Default.EmojiEmotions,
-        "TEXT" to Icons.Default.TextFields
+        "DRAW" to Icons.Default.Brush
     )
 
     Dialog(onDismissRequest = { close() },
@@ -392,7 +393,7 @@ fun BlinkUniversalPhotoEditor(
                             contentColor=if(tool==name) Color(0xFF8D85FF) else Color.LightGray)) {
                         Icon(icon,contentDescription=null,modifier=Modifier.size(18.dp))
                         Spacer(Modifier.width(3.dp))
-                        Text(name,fontSize=11.sp)
+                        Text(when(name) { "DRAW" -> "Doodle"; "STICKER" -> "Stickers"; else -> name.lowercase().replaceFirstChar { it.uppercase() } },fontSize=11.sp)
                     }
                 }
             }
@@ -401,21 +402,34 @@ fun BlinkUniversalPhotoEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal=16.dp,vertical=8.dp)) {
                 when(tool) {
-                    "ADJUST" -> {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    "FILTER" -> {
+                        Text("FILTERS", color=Color.White, fontSize=12.sp)
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement=Arrangement.spacedBy(6.dp)
+                        ) {
                             listOf(
                                 listOf(0f,1f,1f) to "Original",
                                 listOf(.22f,1.08f,1.12f) to "Bright",
                                 listOf(0f,1.3f,1.12f) to "Vivid",
-                                listOf(.02f,1.12f,0f) to "B&W"
+                                listOf(.02f,1.12f,0f) to "B&W",
+                                listOf(.08f,1.13f,.72f) to "Warm"
                             ).forEach { (values, title) ->
-                                OutlinedButton(onClick={
-                                    saveUndo()
-                                    exposure=values[0]; contrast=values[1]; saturation=values[2]
-                                },enabled=!busy) { Text(title,fontSize=10.sp) }
+                                OutlinedButton(
+                                    onClick = {
+                                        saveUndo()
+                                        exposure=values[0]
+                                        contrast=values[1]
+                                        saturation=values[2]
+                                    },
+                                    enabled=!busy
+                                ) { Text(title,fontSize=11.sp) }
                             }
                         }
+                        Text("Filters are applied to your actual photo when you tap Done.",
+                            color=Color.LightGray, fontSize=11.sp)
+                    }
+                    "ADJUST" -> {
                         listOf("Enhance / Exposure","Contrast","Saturation").forEachIndexed { index,label ->
                             Row(verticalAlignment=Alignment.CenterVertically) {
                                 Text(label,color=Color.White,fontSize=11.sp,
