@@ -23,6 +23,7 @@ import android.content.Intent
 import android.net.Uri
 import com.example.data.supabase.MessageMediaService
 import com.example.data.supabase.BlinkChatMediaPreferences
+import com.example.data.supabase.BlinkChatNativePollService
 import com.example.data.supabase.BlinkChatPhotoEditor
 import com.blinkng.shared.BlinkChatImageQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -213,6 +214,11 @@ import kotlin.math.abs
 private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
 
+private data class PendingChatNativePoll(
+    val draft: com.blinkng.shared.BlinkChatPollDraft,
+    val existingIds: Set<String>,
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
 private data class ChatPhotoReviewItem(
     val id: String = java.util.UUID.randomUUID().toString(),
     val uri: Uri,
@@ -1646,6 +1652,16 @@ private fun PremiumChatDetail(
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var chatExtraMode by remember(conversation.id) { mutableStateOf<String?>(null) }
+    val nativePollService = remember(conversation.id) { BlinkChatNativePollService() }
+    var nativePollEnabled by remember(conversation.id) { mutableStateOf(false) }
+    var pendingNativePoll by remember(conversation.id) {
+        mutableStateOf<PendingChatNativePoll?>(null)
+    }
+    LaunchedEffect(chatExtraMode) {
+        if (chatExtraMode == "poll") {
+            nativePollEnabled = nativePollService.isSupported()
+        }
+    }
     var selectedContact by remember(conversation.id) { mutableStateOf<Pair<String,String>?>(null) }
     val contactPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -1991,6 +2007,32 @@ private fun PremiumChatDetail(
     }
 
     val latestVisibleMessageId = conversation.messages.lastOrNull()?.id
+    LaunchedEffect(latestVisibleMessageId, pendingNativePoll) {
+        val pending = pendingNativePoll ?: return@LaunchedEffect
+        val match = conversation.messages.lastOrNull {
+            it.isFromMe && it.id !in pending.existingIds &&
+                it.text == pending.draft.question &&
+                it.status != MessageStatus.SENDING &&
+                runCatching { java.util.UUID.fromString(it.id) }.isSuccess
+        }
+        if (match != null) {
+            pendingNativePoll = null // Never attach twice, including on recompose.
+            nativePollService.attach(match.id, pending.draft.question,
+                pending.draft.options).onFailure {
+                Toast.makeText(context,
+                    "Question sent, but native poll setup failed. Retry after server verification.",
+                    Toast.LENGTH_LONG).show()
+            }
+        } else if (System.currentTimeMillis() - pending.createdAtMillis >= 120_000L) {
+            pendingNativePoll = null
+            Toast.makeText(context, "Poll delivery was not confirmed.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(pendingNativePoll) {
+        val pending = pendingNativePoll ?: return@LaunchedEffect
+        delay(120_000L)
+        if (pendingNativePoll === pending) pendingNativePoll = null
+    }
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
         val previous = previousLatestVisibleMessageId
@@ -3247,6 +3289,16 @@ private fun PremiumChatDetail(
         BlinkChatExtrasDialog(
             mode = mode,
             contact = selectedContact,
+            nativePollEnabled = nativePollEnabled,
+            onNativePoll = { draft ->
+                pendingNativePoll = PendingChatNativePoll(
+                    draft = draft,
+                    existingIds = conversation.messages.map { it.id }.toSet()
+                )
+                chatExtraMode = null
+                selectedContact = null
+                onSend(draft.question, null)
+            },
             onSend = { content ->
                 chatExtraMode = null
                 selectedContact = null

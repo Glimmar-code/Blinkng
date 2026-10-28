@@ -142,6 +142,9 @@ BEGIN
         (message_id, conversation_id, created_by, question, options)
     VALUES (p_message_id, v_message.conversation_id, v_actor,
             v_question, to_jsonb(v_labels));
+    -- Mark this as a native poll so authenticated clients fetch actual results;
+    -- older clients can still show the question as text.
+    UPDATE public.messages SET message_type='poll' WHERE id=p_message_id;
     RETURN p_message_id;
 END;
 $$;
