@@ -25,6 +25,20 @@ class BlinkVerifiedCreatorToolsTest {
         assertTrue(prompt.contains("privacy"))
     }
 
+    @Test fun eventInviteRequiresConfirmedUserProvidedDetails() {
+        assertFailsWith<IllegalArgumentException> {
+            BlinkVerifiedCreatorTools.eventInvite("X", "tomorrow", "Hall", "students")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            BlinkVerifiedCreatorTools.eventInvite("Statistics Day", "", "Hall", "students")
+        }
+        val invite = BlinkVerifiedCreatorTools.eventInvite(
+            "Statistics Day", "Nov 21 10 AM", "Lecture Hall", "students")
+        assertTrue(invite.contains("Nov 21 10 AM"))
+        assertTrue(invite.contains("Lecture Hall"))
+        assertTrue(invite.contains("Not an RSVP ticket"))
+    }
+
     @Test fun portfolioContainsOnlyProvidedPublicFields() {
         val text = BlinkVerifiedCreatorTools.portfolio(
             username = "@writer", displayName = "A Writer",
