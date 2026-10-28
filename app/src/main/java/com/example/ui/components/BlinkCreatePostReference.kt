@@ -3,6 +3,8 @@ package com.example.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.InsertEmoticon
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Poll
@@ -33,6 +39,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -300,5 +307,57 @@ internal fun BlinkCreatePostPublishOptions(
             "A BLINK post link can be shared after publication. Sharing your caption does not publish your post.",
             fontSize = 12.sp, color = Color(0xFFAAB1BE)
         )
+    }
+}
+
+/**
+ * Horizontal icon row from the reference composer. The existing Add to post
+ * controls remain separately available, including link and location actions.
+ */
+@Composable
+internal fun BlinkReferenceComposerToolbar(
+    enabled: Boolean,
+    onPhoto: () -> Unit,
+    onVideo: () -> Unit,
+    onPoll: () -> Unit,
+    onEmoji: () -> Unit,
+    onTag: () -> Unit,
+    onMention: () -> Unit,
+    onLocation: () -> Unit
+) {
+    val actions = listOf(
+        Triple(Icons.Default.Image, "Add photo", onPhoto),
+        Triple(Icons.Default.VideoLibrary, "Add video", onVideo),
+        Triple(Icons.Default.Poll, "Create poll", onPoll),
+        Triple(Icons.Default.InsertEmoticon, "Insert emoji", onEmoji),
+        Triple(Icons.Default.Tag, "Add tag", onTag),
+        Triple(Icons.Default.AlternateEmail, "Mention student", onMention),
+        Triple(Icons.Default.LocationOn, "Add location", onLocation)
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+            .testTag("blink_reference_composer_actions")
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        actions.forEachIndexed { index, item ->
+            IconButton(
+                onClick = item.third,
+                enabled = enabled,
+                modifier = Modifier.size(43.dp).testTag("blink_compose_action_" + index)
+            ) {
+                Icon(
+                    imageVector = item.first,
+                    contentDescription = item.second,
+                    tint = when (index) {
+                        0 -> Color(0xFF477BFF)
+                        1 -> Color(0xFFFD557A)
+                        2 -> Color(0xFFF5C349)
+                        else -> Color.White
+                    },
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
     }
 }
