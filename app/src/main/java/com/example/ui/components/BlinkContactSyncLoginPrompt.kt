@@ -7,6 +7,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +40,7 @@ fun BlinkContactSyncLoginPrompt(accountId: String, safeToShow: Boolean) {
     var busy by remember(accountId) { mutableStateOf(false) }
     var issue by remember(accountId) { mutableStateOf<String?>(null) }
     var checkedAccount by remember(accountId) { mutableStateOf(false) }
+    var allowMutualDiscovery by remember(accountId) { mutableStateOf(false) }
 
     fun deferPrompt() {
         prefs.edit().putLong("remind_" + accountId, System.currentTimeMillis()).apply()
@@ -50,7 +54,8 @@ fun BlinkContactSyncLoginPrompt(accountId: String, safeToShow: Boolean) {
             runCatching {
                 val existing = client.get().consent
                 if (!existing.syncEnabled || !existing.joinAlerts) {
-                    client.set(existing.copy(syncEnabled = true, joinAlerts = true))
+                    client.set(existing.copy(syncEnabled = true, joinAlerts = true,
+                        discoverable = allowMutualDiscovery || existing.discoverable))
                 }
                 client.syncFromDevice(context)
             }.onSuccess {
@@ -79,6 +84,7 @@ fun BlinkContactSyncLoginPrompt(accountId: String, safeToShow: Boolean) {
         // deployed. Do not ask users for contact access if we cannot sync.
         val snapshot = runCatching { client.get() }.getOrNull()
             ?: return@LaunchedEffect
+        if (!snapshot.mutualMatchingReady) return@LaunchedEffect
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
             PackageManager.PERMISSION_GRANTED
         val optedIn = snapshot.consent.syncEnabled
@@ -102,11 +108,15 @@ fun BlinkContactSyncLoginPrompt(accountId: String, safeToShow: Boolean) {
             text = {
                 androidx.compose.foundation.layout.Column {
                     Text(
-                        "Choose to sync your phone contacts to find friends on BLINK and " +
-                            "receive notifications when eligible contacts join. " +
-                            "BLINK asks Android for permission first. Contact names and " +
-                            "call history aren't uploaded. You can turn this off and delete synced contacts."
+                        "Choose to sync contacts and receive possible-contact suggestions and " +
+                            "joined alerts. BLINK asks permission first. Names and call history " +
+                            "aren't uploaded. A phone match isn't proof of identity."
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = allowMutualDiscovery,
+                            enabled = !busy, onCheckedChange = { allowMutualDiscovery = it })
+                        Text("Let mutual contacts find my BLINK profile (optional)")
+                    }
                     if (busy) CircularProgressIndicator()
                     issue?.let { Text(it) }
                 }
