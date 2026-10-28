@@ -50,6 +50,7 @@ internal fun BlinkPremiumProfileDashboard(
     totalLoadedViews: Long,
     totalLoadedLikes: Long,
     profileCompletion: Int,
+    metricsComplete: Boolean = false,
     onAvatarClick: () -> Unit,
     hasActiveStory: Boolean = false,
     onStoryClick: () -> Unit = {},
@@ -93,13 +94,13 @@ internal fun BlinkPremiumProfileDashboard(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(Modifier.fillMaxWidth().heightIn(min = 34.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, modifier = Modifier.size(42.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.ArrowBack, "Back", tint = ink)
             }
             Spacer(modifier = Modifier.weight(1f))
             IconButton(
                 onClick = { onTopAction("menu") },
-                modifier = Modifier.size(42.dp).testTag("profile_three_dot_menu")
+                modifier = Modifier.size(48.dp).testTag("profile_three_dot_menu")
             ) {
                 Icon(Icons.Default.MoreVert, "Profile options", tint = ink)
             }
@@ -140,8 +141,18 @@ internal fun BlinkPremiumProfileDashboard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                         .clip(RoundedCornerShape(19.dp))
-                        .then(if (hasActiveStory) Modifier else Modifier.clickable(onClick = onAvatarClick))
+                        .clickable(onClick = onAvatarClick)
                 )
+                if (hasActiveStory) {
+                    IconButton(
+                        onClick = onStoryClick,
+                        modifier = Modifier.align(Alignment.BottomEnd).size(34.dp)
+                            .background(card, CircleShape)
+                    ) {
+                        Icon(Icons.Default.PlayCircleFilled, contentDescription = "Open story",
+                            tint = accent, modifier = Modifier.size(25.dp))
+                    }
+                }
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -200,7 +211,9 @@ internal fun BlinkPremiumProfileDashboard(
                         }
                     }
                 } else {
-                    Text("Your profile", color = softInk, fontSize = 11.sp)
+                    TextButton(onClick = onEdit, contentPadding = PaddingValues(0.dp)) {
+                        Text("Edit profile", color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
@@ -214,12 +227,14 @@ internal fun BlinkPremiumProfileDashboard(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                PremiumProfileStat("Posts", postCount.toLong(), Modifier.weight(1f))
+                PremiumProfileStat(if (metricsComplete) "Posts" else "Loaded", postCount.toLong(), Modifier.weight(1f))
                 PremiumProfileStat("Followers", profile.followerCount.toLong(), Modifier.weight(1f).clickable(onClick = onFollowers))
                 PremiumProfileStat("Views", totalLoadedViews, Modifier.weight(1f))
                 PremiumProfileStat("Likes", totalLoadedLikes, Modifier.weight(1f))
             }
         }
+        Text(if (metricsComplete) "Totals from all active content" else "Engagement reflects loaded posts",
+            color = softInk, fontSize = 11.sp)
 
         Surface(
             color = card.copy(alpha = .92f), shape = RoundedCornerShape(19.dp),
@@ -238,7 +253,7 @@ internal fun BlinkPremiumProfileDashboard(
                         Text(profile.university, color = softInk, fontSize = 11.sp, maxLines = 2)
                     }
                 }
-                if (profile.bio.isBlank() && profile.professionalHeadline.isBlank() &&
+                if (isMe && profile.bio.isBlank() && profile.professionalHeadline.isBlank() &&
                     profile.university.isBlank()) {
                     Text("No bio added yet", color = softInk, fontSize = 11.sp)
                 }
@@ -334,7 +349,7 @@ private fun PremiumProfileShortcut(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.heightIn(min = 34.dp).clickable(onClick = onClick),
+        modifier = modifier.heightIn(min = 48.dp).clickable(onClick = onClick),
         color = Color.White.copy(alpha = .10f),
         shape = RoundedCornerShape(13.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
