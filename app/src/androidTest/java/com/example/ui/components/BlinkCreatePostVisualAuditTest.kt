@@ -96,7 +96,7 @@ class BlinkCreatePostVisualAuditTest {
                 BlinkReferenceMediaReview(
                     images = listOf(resource, resource + "?two"),
                     onBack = {}, onRemove = {}, onMove = { _, _ -> },
-                    onAddMore = {}, onNext = {}
+                    onEdit = {}, onAddMore = {}, onNext = {}
                 )
             }
         }
