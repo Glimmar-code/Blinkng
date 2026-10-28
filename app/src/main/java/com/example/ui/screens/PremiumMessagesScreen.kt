@@ -2476,7 +2476,13 @@ private fun PremiumChatDetail(
                 .sortedWith(compareBy<ChatMessage> { it.rawTimestamp }
                     .thenBy { it.imageAlbumPosition })
         }
-        val pictureIndex = normalPictures.indexOfFirst { it.id == message.id }
+        // A shared 2/3-photo album opens its own sequence just like the reference.
+        // All media remains reachable through the viewer's existing overflow action.
+        val albumPictures = message.imageAlbumId?.let { albumId ->
+            normalPictures.filter { it.imageAlbumId == albumId }
+        }.orEmpty()
+        val viewerPictures = if (albumPictures.size > 1) albumPictures else normalPictures
+        val pictureIndex = viewerPictures.indexOfFirst { it.id == message.id }
         if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
             BlinkChatPictureViewer(
                 message = message,
@@ -2528,15 +2534,17 @@ private fun PremiumChatDetail(
                     viewedImageMessage = null
                 },
                 hasPrevious = pictureIndex > 0,
-                hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
+                hasNext = pictureIndex >= 0 && pictureIndex < viewerPictures.lastIndex,
                 photoIndex = pictureIndex + 1,
-                totalPhotos = normalPictures.size,
+                totalPhotos = viewerPictures.size,
+                galleryPhotos = viewerPictures,
+                onPickPhoto = { selected -> viewedImageMessage = selected },
                 onPrevious = {
-                    if (pictureIndex > 0) viewedImageMessage = normalPictures[pictureIndex - 1]
+                    if (pictureIndex > 0) viewedImageMessage = viewerPictures[pictureIndex - 1]
                 },
                 onNext = {
-                    if (pictureIndex in 0 until normalPictures.lastIndex)
-                        viewedImageMessage = normalPictures[pictureIndex + 1]
+                    if (pictureIndex in 0 until viewerPictures.lastIndex)
+                        viewedImageMessage = viewerPictures[pictureIndex + 1]
                 }
             )
         }
