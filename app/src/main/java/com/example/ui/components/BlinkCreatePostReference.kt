@@ -703,6 +703,7 @@ internal fun BlinkReferenceMediaReview(
                     Surface(
                         modifier = Modifier.align(Alignment.BottomEnd)
                             .padding(bottom = 39.dp, end = 4.dp)
+                            .testTag("blink_gallery_edit_" + index)
                             .clickable { onEdit(uri) },
                         color = Color.Black.copy(alpha = 0.78f),
                         shape = RoundedCornerShape(8.dp)
