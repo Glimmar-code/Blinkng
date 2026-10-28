@@ -1,3 +1,5 @@
+**Production safety update (28 October 2026):** The server now rejects `Only me` and `private` audiences through the validated `blink_no_unprotected_private_audience` check constraint. See deployed migration `20261028200938_blink_block_unprotected_private_audiences_20261028.sql`. This **prevents** silent exposure from newly submitted private posts; it does **not** enable private posting. Do not enable until all secure visibility and storage conditions below pass.
+
 # BLINK "Only me" posts — security rollout design (Testlab only)
 
 **Status: DO NOT ENABLE OR DEPLOY.** A visually selected "Only me" audience is not equivalent to privacy. Until the backend and storage pass the checks below, the Android reference composer intentionally shows a disabled "Only me" option. Drafts remain local/account-scoped.
