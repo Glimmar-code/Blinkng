@@ -10,6 +10,9 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.blinkSmoothSize
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -1988,7 +1991,7 @@ private fun ExpandableCaption(text: String) {
 
     var expanded by remember(text) { mutableStateOf(false) }
 
-    Column(Modifier.animateContentSize()) {
+    Column(Modifier.blinkSmoothSize()) {
         Text(
             text = if (expanded) text else text.take(collapsedThreshold).trimEnd() + "…",
             color = Color.White,
@@ -2084,37 +2087,31 @@ private fun ReelAction(
     contentDescription: String = text,
     onClick: () -> Unit
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) .8f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "reelActionScale"
-    )
-
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            delay(120)
-            pressed = false
-        }
-    }
+    val reducedMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.widthIn(min = 58.dp).padding(vertical = 6.dp)
     ) {
         IconButton(
-            onClick = { pressed = true; onClick() },
+            onClick = onClick,
+            interactionSource = interaction,
             modifier = Modifier
                 .size(48.dp)
-                .scale(scale)
+                .blinkPressFeedback(interaction)
         ) {
             Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(29.dp))
         }
         AnimatedContent(
             targetState = text,
             transitionSpec = {
-                (slideInVertically(tween(200)) { it } + fadeIn(tween(200))) togetherWith
-                    (slideOutVertically(tween(200)) { -it } + fadeOut(tween(150)))
+                if (reducedMotion) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    (slideInVertically(tween(200)) { it } + fadeIn(tween(200))) togetherWith
+                        (slideOutVertically(tween(200)) { -it } + fadeOut(tween(150)))
+                }
             },
             label = "reelActionCount"
         ) { animatedText ->

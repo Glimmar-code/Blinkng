@@ -875,15 +875,25 @@ fun ProfileScreen(
             onDismissRequest = { showAvatarViewer = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
+            val reduceAvatarMotion = rememberBlinkReduceMotion()
+            var avatarVisible by remember(profile.avatarUrl) { mutableStateOf(false) }
+            LaunchedEffect(profile.avatarUrl) { avatarVisible = true }
             Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-                AsyncImage(
-                    model = profile.avatarUrl,
-                    error = painterResource(R.drawable.ic_default_profile),
-                    fallback = painterResource(R.drawable.ic_default_profile),
-                    contentDescription = "Full profile picture",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f)
-                )
+                AnimatedVisibility(
+                    visible = avatarVisible,
+                    enter = if (reduceAvatarMotion) EnterTransition.None else
+                        fadeIn(tween(170)) + scaleIn(initialScale = 0.98f, animationSpec = tween(170)),
+                    exit = ExitTransition.None
+                ) {
+                    AsyncImage(
+                        model = profile.avatarUrl,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
+                        contentDescription = "Full profile picture",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f)
+                    )
+                }
                 IconButton(
                     onClick = { showAvatarViewer = false },
                     modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()

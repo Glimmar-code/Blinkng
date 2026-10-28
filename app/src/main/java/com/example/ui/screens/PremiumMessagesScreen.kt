@@ -3721,18 +3721,29 @@ private fun MessageBubble(
                                 MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
                             )) {
                             Spacer(Modifier.width(3.dp))
-                            Icon(
-                                imageVector = if (message.status == MessageStatus.SENT)
-                                    Icons.Default.Check else Icons.Default.DoneAll,
-                                contentDescription = when (message.status) {
-                                    MessageStatus.READ -> "Read"
-                                    MessageStatus.DELIVERED -> "Delivered"
-                                    else -> "Sent"
+                            AnimatedContent(
+                                targetState = message.status,
+                                transitionSpec = {
+                                    if (reducedMotion) {
+                                        androidx.compose.animation.EnterTransition.None togetherWith
+                                            androidx.compose.animation.ExitTransition.None
+                                    } else fadeIn(tween(140)) togetherWith fadeOut(tween(100))
                                 },
-                                tint = if (message.status == MessageStatus.READ)
-                                    Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
-                                modifier = Modifier.size(15.dp)
-                            )
+                                label = "chatAuthoritativeReceipt"
+                            ) { confirmedStatus ->
+                                Icon(
+                                    imageVector = if (confirmedStatus == MessageStatus.SENT)
+                                        Icons.Default.Check else Icons.Default.DoneAll,
+                                    contentDescription = when (confirmedStatus) {
+                                        MessageStatus.READ -> "Read"
+                                        MessageStatus.DELIVERED -> "Delivered"
+                                        else -> "Sent"
+                                    },
+                                    tint = if (confirmedStatus == MessageStatus.READ)
+                                        Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                     }
                 }

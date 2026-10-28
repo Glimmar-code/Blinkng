@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import com.example.ui.components.blinkPressFeedback
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.core.Spring
@@ -351,6 +353,13 @@ fun ProductDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(item.images.indices.toList(), key = { it }) { index ->
+                            val thumbInteraction = remember { MutableInteractionSource() }
+                            val reduceThumbnailMotion = rememberBlinkReduceMotion()
+                            val selectedBorder by animateColorAsState(
+                                targetValue = if (selectedImageIndex == index) BlinkPink else MaterialTheme.colorScheme.outlineVariant,
+                                animationSpec = tween(if (reduceThumbnailMotion) 0 else 170),
+                                label = "productGallerySelection"
+                            )
                             AsyncImage(
                                 model = item.images[index],
                                 contentDescription = "Product photo ${index + 1}",
@@ -360,10 +369,15 @@ fun ProductDetailScreen(
                                     .clip(RoundedCornerShape(10.dp))
                                     .border(
                                         width = if (selectedImageIndex == index) 2.dp else 1.dp,
-                                        color = if (selectedImageIndex == index) BlinkPink else MaterialTheme.colorScheme.outlineVariant,
+                                        color = selectedBorder,
                                         shape = RoundedCornerShape(10.dp)
                                     )
-                                    .clickable { selectedImageIndex = index }
+                                    .blinkPressFeedback(thumbInteraction)
+                                    .clickable(
+                                        interactionSource = thumbInteraction,
+                                        indication = null,
+                                        onClick = { selectedImageIndex = index }
+                                    )
                             )
                         }
                     }

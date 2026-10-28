@@ -855,6 +855,15 @@ private fun PremiumHomeFeed(
     // Realtime rows are merged into the existing list to keep scroll stable.
     // Track new IDs *before* that merge so the New Posts affordance still works.
     var pendingNewPostIds by remember(laneResumeKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // Only the freshly revealed posts receive a short draw-only fade; no
+    // LazyColumn row measurement or scroll restoration is changed.
+    var justRevealedIds by remember(laneResumeKey) { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(justRevealedIds) {
+        if (justRevealedIds.isNotEmpty()) {
+            kotlinx.coroutines.delay(440)
+            justRevealedIds = emptySet()
+        }
+    }
 
     LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey, refreshRevision) {
         val explicitRefreshCompleted = refreshRevision != seenRefreshRevision || (postRefreshWasRunning && !isRefreshing)
@@ -1769,7 +1778,11 @@ private fun PremiumHomeFeed(
                                         is PremiumHomeRow.PostRow -> {
                                             val post = row.post
                                             val profile = authorProfileFor(post)
-                                            PremiumPostEntrance(index = row.sourceIndex, reduceMotion = reduceMotion) {
+                                            PremiumPostEntrance(
+                                                index = row.sourceIndex,
+                                                reduceMotion = reduceMotion,
+                                                animateIn = post.id in justRevealedIds
+                                            ) {
                                                 PostCard(
                                                     post = post,
                                                     isDark = isDark,
@@ -2046,6 +2059,7 @@ private fun PremiumHomeFeed(
                                     uiScope.launch {
                                         // Reveal only the ranking already supplied by the existing
                                         // feed pipeline, and only after explicit user intent.
+                                        justRevealedIds = pendingNewPostIds.take(3).toSet()
                                         pendingNewPostIds = emptySet()
                                         stableRankedPosts = posts
                                         stableRankedReels = reels
@@ -2331,13 +2345,22 @@ private fun LegacyChromeCrop(
 private fun PremiumPostEntrance(
     index: Int,
     reduceMotion: Boolean,
+    animateIn: Boolean,
     content: @Composable () -> Unit
 ) {
-    // A LazyColumn recycles rows as the user scrolls. Even a brief
-    // AnimatedVisibility can change row height, producing visible jumps.
-    // Keep all row content laid out immediately; interactive controls
-    // retain their independent small animations.
-    content()
+    // Do not animate row height in a recycled LazyColumn; it jumps at 60Hz.
+    // Only three newly revealed items fade when the user explicitly taps
+    // "new posts". Old feed items and scroll restoration remain untouched.
+    var revealed by remember(animateIn) { mutableStateOf(!animateIn || reduceMotion) }
+    LaunchedEffect(animateIn) { revealed = true }
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (revealed) 1f else 0f,
+        animationSpec = tween(if (reduceMotion) 0 else 200, delayMillis = if (animateIn) index.coerceIn(0, 2) * 35 else 0),
+        label = "newPostDrawOnlyReveal"
+    )
+    Box(Modifier.fillMaxWidth().graphicsLayer { this.alpha = alpha }) {
+        content()
+    }
 }
 
 private fun premiumPostContentType(post: FeedPost): Int {

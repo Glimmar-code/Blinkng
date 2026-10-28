@@ -397,10 +397,12 @@ fun BlinkChannelDetail(
                                         }
                                     }
                                 ) {
-                                    Text(emoji + if (count > 0) " $count" else "",
-                                        color = if (update.myReaction == emoji)
-                                            MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurface)
+                                    BlinkFadeThrough(targetState = count, label = "channelReactionCount") { confirmedCount ->
+                                        Text(emoji + if (confirmedCount > 0) " $confirmedCount" else "",
+                                            color = if (update.myReaction == emoji)
+                                                MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurface)
+                                    }
                                 }
                             }
                         }

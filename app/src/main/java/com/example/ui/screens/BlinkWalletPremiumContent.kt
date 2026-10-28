@@ -270,8 +270,14 @@ internal fun BlinkWalletPremiumContent(
                                     Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text("Your BLINK Coins", color = soft)
-                                        Text(balance?.let(::comma) ?: "—", fontSize = 30.sp,
-                                            fontWeight = FontWeight.Black, color = Color.White)
+                                        Crossfade(
+                                            targetState = balance,
+                                            animationSpec = tween(if (reduceMotion) 0 else 160),
+                                            label = "serverConfirmedCoinBalance"
+                                        ) { confirmed ->
+                                            Text(confirmed?.let(::comma) ?: "—", fontSize = 30.sp,
+                                                fontWeight = FontWeight.Black, color = Color.White)
+                                        }
                                         Text("🟡 Coins", color = gold, fontWeight = FontWeight.SemiBold)
                                     }
                                     IconButton(onClick = {

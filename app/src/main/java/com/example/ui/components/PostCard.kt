@@ -15,6 +15,8 @@ import kotlin.math.abs
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.animateColorAsState
@@ -1343,9 +1345,13 @@ private fun ImageFullscreenDialog(
     fun dismissAnimated() {
         if (!entered) return
         entered = false
-        scope.launch {
-            delay(170)
+        if (reducedMotion) {
             onDismiss()
+        } else {
+            scope.launch {
+                delay(170)
+                onDismiss()
+            }
         }
     }
 
@@ -1357,11 +1363,11 @@ private fun ImageFullscreenDialog(
     ) {
         AnimatedVisibility(
             visible = entered,
-            enter = fadeIn(tween(280)) + scaleIn(
+            enter = if (reducedMotion) EnterTransition.None else fadeIn(tween(280)) + scaleIn(
                 initialScale = 0.94f,
                 animationSpec = tween(280)
             ),
-            exit = fadeOut(tween(160)) + scaleOut(
+            exit = if (reducedMotion) ExitTransition.None else fadeOut(tween(160)) + scaleOut(
                 targetScale = 0.97f,
                 animationSpec = tween(160)
             )
