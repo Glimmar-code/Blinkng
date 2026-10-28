@@ -2063,8 +2063,9 @@ private fun PremiumChatDetail(
                             }.padding(start = 12.dp, end = 5.dp, top = 7.dp, bottom = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Place, contentDescription = null,
-                            tint = palette.accent, modifier = Modifier.size(19.dp))
+                        // Drawn glyph avoids relying on a Material icon that is
+                        // absent from BLINK's configured icon artifact.
+                        Text("📌", fontSize = 18.sp, modifier = Modifier.size(21.dp))
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Pinned message", color = palette.accent,
