@@ -321,6 +321,8 @@ fun PremiumFeedScreen(
     followingRefreshRevision: Int = 0,
     errorMessage: String? = null,
     followingErrorMessage: String? = null,
+    paginationErrorMessage: String? = null,
+    followingPaginationErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
     onFollowingVisible: () -> Unit = {},
@@ -454,11 +456,12 @@ fun PremiumFeedScreen(
             followedAuthorKeys = followedAuthorKeys,
             hiddenFeedPostIds = hiddenFeedPostIds,
             mutedFeedAuthors = mutedFeedAuthors,
-            isLoading = isLoading,
+            isLoading = if (feedLane == 1) (isRefreshingFollowing || isLoading) && followingPosts.isEmpty() else isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
             isServerConnected = isServerConnected,
             errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
+            paginationErrorMessage = if (feedLane == 1) followingPaginationErrorMessage else paginationErrorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
             isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
@@ -653,6 +656,7 @@ private fun PremiumHomeFeed(
     refreshRevision: Int,
     isServerConnected: Boolean,
     errorMessage: String?,
+    paginationErrorMessage: String?,
     hasMorePosts: Boolean,
     hasMoreReels: Boolean,
     isLoadingMorePosts: Boolean,
@@ -722,12 +726,20 @@ private fun PremiumHomeFeed(
     // This prevents double taps from submitting Follow then Unfollow before
     // the optimistic server mutation has finished reconciling.
     var pendingAuthorFollowIds by remember(resumeUserKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // Immediately remove explicitly unfollowed creators from cached Following rows.
+    // Missing posts in a limited server page alone are NOT evidence of deletion.
+    var locallyUnfollowedAuthorIds by remember(resumeUserKey) { mutableStateOf<Set<String>>(emptySet()) }
     fun requestAuthorFollow(id: String, shouldFollow: Boolean) {
         if (id.isBlank() || id in pendingAuthorFollowIds) return
         pendingAuthorFollowIds = pendingAuthorFollowIds + id
         uiScope.launch {
             try {
-                FollowStateStore.setFollowing(id, shouldFollow)
+                if (FollowStateStore.setFollowing(id, shouldFollow)) {
+                    // Failed RPCs roll back in FollowStateStore; do not hide a
+                    // creator permanently when their Unfollow did not succeed.
+                    locallyUnfollowedAuthorIds = if (shouldFollow) locallyUnfollowedAuthorIds - id
+                        else locallyUnfollowedAuthorIds + id
+                }
             } finally {
                 pendingAuthorFollowIds = pendingAuthorFollowIds - id
             }
@@ -765,7 +777,8 @@ private fun PremiumHomeFeed(
         animationSpec = tween(if (reduceMotion) 0 else 180),
         label = "feedCreateFabClearance"
     )
-    val latestViewed by rememberUpdatedState(onViewedPost)
+    // Organic Home post views belong exclusively to PostCard's content-view pipeline.
+    // The older list observer also called record_post_view and could double count.
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
     val lastRefreshTapMs = remember(laneResumeKey) { longArrayOf(0L) }
@@ -776,7 +789,6 @@ private fun PremiumHomeFeed(
             latestRefresh()
         }
     }
-    val impressionTracker = remember { PostImpressionTracker() }
     val deliveredBoostImpressions = remember(laneResumeKey) { mutableSetOf<String>() }
     val performanceMonitor = remember(context, laneResumeKey) {
         FeedScrollPerformanceMonitor(context.applicationContext)
@@ -802,6 +814,14 @@ private fun PremiumHomeFeed(
             .apply()
     }
     var filterMenuVisible by remember { mutableStateOf(false) }
+    var previousFilter by remember(laneResumeKey) { mutableStateOf(filter) }
+    LaunchedEffect(filter, laneResumeKey) {
+        if (previousFilter != filter) {
+            previousFilter = filter
+            // A new filter must never inherit an off-screen LazyColumn anchor.
+            listState.scrollToItem(0)
+        }
+    }
     var screenVisible by remember { mutableStateOf(false) }
     // For You / Following remain available via their explicit tabs.
     // Horizontal page navigation is owned by the parent destination observer,
@@ -904,7 +924,10 @@ private fun PremiumHomeFeed(
     val normalizedMutedFeedAuthors = remember(mutedFeedAuthors) {
         mutedFeedAuthors.map { it.trim().removePrefix("@").lowercase() }.toHashSet()
     }
-    val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
+    val filteredPosts = remember(
+        stableRankedPosts, filter, laneIndex, followedAuthorKeys, hiddenFeedPostIds,
+        normalizedMutedFeedAuthors, locallyUnfollowedAuthorIds, authorProfilesByHandle
+    ) {
         val rankedNormalPosts = stableRankedPosts.filterNot { post ->
             post.isReel || !post.videoUrl.isNullOrBlank() ||
                 shouldHideFrozenFeedPost(
@@ -918,7 +941,14 @@ private fun PremiumHomeFeed(
         // The parent supplies an independent server-backed list for Following.
         // Do not filter the For You page locally; that was the old behavior that made
         // Following look like the same feed with a few rows removed.
-        val lanePosts = rankedNormalPosts
+        val lanePosts = if (laneIndex == 1 && locallyUnfollowedAuthorIds.isNotEmpty()) {
+            rankedNormalPosts.filterNot { post ->
+                val authorId = post.authorProfileId.ifBlank {
+                    authorProfilesByHandle[post.authorUsername.trim().removePrefix("@").lowercase()]?.id.orEmpty()
+                }
+                authorId in locallyUnfollowedAuthorIds
+            }
+        } else rankedNormalPosts
         lanePosts.filter { post ->
             when (filter) {
                 PremiumFeedFilter.ALL -> true
@@ -1008,15 +1038,17 @@ private fun PremiumHomeFeed(
             )
         }
     }
-    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed) {
-        buildPremiumHomeRows(
-            filteredPosts,
-            rankedInlineReels,
-            visiblePromotedFeed,
-            marketSponsoredFeed,
-            dropDiscovery,
-            reelMixSeed
-        )
+    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed, filter) {
+        if (filter != PremiumFeedFilter.ALL) {
+            // Filters show only matching organic posts: no native ads or paid modules
+            // should be mixed into a Photos/Polls-only result.
+            filteredPosts.mapIndexed { index, post -> PremiumHomeRow.PostRow(post, index) }
+        } else {
+            buildPremiumHomeRows(
+                filteredPosts, rankedInlineReels, visiblePromotedFeed,
+                marketSponsoredFeed, dropDiscovery, reelMixSeed
+            )
+        }
     }
     val homeRowKeys = remember(homeRows) { homeRows.map(::premiumHomeRowKey) }
     // Avoid scanning every loaded row on each debounced scroll-position save.
@@ -1074,6 +1106,7 @@ private fun PremiumHomeFeed(
     // A successful page advances the cursor; refresh or restored connectivity
     // explicitly opens a new attempt.
     var lastRequestedPostCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    var filteredAutoPageAttempts by remember(laneResumeKey, filter) { mutableIntStateOf(0) }
     var lastRequestedReelCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(refreshRevision, isOnline) {
         lastRequestedPostCursor = null
@@ -1365,42 +1398,31 @@ private fun PremiumHomeFeed(
     }
     LaunchedEffect(
         nearEnd, hasMorePosts, hasMoreReels, isLoadingMorePosts,
-        isLoadingMoreReels, laneIndex, isOnline, postPageCursor, reelPageCursor
+        isLoadingMoreReels, laneIndex, isOnline, postPageCursor, reelPageCursor,
+        filter, filteredPosts.size, filteredAutoPageAttempts, paginationErrorMessage, isLoading
     ) {
-        if (!nearEnd || !isOnline) return@LaunchedEffect
+        // Find matching photo/poll posts in a bounded number of additional server
+        // pages. Do not hammer the backend on failure or run endless empty-page loops.
+        val needsFilteredDiscovery = filter != PremiumFeedFilter.ALL &&
+            filteredPosts.size < 3 && filteredAutoPageAttempts < 3 &&
+            paginationErrorMessage.isNullOrBlank()
+        if ((!nearEnd && !needsFilteredDiscovery) || !isOnline || isLoading) return@LaunchedEffect
         if (hasMorePosts && !isLoadingMorePosts &&
             shouldRequestFeedPage(postPageCursor, lastRequestedPostCursor)) {
+            if (needsFilteredDiscovery) filteredAutoPageAttempts++
             lastRequestedPostCursor = postPageCursor
             onLoadMorePosts()
         }
-        if (laneIndex == 0 && hasMoreReels && !isLoadingMoreReels &&
+        if (nearEnd && filter == PremiumFeedFilter.ALL &&
+            laneIndex == 0 && hasMoreReels && !isLoadingMoreReels &&
             shouldRequestFeedPage(reelPageCursor, lastRequestedReelCursor)) {
             lastRequestedReelCursor = reelPageCursor
             onLoadMoreReels()
         }
     }
 
-    LaunchedEffect(listState, homeRows) {
-        // Emit only when the qualifying visible post set changes, instead of
-        // waking impression listeners for every tiny layout-offset change.
-        snapshotFlow {
-            val layout = listState.layoutInfo
-            layout.visibleItemsInfo.mapNotNull { item ->
-                val key = item.key as? String ?: return@mapNotNull null
-                if (!key.startsWith("post:")) return@mapNotNull null
-                if (
-                    qualifiesForPostImpression(
-                        itemOffset = item.offset,
-                        itemSize = item.size,
-                        viewportStart = layout.viewportStartOffset,
-                        viewportEnd = layout.viewportEndOffset
-                    )
-                ) key.removePrefix("post:") else null
-            }.toSet()
-        }.collectLatest { ids ->
-            impressionTracker.update(ids).forEach(latestViewed)
-        }
-    }
+    // Organic cards record content views directly; this list observes only
+    // promoted-delivery visibility (which is a separate paid metric).
 
     // A precomposed card is not necessarily visible. Count a promoted delivery
     // only when its actual on-screen extent meets the post exposure threshold.
@@ -1608,7 +1630,8 @@ private fun PremiumHomeFeed(
                         onFollowingClick = { onLaneChanged(1) },
                         onFilterClick = { filterMenuVisible = true },
                         onRefreshClick = { if (!isRefreshing) requestSafeRefresh() },
-                        isRefreshing = isRefreshing
+                        isRefreshing = isRefreshing,
+                        filterActive = filter != PremiumFeedFilter.ALL
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
                         DropdownMenu(
@@ -1693,7 +1716,17 @@ private fun PremiumHomeFeed(
                                                 offlineNoCache = false,
                                                 onCreatePost = onOpenCreatePost,
                                                 onClearFilter = { filter = PremiumFeedFilter.ALL },
-                                                onRetry = onRetry
+                                                onRetry = onRetry,
+                                                onDiscover = onSearchClick,
+                                                hasMorePosts = hasMorePosts,
+                                                isLoadingMorePosts = isLoadingMorePosts,
+                                                paginationErrorMessage = paginationErrorMessage,
+                                                onLoadMore = {
+                                                    // Manually request the next unseen backend page even
+                                                    // when the current filter hasn't produced a match.
+                                                    lastRequestedPostCursor = postPageCursor
+                                                    onLoadMorePosts()
+                                                }
                                             )
                                         }
                                     }
@@ -1713,7 +1746,17 @@ private fun PremiumHomeFeed(
                                                 offlineNoCache = !isOnline && stableRankedPosts.isEmpty() && offlineEmptyConfirmed,
                                                 onCreatePost = onOpenCreatePost,
                                                 onClearFilter = { filter = PremiumFeedFilter.ALL },
-                                                onRetry = onRetry
+                                                onRetry = onRetry,
+                                                onDiscover = onSearchClick,
+                                                hasMorePosts = hasMorePosts,
+                                                isLoadingMorePosts = isLoadingMorePosts,
+                                                paginationErrorMessage = paginationErrorMessage,
+                                                onLoadMore = {
+                                                    // Manually request the next unseen backend page even
+                                                    // when the current filter hasn't produced a match.
+                                                    lastRequestedPostCursor = postPageCursor
+                                                    onLoadMorePosts()
+                                                }
                                             )
                                         }
                                     }
@@ -1795,6 +1838,7 @@ private fun PremiumHomeFeed(
                                                     },
                                                     coinGiftingEnabled = true,
                                                     xFeedStyle = true,
+                                                    trackExposure = isScreenActive,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
                                             }
@@ -1815,6 +1859,7 @@ private fun PremiumHomeFeed(
                                                 onShare = { onSharePost(post.id) },
                                                 onOptionsClick = { onOptionsClick(post) },
                                                 onProfileClick = onProfileClick,
+                                                onVotePoll = onVotePoll,
                                                 isAuthor = currentUserKey.isNotBlank() &&
                                                     post.authorUsername.trim().removePrefix("@").equals(currentUserKey, ignoreCase = true),
                                                 authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
@@ -1852,7 +1897,9 @@ private fun PremiumHomeFeed(
                                                     }
                                                 },
                                                 coinGiftingEnabled = true,
-                                                trackExposure = false,
+                                                // Paid delivery accounting remains separate from the
+                                                // ordinary per-post content-view exposure coordinator.
+                                                trackExposure = isScreenActive,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
                                             )
@@ -1956,9 +2003,7 @@ private fun PremiumHomeFeed(
                                 if (isLoadingMorePosts) {
                                     item(key = "loading_more") {
                                         Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 18.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(
@@ -1967,6 +2012,29 @@ private fun PremiumHomeFeed(
                                                 strokeWidth = 2.dp
                                             )
                                         }
+                                    }
+                                } else if (!paginationErrorMessage.isNullOrBlank()) {
+                                    item(key = "load_more_error") {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(paginationErrorMessage, style = MaterialTheme.typography.bodySmall)
+                                            TextButton(onClick = {
+                                                lastRequestedPostCursor = postPageCursor
+                                                onLoadMorePosts()
+                                            }) { Text("Retry loading posts") }
+                                        }
+                                    }
+                                } else if (!hasMorePosts && homeRows.isNotEmpty()) {
+                                    item(key = "feed_end") {
+                                        Text(
+                                            "You're all caught up",
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
                                     }
                                 }
                             }
@@ -2005,7 +2073,6 @@ private fun PremiumHomeFeed(
                                         lastFlingVelocityY[0] = 0f
                                         fabExpanded = false
                                         onBottomBarVisibilityChange(true)
-                                        requestSafeRefresh()
                                     }
                                 }
                             )
@@ -2408,7 +2475,12 @@ private fun PremiumEmptyFeed(
     offlineNoCache: Boolean = false,
     onCreatePost: () -> Unit,
     onClearFilter: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onDiscover: () -> Unit,
+    hasMorePosts: Boolean = false,
+    isLoadingMorePosts: Boolean = false,
+    paginationErrorMessage: String? = null,
+    onLoadMore: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -2445,17 +2517,33 @@ private fun PremiumEmptyFeed(
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(14.dp))
-        if (!isFollowingLane || isFiltered) {
-            TextButton(onClick = when {
-                isFiltered -> onClearFilter
-                offlineNoCache -> onRetry
-                else -> onCreatePost
-            }) {
-                Text(when {
-                    isFiltered -> "Show all posts"
-                    offlineNoCache -> "Try again"
-                    else -> "Create Post"
-                }, color = MaterialTheme.colorScheme.primary)
+        TextButton(onClick = when {
+            isFiltered -> onClearFilter
+            isFollowingLane -> onDiscover
+            offlineNoCache -> onRetry
+            else -> onCreatePost
+        }) {
+            Text(when {
+                isFiltered -> "Show all posts"
+                isFollowingLane -> "Discover people"
+                offlineNoCache -> "Try again"
+                else -> "Create post"
+            }, color = MaterialTheme.colorScheme.primary)
+        }
+        if (isFiltered && hasMorePosts) {
+            if (!paginationErrorMessage.isNullOrBlank()) {
+                Text(
+                    paginationErrorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            TextButton(onClick = onLoadMore, enabled = !isLoadingMorePosts) {
+                Text(
+                    if (isLoadingMorePosts) "Loading…"
+                    else if (!paginationErrorMessage.isNullOrBlank()) "Retry loading matching posts"
+                    else "Load more matching posts"
+                )
             }
         }
     }

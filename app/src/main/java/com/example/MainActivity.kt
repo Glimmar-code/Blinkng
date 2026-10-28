@@ -1710,6 +1710,8 @@ fun MainAppContent(
                         isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
                         followingErrorMessage = uiState.followingFeedErrorMessage,
+                        paginationErrorMessage = uiState.feedPaginationErrorMessage,
+                        followingPaginationErrorMessage = uiState.followingPaginationErrorMessage,
                         onRefresh = { viewModel.refreshFeedLane() },
                         onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
                         onFollowingVisible = { viewModel.refreshFollowingIfStale() },
@@ -2430,6 +2432,7 @@ fun MainAppContent(
         BackgroundPostPublishIndicator(
             isCreatingPost = uiState.isCreatingPost,
             messages = viewModel.snackBarMessages,
+            uploadProgress = uiState.postUploadProgress,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = if (shouldShowBottomBar) 92.dp else 18.dp)
@@ -3214,6 +3217,7 @@ fun MainAppContent(
                 isDark = uiState.isDarkMode,
                 startInReelMode = startReelComposer,
                 isSubmitting = uiState.isCreatingPost,
+                uploadProgress = uiState.postUploadProgress,
                 searchMentions = { query, limit, afterUsername, afterId ->
                     viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                 }

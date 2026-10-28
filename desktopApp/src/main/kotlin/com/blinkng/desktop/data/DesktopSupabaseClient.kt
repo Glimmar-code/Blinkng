@@ -1004,6 +1004,7 @@ class DesktopSupabaseClient(
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,link_url,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
+            else append("&is_reel=eq.false&video_url=is.null")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
                 val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
                 if (tag != null) append("&tags=cs.${encode("{$tag}")}")
@@ -1018,6 +1019,20 @@ class DesktopSupabaseClient(
         val likedIds = fetchMyLikedPostIds()
         val bookmarkedIds = fetchMyBookmarkedPostIds()
         val repostedIds = fetchMyRepostedPostIds()
+        // One bounded, authenticated metadata read for the current page.
+        // A lack of polls permission must not block all Feed content.
+        val pageIds = (0 until rows.length())
+            .mapNotNull { rows.optJSONObject(it)?.optString("id")?.takeIf(String::isNotBlank) }
+        val pollLookup = runCatching {
+            if (pageIds.isEmpty()) emptySet() else {
+                val ids = pageIds.joinToString(",")
+                val pollRows = getArray("/rest/v1/polls?select=post_id&post_id=in.($ids)")
+                (0 until pollRows.length()).mapNotNull {
+                    pollRows.optJSONObject(it)?.optString("post_id")?.takeIf(String::isNotBlank)
+                }.toSet()
+            }
+        }
+        val pollPostIds = pollLookup.getOrDefault(emptySet())
         (0 until rows.length()).mapNotNull { index ->
             val row = rows.optJSONObject(index) ?: return@mapNotNull null
             val postId = row.optString("id")
@@ -1029,6 +1044,9 @@ class DesktopSupabaseClient(
                 liked = postId in likedIds,
                 bookmarked = postId in bookmarkedIds,
                 reposted = postId in repostedIds,
+            ).copy(
+                hasPoll = postId in pollPostIds,
+                pollMetadataAvailable = pollLookup.isSuccess
             )
         }
     }
@@ -3407,7 +3425,9 @@ class DesktopSupabaseClient(
         ).coerceIn(0, BlinkOnboardingPolicy.TOTAL_STEPS),
         bio = row.optNullableString("bio"),
         isVerified = row.optBoolean("is_verified"),
-        verificationTier = row.optString("verification_tier"),
+        verificationTier = row.optString("verification_badge")
+            .takeIf { it.equals("BLUE", ignoreCase = true) || it.equals("GOLD", ignoreCase = true) }
+            ?: row.optString("verification_tier"),
         followerCount = row.optInt("follower_count"),
         followingCount = row.optInt("following_count"),
         postsCount = row.optInt("posts_count"),
@@ -3421,6 +3441,7 @@ class DesktopSupabaseClient(
         isBlinkVip = isFutureTimestamp(row.optNullableString("blink_vip_until")),
         blinkVipUntil = row.optNullableString("blink_vip_until"),
         verifiedAtMillis = parseTimestampMillis(row.optNullableString("verified_at")),
+        verificationExpiresAtMillis = parseTimestampMillis(row.optNullableString("verification_expires_at")),
         profileViewsThisWeek = row.optInt("profile_views_this_week"),
         email = row.optNullableString("email"),
         phone = row.optNullableString("phone"),
@@ -3503,6 +3524,9 @@ class DesktopSupabaseClient(
             row.optNullableString("image_url")?.let(::listOf) ?: emptyList()
         },
         createdAt = row.optString("created_at"),
+        quantity = if (row.has("quantity") && !row.isNull("quantity")) row.optInt("quantity").coerceAtLeast(0) else null,
+        viewCount = if (row.has("views_count") && !row.isNull("views_count")) row.optLong("views_count").coerceAtLeast(0L) else null,
+        saveCount = if (row.has("saves_count") && !row.isNull("saves_count")) row.optLong("saves_count").coerceAtLeast(0L) else null,
     )
 
     private fun parseConnectListing(row: JSONObject) = DesktopConnectListing(
