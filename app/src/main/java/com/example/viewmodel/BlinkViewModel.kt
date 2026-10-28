@@ -173,6 +173,8 @@ data class BlinkUiState(
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
     val activitiesError: String? = null,
+    val activitiesHasMore: Boolean = true,
+    val activitiesLoadingMore: Boolean = false,
     val connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     val isConnectHubLoading: Boolean = false,
     val comments: List<Comment> = emptyList(),
@@ -2177,7 +2179,7 @@ private suspend fun restoreSupabaseSession() {
                             .onFailure { Log.e(TAG, "Scheduled posts fetch failed", it) }
                     }
                     val activitiesRequest = async {
-                        runCatching { supabaseService.fetchActivities() }
+                        runCatching { supabaseService.fetchActivitiesPage() }
                             .onFailure { Log.e(TAG, "Activities fetch failed", it) }
                     }
 
@@ -2283,11 +2285,22 @@ private suspend fun restoreSupabaseSession() {
                     activitiesRequest.await()
                         .onSuccess { result ->
                             result.fold(
-                                { activities ->
-                                    _uiState.value = _uiState.value.copy(
-                                        activities = activities,
-                                        activitiesLoading = false
-                                    )
+                                { page ->
+                                    if (_uiState.value.myProfile.id == before.myProfile.id &&
+                                        notificationRefreshJob?.isActive != true &&
+                                        olderNotificationJob?.isActive != true) {
+                                        activityHistoryCursor = page.activityCursor
+                                        canonicalHistoryCursor = page.notificationCursor
+                                        _uiState.value = _uiState.value.copy(
+                                            activities = page.items,
+                                            activitiesLoading = false,
+                                            activitiesHasMore = page.hasMore,
+                                            activitiesLoadingMore = false,
+                                            activitiesError = page.warning
+                                        )
+                                    } else {
+                                        _uiState.value = _uiState.value.copy(activitiesLoading = false)
+                                    }
                                 },
                                 { error ->
                                     _uiState.value = _uiState.value.copy(
@@ -3432,7 +3445,108 @@ private suspend fun restoreSupabaseSession() {
         persistUiPreferences()
     }
     fun openMenu(open: Boolean) { _uiState.value = _uiState.value.copy(isMenuOpen = open) }
-    fun openActivity(open: Boolean) { _uiState.value = _uiState.value.copy(isActivityOpen = open) }
+    fun openActivity(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isActivityOpen = open)
+        if (open && _uiState.value.isOnline) refreshNotifications()
+    }
+
+    private var notificationRefreshJob: kotlinx.coroutines.Job? = null
+    private var olderNotificationJob: kotlinx.coroutines.Job? = null
+    private var activityHistoryCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null
+    private var canonicalHistoryCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null
+
+    fun refreshNotifications() {
+        if (notificationRefreshJob?.isActive == true || olderNotificationJob?.isActive == true) return
+        if (!_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(activitiesError = "You're offline. Showing saved activity.")
+            return
+        }
+        notificationRefreshJob = viewModelScope.launch {
+            val accountId = _uiState.value.myProfile.id
+            _uiState.value = _uiState.value.copy(
+                activitiesLoading = _uiState.value.activities.isEmpty(),
+                activitiesError = null
+            )
+            supabaseService.fetchActivitiesPage().fold(
+                onSuccess = { page ->
+                    if (_uiState.value.myProfile.id != accountId) return@fold
+                    activityHistoryCursor = page.activityCursor
+                    canonicalHistoryCursor = page.notificationCursor
+                    _uiState.value = _uiState.value.copy(
+                        activities = page.items,
+                        activitiesLoading = false,
+                        activitiesHasMore = page.hasMore,
+                        activitiesLoadingMore = false,
+                        activitiesError = page.warning
+                    )
+                    persistExtendedCache()
+                },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(
+                        activitiesLoading = false,
+                        activitiesError = "Couldn't refresh notifications."
+                    )
+                }
+            )
+        }
+    }
+
+    fun loadOlderNotifications() {
+        val current = _uiState.value
+        if (!current.activitiesHasMore || current.activitiesLoadingMore ||
+            !current.isOnline || current.activities.isEmpty() ||
+            notificationRefreshJob?.isActive == true ||
+            olderNotificationJob?.isActive == true) return
+        val activityBefore = activityHistoryCursor
+        val notificationBefore = canonicalHistoryCursor
+        if (activityBefore == null && notificationBefore == null) return
+        val accountId = current.myProfile.id
+        _uiState.value = current.copy(activitiesLoadingMore = true)
+        olderNotificationJob = viewModelScope.launch {
+            supabaseService.fetchActivitiesPage(
+                activityBefore = activityBefore,
+                notificationBefore = notificationBefore,
+                includeActivities = activityBefore != null,
+                includeNotifications = notificationBefore != null
+            ).fold(
+                onSuccess = { page ->
+                    if (_uiState.value.myProfile.id != accountId) return@fold
+                    activityHistoryCursor = page.activityCursor
+                    canonicalHistoryCursor = page.notificationCursor
+                    val combined = (_uiState.value.activities + page.items)
+                        .distinctBy { it.id }
+                        .sortedByDescending { it.rawTimestamp }
+                    val canonical = combined.filter { it.id.startsWith("notification:") }
+                    val canonicalIds = canonical.mapNotNull { it.targetEntityId }.toSet()
+                    val reconciled = combined.filterNot { legacy ->
+                        !legacy.id.startsWith("notification:") &&
+                            (com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isOfficialMirror(
+                                legacy.targetType, legacy.targetEntityId, canonicalIds
+                            ) || canonical.any { item ->
+                                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isSameSocialEvent(
+                                    legacy.user, item.user, legacy.eventType, item.eventType,
+                                    legacy.rawTimestamp, item.rawTimestamp,
+                                    legacy.targetPostId, item.targetPostId, item.targetType
+                                )
+                            })
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        activities = reconciled,
+                        activitiesHasMore = page.hasMore,
+                        activitiesLoadingMore = false,
+                        activitiesError = page.warning
+                    )
+                    persistExtendedCache()
+                },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(
+                        activitiesLoadingMore = false,
+                        activitiesError = "Couldn't load older notifications."
+                    )
+                }
+            )
+        }
+    }
 
     fun openCommentsForPost(postId: String?) {
         if (postId == null) {
@@ -6568,6 +6682,8 @@ private suspend fun restoreSupabaseSession() {
         if (myId.isNotBlank() && event.recipientId.isNotBlank() && event.recipientId != myId) return
 
         val normalizedType = event.activityType.trim().uppercase()
+        // Official broadcasts already arrive as canonical notification events.
+        if (event.entityType.equals("notification", ignoreCase = true)) return
         if (normalizedType in setOf(
                 "LIKE", "LIKES", "COMMENT", "COMMENTS", "REPLY", "MENTION",
                 "FOLLOW", "REPOST"
@@ -6604,7 +6720,9 @@ private suspend fun restoreSupabaseSession() {
             category = category,
             targetPostId = postId,
             targetMarketId = marketId,
-            targetType = entityType.takeIf { it.isNotBlank() }
+            targetType = entityType.takeIf { it.isNotBlank() },
+            targetEntityId = event.entityId.takeIf { it.isNotBlank() },
+            targetResourceId = event.entityId.takeIf { it.isNotBlank() }
         )
 
         val semanticKey = notificationSemanticKey(activity)
@@ -6713,6 +6831,8 @@ private suspend fun restoreSupabaseSession() {
             targetPostId = targetPostId,
             targetMarketId = targetMarketId,
             targetType = targetType,
+            targetEntityId = event.id,
+            targetResourceId = event.targetId.takeIf { it.isNotBlank() },
             previewText = event.subText.takeIf { it.isNotBlank() }
         )
 
@@ -7808,6 +7928,11 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
+        // These destination types are handled by MainActivity after read acknowledgement.
+        if (activity.targetType?.lowercase() in setOf(
+                "channel", "giveaway", "drops", "boost", "wallet", "coins", "coin", "reward", "items"
+            )) return
+
         activity.targetPostId?.let { postId ->
             val target = (_uiState.value.posts + _uiState.value.followingPosts + _uiState.value.reels).find { it.id == postId }
             val isReel = activity.targetType.equals("reel", ignoreCase = true) || target?.isReel == true
@@ -7841,6 +7966,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun toggleActivityReadState(activity: ActivityItem) {
+        val initiatingAccount = _uiState.value.myProfile.id
         val newUnreadState = !activity.isUnread
         _uiState.value = _uiState.value.copy(
             activities = _uiState.value.activities.map {
@@ -7858,6 +7984,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             }.getOrDefault(false)
 
+            if (_uiState.value.myProfile.id != initiatingAccount) return@launch
             if (!synced) {
                 _uiState.value = _uiState.value.copy(
                     activities = _uiState.value.activities.map {
@@ -7866,11 +7993,12 @@ private suspend fun restoreSupabaseSession() {
                 )
                 persistExtendedCache()
                 showToast("Couldn't sync notification read status.")
-            }
+            } else persistExtendedCache()
         }
     }
 
     fun markAllActivitiesRead() {
+        val initiatingAccount = _uiState.value.myProfile.id
         val unreadIds = _uiState.value.activities.filter { it.isUnread }.mapTo(hashSetOf()) { it.id }
         if (unreadIds.isEmpty()) return
         _uiState.value = _uiState.value.copy(
@@ -7878,6 +8006,7 @@ private suspend fun restoreSupabaseSession() {
         )
         viewModelScope.launch {
             val success = runCatching { supabaseService.markAllActivitiesRead() }.getOrDefault(false)
+            if (_uiState.value.myProfile.id != initiatingAccount) return@launch
             if (!success) {
                 _uiState.value = _uiState.value.copy(
                     activities = _uiState.value.activities.map {
@@ -7886,6 +8015,7 @@ private suspend fun restoreSupabaseSession() {
                 )
                 showToast("Couldn't sync notification read status.")
             }
+            persistExtendedCache()
         }
     }
 

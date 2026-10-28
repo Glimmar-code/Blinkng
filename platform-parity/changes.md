@@ -1,3 +1,11 @@
+## 2026-10-27 — Notification reliability Testlab PR #622
+
+- Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.
+- Android repairs canonical announcement routing, duplicate navigation, notification-only refresh, history pagination, cross-account preference storage and compact card readability.
+- Windows now uses the shared event-matching policy for canonical/legacy notification merging.
+- OS-only differences: Android Firebase channels, Android 15 permissions and touch swipes do not directly apply to Windows.
+- **Not yet release-verified:** CI, Windows packaging, Android emulator, real Firebase/device push and hosted Supabase integration. Keep main unchanged until verification.
+
 ## 2026-10-27 — Reels eight-point completion repairs (Testlab, final head verification required)
 
 - **Discovery tabs:** `Reels` now presents latest-first content by canonical `FeedPost.createdAt`; `For You` retains the backend's supplied recommendation order, and `Following` remains restricted to the followed source. This is a client-side presentation distinction, not a fabricated personalized model or a new backend RPC.
