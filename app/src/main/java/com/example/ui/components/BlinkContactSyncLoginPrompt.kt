@@ -53,7 +53,7 @@ fun BlinkContactSyncLoginPrompt(accountId: String, safeToShow: Boolean) {
             busy = true
             runCatching {
                 val existing = client.get().consent
-                if (!existing.syncEnabled || !existing.joinAlerts) {
+                if (!existing.syncEnabled || !existing.joinAlerts || (allowMutualDiscovery && !existing.discoverable)) {
                     client.set(existing.copy(syncEnabled = true, joinAlerts = true,
                         discoverable = allowMutualDiscovery || existing.discoverable))
                 }
