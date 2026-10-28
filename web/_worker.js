@@ -18,6 +18,7 @@ export function isBlinkAppRoute(pathname) {
     /^\/profile\/[^/]{1,128}$/i.test(path) ||
     /^\/(post|reel)\/[0-9a-f-]{8,64}$/i.test(path) ||
     /^\/invite\/[a-z0-9._-]{2,30}$/i.test(path) ||
+    /^\/contest\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/i.test(path) ||
     /^\/messages\/[^/]{1,128}$/i.test(path) ||
     /^\/settings\/[^/]{1,128}$/i.test(path)
   );
