@@ -141,8 +141,33 @@ Deno.serve(async (req: Request) => {
       return json(500, { ok: false, error: "persistence_failed" });
     }
 
-    // Google expects HTTP 200 for successfully processed SSV callbacks.
-    return json(200, { ok: true });
+    // The signed SSV event was persisted. Only the service-role-only RPC may
+    // settle coins and milestone bonuses. Never let client callbacks mint coins.
+    // A retry is safe: the settlement function returns an already_credited result.
+    const settlementResponse = await fetch(
+      `${supabaseUrl}/rest/v1/rpc/settle_blink_rewarded_ad_verified`,
+      {
+        method: "POST",
+        headers: {
+          "apikey": serviceRoleKey,
+          "authorization": `Bearer ${serviceRoleKey}`,
+          "content-type": "application/json",
+          "accept": "application/json",
+        },
+        body: JSON.stringify({ p_claim_id: claimId }),
+      },
+    );
+
+    if (!settlementResponse.ok) {
+      const detail = await settlementResponse.text();
+      console.error("AdMob SSV settlement failed", settlementResponse.status, detail);
+      // A 500 keeps an unsettled callback visible and retryable rather than
+      // acknowledging a reward that was never actually delivered.
+      return json(500, { ok: false, error: "settlement_failed" });
+    }
+
+    // Google expects HTTP 200 only after verification AND settlement.
+    return json(200, { ok: true, settled: true });
   } catch (error) {
     console.error("AdMob SSV verification error", error);
     return json(400, { ok: false, error: "verification_failed" });
