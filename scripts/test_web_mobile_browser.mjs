@@ -46,8 +46,32 @@ try {
 
     try{
       await page.goto(base+'/',{waitUntil:'domcontentloaded',timeout:25000});
-      await page.locator('main.landing-page').waitFor({timeout:12000});
-      assert.ok(await page.locator('#landing-title').isVisible(),'Homepage heading missing');
+      await page.locator('main.br-page').waitFor({timeout:12000});
+      assert.ok(await page.locator('#br-title').isVisible(),'Homepage heading missing');
+      assert.equal(await page.locator('#app').evaluate(node=>node.classList.contains('boot')),false,
+        'Loading screen grid must not center the branded homepage');
+      const design=await page.evaluate(()=>{
+        const heading=document.querySelector('#br-title');
+        const download=document.querySelector('.br-button-main');
+        const phones=document.querySelector('.br-showcase');
+        const pill=document.querySelector('#parity-network-pill');
+        return {
+          headingAlignment:getComputedStyle(heading).textAlign,
+          headingSize:parseFloat(getComputedStyle(heading).fontSize),
+          downloadWidth:download.getBoundingClientRect().width,
+          showcaseTop:phones.getBoundingClientRect().top,
+          showcaseHeight:phones.getBoundingClientRect().height,
+          floatingBadgeVisible:!!pill && getComputedStyle(pill).display!=='none'
+        };
+      });
+      if(width<=480){
+        assert.equal(design.headingAlignment,'left','Mobile hero should have one consistent text alignment');
+        assert.ok(design.headingSize<=44,'Mobile headline should not overwhelm the screen');
+        assert.ok(design.downloadWidth>=width-60,'APK download must have a comfortable full-width tap target');
+        assert.ok(design.showcaseTop<700,'App previews must appear soon after download buttons');
+        assert.ok(design.showcaseHeight<=390,'App previews must not push page content excessively far down');
+        assert.equal(design.floatingBadgeVisible,false,'Network badge must not overlap app previews');
+      }
       assert.equal(await page.locator('.landing-feature-card').count(),6,'Expected six BLINK feature cards');
       assert.ok(await page.locator('a[href*="/releases/latest/download/Blink-latest.apk"]').first().isVisible(),'Android download CTA missing');
       const layout=await page.evaluate(()=>({
@@ -58,15 +82,17 @@ try {
       assert.ok(layout.document<=layout.viewport+2&&layout.body<=layout.viewport+2,
         `Horizontal overflow on ${width}px: ${JSON.stringify(layout)}`);
 
-      if(mobile){
-        const menu=page.locator('.landing-menu summary');
-        assert.ok(await menu.isVisible(),'Mobile navigation menu missing');
-        await menu.click();
-        assert.ok(await page.locator('.landing-menu nav a[href$="/privacy/"]').isVisible(),'Mobile privacy link missing');
-        await menu.click();
-      } else {
-        assert.ok(await page.locator('.landing-desktop-nav').isVisible(),'Desktop navigation missing');
+      assert.ok(await page.locator('.br-brand img[src$="blink-logo-v2.png"]').isVisible(),'Approved BLINK logo missing');
+      assert.ok(await page.locator('.br-header-download').isVisible(),'Header APK download missing');
+      assert.equal(await page.locator('a[href*="play.google.com"]').count(),0,'Play Store CTA must not appear');
+      if(width>800){
+        assert.ok(await page.locator('.br-nav').isVisible(),'Desktop marketing navigation missing');
       }
+      await page.getByRole('button',{name:/Read more about BLINK/}).click();
+      assert.ok(await page.locator('#blink-read-more').evaluate(element=>element.open),
+        'Read more must reveal preserved website information and tools');
+      assert.equal(await page.locator('.landing-feature-card').count(),6,
+        'Existing features must remain accessible behind Read more');
 
       await page.getByRole('tab',{name:'Market'}).click();
       assert.ok(await page.getByText('Discover the BLINK marketplace',{exact:true}).isVisible(),
@@ -86,7 +112,7 @@ try {
       await page.locator('#public-search button[type=submit]').click();
       await page.getByText('No public BLINK profile found for that username.').waitFor({timeout:10000});
 
-      const loginLink=page.locator('button.landing-top-cta');
+      const loginLink=page.locator('.br-info-links a[href="./login"]');
       await loginLink.click();
       await page.locator('#login-form').waitFor({timeout:12000});
       assert.ok(await page.locator('#google-auth').isVisible(),'Google login button missing');

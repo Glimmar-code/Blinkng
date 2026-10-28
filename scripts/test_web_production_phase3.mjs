@@ -29,7 +29,7 @@ const cache={
 };
 const cacheNames=['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','other-website-assets','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews'];
 const caches={
-  open:async name=>{assert.ok(name==='blink-web-v28-link-previews');return cache;},
+  open:async name=>{assert.ok(name==='blink-web-v29-download-landing');return cache;},
   keys:async()=>cacheNames,
   delete:async name=>{deleted.push(name);return true;}
 };
@@ -61,7 +61,7 @@ await Promise.all(installTasks);
 const activation=[];
 handlers.activate({waitUntil:p=>activation.push(Promise.resolve(p))});
 await Promise.all(activation);
-assert.deepEqual(deleted,['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','blink-web-v26-mobile-lean-shell'],'Only old BLINK caches may be removed; other apps are untouched');
+assert.deepEqual(deleted,['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews'],'Only old BLINK caches may be removed; other apps are untouched');
 
 networkCalls=[];putCalls.length=0;
 const profile=dispatch('https://blink.com.ng/@person',{mode:'navigate'});
