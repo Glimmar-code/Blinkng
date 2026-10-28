@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -346,12 +347,22 @@ internal fun BlinkCreatePostPublishOptions(
         Spacer(Modifier.height(8.dp))
         Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold)
         BlinkPostMenuRow(
-            title = "WhatsApp / other apps",
-            detail = "Share selected media and caption using your device",
+            title = "WhatsApp",
+            detail = "Choose WhatsApp in the share sheet",
+            icon = Icons.Default.Share, onClick = onShareCaption
+        )
+        BlinkPostMenuRow(
+            title = "Copy link",
+            detail = "A real post link is available after publishing",
+            icon = Icons.Default.Link, onClick = {}, enabled = false
+        )
+        BlinkPostMenuRow(
+            title = "Other apps",
+            detail = "Share the selected media or caption",
             icon = Icons.Default.Share, onClick = onShareCaption
         )
         Text(
-            "A BLINK post link can be shared after publication. Sharing media here does not publish your post.",
+            "Before publication, sharing sends only your media and caption. It does not post to BLINK.",
             fontSize = 12.sp, color = Color(0xFFAAB1BE)
         )
     }
