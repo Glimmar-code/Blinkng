@@ -103,7 +103,7 @@ assert.ok(!source.includes('caches.match(request)'), 'Never store or retrieve ar
 assert.ok(!source.includes('cache.put(request,copy)'), 'No unrestricted dynamic response caching');
 assert.ok(page.includes('<meta name="referrer" content="strict-origin-when-cross-origin"'), 'Do not share private page paths in third-party referral headers');
 assert.match(readFileSync('web/_worker.js','utf8'), /contest/, 'Cloudflare must serve contest deep links');
-assert.match(page, /contest-invitation\\.js/, 'Share invitation script must be loaded');
+assert.ok(page.includes('contest-invitation.js'), 'Share invitation script must be loaded');
 assert.match(readFileSync('web/contest-invitation.js','utf8'), /get_blink_contest_candidate/,
   'Web invitations must resolve approved candidates from the server');
 console.log('PASS: phase 3 private-route caching, offline fallback, scoped cache cleanup and fresh static assets');
