@@ -16,7 +16,11 @@ permissions:
   contents: read
 
 jobs:
+  # This live deployment probe is meaningful only for Cloudflare preview branches.
+  # Other PRs still run the static web and worker route gates; never probe a
+  # non-existent Pages URL and incorrectly report it as an application failure.
   real-deep-links:
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'Testlab-web-')
     runs-on: ubuntu-latest
     timeout-minutes: 9
     steps:
