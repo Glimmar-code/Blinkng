@@ -8,7 +8,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -46,7 +45,9 @@ fun Modifier.trackContentExposure(
     if (contentId.isBlank()) return this
     val appContext = LocalContext.current.applicationContext
     val rootView = LocalView.current
-    var wasRecorded by rememberSaveable(contentId) { mutableStateOf(false) }
+    // An exposure is counted once per continuous visibility session, not forever
+    // for a saved LazyColumn item. Scrolling fully away permits requalification.
+    var wasRecorded by remember(contentId) { mutableStateOf(false) }
     var currentlyVisible by remember(contentId) { mutableStateOf(false) }
     var windowFocused by remember(rootView) { mutableStateOf(rootView.hasWindowFocus()) }
 
@@ -62,7 +63,13 @@ fun Modifier.trackContentExposure(
     }
 
     LaunchedEffect(contentId, currentlyVisible, windowFocused, playbackActive, minVisibleMillis, wasRecorded) {
-        if (!currentlyVisible || !windowFocused || !playbackActive || wasRecorded) return@LaunchedEffect
+        if (!currentlyVisible) {
+            // The item left the viewport: reset only then, not on a user pause,
+            // buffer event, or lost app focus within the same viewing session.
+            wasRecorded = false
+            return@LaunchedEffect
+        }
+        if (!windowFocused || !playbackActive || wasRecorded) return@LaunchedEffect
         delay(minVisibleMillis.coerceAtLeast(1_000L))
         if (currentlyVisible && windowFocused && playbackActive && !wasRecorded) {
             wasRecorded = true
