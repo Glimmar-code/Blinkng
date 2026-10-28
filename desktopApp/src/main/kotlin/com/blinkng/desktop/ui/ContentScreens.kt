@@ -2273,6 +2273,8 @@ fun ConnectScreen(state: DesktopAppState) {
     var contactBusy by remember(state.profile?.id) { mutableStateOf(false) }
     var contactError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
     var contactReady by remember(state.profile?.id) { mutableStateOf(false) }
+    var contactMutualReady by remember(state.profile?.id) { mutableStateOf(false) }
+    var contactLastSynced by remember(state.profile?.id) { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     fun loadContactSnapshot(reply: JSONObject, replaceMatches: Boolean = true) {
@@ -2280,6 +2282,10 @@ fun ConnectScreen(state: DesktopAppState) {
         contactSync = settings?.optBoolean("sync_enabled") == true
         contactDiscoverable = settings?.optBoolean("discoverable") == true
         contactAlerts = settings?.optBoolean("join_alerts") == true
+        contactLastSynced = settings?.optString("last_synced_at").orEmpty().takeUnless { it == "null" }.orEmpty()
+        if (reply.has("match_policy")) {
+            contactMutualReady = reply.optString("match_policy") == "reciprocal_opt_in_v1"
+        }
         val matches = reply.optJSONArray("matches")
         if (replaceMatches) contactMatches = if (matches == null) emptyList() else (0 until matches.length()).mapNotNull { n ->
             matches.optJSONObject(n)?.let { item ->
@@ -2314,6 +2320,7 @@ fun ConnectScreen(state: DesktopAppState) {
             }
             .onFailure {
                 contactReady = false
+                contactMutualReady = false
                 contactError = it.message ?: "Contact discovery is unavailable."
             }
         contactBusy = false
@@ -2562,7 +2569,9 @@ fun ConnectScreen(state: DesktopAppState) {
                         Text("People from your contacts", fontWeight = FontWeight.Bold)
                         Text("Sync your phone contacts on Android, then discover the same matches here. Contact access is optional.",
                             fontSize = 12.sp)
-                        Text("No SMS verification is required. Phone numbers on profiles are user-provided, not verified identity.", fontSize = 12.sp)
+                        Text("No SMS verification. Phone numbers on profiles are self-declared; matches are only possible contacts.", fontSize = 12.sp)
+                        Text(if (contactLastSynced.isBlank()) "Not synced from Android yet"
+                             else "Last contact sync: " + contactLastSynced.take(10), fontSize = 12.sp)
                         Text("Contacts can be synced from the Android app when the secure matching service is available.", fontSize = 12.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = contactSync, enabled = contactReady && !contactBusy,
@@ -2570,9 +2579,10 @@ fun ConnectScreen(state: DesktopAppState) {
                             Text("Contact sync", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactDiscoverable, enabled = false,
+                            Switch(checked = contactDiscoverable, enabled = contactMutualReady && contactReady && !contactBusy && contactSync,
                                 onCheckedChange = { changeContacts(contactSync, it, contactAlerts) })
-                            Text("Let my contacts find me (matching backend pending)", modifier = Modifier.padding(start = 9.dp))
+                            Text(if (contactMutualReady) "Let mutual contacts find me"
+                                 else "Contact discovery backend pending", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = contactAlerts, enabled = contactReady && !contactBusy && contactSync,
