@@ -30,6 +30,10 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -286,6 +290,8 @@ fun CreatePostSheet(
     var showMediaReview by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
     var pickerOpenedFromLanding by rememberSaveable { mutableStateOf(false) }
+    var showCameraActions by rememberSaveable { mutableStateOf(false) }
+    var pendingCameraCaptureUri by rememberSaveable { mutableStateOf<String?>(null) }
     var useClassicComposer by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
@@ -301,6 +307,82 @@ fun CreatePostSheet(
             },
             onDismiss = { imageToEdit = null }
         )
+    }
+
+
+    fun cameraCaptureUri(extension: String): Uri {
+        val folder = java.io.File(context.cacheDir, "blink-camera").apply { mkdirs() }
+        val output = java.io.File(folder, "blink_${UUID.randomUUID()}.$extension")
+        return FileProvider.getUriForFile(
+            context, "${context.packageName}.chatfiles", output
+        )
+    }
+    fun discardPendingCameraFile() {
+        val filename = pendingCameraCaptureUri
+            ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
+        if (!filename.isNullOrBlank() && Regex("blink_[0-9a-fA-F-]{36}\\.(jpg|mp4)").matches(filename)) {
+            runCatching {
+                java.io.File(context.cacheDir, "blink-camera/$filename").delete()
+            }
+        }
+    }
+
+    val cameraPhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        val photo = pendingCameraCaptureUri
+        if (success && photo != null) {
+            selectedImages = (selectedImages + photo).distinct().take(10)
+            selectedVideo = null
+            videoClips = emptyList()
+            showPoll = false
+            mode = "post"
+            reelEditorStage = false
+            showCreateLanding = false
+            showMediaReview = true
+        } else {
+            discardPendingCameraFile()
+            showCreateLanding = true
+        }
+        pendingCameraCaptureUri = null
+    }
+
+    val cameraVideoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CaptureVideo()
+    ) { success ->
+        val video = pendingCameraCaptureUri
+        if (success && video != null) {
+            selectedVideo = video
+            selectedImages = emptyList()
+            videoClips = emptyList()
+            showPoll = false
+            mode = "reel"
+            selectedCoverUri = null
+            coverFrameIndex = -1
+            reelEditorStage = true
+            showCreateLanding = false
+        } else {
+            discardPendingCameraFile()
+            showCreateLanding = true
+        }
+        pendingCameraCaptureUri = null
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { allowed ->
+        if (allowed) showCameraActions = true
+        else Toast.makeText(context, "Camera permission is required to capture media.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun openCameraActions() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            showCameraActions = true
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
     }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -1178,6 +1260,13 @@ fun CreatePostSheet(
                     onClassic = {
                         useClassicComposer = true
                         showCreateLanding = false
+                    },
+                    onCamera = {
+                        if (selectedImages.isNotEmpty() || selectedVideo != null ||
+                            videoClips.isNotEmpty() || showPoll
+                        ) {
+                            pendingMediaSwitch = "camera"
+                        } else openCameraActions()
                     },
                     onDraft = { restoreDraft(it) }
                 )
@@ -2151,6 +2240,34 @@ fun CreatePostSheet(
         }
     }
 
+
+    if (showCameraActions) {
+        AlertDialog(
+            onDismissRequest = { showCameraActions = false },
+            title = { Text("Camera") },
+            text = { Text("Create original media for BLINK. Photos go to Feed; videos are Reels.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCameraActions = false
+                    val uri = cameraCaptureUri("jpg")
+                    pendingCameraCaptureUri = uri.toString()
+                    cameraPhotoLauncher.launch(uri)
+                }) { Text("Take photo") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        showCameraActions = false
+                        val uri = cameraCaptureUri("mp4")
+                        pendingCameraCaptureUri = uri.toString()
+                        cameraVideoLauncher.launch(uri)
+                    }) { Text("Record Reel") }
+                    TextButton(onClick = { showCameraActions = false }) { Text("Cancel") }
+                }
+            }
+        )
+    }
+
     pendingMediaSwitch?.let { target ->
         AlertDialog(
             onDismissRequest = {
@@ -2165,6 +2282,7 @@ fun CreatePostSheet(
                 when (target) {
                     "post" -> "Switching to a regular post removes the selected Reel video."
                     "poll" -> "Choosing a poll replaces the selected photos or Reel video."
+                    "camera" -> "Capturing new media replaces your current photos, video or poll after capture."
                     else -> "Selecting new media will replace the current media or poll. Cancelling the picker keeps it."
                 }
             ) },
@@ -2198,6 +2316,7 @@ fun CreatePostSheet(
                             mode = "post"
                             showPoll = true
                         }
+                        "camera" -> openCameraActions()
                         "gallery" -> imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
