@@ -69,7 +69,10 @@
   ].join('');
 
   function refreshHomepage() {
-    if (!isHomepage()) return;
+    if (!isHomepage()) {
+      document.body.classList.remove('br-marketing-active');
+      return;
+    }
     const landing = root.querySelector(':scope > .landing-page:not([data-brand-refresh])');
     if (!landing) return;
     // Keep existing public-profile search, campus catalogue, feature tour and
@@ -77,6 +80,10 @@
     const publicSearch = landing.querySelector('#public-search');
     const legacySections = Array.from(landing.querySelectorAll(':scope > section.landing-container'))
       .filter(section => !section.classList.contains('landing-hero'));
+    // The initial crawlable shell uses #app.boot. Its grid centering was
+    // leaking into the rendered homepage and causing oversized gaps.
+    root.classList.remove('boot');
+    document.body.classList.add('br-marketing-active');
     landing.setAttribute('data-brand-refresh','1');
     landing.className = 'br-page';
     document.title = 'BLINK Nigeria — Connect, Discover and Grow Beyond LINK | Download App';
