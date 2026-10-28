@@ -40,6 +40,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -245,6 +246,7 @@ fun BlinkUniversalPhotoEditor(
     ) {
         Column(
             Modifier.fillMaxSize()
+                .testTag("blink_photo_editor_stage")
                 .blinkElasticSwipeAction(
                     direction = BlinkElasticSwipeDirection.DOWN,
                     onAction = { if (!busy) close() },
