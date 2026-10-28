@@ -40,6 +40,13 @@ REVOKE ALL ON TABLE public.blink_chat_polls, public.blink_chat_poll_votes
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
     public.blink_chat_polls, public.blink_chat_poll_votes TO service_role;
 
+-- Explicit per-table Data API decisions (2026-10-30 rule):
+-- no anon/authenticated direct access to private voter rows; RPCs only.
+revoke all on table public.blink_chat_polls from anon, authenticated;
+revoke all on table public.blink_chat_poll_votes from anon, authenticated;
+grant select, insert, update, delete on table public.blink_chat_polls to service_role;
+grant select, insert, update, delete on table public.blink_chat_poll_votes to service_role;
+
 -- Private helper: for one-to-one threads respect either participant's block
 -- decision. Being left in a historical conversation must never grant renewed
 -- access to its poll results after a block.
