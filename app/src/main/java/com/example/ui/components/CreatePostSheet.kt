@@ -964,6 +964,7 @@ fun CreatePostSheet(
                     onPoll = {
                         showCreateLanding = false
                         if (selectedVideo != null || selectedImages.isNotEmpty()) {
+                            pickerOpenedFromLanding = true
                             pendingMediaSwitch = "poll"
                         } else {
                             showPoll = true
@@ -996,8 +997,12 @@ fun CreatePostSheet(
                     onHideLikesChange = { hideLikes = it },
                     onTemporaryChange = { isDisappearing = it },
                     onNext = {
-                        showReferenceDetails = false
-                        showPublishOptions = true
+                        if (canSubmit) {
+                            showReferenceDetails = false
+                            showPublishOptions = true
+                        } else {
+                            Toast.makeText(context, "Fix invalid post details before continuing.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             } else if (showPublishOptions) {
@@ -1010,13 +1015,36 @@ fun CreatePostSheet(
                     },
                     onPreview = { showPreviewDialog = true },
                     onShareCaption = {
-                        val outgoing = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, text.ifBlank { pollQuestion })
+                        val caption = text.ifBlank { pollQuestion }
+                        val outgoing = when {
+                            selectedVideo != null -> Intent(Intent.ACTION_SEND).apply {
+                                type = "video/*"
+                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedVideo))
+                            }
+                            selectedImages.size > 1 -> Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                type = "image/*"
+                                putParcelableArrayListExtra(
+                                    Intent.EXTRA_STREAM,
+                                    ArrayList(selectedImages.map(Uri::parse))
+                                )
+                            }
+                            selectedImages.size == 1 -> Intent(Intent.ACTION_SEND).apply {
+                                type = "image/*"
+                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedImages.first()))
+                            }
+                            else -> Intent(Intent.ACTION_SEND).apply { type = "text/plain" }
+                        }.apply {
+                            if (caption.isNotBlank()) putExtra(Intent.EXTRA_TEXT, caption)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(Intent.createChooser(outgoing, "Share your caption"))
+                        runCatching {
+                            context.startActivity(Intent.createChooser(outgoing, "Share to another app"))
+                        }.onFailure {
+                            Toast.makeText(context, "No sharing app available.", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     isSubmitting = isSubmitting,
+                    canPublish = canSubmit,
                     uploadProgress = uploadProgress
                 )
             } else {
@@ -1952,6 +1980,7 @@ fun CreatePostSheet(
                             showPoll = false
                         }
                         "poll" -> {
+                            pickerOpenedFromLanding = false
                             selectedVideo = null
                             selectedImages = emptyList()
                             reelHasPendingEdits = false
