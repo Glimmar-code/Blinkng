@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.app.Application
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -66,12 +67,14 @@ class ProfileSingleSurfaceRegressionTest {
 
     @Test fun ownerCanDeepLinkDirectlyToSavedSection() {
         renderProfile(isMe = true, initialTab = 7)
+        rule.onNodeWithTag("profile_content_list").performScrollToIndex(1)
         rule.onNodeWithTag("premium_profile_tab_saved", useUnmergedTree = true)
             .assertIsSelected()
     }
 
     @Test fun ownerDirectLikedSectionStillWorks() {
         renderProfile(isMe = true, initialTab = 6)
+        rule.onNodeWithTag("profile_content_list").performScrollToIndex(1)
         rule.onNodeWithTag("premium_profile_tab_liked", useUnmergedTree = true)
             .assertIsSelected()
     }
