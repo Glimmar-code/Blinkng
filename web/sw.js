@@ -15,6 +15,7 @@ const SHELL=[
   './config.js',
   './link-previews.js',
   './profile-theme.js',
+  './contest-invitation.js',
   './app.js',
   './parity.js',
   './blink-icon.svg',
