@@ -3118,6 +3118,10 @@ private fun PremiumChatDetail(
                 showAttachmentSheet = false
                 audioPicker.launch("audio/*")
             },
+            onVoiceNote = {
+                showAttachmentSheet = false
+                beginVoiceRecording()
+            },
             onVideo = {
                 showAttachmentSheet = false
                 videoPicker.launch("video/*")
