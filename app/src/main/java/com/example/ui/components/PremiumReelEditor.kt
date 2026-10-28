@@ -300,6 +300,43 @@ internal fun PremiumReelEditor(
                             color = white, maxLines = 4)
                 }
             }
+            // Reference-inspired right-hand tools. Every action operates on the
+            // real editor state; tools requiring detail open the advanced panel.
+            Column(
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .padding(end = 5.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = .73f))
+                    .padding(vertical = 6.dp, horizontal = 3.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                val tools: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
+                    Triple(Icons.Default.MusicNote, "Music", {
+                        audioPicker.launch(arrayOf("audio/*"))
+                    }),
+                    Triple(Icons.Default.TextFields, "Text", { showAdvanced = true }),
+                    Triple(Icons.Default.EmojiEmotions, "Stickers", { showAdvanced = true }),
+                    Triple(Icons.Default.FilterVintage, "Filters", { grayscale = !grayscale }),
+                    Triple(Icons.Default.AutoAwesome, "Effects", {
+                        rotation = (rotation + 90f) % 360f
+                    }),
+                    Triple(Icons.Default.Tune, "Adjust", { showAdvanced = true }),
+                    Triple(Icons.Default.ContentCut, "Trim", {
+                        player.seekTo(trimStartMs)
+                    })
+                )
+                tools.forEach { (icon, label, action) ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(onClick = action, enabled = !isExporting,
+                            modifier = Modifier.size(36.dp)) {
+                            Icon(icon, contentDescription = label + " editing tool",
+                                tint = Color.White, modifier = Modifier.size(19.dp))
+                        }
+                        Text(label, color = Color.White, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.align(Alignment.TopEnd).padding(7.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
