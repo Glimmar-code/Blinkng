@@ -94,3 +94,10 @@ test("Own content never contributes to view or Featured Reel popularity", () => 
   assert.match(featuredMigration, /own\.user_id=e\.viewer_id/);
   assert.match(featuredMigration, /FEATURED_REELS_SELF_VIEW_FILTER_SOURCE_DRIFT/);
 });
+
+test("Revisiting a scrolled-away post can qualify again without a client-side permanent latch", () => {
+  assert.match(exposureTracker, /var wasRecorded by remember\(contentId\)/);
+  assert.doesNotMatch(exposureTracker, /rememberSaveable\(contentId\)/);
+  assert.match(exposureTracker, /if \(!currentlyVisible\) \{[\s\S]*?wasRecorded = false/);
+  assert.match(migration, /recent\.last_viewed_at > now\(\) - interval '60 seconds'/);
+});
