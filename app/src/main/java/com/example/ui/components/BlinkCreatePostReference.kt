@@ -2,12 +2,14 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -61,6 +63,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -76,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -771,8 +775,7 @@ internal fun BlinkReelClipReview(
             Surface(color = Color(0xFF1B1F28), shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VideoLibrary, contentDescription = null,
-                        tint = Color(0xFFFC597A), modifier = Modifier.size(26.dp))
+                    BlinkReferenceClipThumbnail(clip)
                     Spacer(Modifier.width(9.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Clip ${index + 1}", color = Color.White,
@@ -808,6 +811,38 @@ internal fun BlinkReelClipReview(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2)),
             shape = RoundedCornerShape(13.dp)) {
             Text("Combine & Edit Reel", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** Thumbnail frames come from the user's actual selected clip, never sample media. */
+@Composable
+private fun BlinkReferenceClipThumbnail(videoUri: String) {
+    val context = LocalContext.current
+    val frames by produceState(initialValue = emptyList<android.graphics.Bitmap>(), key1 = videoUri) {
+        value = reelFilmstrip(context, android.net.Uri.parse(videoUri), count = 1)
+    }
+    Box(
+        modifier = Modifier.size(width = 52.dp, height = 68.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF282D36)),
+        contentAlignment = Alignment.Center
+    ) {
+        val frame = frames.firstOrNull()
+        if (frame != null && !frame.isRecycled) {
+            Image(
+                bitmap = frame.asImageBitmap(),
+                contentDescription = "Selected video thumbnail",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                Icons.Default.VideoLibrary,
+                contentDescription = "Video preview unavailable",
+                tint = Color(0xFFF06380),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }
