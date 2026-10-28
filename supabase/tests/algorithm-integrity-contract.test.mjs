@@ -101,3 +101,12 @@ test("Revisiting a scrolled-away post can qualify again without a client-side pe
   assert.match(exposureTracker, /if \(!currentlyVisible\) \{[\s\S]*?wasRecorded = false/);
   assert.match(migration, /recent\.last_viewed_at > now\(\) - interval '60 seconds'/);
 });
+
+test("Concurrent Reel telemetry cannot bypass session cooldown or the per-viewer cap", () => {
+  const lock = migration.indexOf('pg_catalog.pg_advisory_xact_lock(');
+  const cooldown = migration.indexOf("existing.created_at > now()-interval '20 seconds'");
+  const daily = migration.indexOf("existing.created_at > now()-interval '24 hours'");
+  const insert = migration.indexOf('insert into private_ranking.reel_engagement_sessions(');
+  assert.ok(lock >= 0 && cooldown > lock && daily > cooldown && insert > daily,
+    'A per-viewer per-post transaction lock must wrap all duplicate and cap checks');
+});
