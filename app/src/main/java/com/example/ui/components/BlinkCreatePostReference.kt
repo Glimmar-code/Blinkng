@@ -506,7 +506,10 @@ internal fun BlinkReferencePostDetails(
             )
         }
         Text("Who can see this post?", color = Color.White, fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
             listOf("Everyone", "Campus", "Followers").forEach { option ->
                 FilterChip(
                     selected = audience == option,
@@ -784,10 +787,20 @@ internal fun BlinkReelClipReview(
                         Text(clip.substringAfterLast('/').take(24),
                             color = Color(0xFF9DA5B3), fontSize = 10.sp, maxLines = 1)
                     }
-                    TextButton(onClick = { onMove(index, index - 1) },
-                        enabled = !exporting && index > 0) { Text("↑", color = Color.White) }
-                    TextButton(onClick = { onMove(index, index + 1) },
-                        enabled = !exporting && index < clips.lastIndex) { Text("↓", color = Color.White) }
+                    IconButton(
+                        onClick = { onMove(index, index - 1) },
+                        enabled = !exporting && index > 0,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.ArrowUpward, contentDescription = "Move clip earlier", tint = Color.White)
+                    }
+                    IconButton(
+                        onClick = { onMove(index, index + 1) },
+                        enabled = !exporting && index < clips.lastIndex,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.ArrowDownward, contentDescription = "Move clip later", tint = Color.White)
+                    }
                     IconButton(onClick = { onRemove(index) }, enabled = !exporting) {
                         Icon(Icons.Default.Close, contentDescription = "Remove clip ${index + 1}",
                             tint = Color.White)
