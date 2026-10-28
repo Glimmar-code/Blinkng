@@ -1,6 +1,21 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.example.data.supabase.BlinkContestMediaUpload
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Calendar
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -21,6 +36,8 @@ import org.json.JSONObject
 @Composable
 fun BlinkContestAdminScreen(onBack: () -> Unit) {
     val api = remember { BlinkContestService() }
+    val mediaUpload = remember { BlinkContestMediaUpload() }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -39,6 +56,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var category by remember { mutableStateOf("General") }
     var university by remember { mutableStateOf("") }
     var cover by remember { mutableStateOf("") }
+    var coverChoice by remember { mutableStateOf<Uri?>(null) }
+    val coverPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { coverChoice = it }
     var registrationStart by remember { mutableStateOf("") }
     var registrationEnd by remember { mutableStateOf("") }
     var votingStart by remember { mutableStateOf("") }
@@ -84,12 +105,27 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         item { OutlinedTextField(rules, { rules = it.take(4000) }, label = { Text("Competition rules") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
         item { OutlinedTextField(category, { category = it.take(60) }, label = { Text("Category") }, modifier = Modifier.fillMaxWidth()) }
         item { OutlinedTextField(university, { university = it.take(120) }, label = { Text("University (optional, blank = all)") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(cover, { cover = it }, label = { Text("Banner HTTPS URL (optional)") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(registrationStart, { registrationStart = it }, label = { Text("Applications open (ISO date/time)") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(registrationEnd, { registrationEnd = it }, label = { Text("Applications close (ISO date/time)") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(votingStart, { votingStart = it }, label = { Text("Voting opens (ISO date/time)") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(votingEnd, { votingEnd = it }, label = { Text("Voting closes (ISO date/time)") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(resultsDate, { resultsDate = it }, label = { Text("Results announcement (ISO date/time)") }, modifier = Modifier.fillMaxWidth()) }
+        item {
+            Text("Contest cover", style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(onClick = {
+                coverPicker.launch(PickVisualMediaRequest(
+                    ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }) { Text(if (coverChoice == null) "Choose cover image" else "Change cover image") }
+            coverChoice?.let { uri ->
+                AsyncImage(model = uri, contentDescription = "Selected contest cover",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(150.dp))
+                TextButton(onClick = { coverChoice = null }) { Text("Remove") }
+            }
+            OutlinedTextField(cover, { cover = it },
+                label = { Text("Or existing HTTPS banner URL") },
+                modifier = Modifier.fillMaxWidth(), enabled = coverChoice == null)
+        }
+        item { BlinkContestDateTimeField("Applications open", registrationStart, { registrationStart = it }) }
+        item { BlinkContestDateTimeField("Applications close", registrationEnd, { registrationEnd = it }) }
+        item { BlinkContestDateTimeField("Voting opens", votingStart, { votingStart = it }) }
+        item { BlinkContestDateTimeField("Voting closes", votingEnd, { votingEnd = it }) }
+        item { BlinkContestDateTimeField("Results announcement", resultsDate, { resultsDate = it }) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(prizeOne, { prizeOne = it }, label = { Text("1st ₦") }, modifier = Modifier.weight(1f))
@@ -122,8 +158,17 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     .put("prize_third", prizeThree.toIntOrNull() ?: -1)
                     .put("auto_approve", autoApprove)
                 scope.launch {
-                    api.adminSave(data).onSuccess { message = "Contest draft created."; revision++ }
-                        .onFailure { message = it.message ?: "Unable to save draft." }
+                    runCatching {
+                        val resolvedCover = coverChoice?.let {
+                            mediaUpload.upload(context, it).getOrThrow()
+                        } ?: cover
+                        data.put("banner_url", resolvedCover.trim())
+                        api.adminSave(data).getOrThrow()
+                    }.onSuccess {
+                        message = "Contest draft created."
+                        coverChoice = null
+                        revision++
+                    }.onFailure { message = it.message ?: "Unable to save draft." }
                     busy = false
                 }
             }) { Text("Save contest draft") }
@@ -194,6 +239,22 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Text("Counted votes: " + stats.optInt("counted_votes") +
                     " · Under review: " + stats.optInt("review_votes") +
                     " · Invalidated: " + stats.optInt("rejected_votes"))
+                val total = stats.optInt("total_votes").coerceAtLeast(1)
+                LinearProgressIndicator(
+                    progress = { stats.optInt("counted_votes").toFloat() / total },
+                    modifier = Modifier.fillMaxWidth(), color = Color(0xFF1685FF)
+                )
+                Text("Valid votes out of all received votes",
+                    style = MaterialTheme.typography.bodySmall)
+                val channels = stats.optJSONObject("share_by_channel")
+                if (channels != null) {
+                    val names = channels.keys().asSequence().toList().sorted()
+                    names.forEach { name ->
+                        Text(name.replaceFirstChar { it.uppercase() } + ": " +
+                            channels.optInt(name) + " recorded shares",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 Text("Sharing records user-initiated actions only, not website views.",
                     style=MaterialTheme.typography.bodySmall)
             }
@@ -288,5 +349,35 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** Device-local picker writes an explicit time zone offset; manual ISO editing stays available. */
+@Composable
+private fun BlinkContestDateTimeField(
+    title: String, value: String, onValueChange: (String) -> Unit
+) {
+    val context = LocalContext.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value, onValueChange,
+            label = { Text(title) },
+            modifier = Modifier.weight(1f), singleLine = true,
+            placeholder = { Text("ISO date + time") }
+        )
+        OutlinedButton(onClick = {
+            val now = Calendar.getInstance()
+            DatePickerDialog(
+                context, { _, year, month, day ->
+                    TimePickerDialog(context, { _, hour, minute ->
+                        val date = LocalDateTime.of(year, month + 1, day, hour, minute)
+                        val zoneDate = date.atZone(ZoneId.systemDefault())
+                        onValueChange(zoneDate.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
+                    }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), true).show()
+                }, now.get(Calendar.YEAR), now.get(Calendar.MONTH),
+                now.get(Calendar.DAY_OF_MONTH)
+            ).show()
+        }) { Text("Pick") }
     }
 }
