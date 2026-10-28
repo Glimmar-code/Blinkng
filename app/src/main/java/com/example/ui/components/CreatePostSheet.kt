@@ -3056,6 +3056,20 @@ internal fun PollComposer(
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Multiple answers", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Single-choice voting is active. Multi-answer voting requires a separate secure backend upgrade.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+                Switch(checked = false, onCheckedChange = {}, enabled = false)
+            }
             Text(
                 "Poll duration",
                 modifier = Modifier.padding(top = 12.dp),
