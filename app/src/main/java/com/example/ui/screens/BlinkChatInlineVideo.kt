@@ -40,6 +40,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -188,21 +192,26 @@ internal fun BlinkChatInlineVideo(
             }
         }
         if (!isActive) {
+            AsyncImage(
+                model = remember(url) {
+                    ImageRequest.Builder(context).data(url)
+                        .videoFrameMillis(1000L).build()
+                },
+                contentDescription = "Video thumbnail",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { onActivate() }
+                modifier = Modifier.fillMaxSize()
+                    .background(Color(0x44060D16))
+                    .clickable(onClickLabel = "Play video message") { onActivate() }
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(
-                    Icons.Default.PlayCircle,
-                    contentDescription = "Play video message in chat",
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp),
-                )
-                Text("Play video", color = Color.White, fontSize = 13.sp)
+                Icon(Icons.Default.PlayCircle, "Play video message in chat",
+                    tint = Color.White, modifier = Modifier.size(48.dp))
+                Text("Tap to play video", color = Color.White, fontSize = 12.sp)
             }
         }
         if (failed) {
