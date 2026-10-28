@@ -726,12 +726,20 @@ private fun PremiumHomeFeed(
     // This prevents double taps from submitting Follow then Unfollow before
     // the optimistic server mutation has finished reconciling.
     var pendingAuthorFollowIds by remember(resumeUserKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // Immediately remove explicitly unfollowed creators from cached Following rows.
+    // Missing posts in a limited server page alone are NOT evidence of deletion.
+    var locallyUnfollowedAuthorIds by remember(resumeUserKey) { mutableStateOf<Set<String>>(emptySet()) }
     fun requestAuthorFollow(id: String, shouldFollow: Boolean) {
         if (id.isBlank() || id in pendingAuthorFollowIds) return
         pendingAuthorFollowIds = pendingAuthorFollowIds + id
         uiScope.launch {
             try {
-                FollowStateStore.setFollowing(id, shouldFollow)
+                if (FollowStateStore.setFollowing(id, shouldFollow)) {
+                    // Failed RPCs roll back in FollowStateStore; do not hide a
+                    // creator permanently when their Unfollow did not succeed.
+                    locallyUnfollowedAuthorIds = if (shouldFollow) locallyUnfollowedAuthorIds - id
+                        else locallyUnfollowedAuthorIds + id
+                }
             } finally {
                 pendingAuthorFollowIds = pendingAuthorFollowIds - id
             }
@@ -806,6 +814,14 @@ private fun PremiumHomeFeed(
             .apply()
     }
     var filterMenuVisible by remember { mutableStateOf(false) }
+    var previousFilter by remember(laneResumeKey) { mutableStateOf(filter) }
+    LaunchedEffect(filter, laneResumeKey) {
+        if (previousFilter != filter) {
+            previousFilter = filter
+            // A new filter must never inherit an off-screen LazyColumn anchor.
+            listState.scrollToItem(0)
+        }
+    }
     var screenVisible by remember { mutableStateOf(false) }
     // For You / Following remain available via their explicit tabs.
     // Horizontal page navigation is owned by the parent destination observer,
@@ -908,7 +924,10 @@ private fun PremiumHomeFeed(
     val normalizedMutedFeedAuthors = remember(mutedFeedAuthors) {
         mutedFeedAuthors.map { it.trim().removePrefix("@").lowercase() }.toHashSet()
     }
-    val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
+    val filteredPosts = remember(
+        stableRankedPosts, filter, laneIndex, followedAuthorKeys, hiddenFeedPostIds,
+        normalizedMutedFeedAuthors, locallyUnfollowedAuthorIds, authorProfilesByHandle
+    ) {
         val rankedNormalPosts = stableRankedPosts.filterNot { post ->
             post.isReel || !post.videoUrl.isNullOrBlank() ||
                 shouldHideFrozenFeedPost(
@@ -922,7 +941,14 @@ private fun PremiumHomeFeed(
         // The parent supplies an independent server-backed list for Following.
         // Do not filter the For You page locally; that was the old behavior that made
         // Following look like the same feed with a few rows removed.
-        val lanePosts = rankedNormalPosts
+        val lanePosts = if (laneIndex == 1 && locallyUnfollowedAuthorIds.isNotEmpty()) {
+            rankedNormalPosts.filterNot { post ->
+                val authorId = post.authorProfileId.ifBlank {
+                    authorProfilesByHandle[post.authorUsername.trim().removePrefix("@").lowercase()]?.id.orEmpty()
+                }
+                authorId in locallyUnfollowedAuthorIds
+            }
+        } else rankedNormalPosts
         lanePosts.filter { post ->
             when (filter) {
                 PremiumFeedFilter.ALL -> true
@@ -1013,14 +1039,16 @@ private fun PremiumHomeFeed(
         }
     }
     val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed, filter) {
-        buildPremiumHomeRows(
-            filteredPosts,
-            if (filter == PremiumFeedFilter.ALL) rankedInlineReels else emptyList(),
-            if (filter == PremiumFeedFilter.ALL) visiblePromotedFeed else emptyList(),
-            if (filter == PremiumFeedFilter.ALL) marketSponsoredFeed else emptyList(),
-            if (filter == PremiumFeedFilter.ALL) dropDiscovery else emptyList(),
-            reelMixSeed
-        )
+        if (filter != PremiumFeedFilter.ALL) {
+            // Filters show only matching organic posts: no native ads or paid modules
+            // should be mixed into a Photos/Polls-only result.
+            filteredPosts.mapIndexed { index, post -> PremiumHomeRow.PostRow(post, index) }
+        } else {
+            buildPremiumHomeRows(
+                filteredPosts, rankedInlineReels, visiblePromotedFeed,
+                marketSponsoredFeed, dropDiscovery, reelMixSeed
+            )
+        }
     }
     val homeRowKeys = remember(homeRows) { homeRows.map(::premiumHomeRowKey) }
     // Avoid scanning every loaded row on each debounced scroll-position save.
@@ -1078,6 +1106,7 @@ private fun PremiumHomeFeed(
     // A successful page advances the cursor; refresh or restored connectivity
     // explicitly opens a new attempt.
     var lastRequestedPostCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    var filteredAutoPageAttempts by remember(laneResumeKey, filter) { mutableIntStateOf(0) }
     var lastRequestedReelCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(refreshRevision, isOnline) {
         lastRequestedPostCursor = null
@@ -1369,15 +1398,23 @@ private fun PremiumHomeFeed(
     }
     LaunchedEffect(
         nearEnd, hasMorePosts, hasMoreReels, isLoadingMorePosts,
-        isLoadingMoreReels, laneIndex, isOnline, postPageCursor, reelPageCursor
+        isLoadingMoreReels, laneIndex, isOnline, postPageCursor, reelPageCursor,
+        filter, filteredPosts.size, filteredAutoPageAttempts, paginationErrorMessage, isLoading
     ) {
-        if (!nearEnd || !isOnline) return@LaunchedEffect
+        // Find matching photo/poll posts in a bounded number of additional server
+        // pages. Do not hammer the backend on failure or run endless empty-page loops.
+        val needsFilteredDiscovery = filter != PremiumFeedFilter.ALL &&
+            filteredPosts.size < 3 && filteredAutoPageAttempts < 3 &&
+            paginationErrorMessage.isNullOrBlank()
+        if ((!nearEnd && !needsFilteredDiscovery) || !isOnline || isLoading) return@LaunchedEffect
         if (hasMorePosts && !isLoadingMorePosts &&
             shouldRequestFeedPage(postPageCursor, lastRequestedPostCursor)) {
+            if (needsFilteredDiscovery) filteredAutoPageAttempts++
             lastRequestedPostCursor = postPageCursor
             onLoadMorePosts()
         }
-        if (laneIndex == 0 && hasMoreReels && !isLoadingMoreReels &&
+        if (nearEnd && filter == PremiumFeedFilter.ALL &&
+            laneIndex == 0 && hasMoreReels && !isLoadingMoreReels &&
             shouldRequestFeedPage(reelPageCursor, lastRequestedReelCursor)) {
             lastRequestedReelCursor = reelPageCursor
             onLoadMoreReels()
@@ -1683,6 +1720,7 @@ private fun PremiumHomeFeed(
                                                 onDiscover = onSearchClick,
                                                 hasMorePosts = hasMorePosts,
                                                 isLoadingMorePosts = isLoadingMorePosts,
+                                                paginationErrorMessage = paginationErrorMessage,
                                                 onLoadMore = {
                                                     // Manually request the next unseen backend page even
                                                     // when the current filter hasn't produced a match.
@@ -1712,6 +1750,7 @@ private fun PremiumHomeFeed(
                                                 onDiscover = onSearchClick,
                                                 hasMorePosts = hasMorePosts,
                                                 isLoadingMorePosts = isLoadingMorePosts,
+                                                paginationErrorMessage = paginationErrorMessage,
                                                 onLoadMore = {
                                                     // Manually request the next unseen backend page even
                                                     // when the current filter hasn't produced a match.
@@ -1820,6 +1859,7 @@ private fun PremiumHomeFeed(
                                                 onShare = { onSharePost(post.id) },
                                                 onOptionsClick = { onOptionsClick(post) },
                                                 onProfileClick = onProfileClick,
+                                                onVotePoll = onVotePoll,
                                                 isAuthor = currentUserKey.isNotBlank() &&
                                                     post.authorUsername.trim().removePrefix("@").equals(currentUserKey, ignoreCase = true),
                                                 authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
@@ -1857,6 +1897,8 @@ private fun PremiumHomeFeed(
                                                     }
                                                 },
                                                 coinGiftingEnabled = true,
+                                                // Paid delivery accounting remains separate from the
+                                                // ordinary per-post content-view exposure coordinator.
                                                 trackExposure = isScreenActive,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
@@ -2437,6 +2479,7 @@ private fun PremiumEmptyFeed(
     onDiscover: () -> Unit,
     hasMorePosts: Boolean = false,
     isLoadingMorePosts: Boolean = false,
+    paginationErrorMessage: String? = null,
     onLoadMore: () -> Unit = {}
 ) {
     Column(
@@ -2488,8 +2531,19 @@ private fun PremiumEmptyFeed(
             }, color = MaterialTheme.colorScheme.primary)
         }
         if (isFiltered && hasMorePosts) {
+            if (!paginationErrorMessage.isNullOrBlank()) {
+                Text(
+                    paginationErrorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             TextButton(onClick = onLoadMore, enabled = !isLoadingMorePosts) {
-                Text(if (isLoadingMorePosts) "Loading…" else "Load more matching posts")
+                Text(
+                    if (isLoadingMorePosts) "Loading…"
+                    else if (!paginationErrorMessage.isNullOrBlank()) "Retry loading matching posts"
+                    else "Load more matching posts"
+                )
             }
         }
     }

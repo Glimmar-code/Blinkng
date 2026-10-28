@@ -56,6 +56,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -141,10 +144,13 @@ fun VideoReelsScreen(
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     isLoading: Boolean = false,
+    errorMessage: String? = null,
+    isServerConnected: Boolean = true,
     isRefreshing: Boolean = false,
     isRefreshingFollowing: Boolean = isRefreshing,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
+    onRetry: () -> Unit = onRefresh,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -196,7 +202,6 @@ fun VideoReelsScreen(
         val hasAnyReels = reels.isNotEmpty() || followingReels.isNotEmpty()
         val uiState = when {
             !hasAnyReels && isLoading -> ReelsUiState.Loading
-            !hasAnyReels -> ReelsUiState.Empty
             else -> ReelsUiState.Content
         }
 
@@ -206,8 +211,7 @@ fun VideoReelsScreen(
             label = "reelsUiState"
         ) { state ->
             when (state) {
-                ReelsUiState.Loading -> ReelsLoadingSkeleton()
-                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts, refreshSelected, activeRefreshing)
+                ReelsUiState.Loading -> ReelsLoadingSkeleton(isDark)
                 ReelsUiState.Content -> ReelsContent(
                     reels = reels,
                     followingReels = followingReels,
@@ -235,6 +239,9 @@ fun VideoReelsScreen(
                     isScreenActive = isScreenActive,
                     isRefreshing = activeRefreshing,
                     onRefreshSelected = refreshSelected,
+                    errorMessage = errorMessage,
+                    isServerConnected = isServerConnected,
+                    onRetry = onRetry,
                     onFirstPageChanged = { firstPageVisible = it },
                     onFollowingSelectionChanged = { followingSelected = it },
                     initialReelId = initialReelId,
@@ -264,7 +271,7 @@ fun VideoReelsScreen(
     }
 }
 
-private enum class ReelsUiState { Loading, Empty, Content }
+private enum class ReelsUiState { Loading, Content }
 
 private const val REELS_SPONSORED_INTERVAL = 7
 
@@ -278,11 +285,25 @@ private sealed interface ReelPagerItem {
     data class Sponsored(val slot: Int) : ReelPagerItem
 }
 
+/**
+ * "For You" preserves the recommendation service order supplied by the backend.
+ * "Reels" is the chronological discovery lane instead of silently duplicating
+ * For You. ISO-8601 dates compare lexicographically; unknown dates remain in
+ * their original relative order at the end.
+ */
 internal fun selectReelsForTab(
     reels: List<FeedPost>,
     followingReels: List<FeedPost>,
     selectedTab: String
-): List<FeedPost> = if (selectedTab == "Following") followingReels else reels
+): List<FeedPost> = when (selectedTab) {
+    "Following" -> followingReels
+    "Reels" -> reels.withIndex()
+        .sortedWith(
+            compareByDescending<IndexedValue<FeedPost>> { it.value.createdAt.trim() }
+                .thenBy { it.index }
+        ).map { it.value }
+    else -> reels // Server-ranked discovery, never fabricate local personalization.
+}
 
 // Keep only the active decoder and the next video warm. Recreating the previous
 // decoder on every swipe can triple hardware surface/memory pressure.
@@ -364,6 +385,9 @@ private fun ReelsContent(
     isScreenActive: Boolean,
     isRefreshing: Boolean,
     onRefreshSelected: () -> Unit,
+    errorMessage: String?,
+    isServerConnected: Boolean,
+    onRetry: () -> Unit,
     onFirstPageChanged: (Boolean) -> Unit,
     onFollowingSelectionChanged: (Boolean) -> Unit,
     initialReelId: String?,
@@ -383,7 +407,6 @@ private fun ReelsContent(
     onReelFullscreenChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    val refreshScope = rememberCoroutineScope()
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -402,7 +425,7 @@ private fun ReelsContent(
         // Only poll while Reels is active; database cohorts change at 00:00/12:00 UTC.
         while (true) {
             featuredReels = featuredService.fetch()
-            delay(60_000L)
+            delay(300_000L)
         }
     }
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
@@ -426,7 +449,13 @@ private fun ReelsContent(
     val activeReels = remember(selectedTab, reels, followingReels, featuredReels) {
         val source = selectReelsForTab(reels, followingReels, selectedTab)
         if (selectedTab == "Following") source
-        else (source + featuredReels.map { it.reel }).distinctBy { it.id }
+        else selectReelsForTab(
+            // Featured entries can arrive asynchronously. Re-sort Reels *after*
+            // merging them so a newer featured video does not appear last.
+            (source + featuredReels.map { it.reel }).distinctBy { it.id },
+            followingReels,
+            selectedTab
+        )
     }
     val activeHasMore = if (selectedTab == "Following") hasMoreFollowing else hasMore
     val activeIsLoadingMore = if (selectedTab == "Following") isLoadingMoreFollowing else isLoadingMore
@@ -474,11 +503,20 @@ private fun ReelsContent(
     // A deep-link is fulfilled once; a later refresh or pagination must not jump the
     // user back to the originally linked video.
     var unconsumedLaunchId by remember(initialReelId) { mutableStateOf(initialReelId) }
+    var launchLookupTimedOut by remember(initialReelId) { mutableStateOf(false) }
+    LaunchedEffect(unconsumedLaunchId) {
+        if (unconsumedLaunchId != null) {
+            launchLookupTimedOut = false
+            delay(8_000L)
+            if (unconsumedLaunchId != null) launchLookupTimedOut = true
+        }
+    }
     LaunchedEffect(unconsumedLaunchId, pagerItems) {
         val launchId = unconsumedLaunchId ?: return@LaunchedEffect
         val targetPage = reelPageIndex(pagerItems, launchId) ?: return@LaunchedEffect
         if (pager.currentPage != targetPage) pager.scrollToPage(targetPage)
         unconsumedLaunchId = null
+        launchLookupTimedOut = false
     }
 
     var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
@@ -490,7 +528,7 @@ private fun ReelsContent(
     LaunchedEffect(selectedTab) {
         if (!tabSelectionInitialized) {
             tabSelectionInitialized = true
-        } else if (pagerItems.isNotEmpty()) {
+        } else if (pagerItems.isNotEmpty() && unconsumedLaunchId == null) {
             pager.scrollToPage(0)
         }
     }
@@ -555,7 +593,12 @@ private fun ReelsContent(
     val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
     val latestReelFullscreenChange by rememberUpdatedState(onReelFullscreenChange)
     LaunchedEffect(initialReelId) {
-        if (!initialReelId.isNullOrBlank()) expanded = true
+        if (!initialReelId.isNullOrBlank()) {
+            // A saved Following selection cannot hide a Reel launched from a
+            // link or another screen: resolve links in the discovery source.
+            selectedTab = "Reels"
+            expanded = true
+        }
     }
     LaunchedEffect(expanded, isScreenActive) {
         latestReelFullscreenChange(expanded && isScreenActive)
@@ -584,8 +627,16 @@ private fun ReelsContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(if (isDark) Color(0xFF121214) else Color.White)) {
         val density = LocalDensity.current
         val viewportHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
-        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 292.dp)
-            .coerceAtMost(maxHeight * 0.48f)
+        // Header (56dp) + Stories (72dp) + tabs (52dp) + optional
+        // featured banner. On short viewports use a compact banner, or omit it
+        // to avoid placing an invisible control behind the video preview.
+        val compactViewport = maxHeight < 700.dp
+        val showFeatured = featuredReels.isNotEmpty() && maxHeight >= 560.dp
+        val featuredHeight = if (compactViewport) 100.dp else 144.dp
+        val chromeTop = (
+            WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                180.dp + (if (showFeatured) featuredHeight else 0.dp)
+        ).coerceAtMost(maxHeight * 0.52f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
         val progress = if (dragProgress.isFinite()) dragProgress.coerceIn(0f, 1f)
             else expansion.value.coerceIn(0f, 1f)
@@ -720,6 +771,20 @@ private fun ReelsContent(
                             fontSize = 12.sp
                         )
                     }
+                    if (!isServerConnected) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("You are offline. Reconnect and try again.", color = Color.White.copy(alpha = .85f), fontSize = 12.sp)
+                    } else if (!errorMessage.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(errorMessage, color = Color.White.copy(alpha = .85f), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { if (!isServerConnected || !errorMessage.isNullOrBlank()) onRetry() else onRefreshSelected() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Retry / refresh reels", color = Color.White)
+                    }
+                    TextButton(onClick = onCreateReelClick) { Text("Create a reel", color = Color.White) }
                 }
             }
         } else {
@@ -727,7 +792,7 @@ private fun ReelsContent(
             state = pager,
             key = { index ->
                 when (val item = pagerItems.getOrNull(index)) {
-                    is ReelPagerItem.ReelItem -> "reel:${item.sourceIndex}:${item.reel.id}"
+                    is ReelPagerItem.ReelItem -> "reel:${item.reel.id}"
                     is ReelPagerItem.Boosted -> "boosted_reel:${item.placement.campaignId}:${item.slot}"
                     is ReelPagerItem.Sponsored -> "sponsored:${item.slot}"
                     null -> "reel_missing:$index"
@@ -742,8 +807,8 @@ private fun ReelsContent(
                     val reel = item.reel
                     ReelPage(
                         reel = reel,
-                        isActive = isScreenActive && index == pager.currentPage,
-                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
+                        isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
+                        shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -765,7 +830,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = onOpenConnectHub,
+                        onSwipeToConnect = onOpenConnectHub,
                         isPreview = !expanded,
                         onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
@@ -799,8 +864,8 @@ private fun ReelsContent(
                     }
                     ReelPage(
                         reel = reel,
-                        isActive = isScreenActive && index == pager.currentPage,
-                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
+                        isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
+                        shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -821,7 +886,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = onOpenConnectHub,
+                        onSwipeToConnect = onOpenConnectHub,
                         isPreview = !expanded,
                         onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = 0L,
@@ -867,16 +932,18 @@ private fun ReelsContent(
                 onGame = onGameClick,
                 onNotifications = onNotificationsClick,
                 onMenu = onMenuClick,
-                featuredReels = featuredReels,
+                featuredReels = if (showFeatured) featuredReels else emptyList(),
+                featuredCardHeight = featuredHeight,
+                onRefresh = onRefreshSelected,
+                onCreateReel = onCreateReelClick,
+                isRefreshing = isRefreshing,
                 onFeaturedReelClick = { reelId ->
-                    refreshScope.launch {
-                        // Banner reels are present in the same vertical pager as feed reels.
-                        val targetPage = reelPageIndex(pagerItems, reelId)
-                        if (targetPage != null) {
-                            pager.scrollToPage(targetPage)
-                            expanded = true
-                        }
-                    }
+                    // Featured videos must open from every tab, including Following.
+                    // Let the keyed launch effect find the real page *after* tab content changes.
+                    selectedTab = "Reels"
+                    unconsumedLaunchId = reelId
+                    launchLookupTimedOut = false
+                    expanded = true
                 },
                 autoSlideEnabled = isScreenActive && !isInteractionOverlayOpen,
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
@@ -888,7 +955,86 @@ private fun ReelsContent(
             )
         }
 
+        if (expanded && unconsumedLaunchId != null) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center).padding(20.dp),
+                color = Color.Black.copy(alpha = .9f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (!launchLookupTimedOut) CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (launchLookupTimedOut) "This reel is not available yet" else "Opening reel...",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (launchLookupTimedOut) {
+                        TextButton(onClick = onRefreshSelected) { Text("Try refreshing", color = Color.White) }
+                        TextButton(onClick = {
+                            unconsumedLaunchId = null
+                            expanded = false
+                        }) { Text("Browse other reels", color = Color.White) }
+                    }
+                }
+            }
+        }
+
         if (expanded) {
+        // An explicit top-edge drag handle allows collapsing *any* Reel without
+        // stealing the vertical pager's previous/next-video swipe gesture.
+        Box(
+            modifier = Modifier.align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .width(116.dp).height(48.dp)
+                .pointerInput(isInteractionOverlayOpen, viewportHeightPx) {
+                    if (!isInteractionOverlayOpen) {
+                        var downDistance = 0f
+                        var handleVelocity = VelocityTracker()
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                downDistance = 0f
+                                handleVelocity = VelocityTracker()
+                                dragProgress = expansion.value.coerceIn(0f, 1f)
+                            },
+                            onVerticalDrag = { change, delta ->
+                                change.consume()
+                                downDistance += delta
+                                handleVelocity.addPosition(change.uptimeMillis, change.position)
+                                dragProgress = ReelExpansionMotion.progressAfterDrag(
+                                    dragProgress, delta, viewportHeightPx
+                                )
+                            },
+                            onDragEnd = {
+                                val collapse = downDistance > 0f &&
+                                    ReelExpansionMotion.shouldCompleteFastSwipe(
+                                        dragDistancePx = downDistance,
+                                        releaseVelocityPxPerSecond = handleVelocity.calculateVelocity().y,
+                                        minimumDistancePx = 28.dp.toPx(),
+                                        velocityThresholdPxPerSecond = 1100.dp.toPx()
+                                    )
+                                settleExpansion(!collapse)
+                            },
+                            onDragCancel = { settleExpansion(true) }
+                        )
+                    }
+                },
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Box(
+                Modifier.padding(top = 13.dp).width(34.dp).height(4.dp)
+                    .clip(CircleShape).background(Color.White.copy(alpha = .8f))
+                    .semantics { contentDescription = "Drag down quickly to return to Reels preview" }
+            )
+        }
+
         // Preview tabs and header disappear completely in immersive fullscreen.
         IconButton(
             onClick = { expanded = false },
@@ -911,7 +1057,7 @@ private fun ReelsContent(
         }
 
         AnimatedVisibility(
-            visible = isLoadingMore,
+            visible = activeIsLoadingMore,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier
@@ -974,60 +1120,85 @@ private fun ReelsTopTabs(
 }
 
 @Composable
-private fun ReelsLoadingSkeleton() {
+private fun ReelsLoadingSkeleton(isDark: Boolean) {
+    val surface = if (isDark) Color(0xFF121214) else Color.White
     val base = Color(BlinkDesignTokens.Dark.Surface)
     val highlight = Color(BlinkDesignTokens.Dark.SurfaceHighest)
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .shimmerBackground(RoundedCornerShape(0.dp), base, highlight)
-        )
+    // Match the non-fullscreen Reels layout while content loads: no jump from a
+    // full-bleed skeleton to a framed preview when the first response arrives.
+    Column(
+        Modifier.fillMaxSize().background(surface).statusBarsPadding()
+    ) {
         Row(
-            Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 10.dp),
+            Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.width(58.dp).height(13.dp).shimmerBackground(RoundedCornerShape(6.dp), base, highlight))
-            Spacer(Modifier.width(20.dp))
-            Box(Modifier.width(48.dp).height(15.dp).shimmerBackground(RoundedCornerShape(6.dp), base, highlight))
+            Box(Modifier.size(36.dp).shimmerBackground(CircleShape, base, highlight))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "BLINK",
+                color = if (isDark) Color.White else Color.Black,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(Modifier.weight(1f))
+            repeat(3) {
+                Box(Modifier.size(32.dp).shimmerBackground(CircleShape, base, highlight))
+                Spacer(Modifier.width(10.dp))
+            }
         }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 16.dp, end = 100.dp, bottom = 30.dp)
+        Row(
+            Modifier.fillMaxWidth().height(72.dp)
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.width(112.dp).height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
-            Spacer(Modifier.height(10.dp))
-            Box(Modifier.fillMaxWidth(.82f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
-            Spacer(Modifier.height(7.dp))
-            Box(Modifier.fillMaxWidth(.58f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
-        }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 12.dp, bottom = 34.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(Modifier.size(52.dp).shimmerBackground(CircleShape, base, highlight))
-            Spacer(Modifier.height(20.dp))
             repeat(4) {
                 Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
-                Spacer(Modifier.height(18.dp))
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            repeat(3) {
+                Box(
+                    Modifier.width(64.dp).height(14.dp)
+                        .shimmerBackground(RoundedCornerShape(7.dp), base, highlight)
+                )
             }
         }
         Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(base)
-        )
+            Modifier.weight(1f).fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, bottom = 92.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.Black)
+        ) {
+            Column(
+                Modifier.align(Alignment.BottomStart)
+                    .padding(start = 16.dp, end = 100.dp, bottom = 35.dp)
+            ) {
+                Box(Modifier.width(125.dp).height(15.dp)
+                    .shimmerBackground(RoundedCornerShape(7.dp), base, highlight))
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.fillMaxWidth().height(12.dp)
+                    .shimmerBackground(RoundedCornerShape(7.dp), base, highlight))
+                Spacer(Modifier.height(7.dp))
+                Box(Modifier.fillMaxWidth(.65f).height(12.dp)
+                    .shimmerBackground(RoundedCornerShape(7.dp), base, highlight))
+            }
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 42.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                repeat(4) {
+                    Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        }
     }
 }
 
@@ -1098,7 +1269,7 @@ private fun ReelPage(
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenConnectHub: () -> Unit,
     onSwipeToHome: () -> Unit,
-    onSwipeToProfile: () -> Unit,
+    onSwipeToConnect: () -> Unit,
     initialPositionMs: Long,
     onInitialPositionConsumed: () -> Unit,
     isPreview: Boolean = false,
@@ -1196,16 +1367,18 @@ private fun ReelPage(
                         }
                     },
                     onDoubleTap = {
-                        if (!reel.isLiked) onLike(reel.id)
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        burstTrigger++
+                        if (isActive && !isInteractionOverlayOpen) {
+                            if (!reel.isLiked) onLike(reel.id)
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            burstTrigger++
+                        }
                     },
                     onTap = {
                         if (isPreview) {
                             // Tapping the preview opens the SAME mounted reel
                             // into fullscreen; it must not toggle pause first.
                             if (isActive && !isInteractionOverlayOpen) onExpandPreview()
-                        } else {
+                        } else if (isActive && !isInteractionOverlayOpen) {
                             isPausedByUser = !isPausedByUser
                             showPlaybackHint = true
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1218,16 +1391,28 @@ private fun ReelPage(
                 // rather than this child consuming it and jumping on release.
                 if (!isActive || isPreview) return@pointerInput
                 val swipeThreshold = 84.dp.toPx()
+                var swipeVelocity = VelocityTracker()
                 detectHorizontalDragGestures(
-                    onDragStart = { horizontalDrag = 0f },
+                    onDragStart = {
+                        horizontalDrag = 0f
+                        swipeVelocity = VelocityTracker()
+                    },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume() // prevent shell from handling this swipe twice
                         horizontalDrag += dragAmount
+                        swipeVelocity.addPosition(change.uptimeMillis, change.position)
                     },
                     onDragEnd = {
-                        when {
-                            horizontalDrag >= swipeThreshold -> onSwipeToHome()
-                            horizontalDrag <= -swipeThreshold -> onSwipeToProfile()
+                        val gestureVelocity = swipeVelocity.calculateVelocity().x
+                        val intentionalSwipe = ReelExpansionMotion.shouldCompleteFastSwipe(
+                            dragDistancePx = horizontalDrag,
+                            releaseVelocityPxPerSecond = gestureVelocity,
+                            minimumDistancePx = swipeThreshold,
+                            velocityThresholdPxPerSecond = 900.dp.toPx()
+                        )
+                        if (intentionalSwipe) {
+                            if (horizontalDrag > 0f) onSwipeToHome()
+                            else onSwipeToConnect()
                         }
                         horizontalDrag = 0f
                     },
@@ -1839,7 +2024,7 @@ private fun VideoProgressBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(48.dp)
             .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
             .pointerInput(widthPx) {
                 detectDragGestures(
@@ -1853,7 +2038,14 @@ private fun VideoProgressBar(
             .pointerInput(widthPx) {
                 detectTapGestures { seekAt(it.x) }
             }
-            .semantics { contentDescription = "Video seek bar. Tap or drag to seek." },
+            .semantics {
+                contentDescription = "Video seek bar. Tap, drag or adjust to seek."
+                progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                setProgress { target ->
+                    latestOnSeek(target.coerceIn(0f, 1f))
+                    true
+                }
+            },
         contentAlignment = Alignment.CenterStart
     ) {
         Box(
@@ -1983,7 +2175,7 @@ internal fun InlineReelPreviewCard(
         Box(Modifier.fillMaxSize()) {
             ReelPreview(reel)
 
-            if (url.isNotBlank() && (isActive || shouldPreload || previewFinished)) {
+            if (url.isNotBlank() && (isActive || shouldPreload) && !previewFinished) {
                 ReelVideo(
                     url = url,
                     isActive = isActive && !previewFinished,
@@ -2174,7 +2366,6 @@ private fun ReelVideo(
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
-    var previousPositionMs by remember(url) { mutableLongStateOf(0L) }
     var completed by remember(url) { mutableStateOf(false) }
     var rewatched by remember(url) { mutableStateOf(false) }
     var autoRetryCount by remember(url) { mutableIntStateOf(0) }
@@ -2210,6 +2401,7 @@ private fun ReelVideo(
                 addListener(object : Player.Listener {
                     override fun onPlayerError(e: PlaybackException) {
                         error = e.errorCodeName
+                        currentOnBufferingChange(false)
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -2218,7 +2410,6 @@ private fun ReelVideo(
 
                     override fun onPlaybackStateChanged(state: Int) {
                         currentOnBufferingChange(state == Player.STATE_BUFFERING)
-                        if (state == Player.STATE_ENDED) completed = true
                     }
                 })
                 setMediaItem(MediaItem.fromUri(url))
@@ -2242,7 +2433,6 @@ private fun ReelVideo(
         watchedMs = 0L
         completed = false
         rewatched = false
-        previousPositionMs = player.currentPosition.coerceAtLeast(0L)
         sessionWasActive = false
     }
 
@@ -2288,7 +2478,7 @@ private fun ReelVideo(
     }
 
     LaunchedEffect(error, playbackAllowed, player) {
-        if (error != null && playbackAllowed && autoRetryCount < 2) {
+        if (shouldAutomaticallyRetryReel(error) && playbackAllowed && autoRetryCount < 2) {
             delay(600L * (autoRetryCount + 1))
             autoRetryCount += 1
             error = null
@@ -2313,19 +2503,15 @@ private fun ReelVideo(
                 knownDurationMs = duration
                 currentOnProgressChange((position.toFloat() / duration.toFloat()).coerceIn(0f, 1f))
 
-                if (position >= (duration * 95L / 100L) || watchedMs >= (duration * 90L / 100L)) {
+                // Seeking close to the end or backwards is not a completed watch.
+                if (qualifiedReelCompletion(watchedMs, duration)) {
                     completed = true
-                }
-                if (previousPositionMs > (duration * 80L / 100L) && position < (duration * 20L / 100L)) {
-                    completed = true
-                    rewatched = true
                 }
                 if (watchedMs >= (duration * 105L / 100L)) {
                     rewatched = true
                 }
             }
-            previousPositionMs = position
-            delay(100)
+            delay(200) // Avoid unnecessary progress recompositions while playing.
         }
     }
 
@@ -2363,7 +2549,13 @@ private fun ReelVideo(
         )
         if (error != null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Unable to play this reel", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(
+                    reelPlaybackErrorMessage(error),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
                 TextButton(onClick = {
                     autoRetryCount = 0
                     error = null
