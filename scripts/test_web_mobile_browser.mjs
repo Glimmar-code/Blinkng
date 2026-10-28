@@ -61,7 +61,7 @@ try {
       assert.ok(await page.locator('.br-brand img[src$="blink-logo-v2.png"]').isVisible(),'Approved BLINK logo missing');
       assert.ok(await page.locator('.br-header-download').isVisible(),'Header APK download missing');
       assert.equal(await page.locator('a[href*="play.google.com"]').count(),0,'Play Store CTA must not appear');
-      if(!mobile){
+      if(width>800){
         assert.ok(await page.locator('.br-nav').isVisible(),'Desktop marketing navigation missing');
       }
       await page.getByRole('button',{name:/Read more about BLINK/}).click();
