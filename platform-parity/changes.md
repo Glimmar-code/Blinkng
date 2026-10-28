@@ -6,6 +6,15 @@
 - OS-only differences: Android Firebase channels, Android 15 permissions and touch swipes do not directly apply to Windows.
 - **Not yet release-verified:** CI, Windows packaging, Android emulator, real Firebase/device push and hosted Supabase integration. Keep main unchanged until verification.
 
+## 2026-10-27 — Algorithm integrity Testlab (not production-approved)
+
+- **Shared backend contract (Android + Windows):** Revoke BLINK-owner overrides that bypass block/mute/Following rules and the effectively unbounded Feed score; filter private creators from other viewers' ranked discovery. Both clients call the same server-side Feed and wallet contract.
+- **Content views:** Suppress repeated server-side view events within 60 seconds per viewer and content, preserving the existing normal/Blue/Gold weighting. This is abuse throttling, **not** proof of a full 60-second dwell; a separate qualified-watch session protocol remains necessary.
+- **Reels:** Restore missing server-side session and aggregation RPCs used by Android, ignore client-supplied completion/rewatch booleans, and limit rapid per-viewer repeated samples. The Windows client must also use the same RPC if it reports Reel viewing events; no Windows-only award logic is introduced.
+- **Rewards:** Only a Google-signed AdMob SSV event can settle rewarded coins. The Edge worker invokes the server-only settle RPC; Android's existing pending-claim retry behavior is retained. No cash price, milestones, existing balance, verification or HP progression changes.
+- **Validation:** Draft Testlab branch only until PostgreSQL runtime tests, backend/Edge integration, Android and Windows parity checks and release gates pass.
+- **Main reconciliation:** Branch includes the latest reviewed main baseline (03d62c17) without replacing the concurrent Feed, UI, or desktop fixes. New merged-tree SHA must pass its own complete CI checks. The live database was read-only during this work. Rollback requires restoring backed-up RPC definitions and handling pending signed callbacks without dropping credited ledger rows.
+
 ## 2026-10-27 — Reels eight-point completion repairs (Testlab, final head verification required)
 
 - **Discovery tabs:** `Reels` now presents latest-first content by canonical `FeedPost.createdAt`; `For You` retains the backend's supplied recommendation order, and `Following` remains restricted to the followed source. This is a client-side presentation distinction, not a fabricated personalized model or a new backend RPC.
