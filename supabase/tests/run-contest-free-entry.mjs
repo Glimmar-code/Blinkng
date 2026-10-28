@@ -157,6 +157,18 @@ try {
   assert.equal(details.leaderboard[0].votes, 1);
   assert.equal(details.my_rank, 1);
   assert.equal(details.total_ranked, 2);
+
+  // Rank movement comes from a persisted baseline. No baseline => no arrows.
+  const baseline=(await q('select entry_id,rank from public.blink_contest_rank_baselines where contest_id=$1',
+    [id])).rows;
+  assert.equal(baseline.length,2);
+  await q('update public.blink_contest_rank_baselines set rank=2 where entry_id=$1',
+    [first.entry_id]);
+  const moved=json((await rpc('get_blink_contest','$1::uuid',[id])).rows[0].result);
+  assert.equal(moved.leaderboard[0].rank_delta,1);
+  assert.equal(moved.my_rank_delta,1);
+  await q('update public.blink_contest_rank_baselines set rank=1 where entry_id=$1',
+    [first.entry_id]);
   const voteRow=(await q('select id from public.blink_contest_votes where voter_id=$1',[voter])).rows[0].id;
   await setUser(admin);
   const stats1=json((await rpc('admin_blink_contest_insights','$1::uuid',[id])).rows[0].result);
