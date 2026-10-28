@@ -52,6 +52,7 @@ fun BlinkPostMentionSuggestions(
     val token = remember(text) { BlinkMentionTokenPolicy.active(text) }
     var candidates by remember(token?.query) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var loading by remember(token?.query) { mutableStateOf(false) }
+    var hasSearched by remember(token?.query) { mutableStateOf(false) }
     var visibleCount by remember(token?.query) { mutableIntStateOf(7) }
     var hasMoreServer by remember(token?.query) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -70,6 +71,7 @@ fun BlinkPostMentionSuggestions(
             hasMoreServer = false
         } finally {
             loading = false
+            hasSearched = true
         }
     }
 
@@ -78,7 +80,22 @@ fun BlinkPostMentionSuggestions(
         candidates, token.query,
         username = { it.username }, displayName = { it.fullName }
     )
-    if (ranked.isEmpty()) return
+    if (ranked.isEmpty()) {
+        if (loading || hasSearched) {
+            Surface(
+                modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+            ) {
+                Text(
+                    if (loading) "Finding students..." else "No matching student accounts",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
+        return
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
