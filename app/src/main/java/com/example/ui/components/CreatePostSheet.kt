@@ -262,6 +262,7 @@ fun CreatePostSheet(
     var showCreateLanding by rememberSaveable { mutableStateOf(!startInReelMode) }
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
+    var useClassicComposer by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -871,8 +872,11 @@ fun CreatePostSheet(
         onDismissRequest = ::requestDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
-            colorScheme = darkColorScheme(
+            colorScheme = if (useClassicComposer && selectedVideo == null && mode != "reel") {
+                outerScheme
+            } else darkColorScheme(
                     primary = Color.White,
                     onPrimary = Color.Black,
                     background = Color.Black,
@@ -885,7 +889,8 @@ fun CreatePostSheet(
         ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color.Black
+            color = if (useClassicComposer && selectedVideo == null && mode != "reel")
+                outerScheme.background else Color.Black
         ) {
         Column(
             modifier = Modifier
@@ -920,6 +925,10 @@ fun CreatePostSheet(
                         mode = "post"
                         showCreateLanding = false
                     },
+                    onClassic = {
+                        useClassicComposer = true
+                        showCreateLanding = false
+                    },
                     onDraft = { restoreDraft(it) }
                 )
             } else if (showPublishOptions) {
@@ -951,9 +960,12 @@ fun CreatePostSheet(
                 else canSubmit,
                 isReel = selectedVideo != null || mode == "reel",
                 isEditingReel = isEditingReel,
+                referenceFlow = !useClassicComposer,
                 onDismiss = ::requestDismiss,
                 onSubmit = {
-                    if (isEditingReel) reelEditorStage = false else showPublishOptions = true
+                    if (isEditingReel) reelEditorStage = false
+                    else if (useClassicComposer) submit()
+                    else showPublishOptions = true
                 }
             )
 
@@ -1350,6 +1362,7 @@ fun CreatePostSheet(
                     )
                 }
 
+                if (!useClassicComposer) {
                 BlinkReferenceComposerToolbar(
                     enabled = !isSubmitting,
                     onPhoto = {
@@ -1381,7 +1394,8 @@ fun CreatePostSheet(
                     enabled = !isSubmitting,
                     modifier = Modifier.padding(start = 8.dp)
                 ) { Text(if (showLegacyPostActions) "Hide more tools" else "More tools") }
-                if (showLegacyPostActions) {
+                }
+                if (useClassicComposer || showLegacyPostActions) {
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
@@ -2211,6 +2225,7 @@ private fun ComposerTopBar(
     canSubmit: Boolean,
     isReel: Boolean,
     isEditingReel: Boolean,
+    referenceFlow: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit
 ) {
@@ -2232,16 +2247,16 @@ private fun ComposerTopBar(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = 6.dp),
-            textAlign = TextAlign.Center
+            textAlign = if (referenceFlow) TextAlign.Center else TextAlign.Start
         )
 
         Button(
             onClick = onSubmit,
             enabled = canSubmit,
-            colors = ButtonDefaults.buttonColors(
+            colors = if (referenceFlow) ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF5245F2),
                 contentColor = Color.White
-            )
+            ) else ButtonDefaults.buttonColors()
         ) {
             if (isSubmitting) {
                 if (uploadProgress != null) {
@@ -2255,7 +2270,10 @@ private fun ComposerTopBar(
                     )
                 }
             } else {
-                Text("Next")
+                Text(
+                    if (referenceFlow || isEditingReel) "Next"
+                    else if (isReel) "Publish Reel" else "Post"
+                )
             }
         }
     }
