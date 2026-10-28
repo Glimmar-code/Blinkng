@@ -61,7 +61,7 @@ for(const marker of [
 assert.ok(home.landing.innerHTML.includes(apk),'Official APK alias must remain');
 assert.ok(!/play\.google\.com|Google Play|Play Store/.test(home.landing.innerHTML),'No Play Store marketing before store release');
 home.landing.onClick({
-  target: {closest: () => ({dataset:{reveal:''}})},
+  target: {closest: selector => selector==='[data-reveal]' ? ({dataset:{reveal:''}}) : null},
   preventDefault() {}
 });
 assert.equal(home.details.open,true,'Read more button must reveal existing SEO detail');
