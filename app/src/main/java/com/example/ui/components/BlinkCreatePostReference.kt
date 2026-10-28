@@ -265,6 +265,7 @@ internal fun BlinkCreatePostPublishOptions(
     onPreview: () -> Unit,
     onShareCaption: () -> Unit,
     isSubmitting: Boolean,
+    canPublish: Boolean,
     uploadProgress: Int?
 ) {
     Column(
@@ -283,7 +284,7 @@ internal fun BlinkCreatePostPublishOptions(
                 modifier = Modifier.align(Alignment.Center))
         }
         Button(
-            onClick = onPost, enabled = !isSubmitting, modifier = Modifier.fillMaxWidth().height(52.dp),
+            onClick = onPost, enabled = canPublish && !isSubmitting, modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(13.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4D45ED),
                 contentColor = Color.White)
@@ -295,6 +296,9 @@ internal fun BlinkCreatePostPublishOptions(
                 } else "Post Now",
                 fontWeight = FontWeight.Bold
             )
+        }
+        if (!canPublish && !isSubmitting) {
+            Text("Review your post details before publishing.", color = Color(0xFFFFC7C7), fontSize = 12.sp)
         }
         OutlinedButton(
             onClick = onSaveDraft, enabled = !isSubmitting,
@@ -314,11 +318,11 @@ internal fun BlinkCreatePostPublishOptions(
         Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold)
         BlinkPostMenuRow(
             title = "WhatsApp / other apps",
-            detail = "Share your caption using your device",
+            detail = "Share selected media and caption using your device",
             icon = Icons.Default.Share, onClick = onShareCaption
         )
         Text(
-            "A BLINK post link can be shared after publication. Sharing your caption does not publish your post.",
+            "A BLINK post link can be shared after publication. Sharing media here does not publish your post.",
             fontSize = 12.sp, color = Color(0xFFAAB1BE)
         )
     }
