@@ -1,3 +1,11 @@
+## 2026-10-27 — Notification reliability Testlab PR #622
+
+- Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.
+- Android repairs canonical announcement routing, duplicate navigation, notification-only refresh, history pagination, cross-account preference storage and compact card readability.
+- Windows now uses the shared event-matching policy for canonical/legacy notification merging.
+- OS-only differences: Android Firebase channels, Android 15 permissions and touch swipes do not directly apply to Windows.
+- **Not yet release-verified:** CI, Windows packaging, Android emulator, real Firebase/device push and hosted Supabase integration. Keep main unchanged until verification.
+
 ## 2026-10-27 — Algorithm integrity Testlab (not production-approved)
 
 - **Shared backend contract (Android + Windows):** Revoke BLINK-owner overrides that bypass block/mute/Following rules and the effectively unbounded Feed score; filter private creators from other viewers' ranked discovery. Both clients call the same server-side Feed and wallet contract.

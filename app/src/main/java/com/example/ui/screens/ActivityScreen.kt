@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +67,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -108,17 +111,20 @@ fun ActivityScreen(
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRefresh: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
     onMarkAllRead: () -> Unit = {},
     onToggleRead: (ActivityItem) -> Unit = {},
     accountId: String = "",
 ) {
-    var filter by remember { mutableStateOf(NotificationCategory.ALL) }
-    var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
-    var newestFirst by remember { mutableStateOf(true) }
-    var searchVisible by remember { mutableStateOf(false) }
+    var filter by remember(accountId) { mutableStateOf(NotificationCategory.ALL) }
+    var viewMode by remember(accountId) { mutableStateOf(NotificationViewMode.ALL) }
+    var newestFirst by remember(accountId) { mutableStateOf(true) }
+    var searchVisible by remember(accountId) { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    var showSavedUpdates by remember { mutableStateOf(false) }
+    var searchQuery by remember(accountId) { mutableStateOf("") }
+    var showSavedUpdates by remember(accountId) { mutableStateOf(false) }
     val context = LocalContext.current
     var savedUpdates by remember(accountId) {
         mutableStateOf(BlinkOfflineAnnouncementCache.read(context, accountId))
@@ -130,8 +136,8 @@ fun ActivityScreen(
     val profileService = remember { SupabaseService() }
     val announcementService = remember { AdminAnnouncementService() }
     val scope = rememberCoroutineScope()
-    var actorProfiles by remember { mutableStateOf<Map<String, UserProfile>>(emptyMap()) }
-    var selectedAdminMessage by remember { mutableStateOf<AdminAnnouncementDetail?>(null) }
+    var actorProfiles by remember(accountId) { mutableStateOf<Map<String, UserProfile>>(emptyMap()) }
+    var selectedAdminMessage by remember(accountId) { mutableStateOf<AdminAnnouncementDetail?>(null) }
     var adminMessageLoading by remember { mutableStateOf(false) }
     var adminMessageError by remember { mutableStateOf<String?>(null) }
 
@@ -145,7 +151,7 @@ fun ActivityScreen(
 
     // Activity rows store actor_id for integrity. Resolve those IDs to public profile
     // details only while this screen is visible so UUIDs are never rendered to people.
-    LaunchedEffect(activities, isConnected) {
+    LaunchedEffect(accountId, activities, isConnected) {
         if (!isConnected || activities.isEmpty()) return@LaunchedEffect
 
         val actors = activities
@@ -172,7 +178,7 @@ fun ActivityScreen(
     }
 
     val timelineActivities = remember(activities) {
-        activities.filterNot { it.targetType.equals("CHAT", ignoreCase = true) }
+        activities.filter { com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) }
     }
     val unread = timelineActivities.count { it.isUnread }
     val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
@@ -204,8 +210,19 @@ fun ActivityScreen(
         if (newestFirst) filtered.sortedByDescending { it.rawTimestamp }
         else filtered.sortedBy { it.rawTimestamp }
     }
-    val sections = remember(sortedNotifications, viewMode) {
-        buildNotificationSections(sortedNotifications, viewMode)
+    val sections = remember(sortedNotifications, viewMode, newestFirst) {
+        buildNotificationSections(sortedNotifications, viewMode, newestFirst)
+    }
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, hasMore, isLoadingMore, showSavedUpdates, isLoading, sortedNotifications.size) {
+        if (!showSavedUpdates && !isLoading && hasMore && !isLoadingMore && sortedNotifications.isNotEmpty()) {
+            snapshotFlow {
+                val info = listState.layoutInfo
+                (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
+            }.distinctUntilChanged().collect { (lastVisible, total) ->
+                if (total > 0 && lastVisible >= total - 5) onLoadMore()
+            }
+        }
     }
 
     Scaffold(
@@ -422,13 +439,28 @@ fun ActivityScreen(
                     onRefresh = onRefresh
                 )
 
-                filtered.isEmpty() -> NotificationEmptyState(
-                    filter = filter,
-                    viewMode = viewMode,
-                    hasSearch = searchQuery.isNotBlank()
-                )
+                filtered.isEmpty() -> Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    NotificationEmptyState(
+                        filter = filter,
+                        viewMode = viewMode,
+                        hasSearch = searchQuery.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (hasMore && !isLoadingMore && isConnected) {
+                        TextButton(onClick = onLoadMore) { Text("Search older notifications") }
+                    } else if (isLoadingMore) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(12.dp).size(22.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
 
                 else -> LazyColumn(
+                    state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     sections.forEach { section ->
@@ -445,19 +477,34 @@ fun ActivityScreen(
                                     profile = actorProfiles[item.user],
                                     onProfileClick = onProfileClick,
                                     onNotificationClick = { tapped ->
-                                        if (!tapped.targetType.equals("notification", ignoreCase = true)) {
+                                        if (!tapped.targetType.equals("notification", ignoreCase = true) &&
+                                            !tapped.targetType.equals("system", ignoreCase = true)) {
                                             onNotificationClick(tapped)
                                         } else if (!adminMessageLoading) {
                                             scope.launch {
                                                 adminMessageLoading = true
                                                 adminMessageError = null
-                                                announcementService.fetchForActivity(tapped.id)
-                                                    .onSuccess { detail ->
+                                                (if (tapped.targetType.equals("system", true)) {
+                                                    Result.success<AdminAnnouncementDetail?>(null)
+                                                } else {
+                                                    announcementService.fetchForActivity(tapped.id)
+                                                }).onSuccess { detail ->
                                                         if (detail != null) {
                                                             selectedAdminMessage = detail
-                                                            onRefresh()
+                                                            if (tapped.isUnread) onToggleRead(tapped)
                                                         } else {
-                                                            onNotificationClick(tapped)
+                                                            // Ordinary notices may not belong to admin campaigns.
+                                                            selectedAdminMessage = AdminAnnouncementDetail(
+                                                                activityId = tapped.id,
+                                                                notificationId = tapped.id.removePrefix("notification:"),
+                                                                campaignId = "",
+                                                                topic = tapped.action,
+                                                                subtopic = "",
+                                                                message = tapped.previewText.orEmpty().ifBlank { tapped.action },
+                                                                senderName = "BLINK",
+                                                                createdAt = tapped.rawTimestamp
+                                                            )
+                                                            if (tapped.isUnread) onToggleRead(tapped)
                                                         }
                                                     }
                                                     .onFailure {
@@ -475,6 +522,20 @@ fun ActivityScreen(
                             item(key = "caught_up_${section.title}") {
                                 CaughtUpDivider()
                             }
+                        }
+                    }
+                    if (isLoadingMore) {
+                        item(key = "older_loading") {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    } else if (hasMore) {
+                        item(key = "older_more") {
+                            TextButton(
+                                onClick = onLoadMore,
+                                modifier = Modifier.fillMaxWidth().padding(8.dp)
+                            ) { Text("Load older notifications") }
                         }
                     }
                 }
@@ -671,7 +732,8 @@ private fun NotificationLoadError(message: String, onRefresh: () -> Unit) {
 private fun NotificationEmptyState(
     filter: NotificationCategory,
     viewMode: NotificationViewMode,
-    hasSearch: Boolean
+    hasSearch: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val title = when {
         hasSearch -> "No matching notifications"
@@ -702,7 +764,7 @@ private fun NotificationEmptyState(
         else -> "Likes, comments, follows and profile activity will appear here."
     }
 
-    Box(Modifier.fillMaxSize(), Alignment.Center) {
+    Box(modifier.fillMaxSize(), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
                 shape = CircleShape,
@@ -823,7 +885,8 @@ private fun NotificationCard(
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit
 ) {
-    val isOfficial = item.targetType.equals("notification", ignoreCase = true)
+    val isOfficial = item.targetType.equals("notification", ignoreCase = true) ||
+        item.targetType.equals("system", ignoreCase = true)
     val safeAction = item.action.takeUnless {
         it.isBlank() || it.trim().equals("null", ignoreCase = true)
     } ?: "New activity"
@@ -925,7 +988,7 @@ private fun NotificationCard(
                         displayName,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        fontSize = 13.5.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .weight(1f, fill = false)
@@ -949,7 +1012,7 @@ private fun NotificationCard(
                             Text(
                                 "OFFICIAL",
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                                fontSize = 8.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = accent
                             )
@@ -961,9 +1024,9 @@ private fun NotificationCard(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     safeAction,
-                    maxLines = 4,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -984,7 +1047,7 @@ private fun NotificationCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         item.time,
-                        fontSize = 10.5.sp,
+                        fontSize = 11.5.sp,
                         color = if (item.isUnread) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal
                     )
@@ -1005,9 +1068,11 @@ private fun NotificationCard(
 
 private fun buildNotificationSections(
     items: List<ActivityItem>,
-    viewMode: NotificationViewMode
+    viewMode: NotificationViewMode,
+    newestFirst: Boolean
 ): List<NotificationSection> {
     if (items.isEmpty()) return emptyList()
+    if (!newestFirst) return listOf(NotificationSection("Oldest first", items))
 
     if (viewMode == NotificationViewMode.UNREAD) {
         return listOf(NotificationSection("New", items))
@@ -1083,7 +1148,8 @@ private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter
 private fun notificationIcon(item: ActivityItem): ImageVector {
     val action = item.action.lowercase()
     return when {
-        item.targetType.equals("notification", ignoreCase = true) -> Icons.Default.Campaign
+        item.targetType.equals("notification", ignoreCase = true) ||
+            item.targetType.equals("system", ignoreCase = true) -> Icons.Default.Campaign
         item.targetType.equals("market", ignoreCase = true) || action.contains("market") -> Icons.Default.Storefront
         action.contains("mention") -> Icons.Default.AlternateEmail
         action.contains("reply") -> Icons.Default.Reply
@@ -1101,7 +1167,8 @@ private fun notificationIcon(item: ActivityItem): ImageVector {
 private fun resolvedNotificationCategory(item: ActivityItem): NotificationCategory {
     val action = item.action.lowercase()
     return when {
-        item.targetType.equals("notification", ignoreCase = true) -> NotificationCategory.BLINK
+        item.targetType.equals("notification", ignoreCase = true) ||
+            item.targetType.equals("system", ignoreCase = true) -> NotificationCategory.BLINK
         item.targetType.equals("reel", ignoreCase = true) || action.contains("reel") -> NotificationCategory.REELS
         item.targetType.equals("story", ignoreCase = true) || action.contains("story") -> NotificationCategory.STORIES
         action.contains("coin") || action.contains("reward") || action.contains("rank point") -> NotificationCategory.REWARDS
