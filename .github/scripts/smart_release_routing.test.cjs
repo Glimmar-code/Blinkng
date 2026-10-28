@@ -31,7 +31,11 @@ test('Remote-only and documentation edits do not trigger APK builds', () => {
   for (const path of excludedRemote) assert.ok(!paths.includes(path), 'Unexpected APK trigger: ' + path);
 });
 test('Signed releases only originate from approved main history', () => {
-  assert.match(signed, /git merge-base --is-ancestor "\$GITHUB_SHA" origin\/main/);
+  // Refresh main without losing history while queued release jobs await execution.
+  assert.match(signed, /fetch-depth:\s*0/);
+  assert.match(signed, /git fetch --no-tags origin "\+refs\/heads\/main:refs\/remotes\/origin\/main"/);
+  assert.match(signed, /git merge-base --is-ancestor "\$GITHUB_SHA" refs\/remotes\/origin\/main/);
+  assert.doesNotMatch(signed, /git fetch[^\n]*--depth(?:=|\s+)1\b/);
   assert.match(signed, /Verify signing key matches the last published production APK/);
   assert.match(signed, /Verify production package, version and APK signature/);
 });
