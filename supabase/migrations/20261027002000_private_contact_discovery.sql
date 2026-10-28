@@ -234,7 +234,10 @@ returns void language plpgsql security definer set search_path=''
 as $$
 begin
  delete from private.blink_contact_imports where owner_id=p_owner;
-end $$;
+ -- Revocation also erases derived private matches and prevents pending pushes.
+ delete from private.blink_contact_join_alerts
+  where owner_id=p_owner or joiner_id=p_owner;
+end $;
 revoke all on function public.blink_contact_clear_imports(uuid) from public,anon,authenticated;
 grant execute on function public.blink_contact_clear_imports(uuid) to service_role;
 
