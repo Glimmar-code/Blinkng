@@ -572,6 +572,41 @@ internal fun BlinkReferenceMediaReview(
     onAddMore: () -> Unit,
     onNext: () -> Unit,
 ) {
+    var previewIndex by remember { mutableIntStateOf(-1) }
+    if (previewIndex in images.indices) {
+        Dialog(onDismissRequest = { previewIndex = -1 }) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(Color(0xFF111319), RoundedCornerShape(18.dp))
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Photo " + (previewIndex + 1) + " of " + images.size,
+                        color = Color.White, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f))
+                    IconButton(onClick = { previewIndex = -1 }) {
+                        Icon(Icons.Default.Close, "Close photo preview", tint = Color.White)
+                    }
+                }
+                AsyncImage(
+                    model = images[previewIndex], contentDescription = "Full selected photo preview",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().height(360.dp)
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(
+                        onClick = { previewIndex = (previewIndex - 1).coerceAtLeast(0) },
+                        enabled = previewIndex > 0
+                    ) { Icon(Icons.Default.ChevronLeft, null); Text("Previous") }
+                    TextButton(
+                        onClick = { previewIndex = (previewIndex + 1).coerceAtMost(images.lastIndex) },
+                        enabled = previewIndex < images.lastIndex
+                    ) { Text("Next"); Icon(Icons.Default.ChevronRight, null) }
+                }
+            }
+        }
+    }
     Column(
         Modifier.fillMaxSize().background(Color.Black)
             .testTag("blink_media_review")
