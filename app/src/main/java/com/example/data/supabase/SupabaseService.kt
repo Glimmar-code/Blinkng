@@ -2434,6 +2434,11 @@ fun getCurrentUserId(): String? {
             require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
                 "Item sales belong in BLINK Market."
             }
+            // The live feed_posts SELECT policy exposes active rows regardless of
+            // audience. Never silently store "Only me" as a publicly readable post.
+            require(!audience.equals("Only me", ignoreCase = true)) {
+                "Only me posts are unavailable until protected server access is verified."
+            }
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
             val cleanClientRequestId = clientRequestId
                 ?.trim()
