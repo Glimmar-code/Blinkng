@@ -50,6 +50,10 @@ class BlinkContestService {
     suspend fun detail(id: String): Result<JSONObject> = runCatching {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
     }
+    suspend fun candidate(contestId: String, entryId: String): Result<JSONObject> = runCatching {
+        JSONObject(call("get_blink_contest_candidate", JSONObject()
+            .put("p_contest_id", contestId).put("p_entry_id", entryId)))
+    }
     suspend fun apply(id: String, statement: String, mediaUrl: String): Result<JSONObject> = runCatching {
         JSONObject(call("apply_blink_contest", JSONObject().put("p_contest_id", id)
             .put("p_statement", statement.trim())
