@@ -156,11 +156,13 @@ fun AccountOnboardingScreen(
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
-    var phoneNumber by rememberSaveable(profile.id) { mutableStateOf("") }
+    // Do not retain private phone or OTP-flow state in Android savedInstanceState.
+    var phoneNumber by remember(profile.id) { mutableStateOf("") }
     // SMS one-time codes must not enter Android savedInstanceState bundles.
     var phoneCode by remember(profile.id) { mutableStateOf("") }
-    var phoneCodeSent by rememberSaveable(profile.id) { mutableStateOf(false) }
-    var phoneVerified by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var phoneCodeSent by remember(profile.id) { mutableStateOf(false) }
+    // A verified badge must be earned from this live OTP response, not restored UI state.
+    var phoneVerified by remember(profile.id) { mutableStateOf(false) }
     var phoneBusy by remember { mutableStateOf(false) }
     var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
@@ -531,7 +533,7 @@ fun AccountOnboardingScreen(
                                 birthDate = value.filter { it.isDigit() || it == '-' }.take(10)
                                 error = null
                             },
-                            label = { Text("Birthday (optional)") },
+                            label = { Text("Birthday (YYYY-MM-DD)") },
                             placeholder = { Text("YYYY-MM-DD") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
