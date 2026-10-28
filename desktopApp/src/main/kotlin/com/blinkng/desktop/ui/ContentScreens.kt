@@ -2273,11 +2273,6 @@ fun ConnectScreen(state: DesktopAppState) {
     var contactBusy by remember(state.profile?.id) { mutableStateOf(false) }
     var contactError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
     var contactReady by remember(state.profile?.id) { mutableStateOf(false) }
-    var verifiedContactPhone by remember(state.profile?.id) { mutableStateOf<Boolean?>(null) }
-    var contactPhoneNumber by remember(state.profile?.id) { mutableStateOf("") }
-    var contactPhoneCode by remember(state.profile?.id) { mutableStateOf("") }
-    var contactCodeSent by remember(state.profile?.id) { mutableStateOf(false) }
-    var contactPhoneBusy by remember(state.profile?.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun loadContactSnapshot(reply: JSONObject, replaceMatches: Boolean = true) {
@@ -2325,9 +2320,6 @@ fun ConnectScreen(state: DesktopAppState) {
     }
     LaunchedEffect(state.profile?.id) {
         if (state.profile == null) return@LaunchedEffect
-        runCatching { state.client.isOnboardingPhoneVerified() }
-            .onSuccess { verifiedContactPhone = it }
-            .onFailure { verifiedContactPhone = null }
         refreshContacts()
     }
 
@@ -2570,66 +2562,17 @@ fun ConnectScreen(state: DesktopAppState) {
                         Text("People from your contacts", fontWeight = FontWeight.Bold)
                         Text("Sync your phone contacts on Android, then discover the same matches here. Contact access is optional.",
                             fontSize = 12.sp)
-                        if (verifiedContactPhone != true) {
-                            Text("Verify your phone for discoverability (optional).", fontSize = 12.sp)
-                            OutlinedTextField(
-                                value = contactPhoneNumber,
-                                onValueChange = {
-                                    contactPhoneNumber = it.take(24)
-                                    contactPhoneCode = ""
-                                    contactCodeSent = false
-                                },
-                                label = { Text("Phone / WhatsApp number") },
-                                singleLine = true,
-                                enabled = !contactPhoneBusy,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Button(
-                                onClick = { scope.launch {
-                                    contactPhoneBusy = true
-                                    runCatching { state.client.requestOnboardingPhoneCode(contactPhoneNumber) }
-                                        .onSuccess { contactCodeSent = true; contactError = null }
-                                        .onFailure { contactError = it.message ?: "SMS could not be sent." }
-                                    contactPhoneBusy = false
-                                } },
-                                enabled = !contactPhoneBusy && !contactCodeSent &&
-                                    com.blinkng.shared.BlinkPhonePolicy.normalize(contactPhoneNumber) != null
-                            ) { Text("Send SMS code") }
-                            if (contactCodeSent) {
-                                OutlinedTextField(
-                                    value = contactPhoneCode,
-                                    onValueChange = { contactPhoneCode = it.filter(Char::isDigit).take(6) },
-                                    label = { Text("Six-digit SMS code") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
-                                Button(onClick = { scope.launch {
-                                    contactPhoneBusy = true
-                                    runCatching { state.client.verifyOnboardingPhoneCode(contactPhoneNumber, contactPhoneCode) }
-                                        .onSuccess { confirmed ->
-                                            verifiedContactPhone = confirmed
-                                            if (confirmed) {
-                                                contactPhoneCode = ""
-                                                contactCodeSent = false
-                                                contactError = null
-                                            } else contactError = "Phone was not verified. Try again."
-                                        }
-                                        .onFailure { contactError = it.message ?: "Verification failed." }
-                                    contactPhoneBusy = false
-                                } }, enabled = !contactPhoneBusy &&
-                                    com.blinkng.shared.BlinkPhonePolicy.otpIsValid(contactPhoneCode)
-                                ) { Text("Verify phone") }
-                            }
-                        } else Text("Phone verified for contact discovery", fontSize = 12.sp)
+                        Text("No SMS verification is required. Phone numbers on profiles are user-provided, not verified identity.", fontSize = 12.sp)
+                        Text("Contacts can be synced from the Android app when the secure matching service is available.", fontSize = 12.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = contactSync, enabled = contactReady && !contactBusy,
                                 onCheckedChange = { changeContacts(it, contactDiscoverable, contactAlerts && it) })
                             Text("Contact sync", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactDiscoverable, enabled = contactReady && !contactBusy,
+                            Switch(checked = contactDiscoverable, enabled = false,
                                 onCheckedChange = { changeContacts(contactSync, it, contactAlerts) })
-                            Text("Let my contacts find me", modifier = Modifier.padding(start = 9.dp))
+                            Text("Let my contacts find me (matching backend pending)", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = contactAlerts, enabled = contactReady && !contactBusy && contactSync,
