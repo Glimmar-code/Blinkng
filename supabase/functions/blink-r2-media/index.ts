@@ -9,6 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from "npm:@aws-sdk/client-s3@3.835.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.835.0";
+import { readBoundedJsonObject } from "./request-body.ts";
 
 type Purpose = "feed" | "reel" | "profile" | "market" | "story" | "channel" | "chat";
 const allowed: Record<Purpose, { bucket: string; maxBytes: number; mimes: readonly string[]; needsContext: boolean }> = {
@@ -73,10 +74,12 @@ Deno.serve(async req => {
   const { data: verified, error: verifyError } = await admin.auth.getUser(token);
   const userId = verifyError ? undefined : verified.user?.id;
   if (!userId) return error(401,"INVALID_SESSION",headers);
-  if (Number(req.headers.get("content-length") || 0) > 4096)
-    return error(413,"REQUEST_TOO_LARGE",headers);
-  const input = await req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!input || typeof input.action !== "string") return error(400,"INVALID_REQUEST",headers);
+  const parsed = await readBoundedJsonObject(req);
+  if (!parsed.ok) return error(
+    parsed.error === "REQUEST_TOO_LARGE" ? 413 : 400, parsed.error, headers,
+  );
+  const input = parsed.value;
+  if (typeof input.action !== "string") return error(400,"INVALID_REQUEST",headers);
 
   const s3 = new S3Client({
     region:"auto", endpoint:`https://${account}.r2.cloudflarestorage.com`,
