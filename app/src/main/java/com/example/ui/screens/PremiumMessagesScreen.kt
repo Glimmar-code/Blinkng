@@ -1694,6 +1694,7 @@ private fun PremiumChatDetail(
         scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
     )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showReferencePinBar by remember(conversation.id) { mutableStateOf(true) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
@@ -2033,6 +2034,43 @@ private fun PremiumChatDetail(
                 isFullScreen = isFullScreen,
                 onToggleFullScreen = onToggleFullScreen
             )
+
+            // Screenshot reference: slim, actionable blue pinned-message banner
+            // directly beneath the chat header; close only hides this preview.
+            val pinnedPreview = conversation.messages.lastOrNull { it.isPinned }
+            if (showReferencePinBar && pinnedPreview != null && !pinnedOnly) {
+                Surface(
+                    color = palette.glassElevated,
+                    border = BorderStroke(0.5.dp, palette.border),
+                    modifier = Modifier.fillMaxWidth().testTag("chat_reference_pinned_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
+                            .clickable {
+                                pendingReplyTargetId = pinnedPreview.id
+                                lastRequestedReplyOldestId = null
+                            }.padding(start = 12.dp, end = 5.dp, top = 7.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.PushPin, contentDescription = null,
+                            tint = palette.accent, modifier = Modifier.size(19.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Pinned message", color = palette.accent,
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                pinnedPreview.text.ifBlank { "Pinned media" },
+                                color = palette.textSecondary, fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(onClick = { showReferencePinBar = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Hide pinned banner",
+                                tint = palette.textSecondary, modifier = Modifier.size(17.dp))
+                        }
+                    }
+                }
+            }
 
             if (conversation.inboxCategory == "requests") {
                 Surface(
@@ -4301,13 +4339,19 @@ private fun MessageComposer(
                         onClick = onVoiceCancel
                     )
                 } else {
-                    GlassIconButton(
-                        icon = Icons.Default.EmojiEmotions,
-                        contentDescription = "Choose emoji",
-                        palette = palette,
-                        size = 40.dp,
-                        onClick = onEmoji
-                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = palette.accent,
+                        contentColor = Color.White,
+                        modifier = Modifier.size(40.dp)
+                            .clickable(onClick = onAttachment)
+                            .testTag("chat_reference_attachment_plus")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Add, contentDescription = "Open attachments",
+                                tint = Color.White, modifier = Modifier.size(25.dp))
+                        }
+                    }
                 }
                 Spacer(Modifier.width(5.dp))
 
@@ -4365,11 +4409,11 @@ private fun MessageComposer(
 
                 if (!isRecording) {
                     GlassIconButton(
-                        icon = Icons.Default.AttachFile,
-                        contentDescription = "Attach picture, file or location",
+                        icon = Icons.Default.EmojiEmotions,
+                        contentDescription = "Choose emoji",
                         palette = palette,
                         size = 40.dp,
-                        onClick = onAttachment
+                        onClick = onEmoji
                     )
                     GlassIconButton(
                         icon = Icons.Default.CameraAlt,

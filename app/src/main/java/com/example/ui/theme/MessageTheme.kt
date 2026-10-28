@@ -93,26 +93,41 @@ private val DarkMessagePalette = MessagePalette(
 )
 
 /**
- * Conversation-only WhatsApp-reference-inspired dark colours.
- * Inbox cards and alternative user-selected message themes remain unchanged.
- * Kept separate from the global BLINK palette to avoid unrelated regressions.
+ * BLINK Chat reference artwork tokens (dark navy, white and cobalt blue).
+ * Apply only inside conversations, preserving the other app palettes.
+ * These values follow the supplied generated Chat / Attachments / Viewers boards.
  */
+object BlinkChatReferenceColors {
+    val Canvas = Color(0xFF060D16)
+    val Header = Color(0xFF09131E)
+    val Elevated = Color(0xFF17283A)
+    val Incoming = Color(0xFF1C2A3B)
+    val Outgoing = Color(0xFF0879F8)
+    val Blue = Color(0xFF1685FF)
+    val Text = Color(0xFFF5F8FE)
+    val Subtle = Color(0xFFB7C7DA)
+    val Muted = Color(0xFF8599AD)
+    val Border = Color(0xFF25384D)
+}
+
+/** One consistent reference-inspired palette for every dark conversation surface. */
 fun referenceChatPalette(base: MessagePalette): MessagePalette =
     if (base.mode != MessageThemeMode.DARK) base else base.copy(
-        backgroundTop = Color(0xFF0B141A),
-        backgroundMiddle = Color(0xFF0B141A),
-        backgroundBottom = Color(0xFF0B141A),
-        glass = Color(0xFF111B21),
-        glassElevated = Color(0xFF111B21),
-        border = Color(0xFF25353D),
-        accent = Color(0xFF00A884),
-        accentSecondary = Color(0xFF005C4B),
-        incomingBubble = Color(0xFF202C33),
-        outgoingBubble = Color(0xFF005C4B),
-        textPrimary = Color(0xFFE9EDEF),
-        textSecondary = Color(0xFFB8C4C9),
-        textMuted = Color(0xFF8696A0),
-        outgoingText = Color.White
+        backgroundTop = BlinkChatReferenceColors.Canvas,
+        backgroundMiddle = BlinkChatReferenceColors.Canvas,
+        backgroundBottom = BlinkChatReferenceColors.Canvas,
+        glass = BlinkChatReferenceColors.Header,
+        glassElevated = BlinkChatReferenceColors.Elevated,
+        border = BlinkChatReferenceColors.Border,
+        accent = BlinkChatReferenceColors.Blue,
+        accentSecondary = BlinkChatReferenceColors.Outgoing,
+        incomingBubble = BlinkChatReferenceColors.Incoming,
+        outgoingBubble = BlinkChatReferenceColors.Outgoing,
+        textPrimary = BlinkChatReferenceColors.Text,
+        textSecondary = BlinkChatReferenceColors.Subtle,
+        textMuted = BlinkChatReferenceColors.Muted,
+        outgoingText = Color.White,
+        online = BlinkChatReferenceColors.Blue
     )
 
 private val LightMessagePalette = MessagePalette(

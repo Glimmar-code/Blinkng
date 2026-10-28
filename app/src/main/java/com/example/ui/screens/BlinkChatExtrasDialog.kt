@@ -135,7 +135,7 @@ internal fun BlinkChatExtrasDialog(
     ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                .background(Color(0xFF182129), androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                .background(Color(0xFF111B2A), androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
                 .verticalScroll(rememberScrollState()).padding(20.dp)
         ) {
             Text(heading, style = MaterialTheme.typography.titleLarge, color = Color.White)
@@ -212,7 +212,7 @@ internal fun BlinkChatExtrasDialog(
                 Button(
                     enabled=text.isNotBlank(),
                     onClick={onSend(text)},
-                    colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF00A884))
+                    colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF0879F8))
                 ) { Text("Send") }
             }
         }
