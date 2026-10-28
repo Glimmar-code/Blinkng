@@ -309,6 +309,7 @@ fun CreatePostSheet(
                 .distinct()
                 .take(10)
             selectedVideo = null
+            videoClips = emptyList()
             showPoll = false
             reelEditorStage = false
             mode = "post"
@@ -331,7 +332,8 @@ fun CreatePostSheet(
                     )
                 }
             }
-            val clips = picked.map(Uri::toString).distinct()
+            val clips = (videoClips + picked.map(Uri::toString)).distinct()
+                .take(BlinkReelClipPolicy.MAX_CLIPS)
             selectedImages = emptyList()
             showPoll = false
             mode = "reel"
@@ -375,7 +377,7 @@ fun CreatePostSheet(
 
     LaunchedEffect(startInReelMode, autosaveRestored) {
         if (!autosaveRestored) return@LaunchedEffect
-        if (startInReelMode && selectedVideo == null) {
+        if (startInReelMode && selectedVideo == null && videoClips.isEmpty()) {
             mode = "reel"
             videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
         }
@@ -972,7 +974,7 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            if (videoClips.size >= 2 && selectedVideo == null) {
+            if (videoClips.size >= 2 && selectedVideo == null && !showCreateLanding) {
                 BlinkReelClipReview(
                     clips = videoClips,
                     exporting = combiningClips,
@@ -1055,14 +1057,18 @@ fun CreatePostSheet(
                     drafts = savedDrafts,
                     onClose = ::requestDismiss,
                     onText = {
-                        mode = "post"
-                        showPoll = false
-                        showCreateLanding = false
+                        if (videoClips.isNotEmpty()) {
+                            pendingMediaSwitch = "post"
+                        } else {
+                            mode = "post"
+                            showPoll = false
+                            showCreateLanding = false
+                        }
                     },
                     onPhoto = {
                         pickerOpenedFromLanding = true
                         showCreateLanding = false
-                        if (selectedVideo != null || showPoll) {
+                        if (selectedVideo != null || showPoll || videoClips.isNotEmpty()) {
                             pendingMediaSwitch = "gallery"
                         } else {
                             imagePicker.launch(
@@ -1083,7 +1089,7 @@ fun CreatePostSheet(
                     },
                     onPoll = {
                         showCreateLanding = false
-                        if (selectedVideo != null || selectedImages.isNotEmpty()) {
+                        if (selectedVideo != null || selectedImages.isNotEmpty() || videoClips.isNotEmpty()) {
                             pickerOpenedFromLanding = true
                             pendingMediaSwitch = "poll"
                         } else {
@@ -2095,6 +2101,8 @@ fun CreatePostSheet(
                     pendingMediaSwitch = null
                     when (target) {
                         "post" -> {
+                            videoClips = emptyList()
+                            showCreateLanding = false
                             selectedVideo = null
                             reelHasPendingEdits = false
                             reelEditorStage = false
@@ -2103,6 +2111,7 @@ fun CreatePostSheet(
                         }
                         "poll" -> {
                             pickerOpenedFromLanding = false
+                            videoClips = emptyList()
                             selectedVideo = null
                             selectedImages = emptyList()
                             reelHasPendingEdits = false
@@ -2113,7 +2122,9 @@ fun CreatePostSheet(
                         "gallery" -> imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
-                        "reel" -> videoPicker.launch(
+                        "reel" -> if (pickerOpenedFromLanding) multiVideoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        ) else videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         )
                     }
