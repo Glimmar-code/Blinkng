@@ -109,6 +109,7 @@ fun DesktopUserProfileDialog(
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
     var showCreatorStudio by remember(initialProfile.id) { mutableStateOf(false) }
+    var creatorAiPrompt by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
 
     suspend fun reload() {
@@ -581,6 +582,14 @@ fun DesktopUserProfileDialog(
             loading = loading,
             onDismiss = { showCreatorStudio = false },
             onRefresh = { scope.launch { reload() } },
+            onUseAiPrompt = { prompt -> creatorAiPrompt = prompt },
+        )
+    }
+    creatorAiPrompt?.let { prompt ->
+        DesktopBlinkAiDialog(
+            state = state,
+            onDismiss = { creatorAiPrompt = null },
+            initialPrompt = prompt,
         )
     }
 
