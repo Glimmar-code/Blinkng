@@ -186,6 +186,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import com.example.data.models.ActivityItem
 import com.blinkng.shared.BlinkMessageDatePolicy
 import com.example.data.models.ChatConversation
@@ -1848,16 +1850,13 @@ private fun PremiumChatDetail(
     // Android's media picker allows 1–10 videos without broad storage access.
     // Every selected video must pass the existing explicit edit/review dialog.
     var pendingVideoBatch by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
+    var videoBatchPreview by remember(conversation.id) { mutableStateOf(false) }
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
         pendingVideoBatch = uris.take(10)
-        pendingVideoReview = pendingVideoBatch.firstOrNull()
-        if (pendingVideoBatch.size > 1) {
-            Toast.makeText(context,
-                "Review ${pendingVideoBatch.size} videos individually before sending.",
-                Toast.LENGTH_SHORT).show()
-        }
+        pendingVideoReview = if (pendingVideoBatch.size == 1) pendingVideoBatch.first() else null
+        videoBatchPreview = pendingVideoBatch.size > 1
         onPresenceChange("online")
     }
     var pendingFileReview by remember(conversation.id) { mutableStateOf<Pair<Uri, Boolean>?>(null) }
@@ -3049,6 +3048,66 @@ private fun PremiumChatDetail(
             onDismiss = {
                 pendingFileReview = null
                 onPresenceChange("online")
+            }
+        )
+    }
+    if (videoBatchPreview && pendingVideoBatch.size > 1) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                videoBatchPreview = false
+                pendingVideoBatch = emptyList()
+            },
+            title = { Text("Review selected videos", color = palette.textPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Choose 2–10 videos. Each video is reviewed and uploaded individually.",
+                        fontSize = 12.sp, color = palette.textSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.testTag("chat_reference_multi_video_preview")) {
+                        itemsIndexed(pendingVideoBatch) { index, uri ->
+                            Column(Modifier.width(126.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.width(126.dp).height(120.dp)
+                                    .clip(RoundedCornerShape(12.dp))) {
+                                    AsyncImage(
+                                        model = remember(uri) {
+                                            ImageRequest.Builder(context).data(uri)
+                                                .videoFrameMillis(1000L).build()
+                                        },
+                                        contentDescription = "Video " + (index + 1),
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Text("▶ " + (index + 1),
+                                        modifier = Modifier.align(Alignment.BottomStart)
+                                            .background(Color(0xAA06111C)).padding(6.dp),
+                                        color = Color.White, fontSize = 11.sp)
+                                }
+                                androidx.compose.material3.TextButton(onClick = {
+                                    pendingVideoBatch = pendingVideoBatch.filterIndexed {
+                                        i, _ -> i != index
+                                    }
+                                    if (pendingVideoBatch.size == 1) {
+                                        videoBatchPreview = false
+                                        pendingVideoReview = pendingVideoBatch.first()
+                                    }
+                                }) { Text("Remove", color = palette.textSecondary) }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    videoBatchPreview = false
+                    pendingVideoReview = pendingVideoBatch.firstOrNull()
+                }) { Text("Review & send " + pendingVideoBatch.size, color = palette.accent) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    videoBatchPreview = false
+                    pendingVideoBatch = emptyList()
+                }) { Text("Cancel") }
             }
         )
     }
