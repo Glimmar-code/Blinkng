@@ -30,3 +30,28 @@ internal fun shouldExpandReelPreview(
 /** A small first-page overscroll returns to fullscreen; a deliberate pull collapses. */
 internal fun shouldKeepReelFullscreen(visibleFraction: Float): Boolean =
     !visibleFraction.isFinite() || visibleFraction >= 0.84f
+
+/** Scrubbing or jumping to the end must not earn a completed-view signal. */
+internal fun qualifiedReelCompletion(watchedMs: Long, durationMs: Long): Boolean =
+    durationMs > 0L && watchedMs >= (durationMs * 9L / 10L)
+
+/** Avoid wasting data repeatedly requesting a missing, restricted or unsupported file. */
+internal fun shouldAutomaticallyRetryReel(errorCode: String?): Boolean =
+    errorCode != null && (
+        errorCode.contains("IO_NETWORK_CONNECTION") ||
+            errorCode.contains("IO_UNSPECIFIED") ||
+            errorCode.contains("TIMEOUT")
+        )
+
+/** Actionable messages for offline, removed, private and unsupported media. */
+internal fun reelPlaybackErrorMessage(errorCode: String?): String = when {
+    errorCode?.contains("IO_BAD_HTTP_STATUS") == true ||
+        errorCode?.contains("IO_FILE_NOT_FOUND") == true ->
+        "This reel is unavailable or access is restricted."
+    errorCode?.contains("DECODING") == true ||
+        errorCode?.contains("PARSING") == true ->
+        "This video format cannot be played on this device."
+    errorCode?.contains("IO") == true || errorCode?.contains("TIMEOUT") == true ->
+        "Can't load the reel. Check your connection and retry."
+    else -> "Unable to play this reel."
+}
