@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,11 +74,13 @@ internal fun BlinkCreatePostLanding(
     onPhoto: () -> Unit,
     onVideo: () -> Unit,
     onPoll: () -> Unit,
+    onClassic: () -> Unit,
     onDraft: (PostDraft) -> Unit
 ) {
     val white = Color.White
     Column(
-        Modifier.fillMaxSize().background(Color.Black).testTag("blink_create_post_landing")
+        Modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState())
+            .testTag("blink_create_post_landing")
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -171,6 +174,10 @@ internal fun BlinkCreatePostLanding(
         BlinkPostMenuRow(
             title = "Gallery", detail = "Choose photos from your device",
             icon = Icons.Default.Image, onClick = onPhoto
+        )
+        BlinkPostMenuRow(
+            title = "Classic composer", detail = "Use BLINK's original posting screen",
+            icon = Icons.Default.Description, onClick = onClassic
         )
         Text(
             "Posts can include text, photos or polls. Videos are published as Reels.",
