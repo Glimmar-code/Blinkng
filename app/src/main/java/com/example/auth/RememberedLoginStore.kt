@@ -14,7 +14,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONObject
 
-/** Secure local storage for the login identifier/password when the user opts in. */
+/** Legacy encrypted remembered login, now identifier-only; passwords must never be persisted. */
 object RememberedLoginStore {
     private const val PREFS = "blink_remembered_login_v1"
     private const val VALUE = "credentials"
@@ -22,7 +22,7 @@ object RememberedLoginStore {
     private const val KEY_ALIAS = "blink_remembered_login_key_v1"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
 
-    data class Login(val identifier: String, val password: String)
+    data class Login(val identifier: String, val password: String = "")
 
     @Volatile
     private var cachedKey: SecretKey? = null
@@ -72,12 +72,12 @@ object RememberedLoginStore {
         return String(cipher.doFinal(combined.copyOfRange(12, combined.size)), StandardCharsets.UTF_8)
     }
 
+    /** Retain the old call shape for older callers, but NEVER store the password. */
+    @Suppress("UNUSED_PARAMETER")
     fun save(context: Context, identifier: String, password: String) {
-        if (identifier.isBlank() && password.isBlank()) return
-        val raw = JSONObject()
-            .put("identifier", identifier)
-            .put("password", password)
-            .toString()
+        val clean = identifier.trim()
+        if (clean.isBlank()) return
+        val raw = JSONObject().put("identifier", clean).toString()
         runCatching { encrypt(raw) }
             .onSuccess { encrypted ->
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -92,7 +92,11 @@ object RememberedLoginStore {
             .safeString(VALUE, null)
             ?: return null
         val obj = JSONObject(decrypt(encrypted))
-        Login(obj.optString("identifier"), obj.optString("password"))
+        val identifier = obj.optString("identifier").trim()
+        // Rewrite once to remove passwords left by old BLINK versions. Never
+        // expose a legacy password to a Composable or restore it into fields.
+        if (obj.has("password")) save(context, identifier, "")
+        Login(identifier)
     } catch (_: Exception) {
         clear(context)
         null
