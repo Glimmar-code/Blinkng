@@ -96,14 +96,15 @@ fun HomeWithBlinkAiScreen(state: DesktopAppState) {
 }
 
 @Composable
-private fun DesktopBlinkAiDialog(
+internal fun DesktopBlinkAiDialog(
     state: DesktopAppState,
     onDismiss: () -> Unit,
+    initialPrompt: String? = null,
 ) {
     val authDark = MaterialTheme.colorScheme.background == Color.Black
     val service = remember(state.client) { DesktopBlinkAiService(state.client) }
     val scope = rememberCoroutineScope()
-    var input by remember { mutableStateOf("") }
+    var input by remember(initialPrompt) { mutableStateOf(initialPrompt?.take(2500).orEmpty()) }
     var previousInteractionId by remember { mutableStateOf<String?>(null) }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }

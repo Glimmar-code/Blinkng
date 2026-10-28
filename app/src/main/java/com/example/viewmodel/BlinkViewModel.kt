@@ -95,6 +95,22 @@ internal fun isPendingRewardClaimError(message: String): Boolean =
     message.contains("REWARDED_AD_TOO_SOON", ignoreCase = true) ||
     message.contains("ad reward is not ready yet", ignoreCase = true)
 
+/**
+ * Following is chronological. Only append a previously paginated suffix when
+ * the last fetched row overlaps the old timeline: otherwise there may be a gap
+ * between a new first page and stale cached rows. Never fabricate continuity.
+ */
+internal fun <T> reconcileFollowingChronologicalPage(
+    previous: List<T>, firstPage: List<T>, pageSize: Int, idOf: (T) -> String
+): List<T> {
+    val fetched = firstPage.distinctBy(idOf)
+    if (fetched.size < pageSize || previous.isEmpty()) return fetched
+    val lastIndex = previous.indexOfFirst { idOf(it) == idOf(fetched.last()) }
+    if (lastIndex < 0) return fetched
+    val fetchedIds = fetched.map(idOf).toHashSet()
+    return fetched + previous.drop(lastIndex + 1).filter { idOf(it) !in fetchedIds }
+}
+
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
 enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(1, "Search"), LEADERBOARD(2, "Leaderboard"), MARKET(3, "Market"), MESSAGES(4, "Messages") }
@@ -1902,7 +1918,14 @@ private suspend fun restoreSupabaseSession() {
         if (!BlinkRefreshPolicy.isStale(last, now, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)) return
         visibleRefreshAt[key] = now
         val accountId = state.myProfile.id
-        _uiState.value = state.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
+        followingPageEpoch++ // Invalidate a pending old-page cursor before quiet refresh.
+        // The invalidated load-more job will not clear its own flag in finally.
+        _uiState.value = state.copy(
+            isRefreshingFollowing = true,
+            isLoadingMoreFollowingPosts = false,
+            followingPaginationErrorMessage = null,
+            followingFeedErrorMessage = null
+        )
         viewModelScope.launch {
             try {
                 syncMutex.withLock {
@@ -1913,12 +1936,16 @@ private suspend fun restoreSupabaseSession() {
                     // no eligible posts (e.g. after unfollowing everyone). Do
                     // not indefinitely retain obsolete recommendations. Failed
                     // requests still leave cached posts untouched in catch.
+                    val reconciled = reconcileFollowingChronologicalPage(
+                        current.followingPosts, fresh, 30, FeedPost::id
+                    )
+                    val remainingIds = reconciled.map { it.id }.toHashSet()
+                    val evictedStaleRows = current.followingPosts.any { it.id !in remainingIds }
                     _uiState.value = current.copy(
-                        followingPosts = if (fresh.isEmpty()) emptyList()
-                            else reconcileRefreshedFeed(current.followingPosts, fresh),
+                        followingPosts = reconciled,
                         hasMoreFollowingPosts = fresh.size >= 30,
                         followingFeedErrorMessage = null,
-                        followingRefreshRevision = if (fresh.isEmpty() && current.followingPosts.isNotEmpty())
+                        followingRefreshRevision = if (evictedStaleRows)
                             current.followingRefreshRevision + 1 else current.followingRefreshRevision
                     )
                     persistCurrentFeed()
@@ -2058,7 +2085,7 @@ private suspend fun restoreSupabaseSession() {
                         ?.let { reconcileRefreshedFeed(before.reels, it) }
                         ?: before.reels
                     val fetchedFollowing = followingResult.getOrNull()
-                        ?.let { reconcileRefreshedFeed(before.followingPosts, it) }
+                        ?.let { reconcileFollowingChronologicalPage(before.followingPosts, it, 30, FeedPost::id) }
                         ?: before.followingPosts
                     val feedSucceeded = postsResult.isSuccess || reelsResult.isSuccess
                     if (feedSucceeded) lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
@@ -2066,6 +2093,12 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         posts = normalPosts,
                         followingPosts = fetchedFollowing,
+                        followingRefreshRevision = if (
+                            followingResult.isSuccess &&
+                            before.followingPosts.any { older ->
+                                fetchedFollowing.none { it.id == older.id }
+                            }
+                        ) before.followingRefreshRevision + 1 else before.followingRefreshRevision,
                         reels = fetchedReels,
                         hasMorePosts = postsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMorePosts,
                         hasMoreFollowingPosts = followingResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreFollowingPosts,
@@ -2380,7 +2413,9 @@ private suspend fun restoreSupabaseSession() {
                     )
                     _uiState.value = when {
                         following -> now.copy(
-                            followingPosts = refreshed.items,
+                            followingPosts = reconcileFollowingChronologicalPage(
+                                previous, page, pageSize, FeedPost::id
+                            ),
                             followingRefreshRevision = now.followingRefreshRevision + 1,
                             hasMoreFollowingPosts = page.size >= pageSize,
                             followingPaginationErrorMessage = null,
@@ -6628,7 +6663,9 @@ private suspend fun restoreSupabaseSession() {
                     }
                     _uiState.value = latest.copy(
                         posts = if (freshPosts.isNotEmpty()) reconcileRefreshedFeed(latest.posts, freshPosts) else latest.posts,
-                        followingPosts = if (following.isNotEmpty()) reconcileRefreshedFeed(latest.followingPosts, following) else latest.followingPosts,
+                        followingPosts = if (following.isNotEmpty())
+                reconcileFollowingChronologicalPage(latest.followingPosts, following, 30, FeedPost::id)
+                else latest.followingPosts,
                         reels = if (freshReels.isNotEmpty()) reconcileRefreshedFeed(latest.reels, freshReels) else latest.reels
                     )
                     persistCurrentFeed()
