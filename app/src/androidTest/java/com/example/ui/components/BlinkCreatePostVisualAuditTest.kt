@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,8 +55,8 @@ class BlinkCreatePostVisualAuditTest {
     }
 
     @Composable
-    private fun AuditSurface(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+    private fun AuditSurface(darkHost: Boolean = true, content: @Composable () -> Unit) {
+        MaterialTheme(colorScheme = if (darkHost) darkColorScheme() else lightColorScheme()) {
             Box(Modifier.fillMaxSize().background(Color.Black)
                 .testTag("create_post_visual_audit")) { content() }
         }
@@ -72,6 +73,19 @@ class BlinkCreatePostVisualAuditTest {
             }
         }
         capture("create-post-landing-staging.png")
+    }
+
+    @Test fun landingWorksInsideLightThemeHost() {
+        rule.setContent {
+            AuditSurface(darkHost = false) {
+                BlinkCreatePostLanding(
+                    drafts = emptyList(),
+                    onClose = {}, onText = {}, onPhoto = {}, onVideo = {},
+                    onPoll = {}, onClassic = {}, onDraft = {}
+                )
+            }
+        }
+        capture("create-post-landing-light-host-staging.png")
     }
 
     @Test fun selectedPhotosUseNativeAlbumReviewFixture() {
