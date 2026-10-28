@@ -268,6 +268,7 @@ fun PremiumMessagesScreen(
     onSendMessage: (String, String, String?) -> Unit,
     onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendVideoAlbum: (String, List<Uri>) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
     onSendPhotoAlbum: (String, List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
@@ -426,6 +427,7 @@ fun PremiumMessagesScreen(
                                 onSendMessage = onSendMessage,
                                 onForwardMessage = onForwardMessage,
                                 onSendVideo = onSendVideo,
+                                onSendVideoAlbum = onSendVideoAlbum,
                                 onSendAttachment = onSendAttachment,
                                 onSendPhotoAlbum = onSendPhotoAlbum,
                                 onSendViewOncePicture = onSendViewOncePicture,
@@ -567,6 +569,7 @@ private fun PremiumMessagesMasterDetail(
     onSendMessage: (String, String, String?) -> Unit,
     onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
+    onSendVideoAlbum: (String, List<Uri>) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
     onSendPhotoAlbum: (String, List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
@@ -647,6 +650,7 @@ private fun PremiumMessagesMasterDetail(
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onSendVideoAlbum = { onSendVideoAlbum(displayedConversation.partnerUsername, it) },
                 onSendAttachment = { uri, kind ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind)
                 },
@@ -1572,6 +1576,7 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
+    onSendVideoAlbum: (List<Uri>) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
     onSendPhotoAlbum: (List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (Uri) -> Unit,
@@ -1867,10 +1872,12 @@ private fun PremiumChatDetail(
     // Every selected video must pass the existing explicit edit/review dialog.
     var pendingVideoBatch by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
     var videoBatchPreview by remember(conversation.id) { mutableStateOf(false) }
+    var editedVideoBatch by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
         pendingVideoBatch = uris.take(10)
+        editedVideoBatch = emptyList()
         pendingVideoReview = if (pendingVideoBatch.size == 1) pendingVideoBatch.first() else null
         videoBatchPreview = pendingVideoBatch.size > 1
         onPresenceChange("online")
@@ -1934,12 +1941,20 @@ private fun PremiumChatDetail(
                 it.imageAlbumSize > 1 && !it.attachedImageUrl.isNullOrBlank()
         }.groupBy { it.imageAlbumId.orEmpty() }
     }
-    val visibleMessages = remember(matchedMessages, albumGroups) {
+    val videoAlbumGroups = remember(matchedMessages) {
+        matchedMessages.filter {
+            !it.imageAlbumId.isNullOrBlank() && it.imageAlbumSize > 1 &&
+                !it.attachedVideoUrl.isNullOrBlank() && !it.deletedForEveryone
+        }.groupBy { it.imageAlbumId.orEmpty() }
+    }
+    val visibleMessages = remember(matchedMessages, albumGroups, videoAlbumGroups) {
         val displayedAlbumIds = hashSetOf<String>()
         matchedMessages.filter { item ->
             val id = item.imageAlbumId
-            if (id.isNullOrBlank() || albumGroups[id].orEmpty().size < 2) true
-            else displayedAlbumIds.add(id)
+            val group = if (item.messageType == "video") videoAlbumGroups[id]
+                else albumGroups[id]
+            if (id.isNullOrBlank() || group.orEmpty().size < 2) true
+            else displayedAlbumIds.add(item.messageType + id)
         }
     }
     val messagesById = remember(conversation.messages) {
@@ -2349,6 +2364,9 @@ private fun PremiumChatDetail(
                                 }
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
+                                videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
+                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty())
+                            } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
                                     messages = albumGroups[message.imageAlbumId].orEmpty(),
@@ -3157,15 +3175,24 @@ private fun PremiumChatDetail(
         BlinkChatVideoEditorDialog(
             sourceUri = selected,
             onSend = { finalVideo ->
+                val approved = editedVideoBatch + finalVideo
                 val remaining = pendingVideoBatch.drop(1)
                 pendingVideoBatch = remaining
                 pendingVideoReview = remaining.firstOrNull()
-                onPresenceChange(if (remaining.isEmpty()) "uploading" else "online")
-                onSendVideo(finalVideo)
+                if (remaining.isEmpty()) {
+                    editedVideoBatch = emptyList()
+                    onPresenceChange("uploading")
+                    if (approved.size > 1) onSendVideoAlbum(approved)
+                    else approved.firstOrNull()?.let(onSendVideo)
+                } else {
+                    editedVideoBatch = approved
+                    onPresenceChange("online")
+                }
             },
             onDismiss = {
                 // A cancellation never silently uploads any remaining selected video.
                 pendingVideoBatch = emptyList()
+                editedVideoBatch = emptyList()
                 pendingVideoReview = null
                 onPresenceChange("online")
             }

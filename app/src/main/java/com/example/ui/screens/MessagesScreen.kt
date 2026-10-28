@@ -23,6 +23,7 @@ fun MessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendVideoAlbum: (String, List<Uri>) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit = { _, _, _, _, _, _, _ -> },
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
@@ -50,6 +51,7 @@ fun MessagesScreen(
         onCloseConversation = onCloseConversation,
         onSendMessage = { partner, text, _ -> onSendMessage(partner, text) },
         onSendVideo = onSendVideo,
+        onSendVideoAlbum = onSendVideoAlbum,
         onSendAttachment = { partner, uri, kind ->
             val attachment = BlinkChatAttachmentKind.fromWireType(kind)
                 ?: if (kind == "audio") BlinkChatAttachmentKind.VOICE else null
@@ -105,6 +107,7 @@ fun ChatConversationView(
     allConversations: List<ChatConversation> = listOf(convo),
     isLoadingMessages: Boolean = false,
     onSendVideo: (Uri) -> Unit = {},
+    onSendVideoAlbum: (List<Uri>) -> Unit = {},
     onSendAttachment: (Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit = { _, _, _, _, _, _ -> },
     onSendViewOncePicture: (Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
     onProfileClick: (String) -> Unit,
@@ -137,6 +140,7 @@ fun ChatConversationView(
         onPresenceChange = { _, state -> onPresenceChange(state) },
         chatPrivacySettings = chatPrivacySettings,
         onSendVideo = { _, uri -> onSendVideo(uri) },
+        onSendVideoAlbum = { _, videos -> onSendVideoAlbum(videos) },
         onSendAttachment = { _, uri, kind ->
             val attachment = BlinkChatAttachmentKind.fromWireType(kind)
                 ?: if (kind == "audio") BlinkChatAttachmentKind.VOICE else null
