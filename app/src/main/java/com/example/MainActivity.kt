@@ -1010,7 +1010,9 @@ class MainActivity : ComponentActivity() {
                                             )
                                         },
                                         onSavePhone = { number, onResult ->
-                                            if (number.isBlank()) {
+                                            // Empty is optional; a user clearing an existing
+                                            // number must actually clear it on the server.
+                                            if (number.isBlank() && uiState.myProfile.phone.value.isBlank()) {
                                                 onResult(true, null)
                                             } else {
                                                 lifecycleScope.launch {
