@@ -261,6 +261,7 @@ fun CreatePostSheet(
     var reelEditorStage by rememberSaveable { mutableStateOf(startInReelMode) }
     var showCreateLanding by rememberSaveable { mutableStateOf(!startInReelMode) }
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
+    var showReferenceDetails by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
     var useClassicComposer by rememberSaveable { mutableStateOf(false) }
 
@@ -393,6 +394,7 @@ fun CreatePostSheet(
         clientRequestId = UUID.randomUUID().toString()
         showCreateLanding = false
         showPublishOptions = false
+        showReferenceDetails = false
     }
 
     fun addSelectedTag(tag: String) {
@@ -931,6 +933,30 @@ fun CreatePostSheet(
                     },
                     onDraft = { restoreDraft(it) }
                 )
+            } else if (showReferenceDetails) {
+                BlinkReferencePostDetails(
+                    text = text,
+                    mediaUri = selectedImages.firstOrNull() ?: selectedCoverUri,
+                    tags = effectiveTags,
+                    audience = audience,
+                    location = location,
+                    category = category,
+                    allowComments = allowComments,
+                    hideLikes = hideLikes,
+                    temporary = isDisappearing,
+                    onBack = { showReferenceDetails = false },
+                    onEditCaption = { showReferenceDetails = false },
+                    onAudienceChange = { audience = it },
+                    onLocationChange = { location = it },
+                    onCategoryChange = { category = it },
+                    onCommentsChange = { allowComments = it },
+                    onHideLikesChange = { hideLikes = it },
+                    onTemporaryChange = { isDisappearing = it },
+                    onNext = {
+                        showReferenceDetails = false
+                        showPublishOptions = true
+                    }
+                )
             } else if (showPublishOptions) {
                 BlinkCreatePostPublishOptions(
                     onBack = { showPublishOptions = false },
@@ -965,7 +991,7 @@ fun CreatePostSheet(
                 onSubmit = {
                     if (isEditingReel) reelEditorStage = false
                     else if (useClassicComposer) submit()
-                    else showPublishOptions = true
+                    else showReferenceDetails = true
                 }
             )
 
