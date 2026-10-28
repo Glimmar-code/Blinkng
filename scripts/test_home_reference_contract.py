@@ -144,7 +144,13 @@ class HomeReferenceContractTests(unittest.TestCase):
                  'TextButton(onClick = onCopyLink)')
         starts = [contents.index(icon) for icon in order]
         self.assertEqual(starts, sorted(starts))
-        self.assertIn('"${BlinkPostFormat.count(post.viewCount)} views"', contents)
+        self.assertIn('"\${BlinkPostFormat.count(displayedViewCount)} views"', contents)
+        # The counter must use the delayed authoritative value rather than
+        # immediately exposing a freshly recorded backend impression.
+        self.assertIn('val displayedViewCount = desktopDisplayedViewCount(post.id, post.viewCount)', DESKTOP)
+        self.assertIn('trackDesktopContentExposure(viewClient, post.id, displayedViewCount)', DESKTOP)
+        self.assertIn('DESKTOP_VIEW_REFLECTION_DELAY_MS = 120_000L',
+                      (ROOT / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/DesktopContentViewTracker.kt").read_text())
         self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else 4', DESKTOP)
 
     def test_foreground_feed_refresh_is_scoped_and_preserves_existing_posts(self):
