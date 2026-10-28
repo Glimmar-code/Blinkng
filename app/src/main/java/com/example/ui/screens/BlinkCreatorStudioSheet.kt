@@ -41,12 +41,16 @@ internal fun BlinkCreatorStudioSheet(
     onDismiss: () -> Unit,
     onVerify: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenPost: (String) -> Unit
+    onOpenPost: (String) -> Unit,
+    onUseAiPrompt: (String) -> Unit = {}
 ) {
     val summary = remember(posts) { BlinkCreatorStudioAnalytics.summarize(posts) }
     val blueOrGold = profile.hasActiveMarketVerification()
     val isGold = blueOrGold && profile.verificationBadge == VerificationBadge.GOLD
     val context = LocalContext.current
+    var creatorTopic by remember(profile.id) { mutableStateOf("") }
+    var creatorAudience by remember(profile.id) { mutableStateOf("students") }
+    var selectedCreatorTool by remember(profile.id) { mutableStateOf("Post ideas") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -233,6 +237,72 @@ internal fun BlinkCreatorStudioSheet(
                             Icon(Icons.Default.Share, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Share Gold content report")
+                        }
+                    }
+                }
+            }
+            if (blueOrGold) {
+                item {
+                    StudioFeatureCard(
+                        title = "BLINK AI creator workspace",
+                        description = "Prepare a specific brief and open it in BLINK AI. " +
+                            "You review and press Send; this never publishes automatically. " +
+                            "Your existing AI limits and privacy controls still apply."
+                    ) {
+                        OutlinedTextField(
+                            value = creatorTopic,
+                            onValueChange = { creatorTopic = it.take(160) },
+                            label = { Text("What are you creating?") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = creatorAudience,
+                            onValueChange = { creatorAudience = it.take(80) },
+                            label = { Text("Audience") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        com.blinkng.shared.BlinkVerifiedCreatorTools.promptKinds.forEach { kind ->
+                            FilterChip(
+                                selected = selectedCreatorTool == kind,
+                                onClick = { selectedCreatorTool = kind },
+                                label = { Text(kind) }
+                            )
+                        }
+                        Button(onClick = {
+                            val prompt = com.blinkng.shared.BlinkVerifiedCreatorTools.prompt(
+                                selectedCreatorTool, creatorTopic, creatorAudience)
+                            onDismiss()
+                            onUseAiPrompt(prompt)
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Open this brief in BLINK AI")
+                        }
+                    }
+                }
+                if (isGold) {
+                    item {
+                        StudioFeatureCard(
+                            title = "Gold Creator Portfolio",
+                            description = "Share a professional introduction made from your " +
+                                "public profile and strongest loaded topic. No private contact data."
+                        ) {
+                            val portfolio = com.blinkng.shared.BlinkVerifiedCreatorTools.portfolio(
+                                profile.username, profile.fullName, profile.professionalHeadline,
+                                profile.bio, summary.topTags.firstOrNull()?.tag
+                            )
+                            Text(portfolio, style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = {
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, portfolio)
+                                }
+                                try {
+                                    context.startActivity(Intent.createChooser(intent, "Share portfolio"))
+                                } catch (_: Exception) { }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Share creator portfolio")
+                            }
                         }
                     }
                 }
