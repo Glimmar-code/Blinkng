@@ -2300,7 +2300,8 @@ internal fun PostPreviewDialog(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .testTag("blink_post_preview_stage"),
             shape = RoundedCornerShape(18.dp),
             color = Color.White,
             tonalElevation = 8.dp,
