@@ -238,6 +238,19 @@ internal fun PremiumReelEditor(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Edit Reel", color = Color.White, fontWeight = FontWeight.Bold,
+                fontSize = 18.sp, modifier = Modifier.weight(1f)
+            )
+            Text(
+                "TRIM  ·  AUDIO  ·  EFFECTS",
+                color = Color(0xFFB5B4C7), fontSize = 10.sp
+            )
+        }
         Box(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)
                 .aspectRatio(9f / 16f).clip(RoundedCornerShape(27.dp))
