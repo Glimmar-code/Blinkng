@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.graphics.Bitmap
 import android.os.Environment
 import android.provider.MediaStore
+import android.net.Uri
+import com.example.ui.screens.BlinkUniversalPhotoEditor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -210,6 +212,23 @@ class BlinkCreatePostVisualAuditTest {
             }
         }
         capture("create-post-preview-staging.png", "blink_post_preview_stage")
+    }
+
+    @Test fun photoEditorUsesActualSelectedPhotoAndNativeTools() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val uri = Uri.parse(
+            "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
+        )
+        rule.setContent {
+            AuditSurface {
+                BlinkUniversalPhotoEditor(
+                    originalUri = uri,
+                    onEdited = {},
+                    onDismiss = {}
+                )
+            }
+        }
+        capture("create-post-photo-editor-staging.png", "blink_photo_editor_stage")
     }
 
 }
