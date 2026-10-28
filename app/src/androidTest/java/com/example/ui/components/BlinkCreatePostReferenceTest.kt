@@ -67,6 +67,7 @@ class BlinkCreatePostReferenceTest {
                     images = listOf("content://sample/1", "content://sample/2"),
                     onBack = { actions += "back" },
                     onRemove = { actions += "remove:" + it },
+                    onMove = { from, to -> actions += "move:" + from + "->" + to },
                     onAddMore = { actions += "add" },
                     onNext = { actions += "next" }
                 )
