@@ -186,6 +186,7 @@ internal fun BlinkChatVoicePlayer(
                 maxLines = 1
             )
         }
+        BlinkChatDownloadAction(url = url, kind = "voice", extension = "m4a")
         TextButton(
             enabled = ready,
             onClick = {

@@ -171,7 +171,11 @@ internal fun BlinkChatInlineVideo(
                                 Icon(Icons.Default.Close, "Close full screen video",
                                     tint = Color.White)
                             }
-                            Text("Video message", color = Color.White, fontSize = 15.sp)
+                            Text("Video message", color = Color.White, fontSize = 15.sp,
+                                modifier = Modifier.weight(1f))
+                            BlinkChatDownloadAction(
+                                url = url, kind = "video", extension = "mp4"
+                            )
                         }
                     }
                 }
