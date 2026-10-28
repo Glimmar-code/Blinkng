@@ -121,7 +121,7 @@ private val androidParityLayers = listOf(
 private val androidParityCheckpoints: List<AndroidParityCheckpoint> =
     androidParityModules.flatMap { module -> androidParityLayers.map { layer -> AndroidParityCheckpoint(module, layer) } }
 
-internal const val ANDROID_UI_PARITY_CHECKPOINT_COUNT = 500
+internal const val ANDROID_UI_PARITY_CHECKPOINT_COUNT = 510
 
 @Composable
 fun AndroidParityDesignDock(

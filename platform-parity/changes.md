@@ -1,3 +1,11 @@
+## 2026-10-28 — BLINK Contest free participation (Testlab only)
+
+- **Shared contract:** One free vote per authenticated account per contest; no self-voting, paid entry, paid votes, coins or verification multipliers. The backend enforces eligibility, vote uniqueness, registration windows, voting windows, moderation, audit-relevant entry status and server-ranked top-20 plus personal rank. Android and Windows use the same Supabase RPCs and `BlinkContestPolicy` labels.
+- **Android:** Fourth main tab changes from Connect to Contest, with Upcoming/Ongoing/Winners sections, prize amounts, applications, voting, live-requested rankings and admin contest manager. The original Connect discovery tools are preserved via "Find people & campus connections" rather than deleted.
+- **Windows:** The Connect primary route becomes Contest, with an explicit People discovery sidebar destination, equivalent contest/entry/voting UI, and an admin-only Contest admin route.
+- **Backend migration:** `20261028185000_blink_contests_free_entry.sql` creates three RLS-protected contest tables and authenticated/admin RPCs. Direct table grants are revoked for untrusted clients; write paths are server-authoritative. No production schema has been modified by this branch.
+- **Release hold:** Database SQL requires isolated staging execution, privilege/role tests, PostgreSQL function compilation, concurrent vote tests, app integration tests, current-head Android and Windows compilation, and signed runtime validation. Do not apply to production or merge main until these pass. Prize award payouts and advanced fake-account investigations are not represented as completed automation.
+
 ## 2026-10-27 — Notification reliability Testlab PR #622
 
 - Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.

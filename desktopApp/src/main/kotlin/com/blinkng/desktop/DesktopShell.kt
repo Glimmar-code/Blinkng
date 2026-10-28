@@ -116,6 +116,7 @@ import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.BlinkDesktopContestScreen
+import com.blinkng.desktop.ui.BlinkDesktopContestAdminScreen
 import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -153,6 +154,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
+    DesktopDestination("contest-admin", "Contest admin", Icons.Rounded.EmojiEvents, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
     DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
     DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
@@ -575,6 +577,7 @@ private fun AuthenticatedShell(
                         "leaderboard" -> LeaderboardScreen(state)
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
+                        "contest-admin" -> BlinkDesktopContestAdminScreen(state)
                         "settings" -> SettingsScreen(state)
                         "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
                         "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })
