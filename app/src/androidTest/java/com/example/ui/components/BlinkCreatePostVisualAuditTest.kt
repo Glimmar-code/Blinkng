@@ -107,6 +107,50 @@ class BlinkCreatePostVisualAuditTest {
         capture("create-post-details-staging.png")
     }
 
+    @Test fun textComposerToolbarFixture() {
+        rule.setContent {
+            AuditSurface {
+                BlinkReferenceComposerToolbar(
+                    enabled = true,
+                    onPhoto = {}, onVideo = {}, onPoll = {},
+                    onEmoji = {}, onTag = {}, onMention = {}, onLocation = {}
+                )
+            }
+        }
+        capture("create-post-text-toolbar-staging.png")
+    }
+
+    @Test fun realPollOptionsAndDurationsFixture() {
+        rule.setContent {
+            AuditSurface {
+                PollComposer(
+                    question = "Which campus event?",
+                    onQuestionChanged = {},
+                    options = listOf("Sports", "Tech", "Arts"),
+                    onOptionsChanged = {},
+                    durationHours = 24,
+                    onDurationChanged = {},
+                    enabled = true
+                )
+            }
+        }
+        capture("create-post-poll-staging.png")
+    }
+
+    @Test fun multipleVideoClipReviewFixture() {
+        rule.setContent {
+            AuditSurface {
+                BlinkReelClipReview(
+                    clips = listOf("content://fixture/video/a", "content://fixture/video/b"),
+                    exporting = false, progress = 0, error = null,
+                    onMove = { _, _ -> }, onRemove = {}, onAdd = {},
+                    onExport = {}, onBack = {}
+                )
+            }
+        }
+        capture("create-post-video-clips-staging.png")
+    }
+
     @Test fun finalOptionsAreAccessibleFixture() {
         rule.setContent {
             AuditSurface {
