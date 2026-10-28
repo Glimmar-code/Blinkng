@@ -1,3 +1,9 @@
+## 2026-10-28 — Included active verified signature (PR #629, Testlab)
+
+- **Shared policy:** `BlinkVerifiedIdentitySignature.label` emits a branded Blue/Gold member signature only when active, no identity-vetting claim, no paid Store cosmetic inventory grant.
+- **Android/Windows:** Both profile headers render the same subscription-derived signature with platform-native compact styling. Existing purchased rings/banners, creator cosmetics, owner privacy, and payment/renewal contracts remain unchanged.
+- **Test:** Shared Kotlin regression verifies expiry and unverified users never receive the signature. Live device visual verification and current-head full builds remain outstanding.
+
 ## 2026-10-28 — Gold Channel Pro and creator workspace parity (PR #629, Testlab)
 
 - **Shared Kotlin:** `BlinkVerifiedChannelPro` computes only loaded update stats (no private followers or fabricated lifetime metrics), validates future UTC schedule presets and produces editable Channel templates. `BlinkVerifiedCreatorTools` creates bounded AI briefs, public portfolio copy and confirmed-data event invitations.
