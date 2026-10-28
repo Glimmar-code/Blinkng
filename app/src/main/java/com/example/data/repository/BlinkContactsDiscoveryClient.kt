@@ -32,7 +32,11 @@ class BlinkContactsDiscoveryClient {
         val joinAlerts: Boolean = false,
         val lastSyncedAt: String = ""
     )
-    data class Snapshot(val consent: Consent, val people: List<UserProfile>)
+    data class Snapshot(
+        val consent: Consent,
+        val people: List<UserProfile>,
+        val mutualMatchingReady: Boolean = false
+    )
 
     private suspend fun post(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         val token = requireNotNull(SupabaseService.accessToken()) { "Sign in to use contact discovery." }
@@ -80,7 +84,11 @@ class BlinkContactsDiscoveryClient {
 
     suspend fun get(): Snapshot {
         val result = post(JSONObject().put("action", "get"))
-        return Snapshot(consent(result.optJSONObject("settings")), parsePeople(result.optJSONArray("matches")))
+        return Snapshot(
+            consent(result.optJSONObject("settings")),
+            parsePeople(result.optJSONArray("matches")),
+            mutualMatchingReady = result.optString("match_policy") == "reciprocal_opt_in_v1"
+        )
     }
 
     suspend fun set(value: Consent): Consent {
