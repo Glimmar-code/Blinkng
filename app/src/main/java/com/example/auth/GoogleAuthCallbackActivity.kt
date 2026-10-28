@@ -50,6 +50,14 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
 
         if (savedInstanceState == null) {
             lifecycleScope.launch { startNativeGoogleSignIn() }
+        } else {
+            // Credential Manager's suspended result belongs to the previous
+            // Activity instance. After rotation/process recreation its coroutine
+            // is gone; silently skipping auth here strands users on a blank UI.
+            // Return safely rather than replaying OAuth with an unrelated nonce.
+            failAndReturnToSignIn(
+                "Google sign-in was interrupted. Tap Continue with Google to try again."
+            )
         }
     }
 
