@@ -981,6 +981,20 @@ class MainActivity : ComponentActivity() {
                                                 onResult = onResult
                                             )
                                         },
+                                        onSavePhone = { number, onResult ->
+                                            if (number.isBlank()) {
+                                                onResult(true, null)
+                                            } else {
+                                                lifecycleScope.launch {
+                                                    val saved = com.example.data.supabase.SupabaseService()
+                                                        .updateMyProfilePhone(number)
+                                                    onResult(
+                                                        saved,
+                                                        if (saved) null else "Could not save your private phone number."
+                                                    )
+                                                }
+                                            }
+                                        },
                                         onSaveInterests = { interests, onResult ->
                                             viewModel.saveOnboardingInterests(interests, onResult)
                                         },
