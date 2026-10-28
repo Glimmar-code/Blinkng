@@ -5,6 +5,8 @@ import com.example.ui.components.BlinkSkeletonTargetRow
 import com.example.ui.components.BlinkSkeletonMetricStrip
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -18,6 +20,9 @@ import com.blinkng.shared.BlinkDesignTokens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -300,13 +305,17 @@ private fun GrowthColumnTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reduceMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
     val selectedBackground by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
-        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        animationSpec = tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.ContentReveal),
         label = "boostColumnTab"
     )
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction, indication = null, onClick = onClick
+        ),
         shape = RoundedCornerShape(13.dp),
         color = selectedBackground,
         tonalElevation = if (selected) 2.dp else 0.dp,
@@ -641,13 +650,18 @@ private fun BoostCampaignColumn(
                     progress = { (setupStep + 1) / 6f },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val reduceStepMotion = rememberBlinkReduceMotion()
                 AnimatedContent(
                     targetState = setupStep,
                     transitionSpec = {
-                        (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
-                            fadeIn(tween(200))) togetherWith
-                            (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
-                                fadeOut(tween(150)))
+                        if (reduceStepMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                                fadeIn(tween(200))) togetherWith
+                                (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                    fadeOut(tween(150)))
+                        }
                     },
                     label = "boost-campaign-step",
                 ) { stage ->

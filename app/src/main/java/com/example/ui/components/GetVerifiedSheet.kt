@@ -7,6 +7,10 @@ import com.example.ui.components.BlinkSkeletonList
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,6 +74,7 @@ fun GetVerifiedSheet(
     onCancelRenewal: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val reduceMotion = rememberBlinkReduceMotion()
     var selectedBadge by remember {
         mutableStateOf(
             if (profile.verificationBadge == VerificationBadge.BLUE) VerificationBadge.GOLD else VerificationBadge.BLUE
@@ -255,6 +260,12 @@ fun GetVerifiedSheet(
             item {
                 val isSelected = selectedBadge == VerificationBadge.BLUE
                 val isCurrent = profile.verificationBadge == VerificationBadge.BLUE
+                val tierInteraction = remember { MutableInteractionSource() }
+                val selectedBorder by animateColorAsState(
+                    targetValue = if (isSelected) BlinkBlue else borderColor,
+                    animationSpec = tween(if (reduceMotion) 0 else 180),
+                    label = "blueTierSelection"
+                )
 
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -263,11 +274,16 @@ fun GetVerifiedSheet(
                     ),
                     border = BorderStroke(
                         if (isSelected) 2.dp else 1.dp,
-                        if (isSelected) BlinkBlue else borderColor
+                        selectedBorder
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { selectedBadge = VerificationBadge.BLUE }
+                        .blinkPressFeedback(tierInteraction)
+                        .clickable(
+                            interactionSource = tierInteraction,
+                            indication = null,
+                            onClick = { selectedBadge = VerificationBadge.BLUE }
+                        )
                         .testTag("tier_blue_card")
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -372,6 +388,12 @@ fun GetVerifiedSheet(
             item {
                 val isSelected = selectedBadge == VerificationBadge.GOLD
                 val isCurrent = profile.verificationBadge == VerificationBadge.GOLD
+                val tierInteraction = remember { MutableInteractionSource() }
+                val selectedBorder by animateColorAsState(
+                    targetValue = if (isSelected) BlinkGold else borderColor,
+                    animationSpec = tween(if (reduceMotion) 0 else 180),
+                    label = "goldTierSelection"
+                )
 
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -380,11 +402,16 @@ fun GetVerifiedSheet(
                     ),
                     border = BorderStroke(
                         if (isSelected) 2.dp else 1.dp,
-                        if (isSelected) BlinkGold else borderColor
+                        selectedBorder
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { selectedBadge = VerificationBadge.GOLD }
+                        .blinkPressFeedback(tierInteraction)
+                        .clickable(
+                            interactionSource = tierInteraction,
+                            indication = null,
+                            onClick = { selectedBadge = VerificationBadge.GOLD }
+                        )
                         .testTag("tier_gold_card")
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -773,7 +800,13 @@ fun GetVerifiedSheet(
                                 Text("Buy Blink Coins", fontWeight = FontWeight.Bold)
                             }
 
-                            AnimatedVisibility(visible = showDailyMissions) {
+                            AnimatedVisibility(
+                                visible = showDailyMissions,
+                                enter = if (reduceMotion) EnterTransition.None else
+                                    fadeIn(tween(180)) + expandVertically(tween(220)),
+                                exit = if (reduceMotion) ExitTransition.None else
+                                    fadeOut(tween(110)) + shrinkVertically(tween(190))
+                            ) {
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),

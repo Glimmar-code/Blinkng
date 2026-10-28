@@ -6,6 +6,10 @@ import com.example.data.local.rememberPersistentTextState
 import com.example.data.local.ConnectMatchPreferencesStore
 import com.example.R
 import androidx.compose.ui.res.painterResource
+import com.example.performance.rememberBlinkReduceMotion
+import com.example.ui.components.blinkPressFeedback
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -1397,21 +1401,29 @@ private fun MatchSpinDialog(
 
 @Composable
 private fun PremiumChoicePill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val reduceMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else .97f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (reduceMotion || selected) 1f else .97f,
+        animationSpec = if (reduceMotion) androidx.compose.animation.core.snap()
+            else spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "premiumChoiceScale"
     )
     val background by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
-        animationSpec = tween(180),
+        animationSpec = tween(if (reduceMotion) 0 else 180),
         label = "premiumChoiceColor"
     )
     Surface(
         modifier = Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clickable(onClick = onClick),
+            .blinkPressFeedback(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            ),
         shape = RoundedCornerShape(100.dp),
         color = background
     ) {
@@ -1768,11 +1780,13 @@ private fun SmartMatchHero(
 
 @Composable
 private fun PremiumMatchSearchProgress(stages: List<String>, stageIndex: Int) {
+    val reduceMotion = rememberBlinkReduceMotion()
     Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
         AnimatedContent(
             targetState = stageIndex,
             transitionSpec = {
-                (fadeIn(tween(220)) + slideInVertically { it / 3 }) togetherWith fadeOut(tween(140))
+                if (reduceMotion) EnterTransition.None togetherWith ExitTransition.None
+                else (fadeIn(tween(220)) + slideInVertically { it / 3 }) togetherWith fadeOut(tween(140))
             },
             label = "matchSearchStage"
         ) { index ->
@@ -1799,7 +1813,7 @@ private fun PremiumMatchSearchProgress(stages: List<String>, stageIndex: Int) {
             stages.indices.forEach { index ->
                 val width by animateDpAsState(
                     targetValue = if (index == stageIndex) 24.dp else 7.dp,
-                    animationSpec = tween(220),
+                    animationSpec = tween(if (reduceMotion) 0 else 220),
                     label = "matchStageWidth"
                 )
                 Box(
@@ -2312,6 +2326,7 @@ private fun connectDirectoryGroup(item: ConnectDirectoryCategory): String {
 
 @Composable
 private fun SegmentedModeSwitch(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val reduceMotion = rememberBlinkReduceMotion()
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
@@ -2321,10 +2336,14 @@ private fun SegmentedModeSwitch(options: List<String>, selected: Int, onSelect: 
                 val isSelected = selected == i
                 val bg by animateColorAsState(
                     targetValue = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                    animationSpec = tween(200),
+                    animationSpec = tween(if (reduceMotion) 0 else 200),
                     label = "segBg"
                 )
-                val elevation by animateDpAsState(if (isSelected) 2.dp else 0.dp, label = "segElevation")
+                val elevation by animateDpAsState(
+                    targetValue = if (isSelected) 2.dp else 0.dp,
+                    animationSpec = tween(if (reduceMotion) 0 else 180),
+                    label = "segElevation"
+                )
                 Surface(
                     modifier = Modifier
                         .weight(1f)
@@ -2416,14 +2435,15 @@ private fun CategoryScaffold(
 
 @Composable
 private fun StaggeredItem(index: Int, content: @Composable () -> Unit) {
-    var shown by remember(index) { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(index) {
-        delay(35L * index.coerceAtMost(8))
+    val reduceMotion = rememberBlinkReduceMotion()
+    var shown by remember(index, reduceMotion) { mutableStateOf(reduceMotion) }
+    LaunchedEffect(index, reduceMotion) {
+        if (!reduceMotion) delay(35L * index.coerceAtMost(8))
         shown = true
     }
     AnimatedVisibility(
         visible = shown,
-        enter = fadeIn(tween(260)) + slideInVertically(
+        enter = if (reduceMotion) EnterTransition.None else fadeIn(tween(260)) + slideInVertically(
             initialOffsetY = { it / 6 },
             animationSpec = tween(300, easing = FastOutSlowInEasing)
         )
@@ -2465,12 +2485,22 @@ private fun StatusPill(status: String) {
         else -> MaterialTheme.colorScheme.surfaceVariant to status.replaceFirstChar { it.uppercase() }
     }
     Surface(shape = RoundedCornerShape(100.dp), color = bg) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold
-        )
+        val reduceMotion = rememberBlinkReduceMotion()
+        AnimatedContent(
+            targetState = label,
+            transitionSpec = {
+                if (reduceMotion) EnterTransition.None togetherWith ExitTransition.None
+                else fadeIn(tween(170)) togetherWith fadeOut(tween(110))
+            },
+            label = "authoritativeConnectRequestStatus"
+        ) { confirmedLabel ->
+            Text(
+                confirmedLabel,
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 

@@ -8,6 +8,10 @@ import com.example.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
+import com.example.ui.components.blinkPressFeedback
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -905,17 +909,24 @@ private fun NotificationCard(
     val verificationBadge = profile?.verificationBadge ?: item.verificationBadge
     val canOpenProfile = username.isNotBlank() && !isOfficial
 
+    val motionReduced = rememberBlinkReduceMotion()
+    val rowInteraction = remember { MutableInteractionSource() }
     val highlight by animateColorAsState(
         targetValue = if (item.isUnread) accent.copy(alpha = .075f)
             else MaterialTheme.colorScheme.background,
-        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        animationSpec = tween(if (motionReduced) 0 else BlinkDesignTokens.Motion.ContentReveal),
         label = "notificationReadHighlight"
     )
     Surface(
         color = highlight,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onNotificationClick(item) }
+            .blinkPressFeedback(rowInteraction)
+            .clickable(
+                interactionSource = rowInteraction,
+                indication = LocalIndication.current,
+                onClick = { onNotificationClick(item) }
+            )
     ) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

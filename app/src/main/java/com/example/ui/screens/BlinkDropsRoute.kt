@@ -3,6 +3,8 @@ package com.example.ui.screens
 import com.example.ui.components.BlinkSkeletonList
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -21,6 +23,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.blinkSmoothSize
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -799,13 +805,17 @@ private fun DropsTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reduceMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
     val selectionColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.surface else androidx.compose.ui.graphics.Color.Transparent,
-        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        animationSpec = tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.ContentReveal),
         label = "dropsTabSelection"
     )
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction, indication = null, onClick = onClick
+        ),
         shape = RoundedCornerShape(13.dp),
         color = selectionColor,
         tonalElevation = if (selected) 2.dp else 0.dp,
@@ -828,6 +838,7 @@ private fun BalanceAndCreateCard(
     formatter: NumberFormat,
     onCreate: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f)),
         shape = RoundedCornerShape(22.dp),
@@ -851,6 +862,8 @@ private fun BalanceAndCreateCard(
             Button(
                 onClick = onCreate,
                 enabled = balance != null,
+                interactionSource = interaction,
+                modifier = Modifier.blinkPressFeedback(interaction, enabled = balance != null),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.onSurface,
                     contentColor = MaterialTheme.colorScheme.surface,
@@ -877,6 +890,7 @@ private fun DropCard(
 ) {
     val remaining = (drop.winnerCount - drop.claimedCount).coerceAtLeast(0)
     Card(
+        modifier = Modifier.blinkSmoothSize(),
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
@@ -1287,14 +1301,19 @@ private fun OrganizeDropDialog(
                     }
                 }
 
+                val reduceStepMotion = rememberBlinkReduceMotion()
                 AnimatedContent(
                     targetState = setupStep,
                     modifier = Modifier.weight(1f),
                     transitionSpec = {
-                        (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
-                            fadeIn(tween(210))) togetherWith
-                            (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
-                                fadeOut(tween(160)))
+                        if (reduceStepMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                                fadeIn(tween(210))) togetherWith
+                                (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                    fadeOut(tween(160)))
+                        }
                     },
                     label = "drop-setup-step",
                 ) { stage ->

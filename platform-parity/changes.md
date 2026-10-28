@@ -13,6 +13,12 @@
 - **PARITY-EXCEPTION: android-password-reset-deep-link:** Android OS intent dispatch now sends both `blink://auth/reset-password` and legacy `blink://reset-password` to its dedicated token-verifying reset screen. Windows does not implement Android intent filters and must use its own authorized browser/desktop recovery callback. No shared account, password, session, or backend permission semantics were changed.
 - **Validation gate:** Staged SQL fixture, source regressions and Android recovery-link Robolectric tests have been added. Independent PostgreSQL role/privacy integration, latest-head Android/Windows CI and end-to-end recovery email/device verification remain required. Main and hosted Supabase are untouched.
 
+## 2026-10-28 — Android-only touch feedback and auth movement (Testlab PR #637)
+
+- PARITY-EXCEPTION: premium-android-touch-motion — Android's touch-down press scaling, Android system animator-duration preference, native auth-route frame transitions and Reels tab selection are platform-level motion, not business features. They add no new data or cross-platform behavior and intentionally do not alter server/shared contracts.
+- **Windows equivalent:** Desktop continues to use its existing keyboard/mouse activation, focus/hover state and desktop-native navigation in `desktopApp/src/main/kotlin/com/blinkng/desktop/DesktopShell.kt` and the desktop auth UI. A touchscreen-like spring on Windows would be a regression for pointer/keyboard UX; no visual-replica claim is made. Future desktop motion polish requires separate native UX validation.
+- **Validation hold:** Android build, unit tests, intro gate, Windows parity gate and smoke checks must pass; this note is not permission to merge with failing or unverified checks.
+
 ## 2026-10-27 — Notification reliability Testlab PR #622
 
 - Shared notification timeline policy preserves unrelated legacy items and matches exact official announcement mirrors. A regression test covers event matching and unread badge exclusion.

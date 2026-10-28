@@ -15,6 +15,10 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.BlinkFadeThrough
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -927,17 +931,22 @@ private fun CallScreen(
                         Text("@$peerUsername", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                     Spacer(Modifier.size(8.dp))
-                    Text(
-                        if (statusText == "Connected" && elapsedSeconds > 0) formatDuration(elapsedSeconds) else statusText,
-                        color = if (errorText == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
-                    )
+                    BlinkFadeThrough(targetState = statusText, label = "authoritativeCallStatus") { confirmed ->
+                        Text(
+                            if (confirmed == "Connected" && elapsedSeconds > 0)
+                                formatDuration(elapsedSeconds) else confirmed,
+                            color = if (errorText == null)
+                                MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                        )
+                    }
                     if (!errorText.isNullOrBlank()) {
                         Spacer(Modifier.size(4.dp))
                         Text(errorText, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     }
                 }
 
-                if (incomingRinging) {
+                BlinkFadeThrough(targetState = incomingRinging, label = "callControlsTransition") { ringing ->
+                if (ringing) {
                     Row(horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
                         CallRoundButton(
                             icon = Icons.Default.CallEnd,
@@ -987,6 +996,7 @@ private fun CallScreen(
                         )
                     }
                 }
+                }
             }
         }
     }
@@ -998,9 +1008,14 @@ private fun CallControlButton(
     label: String,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-            IconButton(onClick = onClick, modifier = Modifier.size(54.dp)) {
+            IconButton(
+                onClick = onClick,
+                interactionSource = interaction,
+                modifier = Modifier.size(54.dp).blinkPressFeedback(interaction)
+            ) {
                 Icon(icon, contentDescription = label)
             }
         }
@@ -1016,12 +1031,14 @@ private fun CallRoundButton(
     container: Color,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Button(
             onClick = onClick,
+            interactionSource = interaction,
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = container),
-            modifier = Modifier.size(66.dp),
+            modifier = Modifier.size(66.dp).blinkPressFeedback(interaction),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
         ) {
             Icon(icon, contentDescription = label, tint = Color.White)

@@ -23,6 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -74,6 +77,18 @@ fun BlinkChannelMediaViewer(
     var y by remember(entry.id) { mutableFloatStateOf(0f) }
     var verticalDrag by remember(entry.id) { mutableFloatStateOf(0f) }
     var horizontalDrag by remember(entry.id) { mutableFloatStateOf(0f) }
+    val reducedMotion = rememberBlinkReduceMotion()
+    val imageReveal = remember(entry.id) { Animatable(0f) }
+
+    LaunchedEffect(entry.id, loading, url, error, reducedMotion) {
+        if (loading || error != null || url == null) {
+            imageReveal.snapTo(0f)
+        } else if (reducedMotion) {
+            imageReveal.snapTo(1f)
+        } else {
+            imageReveal.animateTo(1f, animationSpec = tween(190))
+        }
+    }
 
     LaunchedEffect(entry.id, entry.mediaPath) {
         loading = true
@@ -141,7 +156,8 @@ fun BlinkChannelMediaViewer(
                                 }
                                 .graphicsLayer(
                                     scaleX = zoom, scaleY = zoom,
-                                    translationX = x, translationY = y
+                                    translationX = x, translationY = y,
+                                    alpha = imageReveal.value
                                 )
                         )
                     }

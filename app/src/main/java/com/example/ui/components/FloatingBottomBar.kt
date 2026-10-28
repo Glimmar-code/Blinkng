@@ -2,6 +2,11 @@ package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.remember
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.graphicsLayer
@@ -154,15 +159,23 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     onClick: () -> Unit
 ) {
     val activeAccent = MaterialTheme.colorScheme.onSurface
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
     val tint by animateColorAsState(
         targetValue = if (selected) activeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
         label = "bottomNavTint"
     )
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) BlinkMotion.selectedScale else 1f,
+        targetValue = if (pressed && !reduceMotion) 0.94f
+            else if (selected) BlinkMotion.selectedScale else 1f,
         animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
         label = "bottomNavIconScale"
+    )
+    val indicatorWidth by animateDpAsState(
+        targetValue = if (selected) 45.dp else 12.dp,
+        animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
+        label = "bottomNavIndicatorWidth"
     )
     val indicatorColor by animateColorAsState(
         targetValue = if (selected) activeAccent else Color.Transparent,
@@ -174,7 +187,12 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
         modifier = Modifier
             .weight(1f)
             .height(64.dp)
-            .clickable(role = Role.Tab, onClick = onClick)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Tab,
+                onClick = onClick
+            )
             .semantics { this.selected = selected }
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,7 +219,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
         )
         Spacer(Modifier.height(5.dp))
         Box(
-            modifier = Modifier.width(45.dp).height(2.dp)
+            modifier = Modifier.width(indicatorWidth).height(2.dp)
                 .background(indicatorColor, RoundedCornerShape(2.dp))
         )
     }
