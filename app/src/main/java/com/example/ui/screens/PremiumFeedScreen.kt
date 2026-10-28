@@ -414,28 +414,15 @@ fun PremiumFeedScreen(
             .toSet()
     }
 
-    val reducePageMotion = rememberBlinkReduceMotion()
+    // The five-page HorizontalPager in MainActivity already draws the outgoing
+    // and incoming full-sized pages under the user's finger. Duplicating its
+    // transition here caused two independently moving copies of Reels/Connect,
+    // player remounts and dark seams on quick tab changes.
     AnimatedContent(
         targetState = currentSubTab,
         transitionSpec = {
-            val forward = targetState > initialState
-            val direction = if (forward) 1 else -1
-            val duration = if (reducePageMotion) 0 else 225
-            (
-                slideInHorizontally(
-                    initialOffsetX = { direction * it },
-                    animationSpec = tween(duration)
-                ) +
-                scaleIn(initialScale = 0.96f, animationSpec = tween(duration)) +
-                fadeIn(animationSpec = tween(duration))
-            ) togetherWith (
-                slideOutHorizontally(
-                    targetOffsetX = { -direction * it / 4 },
-                    animationSpec = tween(duration)
-                ) +
-                scaleOut(targetScale = 0.96f, animationSpec = tween(duration)) +
-                fadeOut(animationSpec = tween(duration))
-            )
+            androidx.compose.animation.EnterTransition.None togetherWith
+                androidx.compose.animation.ExitTransition.None
         },
         label = "feedReelsConnectTransition",
     ) { page ->

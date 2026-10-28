@@ -8,6 +8,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import com.blinkng.shared.BlinkChatMediaAccessPolicy
 
 import com.example.ui.components.BlinkSkeletonChatHistory
+import com.example.ui.components.blinkPressFeedback
 
 import android.Manifest
 import com.example.data.local.PersistentTextDraftStore
@@ -286,6 +287,7 @@ fun PremiumMessagesScreen(
     showInboxBehindChat: Boolean = true
 ) {
     val context = LocalContext.current
+    val reduceRouteMotion = rememberBlinkReduceMotion()
     val preferences = remember(context.applicationContext) {
         context.applicationContext.getSharedPreferences(MESSAGE_PREFERENCES, Context.MODE_PRIVATE)
     }
@@ -334,8 +336,14 @@ fun PremiumMessagesScreen(
         AnimatedContent(
             targetState = activeCall,
             transitionSpec = {
-                (fadeIn(tween(260)) + scaleIn(initialScale = .985f)) togetherWith
-                    (fadeOut(tween(180)) + scaleOut(targetScale = 1.015f))
+                if (reduceRouteMotion) {
+                    androidx.compose.animation.EnterTransition.None togetherWith
+                        androidx.compose.animation.ExitTransition.None
+                } else {
+                    // Do not scale the live-call surface: native video renderers
+                    // and chat text should never become soft or jittery.
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(140))
+                }
             },
             label = "message_call_transition"
         ) { call ->
@@ -383,11 +391,15 @@ fun PremiumMessagesScreen(
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
-                        enter = slideInHorizontally(
+                        enter = if (reduceRouteMotion) {
+                            androidx.compose.animation.EnterTransition.None
+                        } else slideInHorizontally(
                             initialOffsetX = { it },
                             animationSpec = tween(260, easing = FastOutSlowInEasing)
                         ),
-                        exit = slideOutHorizontally(
+                        exit = if (reduceRouteMotion) {
+                            androidx.compose.animation.ExitTransition.None
+                        } else slideOutHorizontally(
                             targetOffsetX = { it },
                             animationSpec = tween(240, easing = FastOutSlowInEasing)
                         )
@@ -1433,6 +1445,7 @@ private fun ConversationCard(
         )
     }
 
+    val pressInteraction = remember { MutableInteractionSource() }
     Surface(
         color = palette.glassElevated.copy(alpha = if (palette.isLight) .88f else .66f),
         contentColor = palette.textPrimary,
@@ -1442,7 +1455,12 @@ private fun ConversationCard(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 80.dp)
-            .clickable(onClick = onOpen)
+            .blinkPressFeedback(pressInteraction)
+            .clickable(
+                interactionSource = pressInteraction,
+                indication = null,
+                onClick = onOpen
+            )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
