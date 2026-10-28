@@ -1089,16 +1089,21 @@ private fun ReelsTopTabs(
     modifier: Modifier = Modifier
 ) {
     val tabs = listOf("Following", "For You")
+    val reduceMotion = rememberBlinkReduceMotion()
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         tabs.forEachIndexed { index, tab ->
             val isSelected = tab == selectedTab
             val textColor by animateColorAsState(
                 targetValue = if (isSelected) Color.White else Color.White.copy(alpha = .55f),
+                animationSpec = tween(if (reduceMotion) 0 else 170),
                 label = "tabColor"
             )
             val indicatorWidth by animateDpAsState(
                 targetValue = if (isSelected) 24.dp else 0.dp,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                animationSpec = if (reduceMotion) snap() else spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
                 label = "tabIndicatorWidth"
             )
             Column(
@@ -1109,7 +1114,8 @@ private fun ReelsTopTabs(
                     text = tab,
                     color = textColor,
                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
-                    fontSize = if (isSelected) 15.sp else 14.sp
+                    // Keep baselines stable while switching tabs.
+                    fontSize = 15.sp
                 )
                 Spacer(Modifier.height(4.dp))
                 Box(Modifier.width(indicatorWidth).height(2.dp).background(Color.White, CircleShape))

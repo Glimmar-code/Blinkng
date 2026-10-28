@@ -1,6 +1,9 @@
 package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.LocalIndication
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -63,15 +66,13 @@ fun BlinkCard(
     val colors = BlinkThemeTokens.colors
     val authDark = colors.background == Color.Black
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale = if (pressed) BlinkMotion.pressedScale else 1f
     val clickableModifier = if (onClick != null) {
         Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick)
     } else Modifier
 
     Surface(
         modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .blinkPressFeedback(interaction, enabled = onClick != null)
             .then(clickableModifier),
         shape = shape,
         // Auth's barely visible white glass on black; keep the current light palette.
@@ -102,9 +103,11 @@ fun BlinkPrimaryButton(
 ) {
     val colors = BlinkThemeTokens.colors
     val authDark = colors.background == Color.Black
+    val interaction = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.blinkPressFeedback(interaction, enabled = enabled),
+        interactionSource = interaction,
         enabled = enabled,
         shape = RoundedCornerShape(
             if (authDark) BlinkDesignTokens.PremiumDark.ButtonCornerRadius.dp else 16.dp
@@ -239,18 +242,24 @@ fun BlinkChip(
     modifier: Modifier = Modifier,
 ) {
     val colors = BlinkThemeTokens.colors
+    val reduceMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
     val container by animateColorAsState(
         if (selected) colors.primary.copy(alpha = 0.18f) else colors.surfaceElevated,
-        animationSpec = BlinkMotion.fastTween(),
+        animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.fastMillis),
         label = "blinkChipContainer",
     )
     val content by animateColorAsState(
         if (selected) colors.primaryBright else colors.textSecondary,
-        animationSpec = BlinkMotion.fastTween(),
+        animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.fastMillis),
         label = "blinkChipContent",
     )
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction,
+            indication = LocalIndication.current,
+            onClick = onClick
+        ),
         shape = RoundedCornerShape(999.dp),
         color = container,
         border = BorderStroke(1.dp, if (selected) colors.primary.copy(alpha = .42f) else colors.borderSoft),
@@ -305,19 +314,27 @@ fun BlinkSkeleton(
     maxAlpha: Float = .72f,
 ) {
     val colors = BlinkThemeTokens.colors
-    val transition = rememberInfiniteTransition(label = "blinkSkeleton")
-    val alpha by transition.animateFloat(
-        initialValue = minAlpha,
-        targetValue = maxAlpha,
-        animationSpec = infiniteRepeatable(
-            animation = tween(850),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "blinkSkeletonAlpha",
-    )
-    Surface(
-        modifier = modifier.alpha(alpha),
-        shape = shape,
-        color = colors.surfaceHighest,
-    ) {}
+    if (rememberBlinkReduceMotion()) {
+        Surface(
+            modifier = modifier.alpha(((minAlpha + maxAlpha) / 2f).coerceIn(0f, 1f)),
+            shape = shape,
+            color = colors.surfaceHighest
+        ) {}
+    } else {
+        val transition = rememberInfiniteTransition(label = "blinkSkeleton")
+        val alpha by transition.animateFloat(
+            initialValue = minAlpha,
+            targetValue = maxAlpha,
+            animationSpec = infiniteRepeatable(
+                animation = tween(850),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "blinkSkeletonAlpha",
+        )
+        Surface(
+            modifier = modifier.alpha(alpha),
+            shape = shape,
+            color = colors.surfaceHighest,
+        ) {}
+    }
 }
