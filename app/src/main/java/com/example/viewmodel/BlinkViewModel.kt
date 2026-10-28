@@ -5576,7 +5576,12 @@ private suspend fun restoreSupabaseSession() {
             isRead = false,
             isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
             attachedImageUrl = uri.toString().takeIf { kind == BlinkChatAttachmentKind.IMAGE },
-            imageAlbumId = album.id.takeIf { kind == BlinkChatAttachmentKind.IMAGE && album.grouped },
+            attachedVideoUrl = uri.toString().takeIf { kind == BlinkChatAttachmentKind.VIDEO },
+            messageType = kind.wireType,
+            imageAlbumId = album.id.takeIf {
+                (kind == BlinkChatAttachmentKind.IMAGE ||
+                    kind == BlinkChatAttachmentKind.VIDEO) && album.grouped
+            },
             imageAlbumPosition = if (album.grouped) album.position else 0,
             imageAlbumSize = if (album.grouped) album.size else 1,
             uploadProgress = 0,
@@ -5865,7 +5870,22 @@ private suspend fun restoreSupabaseSession() {
 
 
     fun sendVideoMessage(partnerUsername: String, uri: Uri) {
-        sendAttachmentMessage(partnerUsername, uri, "video")
+        sendAttachmentMessage(partnerUsername, uri, BlinkChatAttachmentKind.VIDEO)
+    }
+
+    /** Persistent 2..10-video group; each private video still gets its own id
+     * and retries safely through the existing attachment sender. */
+    fun sendVideoAlbum(partnerUsername: String, videos: List<Uri>) {
+        val picked = videos.take(10)
+        if (picked.isEmpty()) return
+        val albumId = if (picked.size > 1) UUID.randomUUID().toString() else null
+        picked.forEachIndexed { index, uri ->
+            sendAttachmentMessage(
+                partnerUsername, uri, BlinkChatAttachmentKind.VIDEO,
+                album = if (albumId == null) BlinkChatPhotoAlbum.single()
+                    else BlinkChatPhotoAlbum.of(albumId, index, picked.size)
+            )
+        }
     }
 
     fun sendAttachmentMessage(partnerUsername: String, uri: Uri, kind: String) {

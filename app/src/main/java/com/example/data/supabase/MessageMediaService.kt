@@ -241,12 +241,12 @@ object MessageMediaService {
     suspend fun hydratePhotoAlbumMetadata(
         messages: List<ChatMessage>, conversationId: String
     ): List<ChatMessage> = withContext(Dispatchers.IO) {
-        if (messages.none { it.messageType.equals("image", ignoreCase = true) } ||
+        if (messages.none { it.messageType.equals("image", ignoreCase = true) || it.messageType.equals("video", ignoreCase = true) } ||
             !photoMetadataSupported()) return@withContext messages
         val owner = uid() ?: return@withContext messages
         val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
             ?: return@withContext messages
-        val ids = messages.filter { it.messageType.equals("image", ignoreCase = true) }
+        val ids = messages.filter { it.messageType.equals("image", ignoreCase = true) || it.messageType.equals("video", ignoreCase = true) }
             .mapNotNull { runCatching { UUID.fromString(it.id).toString() }.getOrNull() }
         if (ids.isEmpty()) return@withContext messages
 
@@ -271,7 +271,8 @@ object MessageMediaService {
 
         messages.map { message ->
             val row = metadata[message.id] ?: return@map message
-            if (!message.messageType.equals("image", ignoreCase = true) ||
+            if (!(message.messageType.equals("image", ignoreCase = true) ||
+                    message.messageType.equals("video", ignoreCase = true)) ||
                 message.imageViewOnce || row.optString("sender_id") != message.senderId) {
                 return@map message
             }
@@ -410,8 +411,8 @@ object MessageMediaService {
             else BoundedMessageAttachment.open(context, uri, kind)
             selected.use { staged ->
                 if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
-                val expandedMetadata = kind == BlinkChatAttachmentKind.IMAGE &&
-                    photoMetadataSupported()
+                val expandedMetadata = (kind == BlinkChatAttachmentKind.IMAGE ||
+                    kind == BlinkChatAttachmentKind.VIDEO) && photoMetadataSupported()
                 val objectPath =
                     "conversations/$conversationId/users/$senderId/${kind.wireType}/$safeMessageId.${staged.extension}"
                 client.newCall(
@@ -506,6 +507,7 @@ object MessageMediaService {
                         voiceAudioUrl = url.takeIf { kind == BlinkChatAttachmentKind.VOICE },
                         attachedImageUrl = url.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
                         imageAlbumId = album.id.takeIf { expandedMetadata && album.grouped },
+                        messageType = kind.wireType,
                         imageAlbumPosition = if (expandedMetadata) album.position else 0,
                         imageAlbumSize = if (expandedMetadata) album.size else 1,
                         imagePreviewUrl = privatePreviewPath?.let(::signedUrl),
