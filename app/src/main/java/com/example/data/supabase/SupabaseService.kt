@@ -1,6 +1,10 @@
 package com.example.data.supabase
 
 import com.blinkng.shared.ProfileRankSnapshot
+import com.blinkng.shared.ProfileVisitSettings
+import com.blinkng.shared.ProfileVisitor
+import com.blinkng.shared.ProfileVisitHistory
+import com.blinkng.shared.ProfileContentMetrics
 import com.blinkng.shared.ProfileVisibilityScope
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
@@ -2800,7 +2804,8 @@ suspend fun uploadPostMedia(
         userId: String,
         uriString: String,
         mimeType: String,
-        isVideo: Boolean
+        isVideo: Boolean,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
     ): String? = withContext(Dispatchers.IO) {
         val context = appContext ?: return@withContext null
         val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return@withContext null
@@ -2837,7 +2842,8 @@ suspend fun uploadPostMedia(
                 uri = uri,
                 mimeType = mimeType,
                 isVideo = isVideo,
-                contentLength = length
+                contentLength = length,
+                onProgress = onProgress
             )
         } else {
             uploadPostMediaStreaming(
@@ -2846,7 +2852,8 @@ suspend fun uploadPostMedia(
                 uri = uri,
                 mimeType = mimeType,
                 isVideo = isVideo,
-                contentLength = length
+                contentLength = length,
+                onProgress = onProgress
             )
         }
     }
@@ -2888,7 +2895,8 @@ suspend fun uploadPostMedia(
         uri: Uri,
         mimeType: String,
         isVideo: Boolean,
-        contentLength: Long
+        contentLength: Long,
+        onProgress: (Long, Long) -> Unit
     ): String? {
         val (path, publicUrl) = postMediaTarget(userId, mimeType, isVideo)
         val body = object : RequestBody() {
@@ -2899,10 +2907,17 @@ suspend fun uploadPostMedia(
                     ?: throw IllegalStateException("Could not open selected media.")
                 input.use {
                     val buffer = ByteArray(64 * 1024)
+                    var uploaded = 0L
                     while (true) {
                         val read = it.read(buffer)
                         if (read < 0) break
-                        if (read > 0) sink.write(buffer, 0, read)
+                        if (read > 0) {
+                            sink.write(buffer, 0, read)
+                            uploaded += read
+                            if (contentLength > 0L) {
+                                onProgress(uploaded.coerceAtMost(contentLength), contentLength)
+                            }
+                        }
                     }
                 }
             }
@@ -2932,7 +2947,8 @@ suspend fun uploadPostMedia(
         uri: Uri,
         mimeType: String,
         isVideo: Boolean,
-        contentLength: Long
+        contentLength: Long,
+        onProgress: (Long, Long) -> Unit
     ): String? {
         if (contentLength <= 0L) {
             return uploadPostMediaStreaming(
@@ -2941,7 +2957,8 @@ suspend fun uploadPostMedia(
                 uri,
                 mimeType,
                 isVideo,
-                contentLength
+                contentLength,
+                onProgress
             )
         }
 
@@ -3016,19 +3033,48 @@ suspend fun uploadPostMedia(
                     )
                     .build()
 
-                val nextOffset = executeRequest(patch).use { response ->
-                    if (!response.isSuccessful) {
-                        Log.e(
-                            TAG,
-                            "POST_MEDIA_TUS_PATCH failed status=" + response.code +
-                                " body=" + response.body?.string().orEmpty()
-                        )
-                        return null
+                // A lost PATCH acknowledgement must not duplicate bytes or skip
+                // part of a Reel. Ask TUS for the server's authoritative offset.
+                val expected = offset + count
+                var acknowledged = false
+                for (attempt in 0 until 3) {
+                    val resultOffset = try {
+                        executeRequest(patch).use { response ->
+                            if (response.isSuccessful) {
+                                response.header("Upload-Offset")?.toLongOrNull()
+                            } else null
+                        }
+                    } catch (_: java.io.IOException) { null }
+                    if (resultOffset == expected) {
+                        acknowledged = true
+                        break
                     }
-                    response.header("Upload-Offset")?.toLongOrNull() ?: (offset + count)
+
+                    val serverOffset = try {
+                        val head = Request.Builder()
+                            .url(uploadUrl)
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", "Bearer $token")
+                            .addHeader("Tus-Resumable", "1.0.0")
+                            .head()
+                            .build()
+                        executeRequest(head).use { response ->
+                            if (response.isSuccessful) {
+                                response.header("Upload-Offset")?.toLongOrNull()
+                            } else null
+                        }
+                    } catch (_: java.io.IOException) { null }
+                    if (serverOffset == expected) {
+                        acknowledged = true
+                        break
+                    }
+                    // Only resend when the entire chunk is still unacknowledged.
+                    if (serverOffset != offset && serverOffset != null) return null
+                    if (attempt < 2) kotlinx.coroutines.delay(250L * (attempt + 1))
                 }
-                if (nextOffset <= offset) return null
-                offset = nextOffset
+                if (!acknowledged) return null
+                offset = expected
+                onProgress(offset, contentLength)
             }
         }
         return publicUrl
@@ -5919,6 +5965,153 @@ suspend fun uploadPostMedia(
             Result.failure(Exception(e.message ?: "Unable to update password."))
         }
     }
+
+
+    /**
+     * Visitor history is entirely opt-in and owner-scoped in the backend.
+     * Do not fall back to activity notifications if this migration is unavailable.
+     * Server RPCs authoritatively enforce mutual consent, blocking and deletion.
+     */
+    private suspend fun profileVisitRpc(name: String, args: JSONObject = JSONObject()): JSONObject {
+        check(isAuthenticated()) { "Sign in to manage profile visitor history." }
+        return executeRequest(
+            newRequestBuilder("/rest/v1/rpc/$name", authenticated = true)
+                .post(args.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Private profile visitor history is not available right now.")
+            }
+            JSONObject(raw)
+        }
+    }
+
+    suspend fun getMyProfileVisitSettings(): Result<ProfileVisitSettings> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val data = profileVisitRpc("get_my_profile_visit_settings")
+                ProfileVisitSettings(
+                    participate = data.optBoolean("participate", false),
+                    notifyVisits = data.optBoolean("notify_visits", false)
+                )
+            }
+        }
+
+    suspend fun setMyProfileVisitSettings(
+        participate: Boolean,
+        notifyVisits: Boolean
+    ): Result<ProfileVisitSettings> = withContext(Dispatchers.IO) {
+        runCatching {
+            val data = profileVisitRpc(
+                "set_my_profile_visit_settings",
+                JSONObject().put("p_participate", participate)
+                    .put("p_notify_visits", participate && notifyVisits)
+            )
+            ProfileVisitSettings(
+                participate = data.optBoolean("participate", false),
+                notifyVisits = data.optBoolean("notify_visits", false)
+            )
+        }
+    }
+
+    suspend fun listMyProfileVisitors(): Result<ProfileVisitHistory> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val data = profileVisitRpc("list_my_profile_visitors")
+                val visitors = data.optJSONArray("visitors") ?: JSONArray()
+                val items = buildList {
+                    for (index in 0 until visitors.length()) {
+                        val item = visitors.optJSONObject(index) ?: continue
+                        val id = item.optString("id")
+                        val username = item.optString("username")
+                        if (id.isBlank() || username.isBlank()) continue
+                        add(ProfileVisitor(
+                            id = id, username = username,
+                            fullName = item.optString("full_name").ifBlank { username },
+                            avatarUrl = item.optString("avatar_url"),
+                            visitedAt = item.optString("last_visited_at")
+                        ))
+                    }
+                }
+                ProfileVisitHistory(
+                    enabled = data.optBoolean("enabled", false),
+                    seenThrough = data.optString("seen_through"),
+                    visitors = items
+                )
+            }
+        }
+
+    suspend fun countMyNewProfileVisitors(): Int = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) return@withContext 0
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/count_my_new_profile_visitors", true)
+                    .post("{}".toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use 0
+                response.body?.string().orEmpty().trim().toIntOrNull()?.coerceAtLeast(0) ?: 0
+            }
+        }.getOrDefault(0)
+    }
+
+    suspend fun acknowledgeMyProfileVisitorsSeen(watermark: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isAuthenticated() || watermark.isBlank()) return@withContext false
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/ack_my_profile_visitors_seen", true)
+                        .post(JSONObject().put("p_seen_through", watermark).toString()
+                            .toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    response.isSuccessful &&
+                        response.body?.string().orEmpty().trim() == "true"
+                }
+            }.getOrDefault(false)
+        }
+
+    /** Retrieves totals across all active content, not just the client's current page. */
+    suspend fun getProfileContentMetrics(profileId: String): ProfileContentMetrics? =
+        withContext(Dispatchers.IO) {
+            if (!isAuthenticated() || !isValidUuid(profileId)) return@withContext null
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/get_profile_content_metrics", true)
+                        .post(JSONObject().put("p_profile_id", profileId).toString()
+                            .toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val data = JSONObject(response.body?.string().orEmpty())
+                    ProfileContentMetrics(
+                        posts = data.optLong("posts").coerceAtLeast(0L),
+                        reels = data.optLong("reels").coerceAtLeast(0L),
+                        views = data.optLong("views").coerceAtLeast(0L),
+                        likes = data.optLong("likes").coerceAtLeast(0L),
+                        comments = data.optLong("comments").coerceAtLeast(0L),
+                        shares = data.optLong("shares").coerceAtLeast(0L)
+                    )
+                }
+            }.getOrNull()
+        }
+
+    /** Records only if BOTH accounts previously consented, never for self visits. */
+    suspend fun recordOptInProfileVisit(profileId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(profileId) || !isAuthenticated() ||
+                profileId == getCurrentUserId()) return@withContext false
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/record_opt_in_profile_visit", true)
+                        .post(JSONObject().put("p_profile_id", profileId)
+                            .toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    response.isSuccessful &&
+                        response.body?.string().orEmpty().trim().equals("true", ignoreCase = true)
+                }
+            }.getOrDefault(false)
+        }
+
 
 }
 

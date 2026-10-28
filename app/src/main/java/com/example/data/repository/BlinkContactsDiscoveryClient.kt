@@ -111,6 +111,9 @@ class BlinkContactsDiscoveryClient {
                 }
             }
         }
+        if (numbers.isEmpty()) {
+            throw IllegalStateException("No usable phone numbers were found. Add contacts with country codes and retry.")
+        }
         // Never persist raw numbers or contact names; only HTTPS to the opted-in matching service.
         val array = JSONArray()
         numbers.forEach { array.put(it) }

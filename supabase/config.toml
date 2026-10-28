@@ -131,3 +131,12 @@ verify_jwt = true
 # Private view-once media requires a valid user JWT and service-side one-use claim.
 [functions.blink-view-once-image]
 verify_jwt = true
+
+# Transactional email worker has a private, high-entropy header credential;
+# only trusted server-side scheduling may call this endpoint.
+[functions.send-essential-email]
+verify_jwt = false
+
+# Contact matching requires valid Supabase Auth sessions and server-side consent.
+[functions.blink-contact-discovery]
+verify_jwt = true

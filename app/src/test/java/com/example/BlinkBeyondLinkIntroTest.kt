@@ -16,6 +16,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Screenshots at different viewport sizes are CI artifacts for comparing with the
@@ -45,6 +47,38 @@ class BlinkBeyondLinkIntroTest {
     fun tabletSnapshotAndCompletion() = verifyFrame(
         "src/test/screenshots/intro-600dp.png"
     )
+
+    @Test
+    fun androidNativeStartupContainsNoBrandingBeforeComposeAnimation() {
+        // Android 12+ requires a platform startup screen; its icon must be
+        // genuinely transparent and the pre-Compose window must contain no
+        // static Beyond LINK text or any other drawable.
+        fun resource(path: String): File =
+            listOf(File("src/main/res/$path"), File("app/src/main/res/$path"))
+                .firstOrNull { it.isFile } ?: error("Missing resource: $path")
+
+        val theme = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(resource("values-v31/themes.xml"))
+        val iconSetting = (0 until theme.getElementsByTagName("item").length)
+            .map { theme.getElementsByTagName("item").item(it) }
+            .firstOrNull { it.attributes?.getNamedItem("name")?.nodeValue ==
+                "android:windowSplashScreenAnimatedIcon" }
+        assertEquals("@drawable/blink_splash_empty", iconSetting?.textContent?.trim())
+
+        val emptyIcon = resource("drawable/blink_splash_empty.xml").readText()
+        assertTrue("System icon should not show any lettering or logo",
+            emptyIcon.contains("#00000000"))
+        assertTrue("Startup icon must not contain any opaque path",
+            !Regex("""#FF[0-9a-fA-F]{6}""").containsMatchIn(emptyIcon))
+
+        val windowBackground = resource("drawable/blink_launch_window.xml").readText()
+        assertTrue("No native static wordmark before animation",
+            !windowBackground.contains("blink_intro_wordmark"))
+        assertTrue("No extra image in the native window",
+            !windowBackground.contains("<item android:drawable=\"@drawable/"))
+        assertTrue("Black native window should mask slow cold launches",
+            windowBackground.contains("@color/black"))
+    }
 
     private fun verifyFrame(snapshot: String) {
         var finished = false

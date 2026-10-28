@@ -208,6 +208,25 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
+    // CI-only R8-shrunk variant: exercises the same native WebRTC JNI names
+    // as release without requiring or exposing the production signing key.
+    create("rtcSmoke") {
+      initWith(getByName("debug"))
+      // R8 disables optimizations for debuggable builds. The JNI smoke APK must
+      // actually be shrunk just like production, but retain debug signing.
+      isDebuggable = false
+      // Keep the real package name: google-services.json only defines the production client.
+      // This debug-signed variant runs on a disposable CI emulator, never on user devices.
+      versionNameSuffix = "-rtcsmoke"
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro",
+        "rtc-smoke-proguard-rules.pro"
+      )
+      matchingFallbacks.add("debug")
+    }
     debug {
       versionNameSuffix = "-debug"
       // Never request live ads from developer/test builds.
@@ -218,9 +237,24 @@ android {
   }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
+  // Keep ordinary test tasks unchanged. The dedicated native smoke workflow
+  // opts in to instrumenting the R8-shrunk build on Android 15.
+  if (providers.environmentVariable("BLINK_RTC_SMOKE").orNull == "true") {
+    testBuildType = "rtcSmoke"
+  }
   sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
+}
+
+// The R8-minified, debug-signed rtcSmoke variant uses placeholder Firebase config.
+// Crashlytics rejects mapping uploads from this disposable CI app (HTTP 400), but
+// a mapping upload is not needed to validate WebRTC JNI_OnLoad. Keep upload tasks
+// fully enabled for real signed release builds.
+if (providers.environmentVariable("BLINK_RTC_SMOKE").orNull == "true") {
+  tasks.matching { it.name == "uploadCrashlyticsMappingFileRtcSmoke" }.configureEach {
+    enabled = false
+  }
 }
 
 secrets {
@@ -303,7 +337,7 @@ dependencies {
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
   implementation(libs.androidx.camera.core)
-  implementation("io.github.webrtc-sdk:android:150.7871.01")
+  implementation("io.github.webrtc-sdk:android:150.7871.04")
   implementation("com.google.zxing:core:3.5.3")
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
@@ -320,6 +354,13 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.runner)
+  // Keep the AndroidJUnitRunner runtime complete in the R8-minified rtcSmoke
+  // instrumentation APK. Missing androidx.tracing.Trace crashes the runner
+  // before the WebRTC JNI test can execute.
+  androidTestImplementation("androidx.tracing:tracing:1.2.0")
+  // AndroidJUnitRunner resolves Trace from the target app's class loader.
+  // The smoke-only target dependency + keep rule prevent R8 from pruning it.
+  add("rtcSmokeImplementation", "androidx.tracing:tracing:1.2.0")
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
