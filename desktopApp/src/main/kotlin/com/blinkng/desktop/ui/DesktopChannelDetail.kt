@@ -90,6 +90,7 @@ fun DesktopChannelDetail(
     var shareChannels by remember(channel.id) { mutableStateOf<List<DesktopCommunity>>(emptyList()) }
     var info by remember(channel.id) { mutableStateOf<String?>(null) }
     var showStats by remember(channel.id) { mutableStateOf(false) }
+    var showChannelPro by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
     var selectedMedia by remember(channel.id) { mutableStateOf<File?>(null) }
@@ -118,6 +119,12 @@ fun DesktopChannelDetail(
         }
     }
     val admin = role == "owner" || role == "moderator"
+    val viewer = state.profile
+    val channelPro = admin && viewer?.isVerified == true &&
+        viewer.verificationTier.equals("GOLD", ignoreCase = true) &&
+        (viewer.verificationExpiresAtMillis == 0L ||
+            viewer.verificationExpiresAtMillis > System.currentTimeMillis())
+    val proSummary = remember(updates) { com.blinkng.shared.BlinkVerifiedChannelPro.summarize(updates) }
     val following = admin || role == "follower"
     val updatesListState = rememberLazyListState()
     // Do not move the reader when newer updates arrive while scrolling.
@@ -148,6 +155,9 @@ fun DesktopChannelDetail(
                 editCover = channel.coverUrl.orEmpty()
                 editInfoOpen = true
             }) { Text("Edit Channel") }
+            if (channelPro) TextButton(onClick = { showChannelPro = true }) {
+                Text("Gold Pro")
+            }
             if (admin) TextButton(onClick = {
                 scope.launch {
                     try { stats = state.client.channelStats(channel.id).toString(2); showStats = true }
@@ -348,6 +358,23 @@ fun DesktopChannelDetail(
             }
             if (selectedMedia != null) {
                 Text("Selected: ${selectedMedia?.name.orEmpty()}")
+            }
+            if (channelPro) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("announcement" to "Announcement", "event" to "Event", "recap" to "Recap")
+                        .forEach { (kind, title) ->
+                            TextButton(onClick = {
+                                draft = com.blinkng.shared.BlinkVerifiedChannelPro.template(kind, channel.name)
+                                mediaKind = "text"
+                            }) { Text(title) }
+                        }
+                    TextButton(onClick = {
+                        scheduledAt = com.blinkng.shared.BlinkVerifiedChannelPro.utcPreset(
+                            System.currentTimeMillis(), 24)
+                    }) { Text("Tomorrow") }
+                }
+                Text("Templates are editable. A UTC schedule is only sent when you confirm.",
+                    style = MaterialTheme.typography.labelSmall)
             }
             OutlinedTextField(scheduledAt, { scheduledAt = it.take(30) },
                 label = { Text("Schedule UTC (optional): 2026-11-01T12:00:00Z") },
@@ -682,6 +709,27 @@ fun DesktopChannelDetail(
                     }
                 },
                 confirmButton = { TextButton(onClick = { showScheduled = false }) { Text("Close") } }
+            )
+        }
+        if (showChannelPro && channelPro) {
+            AlertDialog(
+                onDismissRequest = { showChannelPro = false },
+                title = { Text("Gold Channel Pro") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Loaded updates: ${proSummary.loadedUpdates}")
+                        Text("Reported update views: ${proSummary.totalReportedViews}")
+                        Text("Reactions: ${proSummary.totalReactions} · Poll votes: ${proSummary.pollVotes}")
+                        Text("Polls: ${proSummary.polls} · Media updates: ${proSummary.mediaUpdates}")
+                        Text("Top loaded updates", fontWeight = FontWeight.Bold)
+                        proSummary.topUpdates.forEach { update ->
+                            Text("${update.body.take(55).ifBlank { update.mediaKind }} · ${update.viewCount} views")
+                        }
+                        Text("Loaded snapshot, not full historical or unique audience reach.",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showChannelPro = false }) { Text("Close") } }
             )
         }
         if (showStats) {

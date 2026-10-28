@@ -43,12 +43,32 @@ internal object PostComposerRules {
             .take(20)
             .toList()
 
+    fun canPublish(
+        hasContent: Boolean,
+        isReelMode: Boolean,
+        hasVideo: Boolean,
+        tagCount: Int,
+        maxTags: Int,
+        linkValid: Boolean,
+        pollSelected: Boolean,
+        pollValid: Boolean,
+        allowedInFeed: Boolean,
+        hasUnappliedVideoEdits: Boolean,
+        isSubmitting: Boolean
+    ): Boolean = hasContent &&
+        (!isReelMode || hasVideo) &&
+        tagCount in 0..maxTags &&
+        linkValid &&
+        (!pollSelected || pollValid) &&
+        allowedInFeed &&
+        !hasUnappliedVideoEdits &&
+        !isSubmitting
+
     fun validPoll(question: String, options: List<String>): Boolean {
         val cleaned = options.map(String::trim).filter(String::isNotBlank)
-        if (question.isBlank() || cleaned.size < 2) return false
-        return cleaned
-            .map { it.lowercase(Locale.US) }
-            .distinct()
-            .size == cleaned.size
+        if (question.trim().isEmpty() || question.length > 240 ||
+            options.size !in 2..4 || cleaned.size < 2 ||
+            cleaned.any { it.length > 120 }) return false
+        return cleaned.map { it.lowercase(Locale.US) }.distinct().size == cleaned.size
     }
 }

@@ -45,6 +45,7 @@ private enum class PublishIndicatorState {
 fun BackgroundPostPublishIndicator(
     isCreatingPost: Boolean,
     messages: Flow<String>,
+    uploadProgress: Int? = null,
     modifier: Modifier = Modifier
 ) {
     var state by remember { mutableStateOf(PublishIndicatorState.IDLE) }
@@ -156,7 +157,9 @@ fun BackgroundPostPublishIndicator(
                     Spacer(Modifier.width(9.dp))
                     Text(
                         text = when (state) {
-                            PublishIndicatorState.POSTING -> "Posting in background…"
+                            PublishIndicatorState.POSTING ->
+                                if (uploadProgress != null) "Uploading media ${uploadProgress.coerceIn(0, 100)}%"
+                                else "Publishing to BLINK…"
                             PublishIndicatorState.COMPLETED -> "$contentLabel posted"
                             PublishIndicatorState.FAILED -> "Post wasn't published"
                             PublishIndicatorState.IDLE -> ""
@@ -168,11 +171,16 @@ fun BackgroundPostPublishIndicator(
                 }
 
                 if (state == PublishIndicatorState.POSTING) {
-                    androidx.compose.material3.LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                    )
+                    if (uploadProgress != null) {
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { uploadProgress.coerceIn(0, 100) / 100f },
+                            modifier = Modifier.fillMaxWidth().height(3.dp)
+                        )
+                    } else {
+                        androidx.compose.material3.LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(3.dp)
+                        )
+                    }
                 }
             }
         }

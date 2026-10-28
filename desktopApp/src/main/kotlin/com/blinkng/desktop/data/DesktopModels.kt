@@ -48,6 +48,7 @@ data class DesktopProfile(
     val professionalHeadline: String? = null,
     val dailyStreak: Int = 0,
     val profileTheme: String = "black",
+    val verificationExpiresAtMillis: Long = 0L,
 )
 
 data class DesktopProfileFollowerPoint(
@@ -88,6 +89,8 @@ data class DesktopFeedPost(
     val isRepostedByMe: Boolean = false,
     val repostCount: Int = 0,
     val linkUrl: String? = null,
+    val hasPoll: Boolean = false,
+    val pollMetadataAvailable: Boolean = true,
 )
 
 data class DesktopComment(
@@ -217,6 +220,9 @@ data class DesktopMarketItem(
     val imageUrls: List<String> = emptyList(),
     val videoUrl: String? = null,
     val createdAt: String = "",
+    val quantity: Int? = null,
+    val viewCount: Long? = null,
+    val saveCount: Long? = null,
 )
 
 data class DesktopConnectListing(
