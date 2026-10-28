@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.horizontalScroll
 import com.blinkng.shared.BlinkProfileThemes
+import com.blinkng.shared.ProfileCompletionPolicy
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -152,9 +153,13 @@ fun EditProfileScreen(
         )
     }
 
+    var skillsText by rememberSaveable(profile.id) {
+        mutableStateOf(profile.coreSkills.joinToString(", "))
+    }
+
     var relationshipStatus by rememberSaveable(profile.id) {
         mutableStateOf(
-            profile.relationshipStatus.ifBlank { "Private" }
+            profile.relationshipStatus
         )
     }
 
@@ -176,19 +181,19 @@ fun EditProfileScreen(
         )
     }
 
-    var emailVisibility by remember {
+    var emailVisibility by rememberSaveable(profile.id) {
         mutableStateOf(profile.emailVisibility)
     }
 
-    var phoneVisibility by remember {
+    var phoneVisibility by rememberSaveable(profile.id) {
         mutableStateOf(profile.phoneVisibility)
     }
 
-    var whatsappVisibility by remember {
+    var whatsappVisibility by rememberSaveable(profile.id) {
         mutableStateOf(profile.whatsappVisibility)
     }
 
-    var presenceVisibility by remember {
+    var presenceVisibility by rememberSaveable(profile.id) {
         mutableStateOf(profile.presenceVisibility)
     }
 
@@ -228,11 +233,11 @@ fun EditProfileScreen(
         )
     }
 
-    var selectedAvatarUri by remember {
+    var selectedAvatarUri by rememberSaveable(profile.id) {
         mutableStateOf<Uri?>(null)
     }
 
-    var selectedCoverUri by remember {
+    var selectedCoverUri by rememberSaveable(profile.id) {
         mutableStateOf<Uri?>(null)
     }
 
@@ -283,6 +288,7 @@ fun EditProfileScreen(
         academicLevel != profile.academicLevel ||
         graduationYear != profile.graduationYear ||
         relationshipStatus != profile.relationshipStatus ||
+        skillsText != profile.coreSkills.joinToString(", ") ||
         email != profile.email.value ||
         phone != profile.phone.value ||
         whatsapp != profile.whatsapp.value ||
@@ -403,25 +409,11 @@ fun EditProfileScreen(
         )
     }
 
-    val completion =
-        listOf(
-            fullName,
-            username,
-            avatarUrl,
-            coverUrl,
-            headline,
-            bio,
-            university,
-            faculty,
-            department,
-            academicLevel,
-            relationshipStatus,
-            email,
-            phone,
-            website
-        ).count {
-            it.isNotBlank()
-        } * 100 / 14
+    val isNonStudent = profile.accountType.equals("NON_STUDENT", ignoreCase = true)
+    val completion = ProfileCompletionPolicy.calculate(
+        fullName, username, if (selectedAvatarUri != null) "pending" else avatarUrl,
+        headline, bio, university, faculty, department, academicLevel, profile.accountType
+    )
 
     // Both Save actions use one validated, idempotent submission path.
     fun saveProfileChanges() {
@@ -435,7 +427,7 @@ fun EditProfileScreen(
 
                                 try {
 
-                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
+                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, if (isNonStudent) "" else graduationYear, website, linkedin, twitter, instagram, featuredLink)
 
                                     if (validationError != null) throw IllegalArgumentException(validationError)
 
@@ -443,7 +435,6 @@ fun EditProfileScreen(
 
                                     if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
 
-                                    if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
 
                                     var finalAvatar =
                                         avatarUrl
@@ -467,7 +458,7 @@ fun EditProfileScreen(
                                                     ProfileMediaType.AVATAR
                                             )
                                                 ?: throw Exception(
-                                                    "Avatar upload failed. Check Supabase Storage permissions."
+                                                    "Could not upload the profile picture. Use an image under 8 MB and try again."
                                                 )
                                     }
 
@@ -487,7 +478,7 @@ fun EditProfileScreen(
                                                     ProfileMediaType.COVER
                                             )
                                                 ?: throw Exception(
-                                                    "Cover upload failed. Check Supabase Storage permissions."
+                                                    "Could not upload the cover photo. Use an image under 8 MB and try again."
                                                 )
                                     }
 
@@ -517,25 +508,28 @@ fun EditProfileScreen(
                                                 bio.trim(),
 
                                             university =
-                                                university.trim(),
+                                                if (isNonStudent) "" else university.trim(),
 
                                             faculty =
-                                                faculty.trim(),
+                                                if (isNonStudent) "" else faculty.trim(),
 
                                             department =
-                                                department.trim(),
+                                                if (isNonStudent) "" else department.trim(),
 
                                             courseOfStudy =
-                                                courseOfStudy.trim(),
+                                                if (isNonStudent) "" else courseOfStudy.trim(),
 
                                             academicLevel =
-                                                academicLevel.trim(),
+                                                if (isNonStudent) "" else academicLevel.trim(),
 
                                             graduationYear =
-                                                graduationYear.trim(),
+                                                if (isNonStudent) "" else graduationYear.trim(),
 
                                             relationshipStatus =
                                                 relationshipStatus,
+
+                                             coreSkills = skillsText.split(",").map { it.trim() }
+                                                 .filter { it.isNotBlank() }.distinct().take(20).toMutableList(),
 
                                             email =
                                                 ContactField(
@@ -639,7 +633,7 @@ fun EditProfileScreen(
                         Text(
                             "$completion% complete",
                             fontSize =
-                                9.sp,
+                                12.sp,
                             color =
                                 MaterialTheme
                                     .colorScheme
@@ -748,7 +742,7 @@ fun EditProfileScreen(
                     ) {
                         Text("Your premium profile", color = Color.White,
                             fontWeight = FontWeight.Black, fontSize = 16.sp)
-                        Text("@${profile.username}", color = Color.White.copy(alpha = .82f),
+                        Text("@${username.trim().removePrefix("@")}", color = Color.White.copy(alpha = .82f),
                             fontSize = 12.sp)
                         Text("Preview · ${preview.label}", color = Color.White,
                             fontSize = 11.sp)
@@ -907,7 +901,7 @@ fun EditProfileScreen(
                     title =
                         "Profile media",
                     subtitle =
-                        "Images are uploaded to Supabase Storage when you save."
+                        "JPEG, PNG or WebP, up to 8 MB. Images upload when you save."
                 ) {
 
                     CoverEditor(
@@ -945,7 +939,7 @@ fun EditProfileScreen(
                     title =
                         "Personal identity",
                     subtitle =
-                        "Your public campus identity."
+                        "Your public profile identity."
                 ) {
 
                     ProfileField(
@@ -1028,11 +1022,11 @@ fun EditProfileScreen(
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    Row(
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("Single", "Taken", "Married", "It's complicated", "Prefer not to say", "Private").forEach { status ->
+                        items(listOf("Single", "Taken", "Married", "It's complicated", "Prefer not to say", "Private")) { status ->
                             FilterChip(
                                 selected = relationshipStatus == status,
                                 onClick = { relationshipStatus = status },
@@ -1043,7 +1037,7 @@ fun EditProfileScreen(
                 }
             }
 
-            item {
+            if (!isNonStudent) item {
 
                 EditorSection(
                     title =
@@ -1146,12 +1140,26 @@ fun EditProfileScreen(
             }
 
             item {
+                EditorSection(
+                    title = "Skills",
+                    subtitle = "Add up to 20 comma-separated skills."
+                ) {
+                    ProfileField(
+                        value = skillsText,
+                        onValueChange = { skillsText = it },
+                        label = "Skills",
+                        icon = Icons.Default.Star
+                    )
+                }
+            }
+
+            item {
 
                 EditorSection(
                     title =
                         "Contact",
                     subtitle =
-                        "Keep your campus contact details up to date."
+                        "Choose which contact details are visible to other users."
                 ) {
 
                     ProfileField(
@@ -1760,11 +1768,11 @@ private fun VisibilitySelector(
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(
+        LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ProfileVisibilityScope.entries.forEach { scope ->
+            items(ProfileVisibilityScope.entries) { scope ->
                 FilterChip(
                     selected = value == scope,
                     onClick = { onChange(scope) },
@@ -1776,10 +1784,10 @@ private fun VisibilitySelector(
                                 ProfileVisibilityScope.PRIVATE -> "Private"
                             },
                             maxLines = 1,
-                            fontSize = 10.sp
+                            fontSize = 12.sp
                         )
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
@@ -2271,7 +2279,7 @@ private fun AvatarEditor(
             )
 
             Text(
-                "JPEG, PNG or WebP. Uploaded to Supabase Storage on save.",
+                "JPEG, PNG or WebP, up to 8 MB. Uploaded when saved.",
                 fontSize =
                     9.sp,
                 color =
