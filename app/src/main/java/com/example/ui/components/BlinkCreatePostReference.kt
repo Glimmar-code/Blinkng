@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -528,5 +531,100 @@ private fun BlinkReferenceSettingRow(
     ) {
         Text(label, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/** Native device picker is followed by a fully interactive, reference-style
+ * selection review. Grid items are real URIs; deleting/reordering takes effect
+ * in the existing CreatePostSheet media payload.
+ */
+@Composable
+internal fun BlinkReferenceMediaReview(
+    images: List<String>,
+    onBack: () -> Unit,
+    onRemove: (Int) -> Unit,
+    onAddMore: () -> Unit,
+    onNext: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().background(Color.Black)
+            .testTag("blink_media_review")
+            .padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.Close, contentDescription = "Back from selected photos", tint = Color.White)
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text("Select Media", color = Color.White,
+                    fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+            TextButton(onClick = onNext, enabled = images.isNotEmpty()) {
+                Text("Next", color = Color(0xFF8F87FF), fontWeight = FontWeight.Bold)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Photos", color = Color.White, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(images.size.toString() + " / 10 selected", color = Color(0xFFB9C0CE))
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            itemsIndexed(images) { index, uri ->
+                Box(
+                    Modifier.fillMaxWidth().height(118.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF20242B))
+                ) {
+                    AsyncImage(
+                        model = uri,
+                        contentDescription = "Selected photo " + (index + 1),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
+                        color = Color(0xFF5448F5), shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text(
+                            (index + 1).toString(), color = Color.White,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            fontSize = 12.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = { onRemove(index) },
+                        modifier = Modifier.align(Alignment.TopStart).size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove selected photo " + (index + 1),
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = onAddMore, enabled = images.size < 10,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Add more photos") }
+        Button(
+            onClick = onNext,
+            enabled = images.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
+        ) { Text("Next (" + images.size + ")", color = Color.White) }
+        Spacer(Modifier.height(4.dp))
     }
 }
