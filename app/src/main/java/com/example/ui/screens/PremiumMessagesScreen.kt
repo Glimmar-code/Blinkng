@@ -4120,12 +4120,13 @@ private fun MessageContent(
                 }
             }
             val legacyPoll = com.blinkng.shared.BlinkChatPollPolicy.parseTextFallback(message.text)
-            if (legacyPoll != null) {
-                BlinkChatLegacyPollCard(
-                    draft = legacyPoll,
+            if (legacyPoll != null || message.messageType == "poll") {
+                BlinkChatNativePollCard(
+                    message = message,
+                    fallback = legacyPoll,
                     palette = palette,
                     textColor = contentColor,
-                    onChoice = onLegacyPollChoice
+                    onLegacyChoice = onLegacyPollChoice
                 )
             }
             val sharedContact = com.blinkng.shared.BlinkChatContactCardPolicy.parse(message.text)
@@ -4144,7 +4145,8 @@ private fun MessageContent(
                         (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
                     !message.attachedDocumentUrl.isNullOrBlank()
             if (message.text.isNotBlank() && !placeholderOnly &&
-                !message.isVoiceNote && sharedContact == null && legacyPoll == null) {
+                !message.isVoiceNote && sharedContact == null &&
+                legacyPoll == null && message.messageType != "poll") {
                 Text(
                     message.text,
                     color = contentColor,
