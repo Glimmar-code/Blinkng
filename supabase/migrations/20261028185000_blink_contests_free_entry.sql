@@ -156,8 +156,10 @@ end;
 $$;
 revoke all on function private.blink_rank_baseline_vote_trigger()
   from public,anon,authenticated;
+-- Snapshot BEFORE a vote changes a rank, not after the result is known.
+-- No baseline is fabricated for ranks whose historical position was never captured.
 create trigger blink_contest_rank_baseline_vote
-after insert or update of review_status on public.blink_contest_votes
+before insert or update of review_status on public.blink_contest_votes
 for each row execute function private.blink_rank_baseline_vote_trigger();
 
 create function public.list_blink_contests()
