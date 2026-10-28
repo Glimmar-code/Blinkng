@@ -583,6 +583,7 @@ internal fun BlinkReferenceMediaReview(
     onBack: () -> Unit,
     onRemove: (Int) -> Unit,
     onMove: (Int, Int) -> Unit,
+    onEdit: (String) -> Unit,
     onAddMore: () -> Unit,
     onNext: () -> Unit,
 ) {
@@ -694,6 +695,17 @@ internal fun BlinkReferenceMediaReview(
                             onClick = { onMove(index, index + 1) },
                             enabled = index < images.lastIndex, modifier = Modifier.size(34.dp)
                         ) { Icon(Icons.Default.ArrowDownward, "Move photo later", tint = Color.White) }
+                    }
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(bottom = 39.dp, end = 4.dp)
+                            .clickable { onEdit(uri) },
+                        color = Color.Black.copy(alpha = 0.78f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Edit", color = Color.White, fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                     }
                     IconButton(
                         onClick = { onRemove(index) },
