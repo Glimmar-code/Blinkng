@@ -81,8 +81,16 @@ begin
    raise exception 'Contact syncing not enabled';
  end if;
  select coalesce(array_agg(distinct h),'{}'::text[]) into clean_hashes from unnest(p_hashes) h;
+ -- Keep deduplication for unchanged matches across a resync; otherwise
+ -- the same joined contact would generate repeat notifications every minute.
+ delete from private.blink_contact_join_alerts alert
+ where alert.owner_id=p_owner
+   and not exists (
+     select 1 from private.blink_contact_directory target
+     where target.user_id=alert.joiner_id
+       and target.phone_hmac=any(clean_hashes)
+   );
  delete from private.blink_contact_imports where owner_id=p_owner;
- delete from private.blink_contact_join_alerts where owner_id=p_owner;
  insert into private.blink_contact_imports(owner_id,phone_hmac)
   select p_owner,h from unnest(clean_hashes) h on conflict do nothing;
  update public.blink_contact_settings set last_synced_at=now(),updated_at=now()
@@ -265,8 +273,15 @@ create or replace function public.blink_contact_clear_imports(p_owner uuid)
 returns void language plpgsql security definer set search_path=''
 as $$
 begin
+ -- Only generated contact-alert notifications are removed; other activity
+ -- notifications and conversation history are never touched.
+ delete from public.notifications note
+ where note.id in (
+   select alert.notification_id from private.blink_contact_join_alerts alert
+   where (alert.owner_id=p_owner or alert.joiner_id=p_owner)
+     and alert.notification_id is not null
+ );
  delete from private.blink_contact_imports where owner_id=p_owner;
- -- Revocation also erases derived private matches and prevents pending pushes.
  delete from private.blink_contact_join_alerts
   where owner_id=p_owner or joiner_id=p_owner;
 end $$;
