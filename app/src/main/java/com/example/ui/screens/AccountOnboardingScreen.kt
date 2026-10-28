@@ -100,7 +100,6 @@ import com.example.ui.theme.DarkTextSecondary
 import com.blinkng.shared.BlinkOnboardingPolicy
 import com.blinkng.shared.discovery.BlinkBirthdayPolicy
 import com.blinkng.shared.BlinkPhonePolicy
-import com.example.auth.BlinkPhoneVerificationClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -123,6 +122,7 @@ fun AccountOnboardingScreen(
         avatarUrl: String,
         onResult: (Boolean, String?) -> Unit
     ) -> Unit,
+    onSavePhone: (String, (Boolean, String?) -> Unit) -> Unit,
     onSaveInterests: (List<String>, (Boolean, String?) -> Unit) -> Unit,
     onFinish: ((Boolean, String?) -> Unit) -> Unit,
     onRefreshSuggestions: () -> Unit
@@ -130,7 +130,6 @@ fun AccountOnboardingScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val profileRepository = remember { ProfileRepository() }
-    val phoneClient = remember { BlinkPhoneVerificationClient() }
 
     val startingStep = profile.onboardingStep.coerceIn(0, 3)
     var step by rememberSaveable(profile.id) { mutableIntStateOf(startingStep) }
@@ -156,14 +155,9 @@ fun AccountOnboardingScreen(
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
-    // Do not retain private phone or OTP-flow state in Android savedInstanceState.
-    var phoneNumber by remember(profile.id) { mutableStateOf("") }
-    // SMS one-time codes must not enter Android savedInstanceState bundles.
-    var phoneCode by remember(profile.id) { mutableStateOf("") }
-    var phoneCodeSent by remember(profile.id) { mutableStateOf(false) }
-    // A verified badge must be earned from this live OTP response, not restored UI state.
-    var phoneVerified by remember(profile.id) { mutableStateOf(false) }
-    var phoneBusy by remember { mutableStateOf(false) }
+    // Optional profile number is provided by the user, not verified by SMS.
+    // Keep it private and out of Activity saved-state; do not imply ownership proof.
+    var phoneNumber by remember(profile.id) { mutableStateOf(profile.phone.value) }
     var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
 
@@ -541,49 +535,31 @@ fun AccountOnboardingScreen(
                         )
 
                         Spacer(Modifier.height(14.dp))
-                        OutlinedTextField(value = phoneNumber, onValueChange = {
-                            phoneNumber = it.take(24); phoneCodeSent = false; phoneVerified = false; phoneCode = ""
-                        }, label = { Text("Phone / WhatsApp number") },
+                        OutlinedTextField(
+                            value = phoneNumber,
+                            onValueChange = { phoneNumber = it.take(24); error = null },
+                            label = { Text("Phone number (optional)") },
                             placeholder = { Text("+2348012345678") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            enabled = !phoneBusy && !phoneVerified, singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"))
-                        Text("Entering your number does not send an SMS. Tap Send SMS code to verify it. If SMS service is unavailable, you can finish signup and verify later.",
-                            color = DarkTextSecondary, fontSize = 11.sp)
-                        if (!phoneVerified) {
-                            Button(onClick = {
-                                scope.launch {
-                                    phoneBusy = true
-                                    runCatching { phoneClient.requestCode(phoneNumber) }
-                                        .onSuccess { phoneCodeSent = true; error = null }
-                                        .onFailure { error = it.message ?: "Could not send SMS code." }
-                                    phoneBusy = false
-                                }
-                            }, enabled = !phoneBusy && !phoneCodeSent && BlinkPhonePolicy.normalize(phoneNumber) != null) {
-                                Text("Send SMS code")
-                            }
-                            if (phoneCodeSent) {
-                                OutlinedTextField(value = phoneCode,
-                                    onValueChange = { phoneCode = it.filter(Char::isDigit).take(6) },
-                                    label = { Text("Six-digit SMS code") }, singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth())
-                                Button(onClick = {
-                                    scope.launch {
-                                        phoneBusy = true
-                                        runCatching { phoneClient.verify(phoneNumber, phoneCode) }
-                                            .onSuccess { confirmed ->
-                                                if (confirmed) { phoneVerified = true; error = null }
-                                                else error = "Phone is not confirmed. Try again."
-                                            }
-                                            .onFailure { error = it.message ?: "Verification failed." }
-                                        phoneBusy = false
-                                    }
-                                }, enabled = !phoneBusy && BlinkPhonePolicy.otpIsValid(phoneCode)) {
-                                    Text("Verify phone")
-                                }
-                            }
-                        } else Text("Phone verified", color = Color(0xFF51D88A))
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_phone")
+                        )
+                        Text(
+                            "No SMS verification. Your number stays private by default; " +
+                                "you can change who sees it later in Edit Profile. " +
+                                "An unverified number is not proof of ownership.",
+                            color = DarkTextSecondary,
+                            fontSize = 11.sp
+                        )
+                        val phoneValid = phoneNumber.isBlank() ||
+                            BlinkPhonePolicy.normalize(phoneNumber) != null
+                        if (!phoneValid) {
+                            Text(
+                                "Enter a valid number or leave this field empty.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         BlinkReferrerPicker(
                             selected = selectedReferrer,
@@ -606,7 +582,7 @@ fun AccountOnboardingScreen(
                             text = if (saving) "Saving..." else "Continue",
                             enabled = (notStudent || (university.isNotBlank() && department.isNotBlank())) &&
                                 gender.isNotBlank() &&
-                                (phoneVerified || !BlinkPhonePolicy.REQUIRE_VERIFIED_PHONE_IN_ONBOARDING) &&
+                                phoneValid &&
                                 birthdayValid &&
                                 !saving
                         ) {
@@ -637,16 +613,25 @@ fun AccountOnboardingScreen(
                                     finalAvatar
                                 ) { ok, message ->
                                     if (ok) {
-                                        val referralId = selectedReferrer?.id.orEmpty()
-                                        onSaveReferrer(referralId) { accepted, referralError ->
-                                            saving = false
-                                            if (accepted) {
-                                                SignupCampusPreference.clear(context)
-                                                avatarUrl = finalAvatar
-                                                pendingAvatarUri = null
-                                                step = 2
+                                        val number = if (phoneNumber.isBlank()) ""
+                                            else BlinkPhonePolicy.normalize(phoneNumber).orEmpty()
+                                        onSavePhone(number) { phoneSaved, phoneError ->
+                                            if (!phoneSaved) {
+                                                saving = false
+                                                error = phoneError ?: "Unable to save phone. Please retry."
                                             } else {
-                                                error = referralError ?: "Could not confirm your optional referral."
+                                                val referralId = selectedReferrer?.id.orEmpty()
+                                                onSaveReferrer(referralId) { accepted, referralError ->
+                                                    saving = false
+                                                    if (accepted) {
+                                                        SignupCampusPreference.clear(context)
+                                                        avatarUrl = finalAvatar
+                                                        pendingAvatarUri = null
+                                                        step = 2
+                                                    } else {
+                                                        error = referralError ?: "Could not confirm your optional referral."
+                                                    }
+                                                }
                                             }
                                         }
                                     } else {
