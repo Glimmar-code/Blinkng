@@ -17,6 +17,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -65,6 +67,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.ProfileCompletionPolicy
+import com.blinkng.shared.ProfileContentMetrics
 import com.blinkng.shared.profileRankLabel
 import com.blinkng.shared.xpProgress
 import com.blinkng.shared.canViewProfileField
@@ -203,10 +207,6 @@ fun ProfileScreen(
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showProfileVisitors by rememberSaveable(profile.id) { mutableStateOf(false) }
-    var visitorTimes by remember(profile.id) { mutableStateOf<List<String>>(emptyList()) }
-    var visitorsLoading by remember(profile.id) { mutableStateOf(false) }
-    var visitorsLoadFailed by remember(profile.id) { mutableStateOf(false) }
-    var visitorsReloadKey by remember(profile.id) { mutableIntStateOf(0) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
     var showCreatorStudio by rememberSaveable(profile.id) { mutableStateOf(false) }
@@ -240,18 +240,11 @@ fun ProfileScreen(
         }
     }
 
-    // Visitors are derived solely from the signed-in owner's activity records.
-    // Never expose the underlying actor IDs or claim that a missing activity is a visit.
-    LaunchedEffect(showProfileVisitors, profile.id, isMe, visitorsReloadKey) {
-        if (showProfileVisitors && isMe) {
-            visitorsLoading = true
-            visitorsLoadFailed = false
-            val response = profileService.fetchActivities()
-            visitorsLoadFailed = response.isFailure
-            visitorTimes = response.getOrNull().orEmpty()
-                .filter { it.action.contains("viewed your profile", ignoreCase = true) }
-                .map { it.time }
-            visitorsLoading = false
+    // The backend stores a visit ONLY when both accounts explicitly opt in.
+    // A missing visitor-history RPC is not treated as consent or as a visit.
+    LaunchedEffect(profile.id, isMe, currentUserId) {
+        if (!isMe && profile.id.isNotBlank() && currentUserId.isNotBlank()) {
+            profileService.recordOptInProfileVisit(profile.id)
         }
     }
 
@@ -317,6 +310,14 @@ fun ProfileScreen(
     val context = LocalContext.current
     val scrollState = rememberLazyListState()
 
+    // A deep link into Liked or Saved must reveal the selected section, not leave
+    // its tab uncomposed below the tall profile dashboard on compact phones.
+    LaunchedEffect(profile.id, initialTab, isMe) {
+        if (initialTab != 0 && initialTab in tabs.indices) {
+            scrollState.scrollToItem(1)
+        }
+    }
+
     val presenceVisible = canViewProfileField(
         scope = profile.presenceVisibility,
         isOwner = isMe,
@@ -362,7 +363,18 @@ fun ProfileScreen(
             .toList()
     }
 
-    val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
+    var accountMetrics by remember(profile.id) { mutableStateOf<ProfileContentMetrics?>(null) }
+    LaunchedEffect(profile.id, isProfileRefreshing) {
+        if (profile.id.isNotBlank() && !isProfileRefreshing) {
+            accountMetrics = profileService.getProfileContentMetrics(profile.id)
+        }
+    }
+
+    val profileCompletion = remember(profile) {
+        ProfileCompletionPolicy.calculate(profile.fullName, profile.username, profile.avatarUrl,
+            profile.professionalHeadline, profile.bio, profile.university, profile.faculty,
+            profile.department, profile.academicLevel, profile.accountType)
+    }
     val premiumIdentity by rememberBlinkPublicPremiumIdentity(
         username = profile.username,
         knownVip = profile.isBlinkVip,
@@ -515,10 +527,14 @@ fun ProfileScreen(
                         isDark = isDark,
                         isFollowing = isFollowing,
                         followBusy = followBusy,
-                        postCount = userPosts.count { !it.isReel },
-                        totalLoadedViews = userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
-                        totalLoadedLikes = userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
+                        postCount = (accountMetrics?.posts?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+                            ?: userPosts.count { !it.isReel }),
+                        totalLoadedViews = accountMetrics?.views
+                            ?: userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
+                        totalLoadedLikes = accountMetrics?.likes
+                            ?: userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
                         profileCompletion = profileCompletion,
+                        metricsComplete = accountMetrics != null,
                         onAvatarClick = { showAvatarViewer = true },
                         hasActiveStory = storyForProfile != null,
                         onStoryClick = { storyForProfile?.let(onOpenProfileStory) },
@@ -530,9 +546,15 @@ fun ProfileScreen(
                                 followBusy = true
                                 overlayScope.launch {
                                     val desired = !isFollowing
-                                    val saved = FollowStateStore.setFollowing(profile.id, desired)
+                                    val saved = runCatching {
+                                        FollowStateStore.setFollowing(profile.id, desired)
+                                    }.getOrDefault(false)
                                     followBusy = false
-                                    if (saved) onFollowChanged(desired)
+                                    if (saved) {
+                                        onFollowChanged(desired)
+                                    } else {
+                                        Toast.makeText(context, "Couldn't update Follow. Check your connection.", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         },
@@ -766,7 +788,8 @@ fun ProfileScreen(
                             onBookmark = onBookmarkPost,
                             onShare = onSharePost,
                             onOptions = onOptionsClick,
-                            onProfileClick = onProfileClick
+                            onProfileClick = onProfileClick,
+                            onOpenPost = onOpenPost
                         )
                         item(key = "liked_header") {
                             Text(
@@ -796,7 +819,8 @@ fun ProfileScreen(
                             onBookmark = onBookmarkPost,
                             onShare = onSharePost,
                             onOptions = onOptionsClick,
-                            onProfileClick = onProfileClick
+                            onProfileClick = onProfileClick,
+                            onOpenPost = onOpenPost
                         )
                     }
                 }
@@ -832,62 +856,43 @@ fun ProfileScreen(
     }
 
     // ================================================================
-    // OWNER-ONLY PROFILE VISIT ACTIVITY
+    // CONSENT-BASED OWNER-ONLY PROFILE VISITOR HISTORY
     // ================================================================
     if (showProfileVisitors && isMe) {
-        ModalBottomSheet(onDismissRequest = { showProfileVisitors = false }) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("Profile visits", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text("Recent profile-view notifications. Visits are shown only when recorded by BLINK.",
-                    style = MaterialTheme.typography.bodySmall)
-                when {
-                    visitorsLoading -> CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    visitorsLoadFailed -> {
-                        Text("Could not load profile visits.")
-                        TextButton(onClick = { visitorsReloadKey++ }) {
-                            Text("Retry")
-                        }
-                    }
-                    visitorTimes.isEmpty() -> Text("No recorded profile visits yet.")
-                    else -> {
-                        Text("${visitorTimes.size} recent visit notification(s)",
-                            fontWeight = FontWeight.SemiBold)
-                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                            items(visitorTimes.size) { index ->
-                                Text("Profile viewed · ${visitorTimes[index]}",
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp))
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-        }
+        ProfileVisitorsSheet(
+            service = profileService,
+            onDismiss = { showProfileVisitors = false },
+            onOpenProfile = onProfileClick
+        )
     }
 
     // ================================================================
     // AVATAR VIEWER
     // ================================================================
     if (showAvatarViewer) {
-        AlertDialog(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { showAvatarViewer = false },
-            confirmButton = { TextButton(onClick = { showAvatarViewer = false }) { Text("Close") } },
-            text = {
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                 AsyncImage(
                     model = profile.avatarUrl,
                     error = painterResource(R.drawable.ic_default_profile),
                     fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Full profile picture",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f)
                 )
+                IconButton(
+                    onClick = { showAvatarViewer = false },
+                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()
+                        .padding(12.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                        .size(48.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close profile picture", tint = Color.White)
+                }
             }
-        )
+        }
     }
 
     // ================================================================
@@ -1292,9 +1297,11 @@ private fun PremiumProfileTabs(
                             28.dp.toPx(), 1100.dp.toPx()
                         )
                         if (commit) {
-                            val target = (selectedTab + if (rawTabDrag < 0f) 1 else -1)
-                                .coerceIn(0, tabs.lastIndex)
-                            if (target != selectedTab) onTabSelected(target)
+                            val current = primary.indexOf(tabs.getOrNull(selectedTab))
+                            val targetVisible = (if (current < 0) 0 else current +
+                                (if (rawTabDrag < 0f) 1 else -1)).coerceIn(0, primary.lastIndex)
+                            val target = tabs.indexOf(primary[targetVisible])
+                            if (target >= 0 && target != selectedTab) onTabSelected(target)
                         }
                         rawTabDrag = 0f
                         tabDragging = false
@@ -2035,7 +2042,8 @@ private fun AboutSection(
             .padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        InfoCard(title = "Student identity", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+        if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+        InfoCard(title = "Academic identity", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
             if (profile.university.isNotBlank()) {
                 ProfileInfoRow(Icons.Default.School, "University", profile.university, textPrimary, textSecondary)
             }
@@ -2047,6 +2055,32 @@ private fun AboutSection(
             }
             if (profile.academicLevel.isNotBlank()) {
                 ProfileInfoRow(Icons.Default.TrendingUp, "Academic level", profile.academicLevel, textPrimary, textSecondary)
+            }
+            if (profile.courseOfStudy.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.AutoStories, "Course of study", profile.courseOfStudy, textPrimary, textSecondary)
+            }
+            if (profile.graduationYear.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.Event, "Graduation year", profile.graduationYear, textPrimary, textSecondary)
+            }
+        }
+        }
+
+        if (profile.currentJobTitle.isNotBlank() || profile.professionalHeadline.isNotBlank()) {
+            InfoCard(title = "Work", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.currentJobTitle.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Work, "Current role", profile.currentJobTitle, textPrimary, textSecondary)
+                }
+                if (profile.professionalHeadline.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Badge, "Headline", profile.professionalHeadline, textPrimary, textSecondary)
+                }
+            }
+        }
+
+        if (isMe && profile.relationshipStatus.isNotBlank() &&
+            !profile.relationshipStatus.equals("Private", ignoreCase = true)) {
+            InfoCard(title = "Personal", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                ProfileInfoRow(Icons.Default.FavoriteBorder, "Relationship status",
+                    profile.relationshipStatus, textPrimary, textSecondary)
             }
         }
 
@@ -2176,7 +2210,7 @@ private fun LazyListScope.profileMarketItems(
         item(key = "market_empty", contentType = "profile_empty") {
             EmptyProfileState(
                 title = "No market listings 🛒",
-                subtitle = "Items listed by this student will appear here.",
+                subtitle = "Listings from this account will appear here.",
                 textPrimary = textPrimary,
                 textSecondary = textSecondary
             )
@@ -2222,7 +2256,7 @@ private fun CircleToolbarButton(
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .size(40.dp)
+            .size(48.dp)
             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
             .testTag(testTag)
     ) {
@@ -2256,6 +2290,7 @@ private fun SmallActionButton(
         shape = RoundedCornerShape(100.dp),
         color = animatedBackground,
         modifier = modifier
+            .heightIn(min = 48.dp)
             .clickable { onClick() }
             .testTag(testTag)
     ) {
@@ -2309,6 +2344,7 @@ private fun OutlinePill(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
+            .heightIn(min = 48.dp)
             .scale(scale)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2649,7 +2685,8 @@ private fun ProfileMoreSheet(
     onBlock: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)
+            .verticalScroll(rememberScrollState())) {
             Text("Profile options", fontSize = 21.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(10.dp))
             if (isMe) {
@@ -2754,28 +2791,6 @@ private fun ProfileOption(
             pressed = false
         }
     }
-}
-
-private fun calculateProfileCompletion(profile: UserProfile): Int {
-    val values = listOf(
-        profile.fullName.isNotBlank(),
-        profile.username.isNotBlank(),
-        profile.avatarUrl.isNotBlank(),
-        profile.coverPhotoUrl.isNotBlank(),
-        profile.professionalHeadline.isNotBlank(),
-        profile.currentJobTitle.isNotBlank(),
-        profile.bio.isNotBlank(),
-        profile.university.isNotBlank(),
-        profile.faculty.isNotBlank(),
-        profile.department.isNotBlank(),
-        profile.academicLevel.isNotBlank(),
-        profile.email.value.isNotBlank(),
-        profile.phone.value.isNotBlank(),
-        profile.links.website.isNotBlank(),
-        profile.links.linkedin.isNotBlank()
-    )
-
-    return (values.count { it } * 100 / values.size).coerceIn(0, 100)
 }
 
 private fun openExternalUrl(context: android.content.Context, url: String) {

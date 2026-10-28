@@ -298,15 +298,29 @@ fun ProfileOwnerInsightsCard(
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Private profile insights", fontWeight = FontWeight.Black, fontSize = 15.sp)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                InsightMetric("Profile views", profile.profileViewsThisWeek.toLong(), "7d")
-                InsightMetric("Content views", contentViews, "all")
-                InsightMetric("Likes", likes, "all")
-                InsightMetric("Comments", comments, "all")
-                InsightMetric("Shares", shares, "all")
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Profile views", profile.profileViewsThisWeek.toLong(), "7d")
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Loaded views", contentViews, "loaded")
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Likes", likes, "loaded")
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Comments", comments, "loaded")
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        InsightMetric("Shares", shares, "loaded")
+                    }
+                }
             }
             Text(
-                "Only you can see these analytics.",
+                "Only you can see these analytics. Engagement reflects loaded content.",
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -318,7 +332,7 @@ fun ProfileOwnerInsightsCard(
 private fun InsightMetric(label: String, value: Long, window: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value.toString(), fontWeight = FontWeight.Black, fontSize = 14.sp, color = BlinkPink)
-        Text(label, fontSize = 8.5.sp, maxLines = 1)
-        Text(window, fontSize = 7.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, fontSize = 10.sp, maxLines = 2)
+        Text(window, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
