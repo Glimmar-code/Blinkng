@@ -5,6 +5,22 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.ui.components.BlinkMark
+import com.example.ui.theme.BlinkTheme
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -48,8 +64,43 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SupabaseService.initialize(applicationContext)
 
+        // Credential Manager may need time to present the Google account chooser.
+        // Render a real, accessible state instead of a blank Activity window.
+        // This only appears AFTER the user taps Continue with Google, never on
+        // the normal Beyond LINK -> BLINK startup path.
+        setContent {
+            BlinkTheme {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        BlinkMark(size = 42.dp, showText = true)
+                        CircularProgressIndicator(color = Color.White)
+                        Text(
+                            text = "Connecting to Google…",
+                            fontSize = 14.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+
         if (savedInstanceState == null) {
             lifecycleScope.launch { startNativeGoogleSignIn() }
+        } else {
+            // Credential Manager's suspended result belongs to the previous
+            // Activity instance. After rotation/process recreation its coroutine
+            // is gone; silently skipping auth here strands users on a blank UI.
+            // Return safely rather than replaying OAuth with an unrelated nonce.
+            failAndReturnToSignIn(
+                "Google sign-in was interrupted. Tap Continue with Google to try again."
+            )
         }
     }
 

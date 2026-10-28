@@ -144,6 +144,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="blink" android:host="auth" android:path="/reset-password" />
             </intent-filter>
+            <!-- Older recovery redirects also belong to the recovery UI, never MainActivity. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="reset-password" />
+            </intent-filter>
         </activity>
         <service
             android:name=".notification.BlinkFirebaseMessagingService"
@@ -191,14 +198,6 @@
                 <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/invite/" />
             </intent-filter>
 
-            <!-- Supabase password-recovery redirect. Add blink://reset-password
-                 to Supabase Auth > URL Configuration > Redirect URLs. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="blink" android:host="reset-password" />
-            </intent-filter>
 
             <!-- Paystack hosted checkout returns through the server first. This
                  app-only link merely reopens BLINK; payment is still verified server-side. -->

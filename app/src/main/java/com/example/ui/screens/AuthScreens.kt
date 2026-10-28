@@ -3,6 +3,7 @@ package com.example.ui.screens
 import com.blinkng.shared.BlinkDesignTokens
 
 import com.example.data.local.rememberPersistentTextState
+import com.example.data.local.PersistentTextDraftStore
 import com.example.auth.RememberedLoginStore
 import com.example.auth.AccountSessionStore
 import com.example.auth.GoogleAuthLaunchGate
@@ -119,9 +120,8 @@ fun SignInScreen(
         mutableStateOf(rememberedLogin?.identifier?.takeIf { it.isNotBlank() } ?: initialIdentifier)
     }
 
-    var password by rememberSaveable {
-        mutableStateOf(rememberedLogin?.password.orEmpty())
-    }
+    // Authentication secrets stay in memory only, never saved-state Bundles.
+    var password by remember { mutableStateOf("") }
 
     var passwordVisible by remember {
         mutableStateOf(false)
@@ -145,11 +145,11 @@ fun SignInScreen(
         mutableStateOf(rememberedLogin != null)
     }
 
-    LaunchedEffect(rememberMe, emailOrUsername, password) {
+    LaunchedEffect(rememberMe, emailOrUsername) {
         delay(300)
         if (rememberMe) {
-            if (emailOrUsername.isNotBlank() || password.isNotBlank()) {
-                RememberedLoginStore.save(context, emailOrUsername, password)
+            if (emailOrUsername.isNotBlank()) {
+                RememberedLoginStore.save(context, emailOrUsername, "")
             }
         } else {
             RememberedLoginStore.clear(context)
@@ -311,7 +311,7 @@ fun SignInScreen(
                         )
 
                         Text(
-                            "Remember username & password",
+                            "Remember my username",
                             color = DarkTextSecondary,
                             fontSize = 11.5.sp
                         )
@@ -366,7 +366,7 @@ fun SignInScreen(
                                     if (success) {
                                         AccountSessionStore.setSignInRequired(context, !rememberMe)
                                         if (rememberMe) {
-                                            RememberedLoginStore.save(context, emailOrUsername.trim(), password)
+                                            RememberedLoginStore.save(context, emailOrUsername.trim(), "")
                                         } else {
                                             RememberedLoginStore.clear(context)
                                         }
@@ -507,7 +507,13 @@ fun SignUpScreen(
 
     var email by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:email:3")
 
-    var password by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:password:4")
+    // Legacy signup drafts may have stored encrypted password text. Clear it
+    // without restoring it; only non-sensitive signup fields remain resumable.
+    val signupContext = LocalContext.current.applicationContext
+    LaunchedEffect(signupContext) {
+        PersistentTextDraftStore.clearValue(signupContext, "com/example/ui/screens/AuthScreens.kt:password:4")
+    }
+    var password by remember { mutableStateOf("") }
 
     var passwordVisible by remember {
         mutableStateOf(false)

@@ -26,6 +26,23 @@ class PasswordRecoveryClientTest {
     }
 
     @Test
+    fun parseRecoveryLink_acceptsLegacyAppRedirectWithRecoveryToken() {
+        val result = PasswordRecoveryClient.parseRecoveryLink(
+            Uri.parse("blink://reset-password#access_token=legacy.jwt&type=recovery")
+        )
+        assertTrue(result.isSuccess)
+        assertEquals("legacy.jwt", result.getOrThrow().accessToken)
+    }
+
+    @Test
+    fun parseRecoveryLink_rejectsLegacyLinkWithUnexpectedPath() {
+        val result = PasswordRecoveryClient.parseRecoveryLink(
+            Uri.parse("blink://reset-password/untrusted#access_token=secret&type=recovery")
+        )
+        assertTrue(result.isFailure)
+    }
+
+    @Test
     fun parseRecoveryLink_rejectsNonRecoveryLinks() {
         val result = PasswordRecoveryClient.parseRecoveryLink(
             Uri.parse("blink://auth/reset-password#access_token=access.jwt&type=signup")

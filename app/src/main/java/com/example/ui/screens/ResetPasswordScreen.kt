@@ -1,6 +1,6 @@
 package com.example.ui.screens
 
-import com.example.data.local.rememberPersistentTextState
+import com.example.data.local.PersistentTextDraftStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -46,8 +48,17 @@ fun ResetPasswordScreen(
     onSubmit: (String, (Boolean, String) -> Unit) -> Unit,
     onCancel: () -> Unit
 ) {
-    var password by rememberPersistentTextState(key = "com/example/ui/screens/ResetPasswordScreen.kt:password:1")
-    var confirmation by rememberPersistentTextState(key = "com/example/ui/screens/ResetPasswordScreen.kt:confirmation:2")
+    // Passwords are credentials, never resumable text drafts. Compose memory is
+    // intentionally discarded when the recovery screen is destroyed.
+    val context = LocalContext.current.applicationContext
+    LaunchedEffect(context) {
+        // Older builds persisted these encrypted fields. Remove those legacy
+        // values without reading them back into this or any future auth screen.
+        PersistentTextDraftStore.clearValue(context, "com/example/ui/screens/ResetPasswordScreen.kt:password:1")
+        PersistentTextDraftStore.clearValue(context, "com/example/ui/screens/ResetPasswordScreen.kt:confirmation:2")
+    }
+    var password by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
