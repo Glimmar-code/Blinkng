@@ -31,6 +31,7 @@ import com.example.call.IncomingCallNotification
 import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.local.BlinkTextOutboxWorker
+import com.example.data.local.BlinkPostOutbox
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
@@ -93,6 +94,22 @@ internal fun isPendingRewardClaimError(message: String): Boolean =
     message.contains("REWARDED_AD_VERIFICATION_PENDING", ignoreCase = true) ||
     message.contains("REWARDED_AD_TOO_SOON", ignoreCase = true) ||
     message.contains("ad reward is not ready yet", ignoreCase = true)
+
+/**
+ * Following is chronological. Only append a previously paginated suffix when
+ * the last fetched row overlaps the old timeline: otherwise there may be a gap
+ * between a new first page and stale cached rows. Never fabricate continuity.
+ */
+internal fun <T> reconcileFollowingChronologicalPage(
+    previous: List<T>, firstPage: List<T>, pageSize: Int, idOf: (T) -> String
+): List<T> {
+    val fetched = firstPage.distinctBy(idOf)
+    if (fetched.size < pageSize || previous.isEmpty()) return fetched
+    val lastIndex = previous.indexOfFirst { idOf(it) == idOf(fetched.last()) }
+    if (lastIndex < 0) return fetched
+    val fetchedIds = fetched.map(idOf).toHashSet()
+    return fetched + previous.drop(lastIndex + 1).filter { idOf(it) !in fetchedIds }
+}
 
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
@@ -184,6 +201,7 @@ data class BlinkUiState(
     val followingPaginationErrorMessage: String? = null,
     val reelsPaginationErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
+    val postUploadProgress: Int? = null,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
     val economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
@@ -721,6 +739,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         )
                         saveLocalProfile(profile)
+                        loadDraftsFromPrefs()
                         refreshMyProfileFromSupabase(showErrorToast = false)
                         fetchSupabaseData()
                     }
@@ -1897,7 +1916,14 @@ private suspend fun restoreSupabaseSession() {
         if (!BlinkRefreshPolicy.isStale(last, now, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)) return
         visibleRefreshAt[key] = now
         val accountId = state.myProfile.id
-        _uiState.value = state.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
+        followingPageEpoch++ // Invalidate a pending old-page cursor before quiet refresh.
+        // The invalidated load-more job will not clear its own flag in finally.
+        _uiState.value = state.copy(
+            isRefreshingFollowing = true,
+            isLoadingMoreFollowingPosts = false,
+            followingPaginationErrorMessage = null,
+            followingFeedErrorMessage = null
+        )
         viewModelScope.launch {
             try {
                 syncMutex.withLock {
@@ -1908,12 +1934,16 @@ private suspend fun restoreSupabaseSession() {
                     // no eligible posts (e.g. after unfollowing everyone). Do
                     // not indefinitely retain obsolete recommendations. Failed
                     // requests still leave cached posts untouched in catch.
+                    val reconciled = reconcileFollowingChronologicalPage(
+                        current.followingPosts, fresh, 30, FeedPost::id
+                    )
+                    val remainingIds = reconciled.map { it.id }.toHashSet()
+                    val evictedStaleRows = current.followingPosts.any { it.id !in remainingIds }
                     _uiState.value = current.copy(
-                        followingPosts = if (fresh.isEmpty()) emptyList()
-                            else reconcileRefreshedFeed(current.followingPosts, fresh),
+                        followingPosts = reconciled,
                         hasMoreFollowingPosts = fresh.size >= 30,
                         followingFeedErrorMessage = null,
-                        followingRefreshRevision = if (fresh.isEmpty() && current.followingPosts.isNotEmpty())
+                        followingRefreshRevision = if (evictedStaleRows)
                             current.followingRefreshRevision + 1 else current.followingRefreshRevision
                     )
                     persistCurrentFeed()
@@ -2053,7 +2083,7 @@ private suspend fun restoreSupabaseSession() {
                         ?.let { reconcileRefreshedFeed(before.reels, it) }
                         ?: before.reels
                     val fetchedFollowing = followingResult.getOrNull()
-                        ?.let { reconcileRefreshedFeed(before.followingPosts, it) }
+                        ?.let { reconcileFollowingChronologicalPage(before.followingPosts, it, 30, FeedPost::id) }
                         ?: before.followingPosts
                     val feedSucceeded = postsResult.isSuccess || reelsResult.isSuccess
                     if (feedSucceeded) lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
@@ -2061,6 +2091,12 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         posts = normalPosts,
                         followingPosts = fetchedFollowing,
+                        followingRefreshRevision = if (
+                            followingResult.isSuccess &&
+                            before.followingPosts.any { older ->
+                                fetchedFollowing.none { it.id == older.id }
+                            }
+                        ) before.followingRefreshRevision + 1 else before.followingRefreshRevision,
                         reels = fetchedReels,
                         hasMorePosts = postsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMorePosts,
                         hasMoreFollowingPosts = followingResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreFollowingPosts,
@@ -2364,7 +2400,9 @@ private suspend fun restoreSupabaseSession() {
                     )
                     _uiState.value = when {
                         following -> now.copy(
-                            followingPosts = refreshed.items,
+                            followingPosts = reconcileFollowingChronologicalPage(
+                                previous, page, pageSize, FeedPost::id
+                            ),
                             followingRefreshRevision = now.followingRefreshRevision + 1,
                             hasMoreFollowingPosts = page.size >= pageSize,
                             followingPaginationErrorMessage = null,
@@ -2923,6 +2961,7 @@ private suspend fun restoreSupabaseSession() {
                     destination = authenticatedDestination(profile)
                 )
                 saveLocalProfile(profile)
+                loadDraftsFromPrefs()
                 fetchSupabaseData()
                 showToast(
                     if (profile.onboardingCompleted) "✨ Signed in as @${profile.username}"
@@ -3808,12 +3847,20 @@ private suspend fun restoreSupabaseSession() {
         persistCurrentFeed()
     }
 
-    private fun loadDraftsFromPrefs() {
-        try {
-            val raw = prefs.safeString("blink_saved_drafts_data", null).orEmpty()
-            if (raw.isBlank()) return
+    // Each account sees only its own encrypted phone drafts. The legacy global
+    // preference had no owner marker, so it must not be adopted across accounts.
+    private fun draftOwnerScope(): String? =
+        _uiState.value.myProfile.id.trim().takeIf { it.isNotBlank() }
 
-            val drafts = if (raw.trimStart().startsWith("[")) {
+    private fun loadDraftsFromPrefs() {
+        val owner = draftOwnerScope()
+        if (owner == null) {
+            _uiState.value = _uiState.value.copy(savedDrafts = emptyList())
+            return
+        }
+        try {
+            val raw = PersistentTextDraftStore.readValue(appContext, "saved_drafts_v2", owner).orEmpty()
+            val drafts = if (raw.isBlank()) emptyList() else {
                 val array = JSONArray(raw)
                 buildList {
                     for (index in 0 until array.length()) {
@@ -3822,36 +3869,11 @@ private suspend fun restoreSupabaseSession() {
                         }
                     }
                 }
-            } else {
-                // One-time migration from the legacy delimiter format.
-                buildList {
-                    for (item in raw.split(";;;DRAFT_DELIM;;;")) {
-                        if (item.isBlank()) continue
-                        val parts = item.split(":::FIELD:::")
-                        if (parts.size < 8) continue
-                        add(
-                            PostDraft(
-                                id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}",
-                                text = parts.getOrNull(1) ?: "",
-                                faculty = parts.getOrNull(2) ?: "SIMME",
-                                imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() },
-                                videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() },
-                                isReel = parts.getOrNull(5)?.toBoolean() ?: false,
-                                category = parts.getOrNull(6) ?: "Campus Life",
-                                audience = parts.getOrNull(7) ?: "Everyone",
-                                tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
-                                mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
-                                savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis(),
-                                textStyle = parts.getOrNull(11)?.takeIf { it.isNotBlank() }
-                            )
-                        )
-                    }
-                }.also(::saveDraftsToPrefs)
             }
-
             _uiState.value = _uiState.value.copy(savedDrafts = drafts)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load drafts", e)
+            Log.e(TAG, "Failed to load account-specific drafts", e)
+            _uiState.value = _uiState.value.copy(savedDrafts = emptyList())
         }
     }
 
@@ -3914,18 +3936,35 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private fun saveDraftsToPrefs(drafts: List<PostDraft>) {
-        try {
+    private fun saveDraftsToPrefs(drafts: List<PostDraft>): Boolean {
+        val owner = draftOwnerScope() ?: return false
+        return try {
             val serialized = JSONArray().apply {
                 drafts.forEach { put(postDraftToJson(it)) }
             }.toString()
-            prefs.edit().putString("blink_saved_drafts_data", serialized).apply()
+            PersistentTextDraftStore.writeValue(appContext, "saved_drafts_v2", owner, serialized)
+            PersistentTextDraftStore.readValue(appContext, "saved_drafts_v2", owner) == serialized
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save drafts", e)
+            Log.e(TAG, "Failed to save account-specific drafts", e)
+            false
         }
     }
-    fun saveDraft(draft: PostDraft) { val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("💾 Draft saved to phone storage") }
-    fun deleteDraft(draftId: String) { val updated = _uiState.value.savedDrafts.filter { it.id != draftId }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("🗑️ Draft deleted") }
+
+    fun saveDraft(draft: PostDraft) {
+        val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }
+        if (saveDraftsToPrefs(updated)) {
+            _uiState.value = _uiState.value.copy(savedDrafts = updated)
+            showToast("Draft saved to this account on your phone.")
+        } else showToast("Couldn't save the draft. Sign in and try again.")
+    }
+
+    fun deleteDraft(draftId: String) {
+        val updated = _uiState.value.savedDrafts.filter { it.id != draftId }
+        if (saveDraftsToPrefs(updated)) {
+            _uiState.value = _uiState.value.copy(savedDrafts = updated)
+            showToast("Draft deleted.")
+        } else showToast("Couldn't delete the draft.")
+    }
 
     fun refreshScheduledPosts() {
         if (!_uiState.value.isOnline) return
@@ -3965,13 +4004,32 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
-        _uiState.value = _uiState.value.copy(isCreatingPost = true)
+        _uiState.value = _uiState.value.copy(isCreatingPost = true, postUploadProgress = 0)
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val mediaInputs = post.images + listOfNotNull(post.videoUrl)
+                val weights = mediaInputs.map { input ->
+                    if (!input.startsWith("content://")) 0L else
+                        runCatching {
+                            appContext.contentResolver.openAssetFileDescriptor(Uri.parse(input), "r")
+                                ?.use { it.length.coerceAtLeast(1L) } ?: 1L
+                        }.getOrDefault(1L)
+                }
+                val weightSum = weights.sum().coerceAtLeast(1L)
+                fun report(index: Int, sent: Long, length: Long) {
+                    if (length <= 0L || index !in weights.indices) return
+                    val weighted = weights.take(index).sum() +
+                        (weights[index] * sent.coerceIn(0L, length).toDouble() / length).toLong()
+                    _uiState.value = _uiState.value.copy(
+                        postUploadProgress = (weighted * 100.0 / weightSum).toInt().coerceIn(0, 100)
+                    )
+                }
                 val uploadedImages = mutableListOf<String>()
-                for (input in post.images) {
+                for ((index, input) in post.images.withIndex()) {
                     val uploaded = if (input.startsWith("content://")) {
-                        uploadPostUri(userId, input, false)
+                        uploadPostUri(userId, input, false) { sent, length ->
+                            report(index, sent, length)
+                        }
                     } else input
                     if (uploaded.isNullOrBlank()) {
                         throw IllegalStateException("One of the selected images could not be uploaded.")
@@ -3980,12 +4038,20 @@ private suspend fun restoreSupabaseSession() {
                 }
 
                 val uploadedVideo = post.videoUrl?.let { input ->
-                    if (input.startsWith("content://")) uploadPostUri(userId, input, true) else input
+                    if (input.startsWith("content://")) {
+                        uploadPostUri(userId, input, true) { sent, length ->
+                            report(post.images.size, sent, length)
+                        }
+                    } else input
                 }
+                _uiState.value = _uiState.value.copy(postUploadProgress = null)
                 if (!post.videoUrl.isNullOrBlank() && uploadedVideo.isNullOrBlank()) {
                     throw IllegalStateException("The selected video could not be uploaded.")
                 }
 
+                if (supabaseService.getCurrentUserId() != userId) {
+                    throw IllegalStateException("Account changed while scheduling.")
+                }
                 val remotePost = post.copy(
                     author = profile.username,
                     authorAvatar = profile.avatarUrl,
@@ -4001,9 +4067,12 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         scheduledPosts = latest,
                         isCreatePostOpen = false,
-                        isCreatingPost = false
+                        isCreatingPost = false,
+                        postUploadProgress = null
                     )
                     clearCreatePostPersistentState(profile)
+                    cleanupPublishedEditorMedia(post.videoUrl)
+                    post.images.forEach(::cleanupPublishedEditorMedia)
                     showToast("Post scheduled for $timeFormatted")
                 }
             } catch (e: Exception) {
@@ -4013,7 +4082,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } finally {
                 withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(isCreatingPost = false)
+                    _uiState.value = _uiState.value.copy(isCreatingPost = false, postUploadProgress = null)
                 }
             }
         }
@@ -4099,18 +4168,75 @@ private suspend fun restoreSupabaseSession() {
         val profile = _uiState.value.myProfile
         val userId = supabaseService.getCurrentUserId()
             ?: profile.id.takeIf { it.isNotBlank() }
-            ?: "user_${profile.username}"
+            ?: run {
+                showToast("Please sign in again before publishing.")
+                return
+            }
+        val requestId = clientRequestId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+            ?: UUID.randomUUID().toString()
+        val outboxPayload = JSONObject().apply {
+            put("author", profile.username)
+            put("avatar", profile.avatarUrl)
+            put("faculty", faculty)
+            put("text", text)
+            put("images", JSONArray(parseImagePayload(imageUri)))
+            put("video", videoUri ?: JSONObject.NULL)
+            put("tags", JSONArray(tags))
+            put("mentions", JSONArray(mentions))
+            poll?.let { value ->
+                put("poll", JSONObject().put("question", value.question)
+                    .put("options", JSONArray(value.options.map { it.text })))
+            }
+            put("audience", audience)
+            put("category", category)
+            put("location", location ?: JSONObject.NULL)
+            put("link", linkUrl ?: JSONObject.NULL)
+            put("comments", allowComments)
+            put("hide_likes", hideLikes)
+            put("pinned", isPinned)
+            put("disappearing", isDisappearing)
+            put("audio", audioTitle ?: JSONObject.NULL)
+            put("alt", altText ?: JSONObject.NULL)
+            put("style", textStyle ?: JSONObject.NULL)
+        }
+        val outboxQueued = BlinkPostOutbox.enqueue(appContext, userId, requestId, outboxPayload)
+        if (!BlinkPostOutbox.begin(requestId)) {
+            showToast("This post is already being uploaded.")
+            return
+        }
 
-        _uiState.value = _uiState.value.copy(isCreatingPost = true)
+        _uiState.value = _uiState.value.copy(isCreatingPost = true, postUploadProgress = 0)
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val imageInputs = parseImagePayload(imageUri)
+                // Weight by actual bytes, not by number of attachments. A 40 MB Reel
+                // must not be treated as equal to a tiny cover JPEG.
+                val mediaInputs = imageInputs + listOfNotNull(videoUri)
+                val byteWeights = mediaInputs.map { source ->
+                    if (!source.startsWith("content://")) 0L else
+                        runCatching {
+                            appContext.contentResolver.openAssetFileDescriptor(Uri.parse(source), "r")
+                                ?.use { it.length.coerceAtLeast(1L) } ?: 1L
+                        }.getOrDefault(1L)
+                }
+                val totalBytes = byteWeights.sum().coerceAtLeast(1L)
+                fun reportTransfer(index: Int, sent: Long, total: Long) {
+                    if (total <= 0 || index !in byteWeights.indices) return
+                    val preceding = byteWeights.take(index).sum()
+                    val completed = (byteWeights[index] * sent.coerceIn(0L, total).toDouble() /
+                        total.toDouble()).toLong()
+                    val overall = (((preceding + completed).toDouble() /
+                        totalBytes) * 100).toInt().coerceIn(0, 100)
+                    _uiState.value = _uiState.value.copy(postUploadProgress = overall)
+                }
                 val uploadedImageUrls = mutableListOf<String>()
 
-                for (input in imageInputs) {
+                for ((mediaIndex, input) in imageInputs.withIndex()) {
                     val uploaded = if (input.startsWith("content://")) {
-                        uploadPostUri(userId, input, false)
+                        uploadPostUri(userId, input, false) { sent, total ->
+                            reportTransfer(mediaIndex, sent, total)
+                        }
                     } else {
                         input
                     }
@@ -4122,8 +4248,13 @@ private suspend fun restoreSupabaseSession() {
                 }
 
                 val uploadedVideoUrl = if (!videoUri.isNullOrBlank()) {
-                    if (videoUri.startsWith("content://")) uploadPostUri(userId, videoUri, true) else videoUri
+                    if (videoUri.startsWith("content://")) {
+                        uploadPostUri(userId, videoUri, true) { sent, total ->
+                            reportTransfer(imageInputs.size, sent, total)
+                        }
+                    } else videoUri
                 } else null
+                _uiState.value = _uiState.value.copy(postUploadProgress = null)
 
                 if (!videoUri.isNullOrBlank() && uploadedVideoUrl.isNullOrBlank()) {
                     throw IllegalStateException("The selected video could not be uploaded.")
@@ -4151,6 +4282,10 @@ private suspend fun restoreSupabaseSession() {
                     else -> JSONArray(uploadedImageUrls).toString()
                 }
 
+                // A queued upload must not post to another user after an account switch.
+                if (supabaseService.getCurrentUserId() != userId) {
+                    throw IllegalStateException("Account changed during upload.")
+                }
                 val finalIsReel = isReel || !uploadedVideoUrl.isNullOrBlank()
                 val resultPost = supabaseService.createFeedPost(
                     profile.username,
@@ -4174,7 +4309,7 @@ private suspend fun restoreSupabaseSession() {
                     audioTitle,
                     altText,
                     textStyle,
-                    clientRequestId
+                    requestId
                 ) ?: throw IllegalStateException("The server did not save the post.")
 
                 withContext(Dispatchers.Main) {
@@ -4190,18 +4325,56 @@ private suspend fun restoreSupabaseSession() {
                         },
                         feedErrorMessage = null,
                         isCreatePostOpen = false,
-                        isCreatingPost = false
+                        isCreatingPost = false,
+                        postUploadProgress = null
                     )
                     persistCurrentFeed()
                     clearCreatePostPersistentState(profile)
+                    if (outboxQueued) BlinkPostOutbox.complete(appContext, userId, requestId)
+                    cleanupPublishedEditorMedia(videoUri)
+                    imageInputs.forEach(::cleanupPublishedEditorMedia)
                     showToast(if (finalIsReel) "Reel published." else "Post published.")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Background sync for post creation failed", e)
-                showToast("Couldn't publish the post. Please try again.")
+                showToast(
+                    when {
+                        e is java.io.IOException -> "Connection interrupted. Your draft is safe; try again."
+                        e.message.orEmpty().contains("upload", ignoreCase = true) ->
+                            "Media upload failed. Check your connection and try again."
+                        else -> if (outboxQueued)
+                            "Upload interrupted. BLINK will retry when connected."
+                        else "Couldn't publish. Your draft is safe; try again."
+                    }
+                )
             } finally {
-                _uiState.value = _uiState.value.copy(isCreatingPost = false)
+                BlinkPostOutbox.end(requestId)
+                _uiState.value = _uiState.value.copy(isCreatingPost = false, postUploadProgress = null)
             }
+        }
+    }
+
+    /** Delete only our private, fully uploaded exports/covers, not media owned by
+     * other applications or still referenced by a saved draft on this account.
+     */
+    private fun cleanupPublishedEditorMedia(mediaUri: String?) {
+        if (mediaUri.isNullOrBlank() ||
+            _uiState.value.savedDrafts.any {
+                it.videoUri == mediaUri ||
+                    it.imageUri == mediaUri ||
+                    it.imageUri?.contains(mediaUri) == true
+            }) return
+        val uri = runCatching { Uri.parse(mediaUri) }.getOrNull() ?: return
+        if (uri.scheme != "content" ||
+            uri.authority != "${appContext.packageName}.chatfiles") return
+        val filename = uri.lastPathSegment ?: return
+        if (!Regex("^(reel_[0-9a-fA-F-]{36}\\.mp4|reel_cover_[0-9a-fA-F-]{36}\\.jpg)$")
+                .matches(filename)) return
+        val renderDir = java.io.File(appContext.filesDir, "reel_edits")
+        val mediaFile = java.io.File(renderDir, filename)
+        if (mediaFile.parentFile == renderDir && mediaFile.isFile) {
+            runCatching { mediaFile.delete() }
+                .onFailure { Log.w(TAG, "Unable to remove uploaded editor media", it) }
         }
     }
 
@@ -4211,6 +4384,7 @@ private suspend fun restoreSupabaseSession() {
             "create_post_text",
             "create_post_poll_question",
             "create_post_poll_options",
+            "create_post_tags",
             "create_post_autosave_v2"
         ).forEach { key ->
             PersistentTextDraftStore.clearValue(appContext, key, scope)
@@ -4238,7 +4412,8 @@ private suspend fun restoreSupabaseSession() {
     private suspend fun uploadPostUri(
         userId: String,
         uriString: String,
-        isVideo: Boolean
+        isVideo: Boolean,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
     ): String? = withContext(Dispatchers.IO) {
         try {
             val uri = Uri.parse(uriString)
@@ -4248,7 +4423,8 @@ private suspend fun restoreSupabaseSession() {
                 userId = userId,
                 uriString = uriString,
                 mimeType = mimeType,
-                isVideo = isVideo
+                isVideo = isVideo,
+                onProgress = onProgress
             )
         } catch (e: Exception) {
             Log.e(TAG, "uploadPostUri failed", e)
@@ -6373,7 +6549,9 @@ private suspend fun restoreSupabaseSession() {
                     }
                     _uiState.value = latest.copy(
                         posts = if (freshPosts.isNotEmpty()) reconcileRefreshedFeed(latest.posts, freshPosts) else latest.posts,
-                        followingPosts = if (following.isNotEmpty()) reconcileRefreshedFeed(latest.followingPosts, following) else latest.followingPosts,
+                        followingPosts = if (following.isNotEmpty())
+                reconcileFollowingChronologicalPage(latest.followingPosts, following, 30, FeedPost::id)
+                else latest.followingPosts,
                         reels = if (freshReels.isNotEmpty()) reconcileRefreshedFeed(latest.reels, freshReels) else latest.reels
                     )
                     persistCurrentFeed()
@@ -7715,6 +7893,7 @@ private suspend fun restoreSupabaseSession() {
         // Account-scoped, queued private picture drafts must never be sent by the
         // next user who signs in on this device.
         WorkManager.getInstance(appContext).cancelAllWorkByTag("blink_chat_picture")
+        BlinkPostOutbox.cancelAll(appContext)
         pendingAttachments.values.forEach { attachment ->
             cleanupPrivatePictureSource(attachment.uri)
         }

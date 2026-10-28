@@ -77,6 +77,7 @@ internal fun BlinkPremiumProfileDashboard(
     onStudyMateRequest: () -> Unit = {},
     onViewProfile: () -> Unit = {},
     onOpenConnectHub: () -> Unit = {},
+    onCreatorStudio: () -> Unit = {},
 ) {
     val theme = BlinkProfileThemes.resolve(profile.profileTheme)
     val ink = Color.White
@@ -172,6 +173,21 @@ internal fun BlinkPremiumProfileDashboard(
                 }
                 Text("@${profile.username}", color = softInk, fontSize = 12.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
+                com.blinkng.shared.BlinkVerifiedIdentitySignature.label(
+                    profile.verificationBadge.name, profile.hasActiveMarketVerification()
+                )?.let { signature ->
+                    Surface(
+                        color = if (profile.verificationBadge == VerificationBadge.GOLD)
+                            Color(0xFF6B4A12).copy(alpha = .55f)
+                        else Color(0xFF174B71).copy(alpha = .48f),
+                        shape = RoundedCornerShape(9.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .22f))
+                    ) {
+                        Text(signature, color = ink, fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                }
                 if (!isMe) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         ProfileFollowInteractButton(
@@ -266,6 +282,18 @@ internal fun BlinkPremiumProfileDashboard(
                         modifier = Modifier.weight(1f), onClick = onVerify
                     )
                 }
+            }
+        }
+
+        if (isMe) {
+            OutlinedButton(
+                onClick = onCreatorStudio,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Insights, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Creator Studio · Content insights", fontWeight = FontWeight.SemiBold)
             }
         }
 

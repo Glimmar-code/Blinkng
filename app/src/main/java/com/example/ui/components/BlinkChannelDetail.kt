@@ -74,7 +74,8 @@ fun BlinkChannelDetail(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     initialUpdateId: String? = null,
-    onChannelEdited: (BlinkCommunity) -> Unit = {}
+    onChannelEdited: (BlinkCommunity) -> Unit = {},
+    viewerProfile: com.example.data.models.UserProfile? = null
 ) {
     val scope = rememberCoroutineScope()
     var updates by remember(channel.id) { mutableStateOf<List<BlinkChannelUpdate>>(emptyList()) }
@@ -108,6 +109,7 @@ fun BlinkChannelDetail(
     var channelsToForward by remember(channel.id) { mutableStateOf<List<BlinkCommunity>>(emptyList()) }
     var info by remember(channel.id) { mutableStateOf<String?>(null) }
     var showStats by remember(channel.id) { mutableStateOf(false) }
+    var showChannelPro by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
     var selectedMedia by remember(channel.id) { mutableStateOf<Uri?>(null) }
@@ -145,6 +147,10 @@ fun BlinkChannelDetail(
         }
     }
     val admin = role == "owner" || role == "moderator"
+    val channelPro = admin &&
+        viewerProfile?.verificationBadge == com.example.data.models.VerificationBadge.GOLD &&
+        viewerProfile.hasActiveMarketVerification()
+    val proSummary = remember(updates) { com.blinkng.shared.BlinkVerifiedChannelPro.summarize(updates) }
     val following = admin || role == "follower"
     val updatesListState = rememberLazyListState()
     // Open exactly the shared announcement, if it is still in recent history.
@@ -208,6 +214,12 @@ fun BlinkChannelDetail(
                         })
                     }
                     if (admin) {
+                        if (channelPro) {
+                            DropdownMenuItem(text = { Text("Gold Channel Pro insights") }, onClick = {
+                                menuOpen = false
+                                showChannelPro = true
+                            })
+                        }
                         DropdownMenuItem(text = { Text("Channel analytics") }, onClick = {
                             menuOpen = false
                             scope.launch {
@@ -390,6 +402,29 @@ fun BlinkChannelDetail(
         }
         HorizontalDivider()
         if (admin) {
+            if (channelPro) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf("announcement" to "Announcement", "event" to "Event", "recap" to "Recap")
+                        .forEach { (kind, label) ->
+                            TextButton(onClick = {
+                                draft = com.blinkng.shared.BlinkVerifiedChannelPro.template(kind, channel.name)
+                                mediaKind = "text"
+                            }) { Text(label) }
+                        }
+                    TextButton(onClick = {
+                        scheduledAt = com.blinkng.shared.BlinkVerifiedChannelPro.utcPreset(
+                            System.currentTimeMillis(), 24)
+                    }) { Text("Tomorrow") }
+                }
+                Text(
+                    "Gold templates are editable. Tomorrow fills a UTC scheduling time; nothing posts until you confirm.",
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
             androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -786,6 +821,27 @@ fun BlinkChannelDetail(
                 confirmButton = {
                     TextButton(onClick = { showScheduled = false }) { Text("Close") }
                 }
+            )
+        }
+        if (showChannelPro && channelPro) {
+            AlertDialog(
+                onDismissRequest = { showChannelPro = false },
+                title = { Text("Gold Channel Pro") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Loaded Channel updates: ${proSummary.loadedUpdates}")
+                        Text("Reported update views: ${proSummary.totalReportedViews}")
+                        Text("Reactions: ${proSummary.totalReactions} · Poll votes: ${proSummary.pollVotes}")
+                        Text("Polls: ${proSummary.polls} · Media updates: ${proSummary.mediaUpdates}")
+                        Text("Top loaded updates", fontWeight = FontWeight.Bold)
+                        proSummary.topUpdates.forEach { update ->
+                            Text("${update.body.take(55).ifBlank { update.mediaKind }} · ${update.viewCount} views")
+                        }
+                        Text("Snapshot of loaded updates; not unique viewers or all-time Channel reach.",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showChannelPro = false }) { Text("Close") } }
             )
         }
         if (showStats) {

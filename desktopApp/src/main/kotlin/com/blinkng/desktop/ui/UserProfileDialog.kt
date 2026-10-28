@@ -116,6 +116,8 @@ fun DesktopUserProfileDialog(
     var connectionProfiles by remember(initialProfile.id) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
+    var showCreatorStudio by remember(initialProfile.id) { mutableStateOf(false) }
+    var creatorAiPrompt by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showVisitorHistory by remember(initialProfile.id) { mutableStateOf(false) }
     var visitorDetail by remember(initialProfile.id) { mutableStateOf<DesktopProfile?>(null) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
@@ -255,6 +257,22 @@ fun DesktopUserProfileDialog(
                             }
                         }
                         Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        com.blinkng.shared.BlinkVerifiedIdentitySignature.label(
+                            profile.verificationTier,
+                            profile.isVerified &&
+                                (profile.verificationExpiresAtMillis == 0L ||
+                                    profile.verificationExpiresAtMillis > System.currentTimeMillis())
+                        )?.let { signature ->
+                            Surface(
+                                color = if (profile.verificationTier.equals("GOLD", ignoreCase = true))
+                                    Color(0xFF503C17) else Color(0xFF203C59),
+                                shape = RoundedCornerShape(9.dp)
+                            ) {
+                                Text(signature, color = Color.White, fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
+                        }
                         val campus = listOfNotNull(profile.university, profile.faculty, profile.department)
                             .filter { it.isNotBlank() }
                             .joinToString(" • ")
@@ -288,6 +306,9 @@ fun DesktopUserProfileDialog(
                             editError = null
                             showEditProfile = true
                         }) { Text("Edit profile", color = Color.White) }
+                         TextButton(onClick = { showCreatorStudio = true }) {
+                             Text("Creator Studio", color = Color.White)
+                         }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
@@ -689,6 +710,24 @@ fun DesktopUserProfileDialog(
         DesktopBlinkShareDialog(
             state = state, postId = id, isReel = true,
             onDismiss = { shareReelId = null }
+        )
+    }
+
+    if (showCreatorStudio && isMe) {
+        DesktopCreatorStudioDialog(
+            profile = profile,
+            posts = content,
+            loading = loading,
+            onDismiss = { showCreatorStudio = false },
+            onRefresh = { scope.launch { reload() } },
+            onUseAiPrompt = { prompt -> creatorAiPrompt = prompt },
+        )
+    }
+    creatorAiPrompt?.let { prompt ->
+        DesktopBlinkAiDialog(
+            state = state,
+            onDismiss = { creatorAiPrompt = null },
+            initialPrompt = prompt,
         )
     }
 

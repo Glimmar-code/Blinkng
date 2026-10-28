@@ -2794,7 +2794,8 @@ suspend fun uploadPostMedia(
         userId: String,
         uriString: String,
         mimeType: String,
-        isVideo: Boolean
+        isVideo: Boolean,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
     ): String? = withContext(Dispatchers.IO) {
         val context = appContext ?: return@withContext null
         val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return@withContext null
@@ -2808,7 +2809,8 @@ suspend fun uploadPostMedia(
                 uri = uri,
                 mimeType = mimeType,
                 isVideo = isVideo,
-                contentLength = length
+                contentLength = length,
+                onProgress = onProgress
             )
         } else {
             uploadPostMediaStreaming(
@@ -2817,7 +2819,8 @@ suspend fun uploadPostMedia(
                 uri = uri,
                 mimeType = mimeType,
                 isVideo = isVideo,
-                contentLength = length
+                contentLength = length,
+                onProgress = onProgress
             )
         }
     }
@@ -2859,7 +2862,8 @@ suspend fun uploadPostMedia(
         uri: Uri,
         mimeType: String,
         isVideo: Boolean,
-        contentLength: Long
+        contentLength: Long,
+        onProgress: (Long, Long) -> Unit
     ): String? {
         val (path, publicUrl) = postMediaTarget(userId, mimeType, isVideo)
         val body = object : RequestBody() {
@@ -2870,10 +2874,17 @@ suspend fun uploadPostMedia(
                     ?: throw IllegalStateException("Could not open selected media.")
                 input.use {
                     val buffer = ByteArray(64 * 1024)
+                    var uploaded = 0L
                     while (true) {
                         val read = it.read(buffer)
                         if (read < 0) break
-                        if (read > 0) sink.write(buffer, 0, read)
+                        if (read > 0) {
+                            sink.write(buffer, 0, read)
+                            uploaded += read
+                            if (contentLength > 0L) {
+                                onProgress(uploaded.coerceAtMost(contentLength), contentLength)
+                            }
+                        }
                     }
                 }
             }
@@ -2903,7 +2914,8 @@ suspend fun uploadPostMedia(
         uri: Uri,
         mimeType: String,
         isVideo: Boolean,
-        contentLength: Long
+        contentLength: Long,
+        onProgress: (Long, Long) -> Unit
     ): String? {
         if (contentLength <= 0L) {
             return uploadPostMediaStreaming(
@@ -2912,7 +2924,8 @@ suspend fun uploadPostMedia(
                 uri,
                 mimeType,
                 isVideo,
-                contentLength
+                contentLength,
+                onProgress
             )
         }
 
@@ -2987,19 +3000,48 @@ suspend fun uploadPostMedia(
                     )
                     .build()
 
-                val nextOffset = executeRequest(patch).use { response ->
-                    if (!response.isSuccessful) {
-                        Log.e(
-                            TAG,
-                            "POST_MEDIA_TUS_PATCH failed status=" + response.code +
-                                " body=" + response.body?.string().orEmpty()
-                        )
-                        return null
+                // A lost PATCH acknowledgement must not duplicate bytes or skip
+                // part of a Reel. Ask TUS for the server's authoritative offset.
+                val expected = offset + count
+                var acknowledged = false
+                for (attempt in 0 until 3) {
+                    val resultOffset = try {
+                        executeRequest(patch).use { response ->
+                            if (response.isSuccessful) {
+                                response.header("Upload-Offset")?.toLongOrNull()
+                            } else null
+                        }
+                    } catch (_: java.io.IOException) { null }
+                    if (resultOffset == expected) {
+                        acknowledged = true
+                        break
                     }
-                    response.header("Upload-Offset")?.toLongOrNull() ?: (offset + count)
+
+                    val serverOffset = try {
+                        val head = Request.Builder()
+                            .url(uploadUrl)
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", "Bearer $token")
+                            .addHeader("Tus-Resumable", "1.0.0")
+                            .head()
+                            .build()
+                        executeRequest(head).use { response ->
+                            if (response.isSuccessful) {
+                                response.header("Upload-Offset")?.toLongOrNull()
+                            } else null
+                        }
+                    } catch (_: java.io.IOException) { null }
+                    if (serverOffset == expected) {
+                        acknowledged = true
+                        break
+                    }
+                    // Only resend when the entire chunk is still unacknowledged.
+                    if (serverOffset != offset && serverOffset != null) return null
+                    if (attempt < 2) kotlinx.coroutines.delay(250L * (attempt + 1))
                 }
-                if (nextOffset <= offset) return null
-                offset = nextOffset
+                if (!acknowledged) return null
+                offset = expected
+                onProgress(offset, contentLength)
             }
         }
         return publicUrl
