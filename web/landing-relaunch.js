@@ -11,7 +11,7 @@
       '<nav class="br-nav" aria-label="Website navigation"><a href="./" aria-current="page">Home</a><a href="#blink-read-more" data-reveal>About BLINK</a><a href="./features/">Features</a><a href="./faq/">Support</a></nav>',
       '<a class="br-header-download" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk" aria-label="Download official BLINK Android APK"><span aria-hidden="true">↓</span> Download App</a>',
     '</div></header>',
-    '<main id="br-main" class="br-main">',
+    '<div id="br-main" class="br-main">',
       '<section class="br-wrap br-hero" aria-labelledby="br-title">',
         '<div class="br-copy">',
           '<span class="br-hashtag">#BeyondLINK</span>',
@@ -64,7 +64,7 @@
           '</div>',
         '</details>',
       '</section>',
-    '</main>',
+    '</div>',
     '<footer class="br-footer"><div class="br-wrap"><span>© BLINK · Beyond LINK</span><nav aria-label="Footer"><a href="./about/">About</a><a href="./features/">Features</a><a href="./download/">Download</a><a href="./faq/">Help</a><a href="./privacy/">Privacy</a></nav></div></footer>'
   ].join('');
 
