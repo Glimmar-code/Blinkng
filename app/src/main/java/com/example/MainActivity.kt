@@ -1121,6 +1121,21 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        // Ask on first authenticated Home visit (including post-signup),
+                        // never during startup, media viewing or another modal.
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            com.example.ui.components.BlinkContactSyncLoginPrompt(
+                                accountId = uiState.myProfile.id,
+                                safeToShow = idleHomeForPrompts &&
+                                    !showStartupIntro &&
+                                    !adminAnnouncementOpen &&
+                                    justCompletedOnboardingAccount == null &&
+                                    newStudentDiscoveryAccount == null &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed)
+                            )
+                        }
+
                         val newRelease = websiteRelease
                         if (idleAppForUpdate && newRelease != null && !websiteUpdateDismissed) {
                             BlinkWebsiteUpdateDialog(
