@@ -68,6 +68,7 @@ class BlinkCreatePostReferenceTest {
                     onBack = { actions += "back" },
                     onRemove = { actions += "remove:" + it },
                     onMove = { from, to -> actions += "move:" + from + "->" + to },
+                    onEdit = { actions += "edit:" + it },
                     onAddMore = { actions += "add" },
                     onNext = { actions += "next" }
                 )
