@@ -7,6 +7,8 @@ import com.example.ui.components.BlinkSkeletonList
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import com.example.performance.rememberBlinkReduceMotion
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,6 +72,7 @@ fun GetVerifiedSheet(
     onCancelRenewal: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val reduceMotion = rememberBlinkReduceMotion()
     var selectedBadge by remember {
         mutableStateOf(
             if (profile.verificationBadge == VerificationBadge.BLUE) VerificationBadge.GOLD else VerificationBadge.BLUE
@@ -773,7 +776,13 @@ fun GetVerifiedSheet(
                                 Text("Buy Blink Coins", fontWeight = FontWeight.Bold)
                             }
 
-                            AnimatedVisibility(visible = showDailyMissions) {
+                            AnimatedVisibility(
+                                visible = showDailyMissions,
+                                enter = if (reduceMotion) EnterTransition.None else
+                                    fadeIn(tween(180)) + expandVertically(tween(220)),
+                                exit = if (reduceMotion) ExitTransition.None else
+                                    fadeOut(tween(110)) + shrinkVertically(tween(190))
+                            ) {
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),

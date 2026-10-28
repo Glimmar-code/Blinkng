@@ -23,6 +23,16 @@ document as 300 shipped animations.** Keep a single PR and merge to main only wh
 - Primary navigation and Reels selection states respond consistently, without moving text baselines.
 - Pure JVM unit tests cover disabled, reduced-motion, malformed and normal press states.
 
+## Second Testlab implementation increment
+
+- Native horizontal pager remains the sole Feed/Reels/Connect page transition; the duplicate nested scale/slide is removed.
+- Chat conversations and native call-control feedback, including reduced-motion-aware call-state fades.
+- Signed Channel image viewer fades in without prefetching or altering media access permissions.
+- Profile selection indicators and entrance content respect the system motion preference.
+- Search results/chips, Connect tabs, channel image actions, notifications and composer tiles have shared feedback.
+- Wallet, Verification, Boost, Drops and seller profile interactions gain reduced-motion-safe feedback; decorative wallet animation loops stop when disabled.
+- No transaction, view-count, reward, verification, payment, call-signaling, or data contract changes.
+
 ## Follow-up surface implementation queue (not yet shipped)
 
 1. Navigation: full-screen back gestures, scroll-position conservation, overlay layering.

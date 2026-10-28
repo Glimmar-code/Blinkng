@@ -8,6 +8,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -499,14 +501,22 @@ fun ProductDetailScreen(
                     )
 
                     Spacer(modifier = Modifier.height(22.dp))
+                    val sellerInteraction = remember { MutableInteractionSource() }
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = item.sellerUsername.isNotBlank()) {
-                                onSellerProfileClick(item.sellerUsername)
-                            }
+                            .blinkPressFeedback(
+                                sellerInteraction,
+                                enabled = item.sellerUsername.isNotBlank()
+                            )
+                            .clickable(
+                                interactionSource = sellerInteraction,
+                                indication = null,
+                                enabled = item.sellerUsername.isNotBlank(),
+                                onClick = { onSellerProfileClick(item.sellerUsername) }
+                            )
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
