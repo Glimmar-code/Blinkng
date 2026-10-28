@@ -303,7 +303,50 @@ begin
    where e.contest_id=p_contest_id),'[]'::jsonb);
 end; $$;
 
+
+-- Public, approved-only contestant lookup permits a share link to target users
+-- outside the top 20 without revealing pending or rejected applications.
+create function public.get_blink_contest_candidate(
+  p_contest_id uuid, p_entry_id uuid
+) returns jsonb language plpgsql stable security definer set search_path = '' as $
+declare v_candidate jsonb;
+begin
+  with ranked as (
+    select e.id, e.contest_id, e.user_id, e.statement, e.media_url,
+           e.submitted_at, count(v.id)::integer as votes,
+           row_number() over (
+             order by count(v.id) desc, e.submitted_at asc, e.id asc
+           )::integer as rank
+    from public.blink_contest_entries e
+    left join public.blink_contest_votes v on v.entry_id=e.id
+    join public.blink_contests c on c.id=e.contest_id
+    where c.id=p_contest_id and c.status in ('published','paused','completed')
+      and e.status='approved'
+    group by e.id
+  )
+  select jsonb_build_object(
+    'id',r.id,'contest_id',r.contest_id,'user_id',r.user_id,
+    'username',p.username,'name',coalesce(nullif(p.full_name,''),p.username),
+    'avatar_url',p.avatar_url,'statement',r.statement,'media_url',r.media_url,
+    'votes',r.votes,'rank',r.rank,
+    'contest_title',c.title,
+    'contest_status',case when c.status='paused' then 'paused'
+       when c.status='completed' then 'completed'
+       when now()<c.voting_opens_at then 'upcoming'
+       when now()>=c.voting_closes_at then 'review'
+       else 'voting' end,
+    'voting_closes_at',c.voting_closes_at
+  ) into v_candidate
+  from ranked r
+  join public.profiles p on p.id=r.user_id
+  join public.blink_contests c on c.id=r.contest_id
+  where r.id=p_entry_id;
+  if v_candidate is null then raise exception 'CANDIDATE_NOT_AVAILABLE'; end if;
+  return v_candidate;
+end; $;
+
 -- PUBLIC function EXECUTE is implicit on PostgreSQL; explicitly restrict it.
+revoke all on function public.get_blink_contest_candidate(uuid,uuid) from public,anon,authenticated;
 revoke all on function public.list_blink_contests() from public,anon,authenticated;
 revoke all on function public.get_blink_contest(uuid) from public,anon,authenticated;
 revoke all on function public.apply_blink_contest(uuid,text,text) from public,anon,authenticated;
@@ -313,7 +356,8 @@ revoke all on function public.admin_list_blink_contest_entries(uuid) from public
 revoke all on function public.admin_save_blink_contest(uuid,jsonb) from public,anon,authenticated;
 revoke all on function public.admin_transition_blink_contest(uuid,text) from public,anon,authenticated;
 revoke all on function public.admin_review_blink_contest_entry(uuid,text) from public,anon,authenticated;
-grant execute on function public.list_blink_contests(),public.get_blink_contest(uuid) to anon,authenticated;
+grant execute on function public.list_blink_contests(),public.get_blink_contest(uuid),
+  public.get_blink_contest_candidate(uuid,uuid) to anon,authenticated;
 grant execute on function public.apply_blink_contest(uuid,text,text),
   public.vote_blink_contest(uuid,uuid),
   public.admin_list_blink_contests(),
