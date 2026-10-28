@@ -43,7 +43,7 @@ class BlinkContactsDiscoveryClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val label = when (response.code) {
-                    409 -> "Verify your phone number before becoming discoverable."
+                    409 -> "Your profile is not eligible for contact discovery yet. You can still sync contacts."
                     403 -> "Enable contact syncing first."
                     429 -> "You synced recently. Try again later."
                     503, 404 -> "Contact discovery is not available yet."
