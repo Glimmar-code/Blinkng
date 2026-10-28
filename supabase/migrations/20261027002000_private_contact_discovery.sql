@@ -235,7 +235,7 @@ grant execute on function public.blink_contact_notify_my_join(uuid) to service_r
 create or replace function public.blink_contact_notify_recent_matches(p_owner uuid)
 returns table(notification_id uuid)
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare joined record;
 begin
  if p_owner is null then return; end if;
@@ -255,7 +255,7 @@ begin
   where a.owner_id=p_owner and a.notification_id is not null
     and a.created_at>now()-interval '15 minutes'
   order by a.created_at desc limit 100;
-end $;
+end $$;
 revoke all on function public.blink_contact_notify_recent_matches(uuid)
  from public,anon,authenticated;
 grant execute on function public.blink_contact_notify_recent_matches(uuid) to service_role;
@@ -269,7 +269,7 @@ begin
  -- Revocation also erases derived private matches and prevents pending pushes.
  delete from private.blink_contact_join_alerts
   where owner_id=p_owner or joiner_id=p_owner;
-end $;
+end $$;
 revoke all on function public.blink_contact_clear_imports(uuid) from public,anon,authenticated;
 grant execute on function public.blink_contact_clear_imports(uuid) to service_role;
 
