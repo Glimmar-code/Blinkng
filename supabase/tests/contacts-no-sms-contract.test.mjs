@@ -28,7 +28,7 @@ test('self-declared profile number is owner scoped and private until owner chang
 
 test('login and signup contact invitation is optional and respects platform permissions', () => {
   assert.match(main, /BlinkContactSyncLoginPrompt\(/);
-  assert.match(prompt, /Choose to sync your phone contacts/);
+  assert.match(prompt, /Choose to sync contacts and receive possible-contact suggestions/);
   assert.match(prompt, /ActivityResultContracts\.RequestPermission\(\)/);
   assert.match(prompt, /Manifest\.permission\.READ_CONTACTS/);
   assert.match(prompt, /Button\([\s\S]*?Sync contacts and notify me/);
@@ -39,14 +39,16 @@ test('login and signup contact invitation is optional and respects platform perm
 test('contact prompt fails closed when backend missing and never silently grants consent', () => {
   assert.match(prompt, /val snapshot = runCatching \{ client\.get\(\) \}\.getOrNull\(\)/);
   assert.match(prompt, /return@LaunchedEffect/);
-  assert.match(prompt, /client\.set\(existing\.copy\(syncEnabled = true, joinAlerts = true\)\)/);
+  assert.match(prompt, /client\.set\(existing\.copy\(syncEnabled = true, joinAlerts = true,/);
   assert.match(client, /Contacts permission was not granted/);
   assert.match(client, /action", "sync"/);
   assert.doesNotMatch(prompt, /set\([^)]*discoverable = true/);
 });
 
-test('existing phone-match service is not claimed live or fully no-SMS compatible', () => {
-  assert.match(contacts, /no-SMS /);
-  assert.match(contacts, /discovery backend is not active yet/);
-  assert.match(contacts, /enabled = false, onCheckedChange/);
+test('unverified matches are gated by server policy and explicit mutual consent', () => {
+  assert.match(contacts, /mutualMatchingReady && serviceReady/);
+  assert.match(contacts, /A possible match appears only when both members explicitly opt in/);
+  assert.match(prompt, /allowMutualDiscovery/);
+  assert.match(prompt, /snapshot\.mutualMatchingReady/);
+  assert.match(client, /match_policy/);
 });
