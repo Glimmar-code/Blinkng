@@ -39,19 +39,12 @@ class SearchDiscoveryRepository {
         .writeTimeout(25, TimeUnit.SECONDS)
         .build()
 
-    /** Returns real backend trends; no fabricated tags while migrations are pending. */
+    /** All Search entry points use the same server-authoritative 30-day-first
+     * contract. A legacy backend still returns real seven-day tags until the
+     * guarded RPC is deployed; no local or invented trending results.
+     */
     suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val body = JSONObject()
-                    .put("p_limit", limit.coerceIn(1, 50))
-                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
-                val rows = JSONArray(rpc("blink_trending_tags", body))
-                (0 until rows.length()).mapNotNull { i ->
-                    BlinkSmartTags.normalize(rows.optJSONObject(i)?.optString("tag").orEmpty())
-                }.distinct()
-            }.getOrDefault(emptyList())
-        }
+        trendingTagsWithPeriod(university, limit).tags
 
     /** Prefer verified 30-day backend ranking; preserve a truthfully labelled
      * 7-day fallback until staged SQL has passed production release gates.
