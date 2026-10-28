@@ -1337,7 +1337,11 @@ private fun ReelPage(
     }
 
     val exposureModifier = if (trackExposure) {
-        Modifier.trackContentExposure(reel.id, displayedViewsCount)
+        Modifier.trackContentExposure(
+            reel.id,
+            displayedViewsCount,
+            playbackActive = isActive && !isPausedByUser && !isBuffering && !url.isNullOrBlank(),
+        )
     } else {
         Modifier
     }
@@ -2165,7 +2169,11 @@ internal fun InlineReelPreviewCard(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(9f / 16f)
-            .trackContentExposure(reel.id, displayedViewsCount),
+            .trackContentExposure(
+                reel.id,
+                displayedViewsCount,
+                playbackActive = isActive && !previewFinished && !isBuffering && url.isNotBlank(),
+            ),
         shape = RoundedCornerShape(22.dp),
         color = Color.Black,
         tonalElevation = 0.dp
