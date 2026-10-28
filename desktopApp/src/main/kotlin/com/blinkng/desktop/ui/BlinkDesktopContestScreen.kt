@@ -100,6 +100,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                 val own = d.optString("my_entry_id", "").takeUnless { it == "null" }.orEmpty()
                 val voted = d.optString("my_vote_entry_id", "").takeUnless { it == "null" }.orEmpty()
                 val leaders = d.optJSONArray("leaderboard")?.rows().orEmpty()
+                val winners = d.optJSONArray("winners")?.rows().orEmpty()
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     item {
                         Text(c.optString("title"), style = MaterialTheme.typography.headlineSmall)
@@ -110,6 +111,16 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             " · 3rd " + prize(c.optInt("prize_third")), fontWeight = FontWeight.Bold)
                         Text("Voting closes: " + dt(c.optString("voting_closes_at")))
                         if (c.optString("rules").isNotBlank()) Text("Rules: " + c.optString("rules"))
+                        if (status == "completed") {
+                            Text("Official winners",style=MaterialTheme.typography.titleLarge)
+                            if (winners.isEmpty()) Text("No prize winners were recorded.")
+                            winners.forEach { winner ->
+                                Text("#" + winner.optInt("place") + " @" + winner.optString("username") +
+                                    " · " + prize(winner.optInt("prize_amount")))
+                                Text("Prize status: " + winner.optString("payment_status") +
+                                    " (admin-recorded)")
+                            }
+                        }
                         Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
                             else "#" + d.optInt("my_rank"))
                         if (own.isNotBlank()) Text("Your application: " + d.optString("my_entry_status"))
@@ -168,7 +179,12 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     busy = true
                                     scope.launch {
                                         runCatching { api.contestVote(c.optString("id"), entry.optString("id")) }
-                                            .onSuccess { message = "Vote recorded."; revision++ }
+                                            .onSuccess {
+                                                message = if (it.optString("vote_status") == "under_review")
+                                                    "Free vote received; pending integrity review."
+                                                else "Your free vote was counted."
+                                                revision++
+                                            }
                                             .onFailure { message = it.message.orEmpty() }
                                         busy = false
                                     }
@@ -203,6 +219,10 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var inspectId by remember { mutableStateOf<String?>(null) }
+    var insights by remember { mutableStateOf<JSONObject?>(null) }
+    var reviewNote by remember { mutableStateOf("") }
+    var paymentReference by remember { mutableStateOf("") }
+    var paymentNote by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -224,8 +244,11 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     }
     LaunchedEffect(inspectId, revision) {
         entries = emptyList()
+        insights = null
         inspectId?.let { id ->
             runCatching { api.adminContestEntries(id) }.onSuccess { entries = it.rows() }
+                .onFailure { message = it.message.orEmpty() }
+            runCatching { api.adminContestInsights(id) }.onSuccess { insights = it }
                 .onFailure { message = it.message.orEmpty() }
         }
     }
@@ -301,7 +324,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                             TextButton(enabled = !busy, onClick = {
                                 busy = true
                                 scope.launch {
-                                    runCatching { api.adminContestAction(contest.optString("id"), "complete") }
+                                    runCatching { api.adminContestFinalize(contest.optString("id")) }
                                         .onSuccess { message = "Final results confirmed."; revision++ }
                                         .onFailure { message = it.message.orEmpty() }
                                     busy = false
@@ -313,6 +336,74 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
             }
         }
         if (inspectId != null) {
+            Text("Growth and fraud monitoring",style=MaterialTheme.typography.titleLarge)
+            val stat = insights
+            if (stat != null) {
+                Text("Shares: " + stat.optInt("shares") + " · Unique sharers: " +
+                    stat.optInt("unique_sharers"))
+                Text("Counted votes: " + stat.optInt("counted_votes") +
+                    " · Under review: " + stat.optInt("review_votes") +
+                    " · Invalidated: " + stat.optInt("rejected_votes"))
+            }
+            Text("Share totals represent authenticated share actions, not page visits.",
+                style=MaterialTheme.typography.bodySmall)
+            Text("Vote integrity review",style=MaterialTheme.typography.titleMedium)
+            OutlinedTextField(reviewNote,{reviewNote=it.take(300)},
+                label={Text("Reason for approving/invalidating (8+ characters)")},
+                modifier=Modifier.fillMaxWidth())
+            insights?.optJSONArray("review_queue")?.rows().orEmpty().forEach { vote ->
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Vote " + vote.optString("id").take(8) + " · " +
+                            vote.optString("reason"))
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            listOf("approve","invalidate").forEach { action ->
+                                TextButton(enabled=!busy && reviewNote.trim().length>=8,onClick={
+                                    busy=true
+                                    scope.launch {
+                                        runCatching {
+                                            api.adminContestVoteReview(vote.optString("id"),action,reviewNote)
+                                        }.onSuccess { message="Vote reviewed.";revision++ }
+                                            .onFailure { message=it.message.orEmpty() }
+                                        busy=false
+                                    }
+                                }) { Text(action) }
+                            }
+                        }
+                    }
+                }
+            }
+            Text("Prize payment ledger",style=MaterialTheme.typography.titleLarge)
+            Text("Manual bookkeeping only; these controls do not transfer funds.",
+                style=MaterialTheme.typography.bodySmall)
+            OutlinedTextField(paymentReference,{paymentReference=it.take(150)},
+                label={Text("External receipt / transfer reference")},modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(paymentNote,{paymentNote=it.take(400)},
+                label={Text("Admin note")},modifier=Modifier.fillMaxWidth())
+            insights?.optJSONArray("prizes")?.rows().orEmpty().forEach { row ->
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("#" + row.optInt("place") + " @" + row.optString("username") +
+                            " · " + prize(row.optInt("amount_ngn")) +
+                            " · " + row.optString("payment_status"))
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            listOf("processing","failed","paid").forEach { action ->
+                                TextButton(enabled=!busy && row.optString("payment_status")!="paid" &&
+                                    (action!="paid" || paymentReference.trim().length>=6),onClick={
+                                    busy=true
+                                    scope.launch {
+                                        runCatching { api.adminContestPrize(row.optString("id"),
+                                            action,paymentReference,paymentNote) }
+                                            .onSuccess { message="Prize record saved, not transferred.";revision++ }
+                                            .onFailure { message=it.message.orEmpty() }
+                                        busy=false
+                                    }
+                                }) { Text(action) }
+                            }
+                        }
+                    }
+                }
+            }
             Text("Contest applications", style = MaterialTheme.typography.titleLarge)
             entries.forEach { entry ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
