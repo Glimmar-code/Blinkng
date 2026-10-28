@@ -95,7 +95,7 @@ class BlinkContestService {
     suspend fun adminPrize(id: String, status: String, receipt: String, note: String): Result<JSONObject> = runCatching {
         JSONObject(call("admin_record_blink_contest_prize", JSONObject().put("p_prize_id", id)
             .put("p_status", status)
-            .put("p_reference", receipt.trim().ifBlank { JSONObject.NULL })
+            .put("p_reference", if (receipt.isBlank()) JSONObject.NULL else receipt.trim())
             .put("p_note", note.trim())))
     }
     suspend fun adminReview(entryId: String, action: String): Result<JSONObject> = runCatching {
