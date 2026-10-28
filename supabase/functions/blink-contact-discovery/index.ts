@@ -18,6 +18,7 @@ const json = (value: unknown, code = 200, origin: string | null = null) => new R
   } },
 );
 
+const matchPolicy = "reciprocal_opt_in_v1";
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 function canonical(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -113,7 +114,7 @@ Deno.serve(async request => {
         }
         matches = found;
       }
-      return json({ settings, matches }, 200, origin);
+      return json({ settings, matches, match_policy: matchPolicy }, 200, origin);
     }
     if (action === "settings") {
       if (typeof data.sync_enabled !== "boolean" ||
@@ -149,7 +150,7 @@ Deno.serve(async request => {
       });
       if (directoryError) throw directoryError;
       if (data.discoverable) await dispatchNewContactAlerts();
-      return json({ settings: await freshSettings() }, 200, origin);
+      return json({ settings: await freshSettings(), match_policy: matchPolicy }, 200, origin);
     }
     if (action === "sync") {
       const settings = await freshSettings();
@@ -181,7 +182,7 @@ Deno.serve(async request => {
       }
       const result = await admin.rpc("blink_contact_matches_for", { p_user: uid });
       if (result.error) throw result.error;
-      return json({ matched: result.data || [], synced: hashes.length }, 200, origin);
+      return json({ matched: result.data || [], synced: hashes.length, match_policy: matchPolicy }, 200, origin);
     }
     if (action === "delete") {
       const settings = { user_id: uid, sync_enabled: false, discoverable: false,
