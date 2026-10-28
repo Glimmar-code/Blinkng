@@ -352,6 +352,14 @@ begin
   v_skipped := (not v_completed) and (v_watch_ms <= 2500 or v_watch_pct < 0.20::numeric);
   v_event_type := case when v_skipped then 'skip' else 'dwell' end; -- recommendation RPC does not accept a view event
 
+  -- Serialize submissions from one viewer to one Reel. Without this lock,
+  -- concurrent requests with fresh client UUIDs could all pass the cooldown
+  -- and daily-limit checks before any inserts become visible.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext(v_viewer::text),
+    pg_catalog.hashtext(p_post_id::text)
+  );
+
   -- Repeated sessions within a brief interval are telemetry, not independent voters.
   -- This is a best-effort cooldown in addition to the session_id idempotency key.
   if exists (
