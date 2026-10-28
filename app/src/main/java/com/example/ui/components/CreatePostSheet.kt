@@ -57,6 +57,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -2293,168 +2300,218 @@ internal fun PostPreviewDialog(
     profile: UserProfile,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         MaterialTheme(colorScheme = lightColorScheme()) {
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 10.dp, vertical = 8.dp)
-                .testTag("blink_post_preview_stage"),
-            shape = RoundedCornerShape(18.dp),
-            color = Color.White,
-            tonalElevation = 8.dp,
-            shadowElevation = 10.dp
-        ) {
             Column(
-                modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                Modifier.fillMaxSize().background(Color.Black)
+                    .statusBarsPadding().navigationBarsPadding()
+                    .testTag("blink_post_preview_stage")
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Preview Post",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 19.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = onDismiss) { Text("Back to editor") }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = profile.avatarUrl,
-                        contentDescription = "Your profile photo",
-                        modifier = Modifier.size(46.dp).clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            profile.fullName.ifBlank { profile.username },
-                            fontWeight = FontWeight.Bold, maxLines = 1
-                        )
-                        Text("@" + profile.username, color = Color(0xFF77808E),
-                            fontSize = 12.sp)
+                Row(
+                    Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.KeyboardArrowLeft, "Back to editor", tint = Color.White)
                     }
-                }
-                Text(
-                    "Draft preview — not published",
-                    color = Color(0xFF6A62DB), style = MaterialTheme.typography.labelMedium
-                )
-                if (post.audience.isNotBlank()) {
-                    Text(
-                        "${post.audience} • ${post.category}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                if (post.text.isNotBlank()) {
-                    Text(
-                        post.text,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-
-                if (post.images.isNotEmpty()) {
-                    Text(
-                        if (post.images.size == 1) "Photo preview"
-                        else post.images.size.toString() + " photos · swipe to view",
-                        fontSize = 12.sp, color = Color(0xFF717A8B)
-                    )
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(post.images) { uri ->
-                            AsyncImage(
-                                model = uri,
-                                contentDescription = post.altText ?: "Post image",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .size(width = 276.dp, height = 260.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Post Preview", color = Color.White,
+                            fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     }
+                    Spacer(Modifier.width(48.dp))
                 }
-
-                post.videoUrl?.takeIf { it.isNotBlank() }?.let { videoUri ->
-                    val context = LocalContext.current
-                    val previewPlayer = remember(videoUri) {
-                        ExoPlayer.Builder(context).build().apply {
-                            setMediaItem(MediaItem.fromUri(videoUri))
-                            prepare()
-                            playWhenReady = false
-                        }
-                    }
-                    DisposableEffect(previewPlayer) {
-                        onDispose { previewPlayer.release() }
-                    }
-                    AndroidView(
-                        factory = { ctx -> PlayerView(ctx).apply {
-                            useController = true
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            player = previewPlayer
-                        } },
-                        update = { it.player = previewPlayer },
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp).aspectRatio(9f / 16f)
-                    )
-                    post.audioTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                }
-
-                post.poll?.let { poll ->
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f)
-                        )
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(horizontal = 13.dp, vertical = 8.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.White,
+                        shadowElevation = 4.dp
                     ) {
                         Column(
-                            Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            Text(poll.question, fontWeight = FontWeight.Bold)
-                            poll.options.forEach { option ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    )
-                                ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = profile.avatarUrl,
+                                    contentDescription = "Your profile photo",
+                                    modifier = Modifier.size(40.dp).clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
                                     Text(
-                                        option.text,
-                                        modifier = Modifier.padding(
-                                            horizontal = 12.dp,
-                                            vertical = 8.dp
-                                        )
+                                        profile.fullName.ifBlank { profile.username },
+                                        color = Color.Black, fontWeight = FontWeight.Bold,
+                                        maxLines = 1, fontSize = 13.sp
                                     )
+                                    Text(
+                                        "Just now · " + (if (post.audience == "Everyone") "Public" else post.audience),
+                                        color = Color(0xFF7C8591), fontSize = 11.sp
+                                    )
+                                }
+                                Icon(Icons.Default.MoreHoriz, "Preview actions unavailable", tint = Color.DarkGray)
+                            }
+                            if (post.text.isNotBlank()) {
+                                Text(post.text, color = Color.Black, fontSize = 14.sp)
+                            }
+                            if (post.tags.isNotEmpty()) {
+                                Text(
+                                    post.tags.joinToString(" ") { "#" + it.removePrefix("#") },
+                                    color = Color(0xFF4C62D9), fontSize = 12.sp
+                                )
+                            }
+                            if (post.images.isNotEmpty()) {
+                                val carouselState = rememberLazyListState()
+                                LazyRow(
+                                    state = carouselState,
+                                    flingBehavior = rememberSnapFlingBehavior(carouselState),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(post.images) { uri ->
+                                        AsyncImage(
+                                            model = uri,
+                                            contentDescription = post.altText ?: "Post photo",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillParentMaxWidth()
+                                                .height(254.dp)
+                                                .clip(RoundedCornerShape(11.dp))
+                                                .background(Color(0xFFE7E9EF))
+                                        )
+                                    }
+                                }
+                                if (post.images.size > 1) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        repeat(post.images.size) { index ->
+                                            Box(
+                                                Modifier.padding(horizontal = 3.dp).size(
+                                                    if (carouselState.firstVisibleItemIndex == index) 7.dp else 5.dp
+                                                ).background(
+                                                    if (carouselState.firstVisibleItemIndex == index)
+                                                        Color(0xFF5550EE)
+                                                    else Color(0xFFCED1DC),
+                                                    CircleShape
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            post.videoUrl?.takeIf { it.isNotBlank() }?.let { videoUri ->
+                                val context = LocalContext.current
+                                val previewPlayer = remember(videoUri) {
+                                    ExoPlayer.Builder(context).build().apply {
+                                        setMediaItem(MediaItem.fromUri(videoUri))
+                                        prepare()
+                                        playWhenReady = false
+                                    }
+                                }
+                                DisposableEffect(previewPlayer) {
+                                    onDispose { previewPlayer.release() }
+                                }
+                                AndroidView(
+                                    factory = { ctx ->
+                                        PlayerView(ctx).apply {
+                                            useController = true
+                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            player = previewPlayer
+                                        }
+                                    },
+                                    update = { it.player = previewPlayer },
+                                    modifier = Modifier.fillMaxWidth()
+                                        .heightIn(max = 380.dp)
+                                        .aspectRatio(9f / 16f)
+                                )
+                                post.audioTitle?.let {
+                                    Text(it, color = Color(0xFF737B89), fontSize = 11.sp)
+                                }
+                            }
+                            post.poll?.let { poll ->
+                                Surface(
+                                    color = Color(0xFFF6F7FB),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(poll.question, fontWeight = FontWeight.Bold, color = Color.Black)
+                                        poll.options.forEach { option ->
+                                            Surface(
+                                                color = Color.White,
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFDBDEE8))
+                                            ) {
+                                                Text(
+                                                    option.text, color = Color.Black,
+                                                    modifier = Modifier.fillMaxWidth().padding(12.dp)
+                                                )
+                                            }
+                                        }
+                                        val expiresAt = poll.expiresAtMillis
+                                        if (expiresAt != null) {
+                                            Text(
+                                                "Poll closes after its selected duration",
+                                                color = Color(0xFF737B89), fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            post.location?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, color = Color(0xFF737B89), fontSize = 11.sp)
+                            }
+                            post.linkUrl?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, color = Color(0xFF4C62D9), fontSize = 11.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            HorizontalDivider(color = Color(0xFFEAECF1))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(
+                                    Icons.Default.FavoriteBorder to "Like",
+                                    Icons.Default.ChatBubbleOutline to "Comment",
+                                    Icons.Default.BookmarkBorder to "Save",
+                                    Icons.Default.Share to "Share"
+                                ).forEach { (icon, label) ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(icon, null, tint = Color(0xFF606977),
+                                            modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text(label, color = Color(0xFF606977), fontSize = 10.sp)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-
-                post.location?.let {
                     Text(
-                        "Location: $it",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "Preview only · Your post has not been published",
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                        textAlign = TextAlign.Center,
+                        color = Color(0xFFBFC2D2), fontSize = 11.sp
                     )
-                }
-                post.linkUrl?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(46.dp)
+                    ) { Text("Back to editor", color = Color.White) }
                 }
             }
-        }
         }
     }
 }
