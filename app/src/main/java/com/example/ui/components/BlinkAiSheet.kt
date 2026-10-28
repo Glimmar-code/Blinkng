@@ -98,7 +98,8 @@ private data class BlinkAiRequestSnapshot(
 fun BlinkAiSheet(
     onDismiss: () -> Unit,
     initialImageUri: Uri? = null,
-    initialAudioUri: Uri? = null
+    initialAudioUri: Uri? = null,
+    initialPrompt: String? = null
 ) {
     val context = LocalContext.current
     // This dialog previously used green-black hardcoded colors even in app Dark Mode.
@@ -109,9 +110,9 @@ fun BlinkAiSheet(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    var input by remember(initialAudioUri) {
+    var input by remember(initialAudioUri, initialPrompt) {
         mutableStateOf(
-            if (initialAudioUri != null)
+            initialPrompt?.take(2500) ?: if (initialAudioUri != null)
                 "Transcribe this audio accurately. Identify uncertain words rather than guessing."
             else ""
         )
