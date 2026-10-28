@@ -715,33 +715,21 @@ fun MessagesScreen(state: DesktopAppState) {
                                             )
                                         }
                                         val legacyPoll = BlinkChatPollPolicy.parseTextFallback(message.content)
-                                        if (legacyPoll != null) {
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = MaterialTheme.colorScheme.surface.copy(alpha = .7f)
-                                            ) {
-                                                Column(
-                                                    Modifier.padding(12.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                                                ) {
-                                                    Text("📊 " + legacyPoll.question, fontWeight = FontWeight.SemiBold)
-                                                    Text("Text poll · responses are chat replies",
-                                                        fontSize = 11.sp,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                    legacyPoll.options.forEachIndexed { index, option ->
-                                                        TextButton(onClick = {
-                                                            if (draft.isBlank() && editingMessage == null) {
-                                                                replyingTo = message
-                                                                draftsByConversation[active.id] = (index + 1).toString()
-                                                            } else {
-                                                                error = "Finish your draft before selecting a poll reply."
-                                                            }
-                                                        }) {
-                                                            Text("${index + 1}. $option · Reply")
-                                                        }
+                                        if (legacyPoll != null || message.messageType == "poll") {
+                                            DesktopChatNativePollCard(
+                                                id = message.id,
+                                                fallback = legacyPoll,
+                                                client = state.client,
+                                                onFallbackChoice = { index ->
+                                                    if (draft.isBlank() && editingMessage == null) {
+                                                        replyingTo = message
+                                                        draftsByConversation[active.id] =
+                                                            (index + 1).toString()
+                                                    } else {
+                                                        error = "Finish your draft before choosing a poll reply."
                                                     }
                                                 }
-                                            }
+                                            )
                                         }
                                         val sharedContact = BlinkChatContactCardPolicy.parse(message.content)
                                         if (sharedContact != null) {
@@ -762,7 +750,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                                     }) { Text("Copy number") }
                                                 }
                                             }
-                                        } else if (legacyPoll == null && message.content.isNotBlank() &&
+                                        } else if (legacyPoll == null && message.messageType != "poll" && message.content.isNotBlank() &&
                                             !(message.messageType == "image" &&
                                                 message.content in setOf("Image", "Photo"))) {
                                             Text(message.content)
