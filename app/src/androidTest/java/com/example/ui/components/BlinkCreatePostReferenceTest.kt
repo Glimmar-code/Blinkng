@@ -76,9 +76,12 @@ class BlinkCreatePostReferenceTest {
         }
         composeRule.onNodeWithTag("blink_media_review").assertExists()
         composeRule.onNodeWithText("2 / 10 selected").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_edit_0").performClick()
         composeRule.onNodeWithText("Add more photos").performClick()
         composeRule.onNodeWithText("Next (2)").performClick()
-        composeRule.runOnIdle { assertEquals(listOf("add", "next"), actions) }
+        composeRule.runOnIdle {
+            assertEquals(listOf("edit:content://sample/1", "add", "next"), actions)
+        }
     }
 
     @Test
