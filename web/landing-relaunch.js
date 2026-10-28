@@ -18,7 +18,7 @@
           '<h1 id="br-title">Connect,<br>Discover and<br>Grow <span class="br-gradient">Beyond LINK</span></h1>',
           '<p class="br-description">BLINK is a social and campus community app for students and young people in Nigeria to connect, share, discover creators, explore reels and grow beyond the usual.</p>',
           '<div class="br-actions"><a class="br-button br-button-main" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk"><span aria-hidden="true">↓</span><span>Download BLINK APK<small>For Android</small></span></a><button type="button" class="br-button br-button-outline" data-reveal>Read more about BLINK <span aria-hidden="true">↘</span></button></div>',
-          '<p class="br-download-note">Free to join · Official Android download · No Play Store release yet</p>',
+          '<p class="br-download-note">Free to join · Official Android APK · Direct download from BLINK</p>',
           '<div class="br-trust"><span>✦ Your campus, your community</span><span>◉ Discover creators</span><span>↗ Beyond the usual</span></div>',
         '</div>',
         '<div class="br-showcase" aria-label="Illustrative BLINK app previews">',
