@@ -2448,6 +2448,7 @@ fun MainAppContent(
         BackgroundPostPublishIndicator(
             isCreatingPost = uiState.isCreatingPost,
             messages = viewModel.snackBarMessages,
+            uploadProgress = uiState.postUploadProgress,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = if (shouldShowBottomBar) 92.dp else 18.dp)
@@ -3232,6 +3233,7 @@ fun MainAppContent(
                 isDark = uiState.isDarkMode,
                 startInReelMode = startReelComposer,
                 isSubmitting = uiState.isCreatingPost,
+                uploadProgress = uiState.postUploadProgress,
                 searchMentions = { query, limit, afterUsername, afterId ->
                     viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                 }
