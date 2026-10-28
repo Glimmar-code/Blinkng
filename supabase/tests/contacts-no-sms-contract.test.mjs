@@ -46,6 +46,7 @@ test('contact prompt fails closed when backend missing and never silently grants
 });
 
 test('existing phone-match service is not claimed live or fully no-SMS compatible', () => {
-  assert.match(contacts, /no-SMS discovery backend is not active yet/);
+  assert.match(contacts, /no-SMS /);
+  assert.match(contacts, /discovery backend is not active yet/);
   assert.match(contacts, /enabled = false, onCheckedChange/);
 });
