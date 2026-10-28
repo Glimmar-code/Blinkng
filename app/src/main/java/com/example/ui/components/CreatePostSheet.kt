@@ -241,6 +241,7 @@ fun CreatePostSheet(
         initialValue = listOf("", ""),
         scope = composerScope
     )
+    var pollDurationHours by rememberSaveable { mutableStateOf(24) }
     var audience by rememberSaveable { mutableStateOf("Everyone") }
     var category by rememberSaveable { mutableStateOf("Campus Life") }
     var allowComments by rememberSaveable { mutableStateOf(true) }
@@ -439,6 +440,7 @@ fun CreatePostSheet(
         audioTitle = draft.audioTrack.orEmpty()
         pollQuestion = draft.pollQuestion
         pollOptions = draft.pollOptions.takeIf { it.size >= 2 } ?: listOf("", "")
+        pollDurationHours = draft.pollDurationHours.takeIf { it in listOf(1, 24, 72, 168) } ?: 24
         showPoll = draft.pollQuestion.isNotBlank() && draft.pollOptions.count { it.isNotBlank() } >= 2
         textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
         selectedTextStyle = draft.textStyle ?: "aurora"
@@ -459,6 +461,7 @@ fun CreatePostSheet(
         selectedTags = emptyList()
         pollQuestion = ""
         pollOptions = listOf("", "")
+        pollDurationHours = 24
         selectedCoverUri = null
         coverFrameIndex = -1
         activeDraftId = null
@@ -505,6 +508,8 @@ fun CreatePostSheet(
                 category = value.optString("category", "Campus Life")
                 allowComments = value.optBoolean("allow_comments", true)
                 showPoll = value.optBoolean("show_poll", false)
+                pollDurationHours = value.optInt("poll_duration_hours", 24)
+                    .takeIf { it in listOf(1, 24, 72, 168) } ?: 24
                 selectedTextStyle = value.optString("text_style", "aurora")
                 textPresentation = value.optString("text_presentation", "plain")
                 location = value.optString("location")
@@ -541,6 +546,7 @@ fun CreatePostSheet(
         mode,
         pollQuestion,
         pollOptions,
+        pollDurationHours,
         selectedTags,
         audience,
         category,
@@ -588,6 +594,7 @@ fun CreatePostSheet(
                 put("category", category)
                 put("allow_comments", allowComments)
                 put("show_poll", showPoll)
+                put("poll_duration_hours", pollDurationHours)
                 put("text_style", selectedTextStyle)
                 put("text_presentation", textPresentation)
                 put("location", location)
@@ -689,7 +696,8 @@ fun CreatePostSheet(
         val poll = if (pollValid) {
             PostPoll(
                 question = pollQuestion.trim(),
-                options = validPollOptions.map { PollOption(UUID.randomUUID().toString(), it) }
+                options = validPollOptions.map { PollOption(UUID.randomUUID().toString(), it) },
+                expiresAtMillis = System.currentTimeMillis() + pollDurationHours * 3_600_000L
             )
         } else null
         val style = selectedTextStyle.takeIf {
@@ -827,7 +835,8 @@ fun CreatePostSheet(
                 question = pollQuestion.trim(),
                 options = validPollOptions.map {
                     PollOption(UUID.randomUUID().toString(), it)
-                }
+                },
+                expiresAtMillis = System.currentTimeMillis() + pollDurationHours * 3_600_000L
             )
         } else null
 
@@ -891,6 +900,7 @@ fun CreatePostSheet(
                 isDisappearing = isDisappearing,
                 pollQuestion = if (showPoll) pollQuestion else "",
                 pollOptions = if (showPoll) pollOptions else emptyList(),
+                pollDurationHours = pollDurationHours,
                 audioTrack = audioTitle.trim().takeIf { it.isNotBlank() },
                 altText = altText.trim().takeIf { it.isNotBlank() },
                 textStyle = selectedTextStyle.takeIf {
@@ -1565,6 +1575,8 @@ fun CreatePostSheet(
                         onQuestionChanged = { pollQuestion = it.take(240) },
                         options = pollOptions,
                         onOptionsChanged = { pollOptions = it },
+                        durationHours = pollDurationHours,
+                        onDurationChanged = { pollDurationHours = it },
                         enabled = !isSubmitting
                     )
                 }
@@ -2673,6 +2685,8 @@ private fun PollComposer(
     onQuestionChanged: (String) -> Unit,
     options: List<String>,
     onOptionsChanged: (List<String>) -> Unit,
+    durationHours: Int,
+    onDurationChanged: (Int) -> Unit,
     enabled: Boolean
 ) {
     Card(
@@ -2747,6 +2761,25 @@ private fun PollComposer(
                 }
             }
 
+            Text(
+                "Poll duration",
+                modifier = Modifier.padding(top = 12.dp),
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(1 to "1 hour", 24 to "1 day", 72 to "3 days", 168 to "7 days")
+                    .forEach { (hours, label) ->
+                        FilterChip(
+                            selected = durationHours == hours,
+                            onClick = { onDurationChanged(hours) },
+                            enabled = enabled,
+                            label = { Text(label) }
+                        )
+                    }
+            }
             if (options.size < 4) {
                 TextButton(
                     onClick = { onOptionsChanged(options + "") },
