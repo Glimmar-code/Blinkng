@@ -148,6 +148,8 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                         verticalAlignment = Alignment.CenterVertically) {
                                         Text(when (winner.optInt("place")) {
                                             1 -> "🥇"; 2 -> "🥈"; else -> "🥉" }, fontSize = 25.sp)
+                                        DesktopContestAvatar(winner.optString("avatar_url"),
+                                            winner.optString("username"), 42.dp)
                                         Column {
                                             Text("@" + winner.optString("username"),
                                                 color = Color.White, fontWeight = FontWeight.Bold)

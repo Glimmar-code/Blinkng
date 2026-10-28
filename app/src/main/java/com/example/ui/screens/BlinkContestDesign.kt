@@ -148,6 +148,8 @@ internal fun BlinkContestWinnerCard(winner: JSONObject) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(when(winner.optInt("place")){1->"🥇";2->"🥈";else->"🥉"},fontSize=27.sp)
+            BlinkContestAvatar(winner.optString("avatar_url"),
+                winner.optString("username"), 42.dp)
             Column(Modifier.weight(1f)) {
                 Text("@" + winner.optString("username"), color=Color.White,
                     fontWeight=FontWeight.Bold)

@@ -169,6 +169,7 @@ begin
        where id=v_entry),
     'winners',coalesce((select jsonb_agg(jsonb_build_object(
       'place',w.place,'user_id',w.user_id,'username',p.username,
+      'avatar_url',p.avatar_url,
       'prize_amount',w.amount_ngn,'payment_status',w.payment_status,
       'announced_at',w.announced_at) order by w.place)
       from public.blink_contest_prizes w
