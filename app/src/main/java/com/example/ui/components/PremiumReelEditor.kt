@@ -2,6 +2,9 @@ package com.example.ui.components
 
 import android.net.Uri
 import android.widget.Toast
+import com.example.data.local.PersistentTextDraftStore
+import org.json.JSONObject
+import java.security.MessageDigest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -11,6 +14,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +42,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.effect.RgbFilter
+import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.Locale
@@ -47,6 +58,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun PremiumReelEditor(
     uri: String,
+    draftScope: String,
     onRemove: () -> Unit,
     onEdited: (String) -> Unit,
     onExporting: (Boolean) -> Unit,
@@ -54,6 +66,15 @@ internal fun PremiumReelEditor(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val editKey = remember(uri) {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(uri.toByteArray(Charsets.UTF_8))
+        "reel_edit_" + digest.take(12).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+    val saved = remember(uri, draftScope) {
+        PersistentTextDraftStore.readValue(context, editKey, draftScope)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+    }
     val player = remember(uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(uri))
@@ -64,25 +85,83 @@ internal fun PremiumReelEditor(
     }
     var durationMs by remember(uri) { mutableLongStateOf(0L) }
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
-    var trimStartMs by remember(uri) { mutableLongStateOf(0L) }
-    var trimEndMs by remember(uri) { mutableLongStateOf(0L) }
+    var trimStartMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("trimStart", 0L)) }
+    var trimEndMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("trimEnd", 0L)) }
     var playing by remember(uri) { mutableStateOf(true) }
-    var muteOriginal by remember(uri) { mutableStateOf(false) }
-    var grayscale by remember(uri) { mutableStateOf(false) }
-    var rotation by remember(uri) { mutableFloatStateOf(0f) }
-    var overlayText by remember(uri) { mutableStateOf("") }
-    var sticker by remember(uri) { mutableStateOf("") }
-    var musicUri by remember(uri) { mutableStateOf<String?>(null) }
+    var muteOriginal by remember(uri, draftScope) { mutableStateOf(saved.optBoolean("mute", false)) }
+    var grayscale by remember(uri, draftScope) { mutableStateOf(saved.optBoolean("grayscale", false)) }
+    var rotation by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("rotation", 0.0).toFloat()) }
+    var overlayText by remember(uri, draftScope) { mutableStateOf(saved.optString("text", "")) }
+    var sticker by remember(uri, draftScope) { mutableStateOf(saved.optString("sticker", "")) }
+    var overlayStartMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("overlayStart", 0L)) }
+    var overlayEndMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("overlayEnd", 0L)) }
+    var overlayX by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("x", 0.0).toFloat()) }
+    var overlayY by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("y", 0.0).toFloat()) }
+    var overlayScale by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("scale", 1.0).toFloat()) }
+    var previewWidth by remember(uri) { mutableIntStateOf(1) }
+    var previewHeight by remember(uri) { mutableIntStateOf(1) }
+    var musicUri by remember(uri, draftScope) { mutableStateOf<String?>(saved.optString("music").takeIf { it.isNotBlank() && it != "null" }) }
+    var originalAudioVolume by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("originalVolume", 1.0).toFloat()) }
+    var musicVolume by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("musicVolume", 1.0).toFloat()) }
     var isExporting by remember(uri) { mutableStateOf(false) }
+    var exportPercent by remember(uri) { mutableIntStateOf(0) }
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
     var showAdvanced by remember(uri) { mutableStateOf(false) }
-
-    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
-        picked -> musicUri = picked?.toString()
+    val musicPlayer = remember(musicUri) {
+        musicUri?.let { selected ->
+            runCatching {
+                ExoPlayer.Builder(context).build().apply {
+                    setMediaItem(MediaItem.fromUri(selected))
+                    repeatMode = Player.REPEAT_MODE_ONE
+                    playWhenReady = false
+                    prepare()
+                }
+            }.getOrNull()
+        }
+    }
+    DisposableEffect(musicPlayer) {
+        onDispose { musicPlayer?.release() }
+    }
+    LaunchedEffect(grayscale, rotation, player) {
+        val effects = mutableListOf<androidx.media3.common.Effect>()
+        if (grayscale) effects += RgbFilter.createGrayscaleFilter()
+        if (rotation != 0f) {
+            effects += ScaleAndRotateTransformation.Builder()
+                .setRotationDegrees(rotation).build()
+        }
+        runCatching { player.setVideoEffects(effects) }
+    }
+    LaunchedEffect(musicPlayer, positionMs, playing, musicVolume, trimStartMs) {
+        musicPlayer ?: return@LaunchedEffect
+        val clipPosition = (positionMs - trimStartMs).coerceAtLeast(0L)
+        if (kotlin.math.abs(musicPlayer.currentPosition - clipPosition) > 750L) {
+            musicPlayer.seekTo(clipPosition)
+        }
+        musicPlayer.volume = musicVolume
+        if (playing) musicPlayer.play() else musicPlayer.pause()
     }
 
-    DisposableEffect(player) { onDispose { player.release() } }
+    val audioPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { picked ->
+        if (picked != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    picked, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            musicUri = picked.toString()
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+            onExporting(false)
+            onPendingEdits(false)
+        }
+    }
     LaunchedEffect(uri) {
         filmstrip = reelFilmstrip(context, Uri.parse(uri))
     }
@@ -90,7 +169,7 @@ internal fun PremiumReelEditor(
         while (true) {
             if (player.duration > 0L) {
                 val freshDuration = player.duration
-                if (durationMs == 0L) trimEndMs = freshDuration
+                if (durationMs == 0L && trimEndMs == 0L) trimEndMs = freshDuration
                 durationMs = freshDuration
             }
             positionMs = player.currentPosition.coerceAtLeast(0L)
@@ -113,13 +192,47 @@ internal fun PremiumReelEditor(
         rotationDegrees = rotation,
         overlayText = overlayText.trim(),
         sticker = sticker,
-        musicUri = musicUri
+        musicUri = musicUri,
+        originalAudioVolume = originalAudioVolume,
+        musicVolume = musicVolume,
+        overlayStartMs = overlayStartMs.coerceAtLeast(0L),
+        overlayEndMs = if (overlayEndMs == 0L) Long.MAX_VALUE else overlayEndMs,
+        overlayX = overlayX,
+        overlayY = overlayY,
+        overlayScale = overlayScale
     )
     val hasPendingEdits = durationMs >= 500L && spec.hasChanges(durationMs)
     LaunchedEffect(hasPendingEdits) { onPendingEdits(hasPendingEdits) }
+    LaunchedEffect(spec, durationMs, draftScope) {
+        if (durationMs < 500L) return@LaunchedEffect
+        if (hasPendingEdits) {
+            PersistentTextDraftStore.writeValue(
+                context, editKey, draftScope,
+                JSONObject().apply {
+                    put("trimStart", trimStartMs)
+                    put("trimEnd", trimEndMs)
+                    put("mute", muteOriginal)
+                    put("grayscale", grayscale)
+                    put("rotation", rotation)
+                    put("text", overlayText)
+                    put("sticker", sticker)
+                    put("overlayStart", overlayStartMs)
+                    put("overlayEnd", overlayEndMs)
+                    put("x", overlayX)
+                    put("y", overlayY)
+                    put("scale", overlayScale)
+                    put("music", musicUri ?: JSONObject.NULL)
+                    put("originalVolume", originalAudioVolume)
+                    put("musicVolume", musicVolume)
+                }.toString()
+            )
+        } else {
+            PersistentTextDraftStore.clearValue(context, editKey, draftScope)
+        }
+    }
     val white = Color.White
     val surface = Color(0xFF1B1B20)
-    val accent = Color(0xFFB976FC)
+    val accent = Color.White
     Column(
         modifier = Modifier.fillMaxWidth().background(Color.Black).testTag("premium_reel_editor"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -128,7 +241,9 @@ internal fun PremiumReelEditor(
         Box(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)
                 .aspectRatio(9f / 16f).clip(RoundedCornerShape(27.dp))
-                .background(Color(0xFF121217)),
+                .background(Color(0xFF121217))
+                .onSizeChanged { previewWidth = it.width.coerceAtLeast(1);
+                    previewHeight = it.height.coerceAtLeast(1) },
             contentAlignment = Alignment.Center
         ) {
             AndroidView(
@@ -142,9 +257,28 @@ internal fun PremiumReelEditor(
                 update = { it.player = player },
                 modifier = Modifier.fillMaxSize()
             )
-            if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+            if ((overlayText.isNotBlank() || sticker.isNotBlank()) &&
+                spec.overlayVisibleAt(positionMs)) {
                 Column(
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 18.dp),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset {
+                            IntOffset(
+                                (overlayX * previewWidth / 2f).roundToInt(),
+                                (-overlayY * previewHeight / 2f).roundToInt()
+                            )
+                        }
+                        .graphicsLayer(scaleX = overlayScale, scaleY = overlayScale)
+                        .pointerInput(uri) {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                overlayX = (overlayX + 2f * drag.x / previewWidth)
+                                    .coerceIn(-0.85f, 0.85f)
+                                overlayY = (overlayY - 2f * drag.y / previewHeight)
+                                    .coerceIn(-0.85f, 0.85f)
+                            }
+                        }
+                        .padding(horizontal = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (sticker.isNotBlank()) Text(sticker, fontSize = 40.sp)
@@ -164,7 +298,10 @@ internal fun PremiumReelEditor(
                 ) { Icon(Icons.Default.Replay, "Replay clip", tint = white) }
                 IconButton(
                     enabled = !isExporting,
-                    onClick = onRemove,
+                    onClick = {
+                        PersistentTextDraftStore.clearValue(context, editKey, draftScope)
+                        onRemove()
+                    },
                     modifier = Modifier.background(Color.Black.copy(alpha = .45f), CircleShape)
                 ) { Icon(Icons.Default.Close, "Remove reel", tint = white) }
             }
@@ -179,7 +316,7 @@ internal fun PremiumReelEditor(
                         Icon(Icons.Default.Replay5, "Back five seconds", tint = white)
                     }
                     Text("${display(positionMs)} / ${display(durationMs)}",
-                        color = white, fontSize = 11.sp, modifier = Modifier.weight(1f),
+                        color = white, fontSize = 13.sp, modifier = Modifier.weight(1f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     IconButton(onClick = { player.seekTo((player.currentPosition + 5_000L).coerceAtMost(trimEndMs)) },
                         enabled = !isExporting) {
@@ -204,26 +341,31 @@ internal fun PremiumReelEditor(
                         }
                     }
                 }
-                Text("Trim start · ${display(trimStartMs)}", fontSize = 11.sp, color = white)
-                Slider(value = if (durationMs > 0L) trimStartMs.toFloat() / durationMs else 0f,
-                    enabled = !isExporting && durationMs > 500L,
-                    onValueChange = {
-                        val next = (it * durationMs).toLong()
-                        trimStartMs = next.coerceAtMost((trimEndMs - 500L).coerceAtLeast(0L))
-                        player.seekTo(trimStartMs)
-                    }, modifier = Modifier.height(28.dp))
-                Text("Trim end · ${display(trimEndMs)}", fontSize = 11.sp, color = white)
-                Slider(value = if (durationMs > 0L) trimEndMs.toFloat() / durationMs else 1f,
-                    enabled = !isExporting && durationMs > 500L,
-                    onValueChange = {
-                        trimEndMs = (it * durationMs).toLong()
-                            .coerceIn((trimStartMs + 500L).coerceAtMost(durationMs), durationMs)
-                        player.seekTo(trimEndMs - 100L)
-                    }, modifier = Modifier.height(28.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Trim video", fontSize = 13.sp, color = white, fontWeight = FontWeight.SemiBold)
+                    Text("${display(trimStartMs)} – ${display(trimEndMs)}", fontSize = 12.sp, color = white)
+                }
+                // A two-handle timeline keeps the selected interval together.
+                RangeSlider(
+                    value = trimStartMs.toFloat()..trimEndMs.coerceAtLeast(trimStartMs).toFloat(),
+                    valueRange = 0f..durationMs.coerceAtLeast(500L).toFloat(),
+                    enabled = !isExporting && durationMs >= 500L,
+                    onValueChange = { selection ->
+                        val newStart = selection.start.toLong().coerceAtLeast(0L)
+                            .coerceAtMost(durationMs - 500L)
+                        val newEnd = selection.endInclusive.toLong()
+                            .coerceIn(newStart + 500L, durationMs)
+                        trimStartMs = newStart
+                        trimEndMs = newEnd
+                        player.seekTo(newStart)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = muteOriginal, onClick = {
                         muteOriginal = !muteOriginal
-                        player.volume = if (muteOriginal) 0f else 1f
+                        player.volume = if (muteOriginal) 0f else originalAudioVolume
                     }, label = { Text("Mute", fontSize = 11.sp) }, enabled = !isExporting)
                     FilterChip(selected = grayscale, onClick = { grayscale = !grayscale },
                         label = { Text("B&W", fontSize = 11.sp) }, enabled = !isExporting)
@@ -245,37 +387,93 @@ internal fun PremiumReelEditor(
                         onValueChange = { sticker = it.take(16) },
                         label = { Text("Sticker / emoji") }, singleLine = true,
                         enabled = !isExporting, modifier = Modifier.fillMaxWidth())
+                    if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+                        Text("Drag the words or sticker over the video to position them.",
+                            color = Color.LightGray, fontSize = 12.sp)
+                        Text("Overlay size: ${(overlayScale * 100).toInt()}%",
+                            color = white, fontSize = 12.sp)
+                        Slider(
+                            value = overlayScale, onValueChange = { overlayScale = it },
+                            valueRange = 0.5f..2f, enabled = !isExporting
+                        )
+                        Text("Overlay timing", fontWeight = FontWeight.Medium, color = white,
+                            fontSize = 13.sp)
+                        val overlayStart = overlayStartMs.coerceIn(0L, durationMs)
+                        val overlayEnd = if (overlayEndMs == 0L) durationMs else
+                            overlayEndMs.coerceIn(overlayStart, durationMs)
+                        RangeSlider(
+                            value = overlayStart.toFloat()..overlayEnd.toFloat(),
+                            valueRange = 0f..durationMs.coerceAtLeast(500L).toFloat(),
+                            enabled = !isExporting && durationMs >= 500L,
+                            onValueChange = { range ->
+                                overlayStartMs = range.start.toLong().coerceIn(0L, durationMs - 1L)
+                                overlayEndMs = range.endInclusive.toLong()
+                                    .coerceIn(overlayStartMs + 1L, durationMs)
+                                player.seekTo(overlayStartMs)
+                            }
+                        )
+                        Text("${display(overlayStart)} – ${display(overlayEnd)}",
+                            fontSize = 12.sp, color = white)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             enabled = !isExporting,
-                            onClick = { audioPicker.launch("audio/*") }
+                            onClick = { audioPicker.launch(arrayOf("audio/*")) }
                         ) { Text(if (musicUri == null) "Add music" else "Change music") }
                         if (musicUri != null) TextButton(onClick = { musicUri = null }) {
                             Text("Remove music")
                         }
                     }
+                    Text("Original audio ${(originalAudioVolume * 100).toInt()}%",
+                        color = white, fontSize = 12.sp)
+                    Slider(
+                        value = originalAudioVolume,
+                        onValueChange = {
+                            originalAudioVolume = it
+                            player.volume = if (muteOriginal) 0f else it
+                        },
+                        enabled = !isExporting && !muteOriginal
+                    )
+                    if (musicUri != null) {
+                        Text("Added music ${(musicVolume * 100).toInt()}%",
+                            color = white, fontSize = 12.sp)
+                        Slider(
+                            value = musicVolume, onValueChange = { musicVolume = it },
+                            enabled = !isExporting
+                        )
+                        Text("Audio balance previews with your video and is applied on export.",
+                            color = Color.LightGray, fontSize = 12.sp)
+                    }
                 }
                 if (grayscale || rotation != 0f) {
-                    Text("Color and rotation are rendered into the exported MP4.",
-                        color = Color.LightGray, fontSize = 10.sp)
+                    Text("B&W and rotation preview the same effects applied on export.",
+                        color = Color.LightGray, fontSize = 12.sp)
                 }
                 exportError?.let {
                     Text(it, color = Color(0xFFFF8A80), fontSize = 11.sp)
                 }
                 if (isExporting) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Text("Rendering the actual edited video…", color = white, fontSize = 11.sp)
+                    LinearProgressIndicator(
+                        progress = { exportPercent.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Rendering ${exportPercent.coerceIn(0, 100)}% · Keep this screen open.",
+                        color = white, fontSize = 12.sp)
                 } else {
                     Button(
                         enabled = hasPendingEdits,
                         onClick = {
                             exportError = null
+                            exportPercent = 0
                             isExporting = true
                             onExporting(true)
                             player.pause()
                             scope.launch {
                                 try {
-                                    val result = exportEditedReel(context, uri, durationMs, spec)
+                                    val result = exportEditedReel(context, uri, durationMs, spec) {
+                                        exportPercent = it
+                                    }
+                                    PersistentTextDraftStore.clearValue(context, editKey, draftScope)
                                     onEdited(result)
                                     Toast.makeText(context, "Reel edits applied to the video.", Toast.LENGTH_SHORT).show()
                                 } catch (e: Exception) {
