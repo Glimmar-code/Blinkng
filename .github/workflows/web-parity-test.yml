@@ -19,6 +19,7 @@ on:
       - 'scripts/normalize_public_html.mjs'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_landing_relaunch.mjs'
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
       - 'scripts/test_web_production_phase3_authseo.mjs'
@@ -98,8 +99,12 @@ jobs:
       - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
         run: node scripts/test_landing_phase1.mjs
 
+      - name: BLINK APK-first branded homepage regression
+        run: node scripts/test_landing_relaunch.mjs
+
       - name: JavaScript syntax
         run: |
+          node --check web/landing-relaunch.js
           node --check web/app.js
           node --check web/parity.js
           node --check web/sw.js
