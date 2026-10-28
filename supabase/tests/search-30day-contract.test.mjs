@@ -39,6 +39,7 @@ test("client contract prefers the 30-day RPC with honest fallback on both platfo
     assert.match(source, /BlinkTrendingDiscovery\.windowDays\(thirty != null\)/);
   }
   assert.match(android, /trendingTagsWithPeriod\(university, limit\)\.tags/);
+  assert.match(windows, /trendingTagsWithPeriod\(university, limit\)\.tags/);
   assert.match(shared, /if \(fromThirtyDayRpc\) 30 else 7/);
 });
 
