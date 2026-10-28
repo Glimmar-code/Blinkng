@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.shared.BlinkContestPolicy
 import com.example.data.supabase.BlinkContestService
+import com.example.sharing.ContestVoteTarget
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,7 +26,11 @@ private fun cash(value: Int) = "₦" + NumberFormat.getIntegerInstance(Locale("e
 private fun dateLabel(value: String) = value.replace('T', ' ').take(16)
 
 @Composable
-fun BlinkContestScreen(onDiscoverPeople: () -> Unit) {
+fun BlinkContestScreen(
+    onDiscoverPeople: () -> Unit,
+    target: ContestVoteTarget? = null,
+    onTargetHandled: () -> Unit = {}
+) {
     val api = remember { BlinkContestService() }
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -38,6 +43,35 @@ fun BlinkContestScreen(onDiscoverPeople: () -> Unit) {
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
+    var invitedEntryId by remember { mutableStateOf<String?>(null) }
+    var invitedCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var ownCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var flyerCandidate by remember { mutableStateOf<JSONObject?>(null) }
+
+    LaunchedEffect(target?.contestId, target?.entryId) {
+        if (target != null) {
+            selectedId = target.contestId
+            invitedEntryId = target.entryId
+            onTargetHandled()
+        }
+    }
+    LaunchedEffect(selectedId, invitedEntryId, revision) {
+        invitedCandidate = null
+        val contest = selectedId
+        val entry = invitedEntryId
+        if (contest != null && entry != null) {
+            api.candidate(contest, entry).onSuccess { invitedCandidate = it }
+                .onFailure { error = "This contestant is unavailable or hasn't been approved." }
+        }
+    }
+    LaunchedEffect(selectedId, detail?.optString("my_entry_id"), revision) {
+        ownCandidate = null
+        val contest = selectedId
+        val mine = detail?.optString("my_entry_id")?.takeUnless { it == "null" }.orEmpty()
+        if (contest != null && mine.isNotBlank() && detail?.optString("my_entry_status") == "approved") {
+            api.candidate(contest, mine).onSuccess { ownCandidate = it }
+        }
+    }
 
     LaunchedEffect(revision) {
         api.contests().onSuccess { contests = it.contestObjects() }
@@ -54,7 +88,7 @@ fun BlinkContestScreen(onDiscoverPeople: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(top = 8.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            if (selectedId != null) TextButton(onClick = { selectedId = null }) { Text("Back") }
+            if (selectedId != null) TextButton(onClick = { selectedId = null; invitedEntryId = null }) { Text("Back") }
             Text("Contest", Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = { revision++ }) { Text("Refresh") }
         }
@@ -178,13 +212,50 @@ fun BlinkContestScreen(onDiscoverPeople: () -> Unit) {
                             ) { Text("Apply for free") }
                         }
                     }
+                    if (ownCandidate != null && top.none { it.optString("id") == own }) item {
+                        val me = ownCandidate!!
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Your contestant profile", fontWeight = FontWeight.Bold)
+                                Text("Rank #" + me.optInt("rank") + " · " + me.optInt("votes") + " votes")
+                                Button(onClick = { flyerCandidate = me }) { Text("Share my personalized flyer") }
+                            }
+                        }
+                    }
+                    if (invitedCandidate != null) item {
+                        val candidate = invitedCandidate!!
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("You were invited to vote for", fontWeight = FontWeight.SemiBold)
+                                Text("@" + candidate.optString("username"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                Text("Rank #" + candidate.optInt("rank") + " · " +
+                                    candidate.optInt("votes") + " votes")
+                                Text(candidate.optString("statement"), maxLines = 3)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        enabled = !busy && BlinkContestPolicy.canVote(status, myVote, own, candidate.optString("id")),
+                                        onClick = {
+                                            busy = true; error = null; notice = null
+                                            scope.launch {
+                                                api.vote(c.optString("id"), candidate.optString("id"))
+                                                    .onSuccess { notice = "Your free vote was recorded."; revision++ }
+                                                    .onFailure { error = it.message }
+                                                busy = false
+                                            }
+                                        }
+                                    ) { Text("Vote for this contestant") }
+                                    OutlinedButton(onClick = { flyerCandidate = candidate }) { Text("Share") }
+                                }
+                            }
+                        }
+                    }
                     item {
                         Text("Top 20 · " + d.optInt("total_ranked") + " ranked contestants",
                             fontSize = 19.sp, fontWeight = FontWeight.Bold)
                         if (myVote.isNotBlank()) Text("You've already voted in this contest.", fontSize = 12.sp)
                     }
                     if (top.isEmpty()) item { Text("No approved contestants yet.") }
-                    items(top, key = { it.optString("id") }) { candidate ->
+                    items(top.filterNot { it.optString("id") == invitedEntryId && invitedCandidate != null }, key = { it.optString("id") }) { candidate ->
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("#" + candidate.optInt("rank"), fontWeight = FontWeight.Bold)
@@ -194,6 +265,8 @@ fun BlinkContestScreen(onDiscoverPeople: () -> Unit) {
                                     Text(candidate.optInt("votes").toString() + " votes", fontSize = 12.sp)
                                     Text(candidate.optString("statement"), fontSize = 12.sp, maxLines = 2)
                                 }
+                                OutlinedButton(onClick = { flyerCandidate = candidate }) { Text("Share") }
+                                Spacer(Modifier.width(6.dp))
                                 Button(
                                     enabled = !busy && BlinkContestPolicy.canVote(
                                         status, myVote, own, candidate.optString("id")),
@@ -213,5 +286,8 @@ fun BlinkContestScreen(onDiscoverPeople: () -> Unit) {
                 }
             }
         }
+    }
+    flyerCandidate?.let { candidate ->
+        BlinkContestShareDialog(candidate = candidate, onDismiss = { flyerCandidate = null })
     }
 }
