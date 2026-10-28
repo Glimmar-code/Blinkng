@@ -1,6 +1,10 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.ProfileVisitSettings
+import com.blinkng.shared.ProfileVisitor
+import com.blinkng.shared.ProfileVisitHistory
+import com.blinkng.shared.ProfileContentMetrics
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
@@ -598,7 +602,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,current_job_title,course_of_study,graduation_year,relationship_status,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -638,6 +642,112 @@ class DesktopSupabaseClient(
                 "Profile theme update did not persist. Verify database migration and account permissions."
             }
         }
+    }
+
+
+    /** Native desktop file picker validates owner identity, file types and size before uploading. */
+    private fun uploadOwnerProfilePicture(image: File, avatar: Boolean): String {
+        val id = requireSession().userId
+        require(image.isFile && image.length() in 1..8L * 1024 * 1024) {
+            "Profile images must be between 1 byte and 8 MB."
+        }
+        val ext = image.extension.lowercase()
+        val mime = when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> throw IllegalArgumentException("Choose JPEG, PNG or WebP.")
+        }
+        val folder = if (avatar) "avatar" else "cover"
+        val key = "users/$id/$folder/${UUID.randomUUID()}.$ext"
+        execute(authenticatedRequest("/storage/v1/object/profile-media/$key")
+            .header("Content-Type", mime)
+            .header("x-upsert", "false")
+            .post(image.readBytes().toRequestBody(mime.toMediaType())).build())
+        return "$baseUrl/storage/v1/object/public/profile-media/$key"
+    }
+
+    /** Owner-only basic profile editor; no identity, wallet or privacy-policy bypass. */
+    suspend fun saveProfileDetails(
+        fullName: String,
+        headline: String,
+        bio: String,
+        currentRole: String,
+        university: String,
+        faculty: String,
+        department: String,
+        course: String,
+        academicLevel: String,
+        graduationYear: String,
+        website: String = "",
+        linkedin: String = "",
+        twitter: String = "",
+        instagram: String = "",
+        featuredLink: String = "",
+        featuredLinkLabel: String = "",
+        phoneVisibility: String = "PRIVATE",
+        whatsappVisibility: String = "PRIVATE",
+        emailVisibility: String = "PRIVATE",
+        avatarImage: File? = null,
+        coverImage: File? = null,
+    ): DesktopProfile = withContext(Dispatchers.IO) {
+        val ownerId = requireSession().userId
+        val prior = fetchProfile(ownerId)
+        val name = fullName.trim()
+        val error = com.blinkng.shared.ProfileEditValidation.validate(
+            fullName = name,
+            username = prior.username,
+            email = "",
+            phone = "",
+            whatsapp = "",
+            graduationYear = if (prior.accountType.equals("NON_STUDENT", ignoreCase = true)) "" else graduationYear,
+            links = emptyList()
+        )
+        require(error == null) { error ?: "Invalid profile details." }
+        val isNonStudent = prior.accountType.equals("NON_STUDENT", ignoreCase = true)
+        val cleanBio = bio.trim()
+        val publicLinks = listOf(website, linkedin, twitter, instagram, featuredLink)
+        publicLinks.forEach { link ->
+            require(link.length <= 500 && (link.isBlank() ||
+                (link.startsWith("https://") || link.startsWith("http://")))) {
+                "Use full HTTPS/HTTP URLs for profile links."
+            }
+        }
+        val visibility = setOf("PRIVATE", "FOLLOWERS", "PUBLIC")
+        require(listOf(phoneVisibility, whatsappVisibility, emailVisibility)
+            .all { it in visibility }) { "Invalid contact privacy selection." }
+        val avatarUrl = avatarImage?.let { uploadOwnerProfilePicture(it, true) }
+        val coverUrl = coverImage?.let { uploadOwnerProfilePicture(it, false) }
+        val body = JSONObject().apply {
+            put("full_name", name)
+            put("professional_headline", headline.trim())
+            put("current_job_title", currentRole.trim())
+            put("bio", cleanBio)
+            put("website", website.trim())
+            put("linkedin", linkedin.trim())
+            put("twitter", twitter.trim())
+            put("instagram", instagram.trim())
+            put("featured_link", featuredLink.trim())
+            put("featured_link_label", featuredLinkLabel.trim())
+            put("phone_visibility", phoneVisibility)
+            put("whatsapp_visibility", whatsappVisibility)
+            put("email_visibility", emailVisibility)
+            if (avatarUrl != null) put("avatar_url", avatarUrl)
+            if (coverUrl != null) put("cover_photo_url", coverUrl)
+            put("university", if (isNonStudent) "" else university.trim())
+            put("faculty", if (isNonStudent) "" else faculty.trim())
+            put("department", if (isNonStudent) "" else department.trim())
+            put("course_of_study", if (isNonStudent) "" else course.trim())
+            put("academic_level", if (isNonStudent) "" else academicLevel.trim())
+            val year = if (isNonStudent) null else graduationYear.trim().toIntOrNull()
+            put("graduation_year", year ?: JSONObject.NULL)
+        }
+        patch("/rest/v1/profiles?id=eq.${encode(ownerId)}", body)
+        val updated = refreshProfile(ownerId)
+        check(updated.fullName == name && updated.bio.orEmpty() == cleanBio) {
+            "Profile update was not confirmed. Please refresh and retry."
+        }
+        updated
     }
 
     suspend fun isUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
@@ -867,6 +977,83 @@ class DesktopSupabaseClient(
                 }
             }
         }
+
+
+    suspend fun getProfileContentMetrics(profileId: String): ProfileContentMetrics? =
+        withContext(Dispatchers.IO) {
+            if (runCatching { UUID.fromString(profileId) }.isFailure) return@withContext null
+            runCatching {
+                val result = postObject("/rest/v1/rpc/get_profile_content_metrics",
+                    JSONObject().put("p_profile_id", profileId)) as? JSONObject
+                    ?: return@runCatching null
+                ProfileContentMetrics(
+                    posts = result.optLong("posts").coerceAtLeast(0),
+                    reels = result.optLong("reels").coerceAtLeast(0),
+                    views = result.optLong("views").coerceAtLeast(0),
+                    likes = result.optLong("likes").coerceAtLeast(0),
+                    comments = result.optLong("comments").coerceAtLeast(0),
+                    shares = result.optLong("shares").coerceAtLeast(0)
+                )
+            }.getOrNull()
+        }
+
+    /** Owner-scoped visitor RPCs; errors must never silently become opt-out. */
+    suspend fun getMyProfileVisitSettings(): ProfileVisitSettings = withContext(Dispatchers.IO) {
+        val item = postObject("/rest/v1/rpc/get_my_profile_visit_settings", JSONObject()) as? JSONObject
+            ?: error("Profile visitor history is not available yet.")
+        ProfileVisitSettings(item.optBoolean("participate", false), item.optBoolean("notify_visits", false))
+    }
+
+    suspend fun setMyProfileVisitSettings(participate: Boolean, notify: Boolean): ProfileVisitSettings =
+        withContext(Dispatchers.IO) {
+            val item = postObject("/rest/v1/rpc/set_my_profile_visit_settings",
+                JSONObject().put("p_participate", participate)
+                    .put("p_notify_visits", participate && notify)) as? JSONObject
+                ?: error("Couldn't save visitor privacy settings.")
+            ProfileVisitSettings(item.optBoolean("participate", false), item.optBoolean("notify_visits", false))
+        }
+
+    suspend fun listMyProfileVisitors(): ProfileVisitHistory = withContext(Dispatchers.IO) {
+        val item = postObject("/rest/v1/rpc/list_my_profile_visitors", JSONObject()) as? JSONObject
+            ?: error("Profile visitor history is not available yet.")
+        val rows = item.optJSONArray("visitors") ?: JSONArray()
+        val visitors = buildList {
+            for (i in 0 until rows.length()) {
+                val row = rows.optJSONObject(i) ?: continue
+                val id = row.optString("id")
+                val handle = row.optString("username")
+                if (id.isBlank() || handle.isBlank()) continue
+                add(ProfileVisitor(
+                    id, handle, row.optString("full_name").ifBlank { handle },
+                    row.optString("avatar_url"), row.optString("last_visited_at")
+                ))
+            }
+        }
+        ProfileVisitHistory(item.optBoolean("enabled", false), item.optString("seen_through"), visitors)
+    }
+
+    suspend fun countMyNewProfileVisitors(): Int = withContext(Dispatchers.IO) {
+        val response = postObject("/rest/v1/rpc/count_my_new_profile_visitors", JSONObject())
+        val payload = response as? JSONObject
+        payload?.optString("value")?.removeSurrounding("\"")
+            ?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    }
+
+    suspend fun acknowledgeMyProfileVisitorsSeen(watermark: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (watermark.isBlank()) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/ack_my_profile_visitors_seen",
+                JSONObject().put("p_seen_through", watermark)))
+        }
+
+    suspend fun recordOptInProfileVisit(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        if (profileId == requireSession().userId) return@withContext false
+        if (runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
+        runCatching {
+            rpcBoolean(postObject("/rest/v1/rpc/record_opt_in_profile_visit",
+                JSONObject().put("p_profile_id", profileId)))
+        }.getOrDefault(false)
+    }
 
     suspend fun getProfileNotificationPreference(profileId: String): DesktopProfileNotificationMode =
         withContext(Dispatchers.IO) {
@@ -3412,6 +3599,19 @@ class DesktopSupabaseClient(
         coverPhotoUrl = row.optNullableString("cover_photo_url"),
         profileTheme = com.blinkng.shared.BlinkProfileThemes.normalize(row.optString("profile_theme")),
         professionalHeadline = row.optNullableString("professional_headline"),
+        currentJobTitle = row.optNullableString("current_job_title"),
+        courseOfStudy = row.optNullableString("course_of_study"),
+        graduationYear = row.optNullableString("graduation_year"),
+        relationshipStatus = row.optNullableString("relationship_status"),
+        phoneVisibility = row.optString("phone_visibility").ifBlank { "PRIVATE" },
+        whatsappVisibility = row.optString("whatsapp_visibility").ifBlank { "PRIVATE" },
+        emailVisibility = row.optString("email_visibility").ifBlank { "PRIVATE" },
+        website = row.optNullableString("website"),
+        linkedin = row.optNullableString("linkedin"),
+        twitter = row.optNullableString("twitter"),
+        instagram = row.optNullableString("instagram"),
+        featuredLink = row.optNullableString("featured_link"),
+        featuredLinkLabel = row.optNullableString("featured_link_label"),
         dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
         accountType = row.optString("account_type"),
