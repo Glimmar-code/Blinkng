@@ -157,7 +157,8 @@ fun AccountOnboardingScreen(
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
     var phoneNumber by rememberSaveable(profile.id) { mutableStateOf("") }
-    var phoneCode by rememberSaveable(profile.id) { mutableStateOf("") }
+    // SMS one-time codes must not enter Android savedInstanceState bundles.
+    var phoneCode by remember(profile.id) { mutableStateOf("") }
     var phoneCodeSent by rememberSaveable(profile.id) { mutableStateOf(false) }
     var phoneVerified by rememberSaveable(profile.id) { mutableStateOf(false) }
     var phoneBusy by remember { mutableStateOf(false) }
