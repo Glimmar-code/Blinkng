@@ -108,6 +108,12 @@ class DesktopSearchPhase3Repository(private val client: DesktopSupabaseClient) {
             }.getOrDefault(emptyList())
         }
 
+    /** Keep the compact Windows Search call aligned with Android: use the
+     * 30-day RPC first and the real, labelled legacy backend when unavailable.
+     */
+    suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
+        trendingTagsWithPeriod(university, limit).tags
+
     suspend fun trendingTagsWithPeriod(university: String?, limit: Int = 5): BlinkTrendingTags =
         withContext(Dispatchers.IO) {
             val body = JSONObject().put("p_limit", limit.coerceIn(1,50))
