@@ -58,6 +58,27 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun mediaReviewSupportsRemovalAndNextWithoutAutoPosting() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferenceMediaReview(
+                    images = listOf("content://sample/1", "content://sample/2"),
+                    onBack = { actions += "back" },
+                    onRemove = { actions += "remove:" + it },
+                    onAddMore = { actions += "add" },
+                    onNext = { actions += "next" }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_media_review").assertExists()
+        composeRule.onNodeWithText("2 / 10 selected").assertExists()
+        composeRule.onNodeWithText("Add more photos").performClick()
+        composeRule.onNodeWithText("Next (2)").performClick()
+        composeRule.runOnIdle { assertEquals(listOf("add", "next"), actions) }
+    }
+
+    @Test
     fun detailsUseSupportedAudienceAndKeepNextSeparateFromPublishing() {
         val selected = mutableListOf<String>()
         composeRule.setContent {
