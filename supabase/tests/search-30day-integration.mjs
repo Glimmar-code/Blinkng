@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
 const migration = readFileSync(
-  new URL('../docs/integration/blink-search-30day-trends-staging-20261027.sql', import.meta.url),
+  new URL('../../docs/integration/blink-search-30day-trends-staging-20261027.sql', import.meta.url),
   'utf8',
 );
 const db = new PGlite();
