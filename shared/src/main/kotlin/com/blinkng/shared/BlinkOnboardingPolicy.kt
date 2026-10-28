@@ -1,6 +1,22 @@
 package com.blinkng.shared
 
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
 object BlinkOnboardingPolicy {
+    /** Blank is allowed until the user supplies a birthday; supplied values
+     * must be real ISO calendar dates and never future dates.
+     */
+    fun validOptionalBirthday(raw: String, today: LocalDate = LocalDate.now()): Boolean {
+        val value = raw.trim()
+        if (value.isBlank()) return true
+        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(value)) return false
+        return runCatching {
+            val day = LocalDate.parse(value, DateTimeFormatter.ISO_LOCAL_DATE)
+            !day.isAfter(today)
+        }.getOrDefault(false)
+    }
+
     const val NON_STUDENT = "NON_STUDENT"
     fun campusRequired(accountType: String?): Boolean = accountType != NON_STUDENT
 
