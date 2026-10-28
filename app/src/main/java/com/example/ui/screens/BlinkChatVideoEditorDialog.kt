@@ -56,6 +56,8 @@ internal fun BlinkChatVideoEditorDialog(
             ) {
                 PremiumReelEditor(
                     uri = workingUri.toString(),
+                    // Storage is additionally scoped to the authenticated account.
+                    draftScope = "chat_video_editor",
                     onRemove = { if (!exporting) onDismiss() },
                     onEdited = { edited -> workingUri = Uri.parse(edited) },
                     onExporting = { exporting = it },
