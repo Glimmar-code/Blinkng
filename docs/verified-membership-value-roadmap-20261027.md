@@ -16,6 +16,21 @@
 5. JVM tests cover duplicate posts, missing saves, negative count safeguards, sponsored/reposted exclusions and empty data. Desktop excludes saves entirely because its post DTO does not supply that count.
 6. Gold Merchant Pro read-only listing health: low-stock prompts where quantity exists, missing photos, top loaded items by reported views, and loaded category breakdowns in Android and Windows. Seller management and payment rights are unchanged; only seller-owned listings are included.
 
+## Additional working Testlab features (October 28)
+- Gold Channel Pro adds loaded-update view/reaction/poll breakdowns on Android and Windows for authorized owners/moderators with active Gold membership. It also offers editable announcements, event/recap templates and a 24-hour UTC schedule shortcut through the existing server publishing flow. Existing channel moderation and scheduling remain available to everyone who already has those admin rights.
+- Blue and Gold creator workspace creates editable AI briefs for post ideas, Reel scripts, Channel announcements and safe event planning. Both Android and Windows open their EXISTING AI interfaces with prefilled text only; the person must press Send. The AI provider remains subject to its existing quota and availability. No new paid AI tokens or unlimited AI access are promised.
+- Gold creator portfolio composes a shareable public bio/headline/topic introduction. It does not expose private phone/email or manufacture lifetime audience totals.
+- Gold event organizer creates an invitation from an explicitly supplied name, time and venue; Android sends via chooser and Windows copies text. It does not create public RSVP records, calendar bookings or guaranteed attendance.
+- Profile deep-link Robolectric regression tests were adjusted to scroll the actual LazyColumn when the new owner dashboard pushes tabs below the first viewport; the test remains an actual selected-tab assertion.
+- Existing post and Channel scheduling, cosmetic Store items, photo/voice/reel editors and seller permissions are preserved; they are NOT falsely relabeled as newly implemented verification-exclusive backend grants.
+
+## Entitlements requiring separate provider/backend work before activation
+- Monthly Gold promotion credits: **NOT funded/active**. Requires an owner-approved credit value, immutable ledger, verified payment/renewal lifecycle, idempotent issuance, spending debits, refunds, expiry, anti-fraud, user receipts and staging tests. No UI should claim issued credits.
+- Premium priority support: **NOT active**. Requires service hours, support queue ownership, escalation SLAs and honest responses; paid status must never override safety or abuse reports.
+- Premium visual Store bundle grants: **NOT active**. Existing Coin Store cosmetics have separate paid ownership. Do not bypass server-managed ownership or turn purchased cosmetic inventory into free membership grants.
+- HD Reels editing/export and automated post scheduler v2: **NOT active**. Requires encoded file validation on budget phones, queue reliability, Windows parity, expiry and publication authorization, and backend/provider limits.
+- Channel advanced moderation/team permissions, event RSVP database, AI paid quota expansion, full-range analytics and website parity still need backend schemas, RLS, tests and release controls.
+
 ## Follow-on scope — not shipped by this PR
 - Creator Studio v2: server-side creator analytics for complete date ranges, safe aggregation, private RLS, indexing and backfill; Reel retention, reach and accurate posting-time advice only after instrumented event collection.
 - Premium identity bundles: connect existing store cosmetics (profile banner/rings/themes) to monthly entitlements across Android/Windows/web; provide deterministic equip, expiry and safe fallbacks.
