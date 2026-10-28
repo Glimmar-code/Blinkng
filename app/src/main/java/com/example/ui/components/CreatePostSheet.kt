@@ -11,6 +11,9 @@ import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkPostGrowthTips
 import com.example.data.repository.SearchDiscoveryRepository
 import com.example.ui.screens.BlinkUniversalPhotoEditor
+import com.example.media.BlinkReelPoster
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
@@ -83,6 +86,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -190,6 +194,7 @@ fun CreatePostSheet(
     isDark: Boolean,
     startInReelMode: Boolean = false,
     isSubmitting: Boolean = false,
+    uploadProgress: Int? = null,
     searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
     val context = LocalContext.current
@@ -210,6 +215,10 @@ fun CreatePostSheet(
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCoverUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var coverFrameIndex by rememberSaveable { mutableStateOf(-1) }
+    var coverRendering by remember { mutableStateOf(false) }
+    var coverError by remember { mutableStateOf<String?>(null) }
     var reelExporting by remember { mutableStateOf(false) }
     var reelHasPendingEdits by remember { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf(if (startInReelMode) "reel" else "post") }
@@ -240,8 +249,13 @@ fun CreatePostSheet(
     var audioTitle by rememberSaveable { mutableStateOf("") }
     var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
     var showPreviewDialog by rememberSaveable { mutableStateOf(false) }
+    var showPublishingTips by rememberSaveable { mutableStateOf(false) }
+    // Confirm destructive media changes; cancelling a picker never discards existing media.
+    var pendingMediaSwitch by rememberSaveable { mutableStateOf<String?>(null) }
     var autosaveRestored by rememberSaveable { mutableStateOf(false) }
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    var activeDraftId by rememberSaveable { mutableStateOf<String?>(null) }
+    var reelEditorStage by rememberSaveable { mutableStateOf(startInReelMode) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -274,6 +288,8 @@ fun CreatePostSheet(
                 .distinct()
                 .take(10)
             selectedVideo = null
+            showPoll = false
+            reelEditorStage = false
             mode = "post"
         }
     }
@@ -289,17 +305,34 @@ fun CreatePostSheet(
                 )
             }
             selectedVideo = uri.toString()
+            selectedCoverUri = null
+            coverFrameIndex = -1
             selectedImages = emptyList()
+            reelEditorStage = true
             mode = "reel"
             showPoll = false
         }
     }
 
-    LaunchedEffect(startInReelMode) {
+    LaunchedEffect(startInReelMode, autosaveRestored) {
+        if (!autosaveRestored) return@LaunchedEffect
         if (startInReelMode && selectedVideo == null) {
             mode = "reel"
             videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
         }
+    }
+
+    fun cleanupAbandonedRender(media: String?) {
+        if (media.isNullOrBlank() ||
+            savedDrafts.any { it.videoUri == media || it.imageUri?.contains(media) == true }) return
+        val uri = runCatching { Uri.parse(media) }.getOrNull() ?: return
+        if (uri.scheme != "content" || uri.authority != "${context.packageName}.chatfiles") return
+        val filename = uri.lastPathSegment ?: return
+        if (!Regex("^(reel_[0-9a-fA-F-]{36}\\.mp4|reel_cover_[0-9a-fA-F-]{36}\\.jpg)$")
+                .matches(filename)) return
+        val folder = java.io.File(context.filesDir, "reel_edits")
+        val local = java.io.File(folder, filename)
+        if (local.parentFile == folder && local.isFile) runCatching { local.delete() }
     }
 
     fun imagePayload(images: List<String>): String? {
@@ -331,6 +364,9 @@ fun CreatePostSheet(
         selectedTags = emptyList()
         pollQuestion = ""
         pollOptions = listOf("", "")
+        selectedCoverUri = null
+        coverFrameIndex = -1
+        activeDraftId = null
         PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_options", composerScope)
@@ -355,6 +391,9 @@ fun CreatePostSheet(
         if (!raw.isNullOrBlank()) {
             runCatching { JSONObject(raw) }.getOrNull()?.let { value ->
                 selectedImages = parseDraftImages(value.optString("image_uri"))
+                selectedCoverUri = value.optString("cover_uri")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                coverFrameIndex = value.optInt("cover_frame_index", -1)
                 selectedVideo = value.optString("video_uri")
                     .takeIf { it.isNotBlank() && it != "null" }
                 if (!startInReelMode) mode = value.optString(
@@ -381,6 +420,9 @@ fun CreatePostSheet(
                 clientRequestId = value.optString("client_request_id")
                     .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
                     ?: clientRequestId
+                activeDraftId = value.optString("active_draft_id")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                reelEditorStage = value.optBoolean("reel_editor_stage", selectedVideo != null)
             }
         }
         autosaveRestored = true
@@ -391,6 +433,8 @@ fun CreatePostSheet(
         text,
         selectedImages,
         selectedVideo,
+        selectedCoverUri,
+        coverFrameIndex,
         mode,
         pollQuestion,
         pollOptions,
@@ -407,7 +451,9 @@ fun CreatePostSheet(
         hideLikes,
         isDisappearing,
         audioTitle,
-        clientRequestId
+        clientRequestId,
+        activeDraftId,
+        reelEditorStage
     ) {
         if (!autosaveRestored) return@LaunchedEffect
         val hasAnything = text.isNotBlank() ||
@@ -430,6 +476,8 @@ fun CreatePostSheet(
             val snapshot = JSONObject().apply {
                 put("image_uri", imagePayload(selectedImages) ?: JSONObject.NULL)
                 put("video_uri", selectedVideo ?: JSONObject.NULL)
+                put("cover_uri", selectedCoverUri ?: JSONObject.NULL)
+                put("cover_frame_index", coverFrameIndex)
                 put("mode", mode)
                 put("audience", audience)
                 put("category", category)
@@ -444,6 +492,8 @@ fun CreatePostSheet(
                 put("is_disappearing", isDisappearing)
                 put("audio_title", audioTitle)
                 put("client_request_id", clientRequestId)
+                put("active_draft_id", activeDraftId ?: JSONObject.NULL)
+                put("reel_editor_stage", reelEditorStage)
                 put("selected_tags", JSONArray(selectedTags))
             }
             PersistentTextDraftStore.writeValue(
@@ -452,6 +502,31 @@ fun CreatePostSheet(
                 composerScope,
                 snapshot.toString()
             )
+        }
+    }
+
+    LaunchedEffect(selectedVideo, coverFrameIndex) {
+        val video = selectedVideo
+        if (video == null || coverFrameIndex < 0) return@LaunchedEffect
+        coverRendering = true
+        coverError = null
+        val previousCover = selectedCoverUri
+        selectedCoverUri = null
+        cleanupAbandonedRender(previousCover)
+        val choice = floatArrayOf(0.02f, 0.25f, 0.5f, 0.75f, 0.95f)
+            .getOrElse(coverFrameIndex) { 0.25f }
+        try {
+            val created = withContext(Dispatchers.IO) {
+                runCatching {
+                    BlinkReelPoster.saveCover(context, Uri.parse(video), choice)
+                }.getOrNull()
+            }
+            if (created == null) {
+                coverError = "Couldn't generate that cover. The automatic cover is still available."
+            }
+            selectedCoverUri = created
+        } finally {
+            coverRendering = false
         }
     }
 
@@ -467,7 +542,7 @@ fun CreatePostSheet(
             limit = 3
         )
     }
-    val tagsValid = allTags.size in 1..BlinkSmartTags.MAX_TAGS
+    val tagsValid = allTags.size <= BlinkSmartTags.MAX_TAGS
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
     val pollValid = showPoll &&
         PostComposerRules.validPoll(pollQuestion, pollOptions)
@@ -486,13 +561,23 @@ fun CreatePostSheet(
         linkUrl.isNotBlank() ||
         altText.isNotBlank() ||
         audioTitle.isNotBlank() ||
+        selectedTags.isNotEmpty() ||
         hideLikes ||
         isDisappearing ||
         !allowComments
-    val canSubmit = hasContent &&
-        linkValid &&
-        (!showPoll || pollValid) &&
-        !isSubmitting
+    val canSubmit = PostComposerRules.canPublish(
+        hasContent = hasContent,
+        isReelMode = mode == "reel",
+        hasVideo = selectedVideo != null,
+        tagCount = allTags.size,
+        maxTags = BlinkSmartTags.MAX_TAGS,
+        linkValid = linkValid,
+        pollSelected = showPoll,
+        pollValid = pollValid,
+        allowedInFeed = marketOnlyWarning == null,
+        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits || coverRendering,
+        isSubmitting = isSubmitting
+    )
 
     fun scheduledPreviewPost(): FeedPost {
         val poll = if (pollValid) {
@@ -515,7 +600,7 @@ fun CreatePostSheet(
             facultyTag = profile.faculty,
             timeAgo = "Scheduled",
             text = cleanText,
-            images = selectedImages,
+            images = if (selectedVideo != null) listOfNotNull(selectedCoverUri) else selectedImages,
             likes = 0,
             commentsCount = 0,
             sharesCount = 0,
@@ -537,16 +622,16 @@ fun CreatePostSheet(
     }
 
     fun scheduleAt(timeMillis: Long) {
+        if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
+            showScheduleDialog = false
+            Toast.makeText(context, "Apply Reel edits before scheduling.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (marketOnlyWarning != null) {
             Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
             return
         }
         if (!canSubmit) return
-        if (!tagsValid) {
-            showScheduleDialog = false
-            tagWarning = "Include 1–5 relevant hashtags before scheduling."
-            return
-        }
         if (timeMillis < System.currentTimeMillis() + 60_000L) {
             Toast.makeText(context, "Choose a time at least one minute from now.", Toast.LENGTH_SHORT).show()
             return
@@ -604,9 +689,8 @@ fun CreatePostSheet(
             Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
             return
         }
-        if (canSubmit && !tagsValid) {
-            tagWarning = if (allTags.isEmpty()) "Include at least one relevant hashtag. 1–3 works best."
-                         else "Use no more than 5 unique hashtags, including tags in the caption."
+        if (!tagsValid) {
+            tagWarning = "Use no more than 5 unique hashtags, including tags in the caption."
             return
         }
         if (!canSubmit) {
@@ -621,6 +705,8 @@ fun CreatePostSheet(
                             "Add a poll question and at least two options."
                         linkUrl.isNotBlank() && !linkValid ->
                             "Enter a valid link before publishing."
+                        mode == "reel" && selectedVideo == null ->
+                            "Choose a video before publishing a Reel."
                         else ->
                             "Add something to your post first."
                     },
@@ -642,7 +728,7 @@ fun CreatePostSheet(
         onSubmitPost(
             cleanText,
             profile.faculty,
-            imagePayload(selectedImages),
+            imagePayload(if (selectedVideo != null) listOfNotNull(selectedCoverUri) else selectedImages),
             selectedVideo,
             effectiveTags,
             extractedMentions(cleanText),
@@ -679,11 +765,13 @@ fun CreatePostSheet(
             return
         }
 
+        val draftId = activeDraftId ?: "draft_${UUID.randomUUID()}"
         onSaveDraft(
             PostDraft(
+                id = draftId,
                 text = text,
                 faculty = profile.faculty,
-                imageUri = imagePayload(selectedImages),
+                imageUri = imagePayload(if (selectedVideo != null) listOfNotNull(selectedCoverUri) else selectedImages),
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
                 tags = effectiveTags,
@@ -708,7 +796,7 @@ fun CreatePostSheet(
                 }
             )
         )
-        Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
+        activeDraftId = draftId
     }
 
     val currentHasContent by rememberUpdatedState(hasComposerInput)
@@ -767,16 +855,58 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
+            val isEditingReel = selectedVideo != null && reelEditorStage
             ComposerTopBar(
                 isSubmitting = isSubmitting,
-                canSubmit = canSubmit,
+                uploadProgress = uploadProgress,
+                canSubmit = if (isEditingReel)
+                    !isSubmitting && !reelExporting && !reelHasPendingEdits
+                else canSubmit,
                 isReel = selectedVideo != null || mode == "reel",
+                isEditingReel = isEditingReel,
                 onDismiss = ::requestDismiss,
-                onSubmit = ::submit
+                onSubmit = {
+                    if (isEditingReel) reelEditorStage = false else submit()
+                }
             )
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            if (isEditingReel) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                        .padding(bottom = 20.dp)
+                ) {
+                    selectedVideo?.let { uri ->
+                        VideoComposerPreview(
+                            uri = uri,
+                            draftScope = composerScope,
+                            onRemove = {
+                                if (!isSubmitting && !reelExporting) {
+                                    selectedVideo = null
+                                    reelHasPendingEdits = false
+                                    reelEditorStage = false
+                                    mode = "post"
+                                }
+                            },
+                            onEdited = { renderedUri ->
+                                val previousRender = selectedVideo
+                                selectedVideo = renderedUri
+                                cleanupAbandonedRender(previousRender)
+                                mode = "reel"
+                            },
+                            onExporting = { reelExporting = it },
+                            onPendingEdits = { reelHasPendingEdits = it }
+                        )
+                    }
+                    Text(
+                        "Trim and apply your edits, then tap Next to add a caption and publishing settings.",
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            } else {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -805,8 +935,11 @@ fun CreatePostSheet(
                     FilterChip(
                         selected = mode == "post" && !showPoll,
                         onClick = {
-                            mode = "post"
-                            showPoll = false
+                            if (selectedVideo != null) pendingMediaSwitch = "post"
+                            else {
+                                mode = "post"
+                                showPoll = false
+                            }
                         },
                         enabled = !isSubmitting,
                         label = { Text("Post") }
@@ -814,13 +947,12 @@ fun CreatePostSheet(
                     FilterChip(
                         selected = mode == "reel",
                         onClick = {
-                            mode = "reel"
-                            showPoll = false
                             if (selectedVideo == null) {
-                                videoPicker.launch(
+                                if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
+                                else videoPicker.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                                 )
-                            }
+                            } else mode = "reel"
                         },
                         enabled = !isSubmitting,
                         label = { Text("Reel") }
@@ -828,10 +960,10 @@ fun CreatePostSheet(
                     FilterChip(
                         selected = showPoll,
                         onClick = {
-                            showPoll = !showPoll
-                            if (showPoll) {
-                                mode = "post"
-                                selectedVideo = null
+                            if (selectedVideo != null) pendingMediaSwitch = "poll"
+                            else {
+                                showPoll = !showPoll
+                                if (showPoll) mode = "post"
                             }
                         },
                         enabled = !isSubmitting,
@@ -839,42 +971,44 @@ fun CreatePostSheet(
                     )
                 }
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow
-                ) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                        Text("✨ Make your post stand out",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface)
-                        Text(
-                            BlinkPostGrowthTips.suggestion(
-                                hasImages = selectedImages.isNotEmpty(),
-                                hasVideo = selectedVideo != null,
-                                hasPoll = showPoll
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(BlinkPostGrowthTips.hashtagHint,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text("Product sales belong in BLINK Market",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface)
-                        Text("Regular Feed posts cannot advertise products for sale. Create a Market listing instead.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (marketOnlyWarning != null) {
-                            Text("This looks like a product advertisement. Publishing it to Feed is blocked.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error)
+                if (marketOnlyWarning != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Product listings belong in BLINK Market", fontWeight = FontWeight.SemiBold)
+                            Text(marketOnlyWarning, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
+                                Text("Go to Market")
+                            }
                         }
-                        TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
-                            Text("Create a Market listing")
+                    }
+                } else {
+                    TextButton(
+                        onClick = { showPublishingTips = !showPublishingTips },
+                        modifier = Modifier.padding(start = 8.dp),
+                        enabled = !isSubmitting
+                    ) { Text(if (showPublishingTips) "Hide posting tips" else "Posting tips & Feed rules") }
+                    if (showPublishingTips) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(BlinkPostGrowthTips.suggestion(
+                                    hasImages = selectedImages.isNotEmpty(),
+                                    hasVideo = selectedVideo != null,
+                                    hasPoll = showPoll
+                                ), style = MaterialTheme.typography.bodySmall)
+                                Text("Hashtags are optional. Product sales belong in Market.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
+                                    Text("Create a Market listing")
+                                }
+                            }
                         }
                     }
                 }
@@ -971,6 +1105,18 @@ fun CreatePostSheet(
                     searchProfiles = searchMentions
                 )
 
+                val previewText = listOfNotNull(
+                    text.takeIf { it.contains("http://") || it.contains("https://") },
+                    normalizedLinkUrl
+                ).joinToString(" ")
+                if (previewText.isNotBlank()) {
+                    BlinkRichLinkPreview(
+                        text = previewText,
+                        compact = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+
                 if (selectedImages.isNotEmpty()) {
                     LazyRow(
                         modifier = Modifier
@@ -1041,24 +1187,65 @@ fun CreatePostSheet(
                     }
                 }
 
-                selectedVideo?.let {
-                    VideoComposerPreview(
-                        uri = it,
-                        onRemove = {
-                            if (!isSubmitting && !reelExporting) {
-                                selectedVideo = null
-                                reelHasPendingEdits = false
-                                mode = "post"
+                if (selectedVideo != null) {
+                    Text("Reel cover", modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Choose the frame people see before your Reel plays.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        listOf("Automatic", "Start", "25%", "50%", "75%", "End").forEachIndexed { option, label ->
+                            FilterChip(
+                                selected = coverFrameIndex == option - 1,
+                                enabled = !isSubmitting && !coverRendering,
+                                onClick = {
+                                    coverFrameIndex = option - 1
+                                    if (option == 0) { selectedCoverUri = null; coverError = null }
+                                },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    if (coverRendering) {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        )
+                    }
+                    if (selectedCoverUri != null) {
+                        AsyncImage(
+                            model = selectedCoverUri,
+                            contentDescription = "Selected Reel cover frame",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.padding(horizontal = 16.dp).size(width = 108.dp, height = 168.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    }
+                    coverError?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Reel video attached", fontWeight = FontWeight.SemiBold)
+                                Text("Video edits are saved before publishing.",
+                                    style = MaterialTheme.typography.bodySmall)
                             }
-                        },
-                        onEdited = { renderedUri ->
-                            // The publisher and draft store always use the actual rendered MP4.
-                            selectedVideo = renderedUri
-                            mode = "reel"
-                        },
-                        onExporting = { reelExporting = it },
-                        onPendingEdits = { reelHasPendingEdits = it }
-                    )
+                            TextButton(onClick = { reelEditorStage = true }, enabled = !isSubmitting) {
+                                Text("Edit Reel")
+                            }
+                        }
+                    }
                 }
 
                 AnimatedVisibility(
@@ -1079,20 +1266,22 @@ fun CreatePostSheet(
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
-                        imagePicker.launch(
+                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
+                        else imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
                     },
                     onVideo = {
-                        videoPicker.launch(
+                        if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
+                        else videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         )
                     },
                     onPoll = {
-                        showPoll = !showPoll
-                        if (showPoll) {
-                            selectedVideo = null
-                            mode = "post"
+                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        else {
+                            showPoll = !showPoll
+                            if (showPoll) mode = "post"
                         }
                     },
                     onMention = {
@@ -1116,7 +1305,7 @@ fun CreatePostSheet(
                                 Text(if (showMoreTrendingTags) "Show less" else "See more")
                             }
                         }
-                        Text("Use 1–3 relevant tags. Maximum 5 per post.", style = MaterialTheme.typography.bodySmall)
+                        Text("Optional: use up to 5 relevant tags to help discovery.", style = MaterialTheme.typography.bodySmall)
                         if (suggestedTags.isNotEmpty()) {
                             Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1170,6 +1359,11 @@ fun CreatePostSheet(
                                     else -> { selectedTags = BlinkSmartTags.add(selectedTags, tag); tagInput = "" }
                                 }
                             }, enabled = !isSubmitting) { Text("Add") }
+                        }
+                        if (!tagsValid) {
+                            Text("Use no more than 5 unique hashtags, including those in your caption.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall)
                         }
                         if (effectiveTags.isNotEmpty()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1392,10 +1586,14 @@ fun CreatePostSheet(
                             DraftCard(
                                 draft = draft,
                                 onLoad = {
+                                    activeDraftId = draft.id
                                     text = draft.text
                                     selectedTags = draft.tags
-                                    selectedImages = parseDraftImages(draft.imageUri)
+                                    selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
+                                    selectedCoverUri = if (draft.videoUri.isNullOrBlank()) null else draft.imageUri
+                                    coverFrameIndex = -1
                                     selectedVideo = draft.videoUri
+                                    reelEditorStage = !draft.videoUri.isNullOrBlank()
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
                                     audience = draft.audience
                                     category = draft.category
@@ -1520,9 +1718,53 @@ fun CreatePostSheet(
                     }
                 }
             }
+            }
         }
         }
         }
+    }
+
+    pendingMediaSwitch?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingMediaSwitch = null },
+            title = { Text("Change post type?") },
+            text = { Text(
+                when (target) {
+                    "post" -> "Switching to a regular post removes the selected Reel video."
+                    "poll" -> "Choosing a poll replaces the selected photos or Reel video."
+                    else -> "Selecting new media will replace the current media or poll. Cancelling the picker keeps it."
+                }
+            ) },
+            dismissButton = { TextButton(onClick = { pendingMediaSwitch = null }) { Text("Keep editing") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingMediaSwitch = null
+                    when (target) {
+                        "post" -> {
+                            selectedVideo = null
+                            reelHasPendingEdits = false
+                            reelEditorStage = false
+                            mode = "post"
+                            showPoll = false
+                        }
+                        "poll" -> {
+                            selectedVideo = null
+                            selectedImages = emptyList()
+                            reelHasPendingEdits = false
+                            reelEditorStage = false
+                            mode = "post"
+                            showPoll = true
+                        }
+                        "gallery" -> imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                        "reel" -> videoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    }
+                }) { Text("Continue") }
+            }
+        )
     }
 
     tagWarning?.let { message ->
@@ -1622,7 +1864,7 @@ private fun PostPreviewDialog(
             shadowElevation = 10.dp
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1658,7 +1900,7 @@ private fun PostPreviewDialog(
                             AsyncImage(
                                 model = uri,
                                 contentDescription = post.altText ?: "Post image",
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(156.dp)
                                     .clip(RoundedCornerShape(16.dp))
@@ -1668,22 +1910,28 @@ private fun PostPreviewDialog(
                     }
                 }
 
-                if (!post.videoUrl.isNullOrBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
-                    ) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text("Reel video selected", fontWeight = FontWeight.SemiBold)
-                            post.audioTitle?.let {
-                                Text(
-                                    it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                post.videoUrl?.takeIf { it.isNotBlank() }?.let { videoUri ->
+                    val context = LocalContext.current
+                    val previewPlayer = remember(videoUri) {
+                        ExoPlayer.Builder(context).build().apply {
+                            setMediaItem(MediaItem.fromUri(videoUri))
+                            prepare()
+                            playWhenReady = false
                         }
                     }
+                    DisposableEffect(previewPlayer) {
+                        onDispose { previewPlayer.release() }
+                    }
+                    AndroidView(
+                        factory = { ctx -> PlayerView(ctx).apply {
+                            useController = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            player = previewPlayer
+                        } },
+                        update = { it.player = previewPlayer },
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp).aspectRatio(9f / 16f)
+                    )
+                    post.audioTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
 
                 post.poll?.let { poll ->
@@ -1848,46 +2096,50 @@ private fun ColoredTextComposer(
 @Composable
 private fun ComposerTopBar(
     isSubmitting: Boolean,
+    uploadProgress: Int?,
     canSubmit: Boolean,
     isReel: Boolean,
+    isEditingReel: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit
 ) {
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 60.dp)
             .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick = onDismiss,
-            enabled = !isSubmitting,
-            modifier = Modifier.align(Alignment.CenterStart)
-        ) {
+        IconButton(onClick = onDismiss, enabled = !isSubmitting) {
             Icon(Icons.Default.Close, contentDescription = "Close")
         }
 
         Text(
-            text = if (isReel) "Create reel" else "Create post",
+            text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create post",
             fontWeight = FontWeight.Black,
             fontSize = 20.sp,
-            modifier = Modifier.align(Alignment.Center)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 6.dp)
         )
 
         Button(
             onClick = onSubmit,
-            enabled = canSubmit,
-            modifier = Modifier.align(Alignment.CenterEnd)
+            enabled = canSubmit
         ) {
             if (isSubmitting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(17.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
+                if (uploadProgress != null) {
+                    Text("Upload ${uploadProgress.coerceIn(0, 100)}%",
+                        style = MaterialTheme.typography.labelMedium)
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(17.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             } else {
-                Text("Post")
+                Text(if (isEditingReel) "Next" else if (isReel) "Publish Reel" else "Post")
             }
         }
     }
@@ -1995,8 +2247,8 @@ private fun SelectedImagePreview(
             onClick = onRemove,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(30.dp)
+                .padding(2.dp)
+                .size(42.dp)
         ) {
             Surface(
                 shape = CircleShape,
@@ -2015,7 +2267,7 @@ private fun SelectedImagePreview(
             color = Color.Black.copy(alpha = .70f),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.align(Alignment.TopStart)
-                .padding(5.dp).clickable(onClick = onEdit)
+                .padding(3.dp).heightIn(min = 42.dp).clickable(onClick = onEdit)
         ) {
             Text("Edit", color = Color.White, fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
@@ -2030,7 +2282,7 @@ private fun SelectedImagePreview(
             if (canMoveLeft) {
                 IconButton(
                     onClick = onMoveLeft,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
                         Icon(
@@ -2045,7 +2297,7 @@ private fun SelectedImagePreview(
             if (canMoveRight) {
                 IconButton(
                     onClick = onMoveRight,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
                         Icon(
@@ -2282,6 +2534,7 @@ private fun DraftCard(
 @Composable
 private fun VideoComposerPreview(
     uri: String,
+    draftScope: String,
     onRemove: () -> Unit,
     onEdited: (String) -> Unit,
     onExporting: (Boolean) -> Unit,
@@ -2289,6 +2542,7 @@ private fun VideoComposerPreview(
 ) {
     PremiumReelEditor(
         uri = uri,
+        draftScope = draftScope,
         onRemove = onRemove,
         onEdited = onEdited,
         onExporting = onExporting,

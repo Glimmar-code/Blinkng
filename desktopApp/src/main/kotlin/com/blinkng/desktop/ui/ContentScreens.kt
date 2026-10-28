@@ -159,6 +159,7 @@ fun HomeScreen(
     var composerHideLikes by remember { mutableStateOf(false) }
     var composerTemporary by remember { mutableStateOf(false) }
     var composerMoreSettings by remember { mutableStateOf(false) }
+    var composerShowTips by remember { mutableStateOf(false) }
     var composerRequestId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var loading by remember { mutableStateOf(true) }
     var loadingMorePosts by remember { mutableStateOf(false) }
@@ -388,23 +389,30 @@ fun HomeScreen(
                             }
                         }
                     }
-                    Text("✨ Make your post stand out", style = MaterialTheme.typography.titleSmall)
-                    Text(BlinkPostGrowthTips.suggestion(
-                        hasImages = false, hasVideo = false, hasPoll = false),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Product sales belong in BLINK Market",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold)
-                    Text("Feed posts are for student updates, not product listings. Use the Market tab to sell items.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (BlinkPostGrowthTips.marketOnlyReason(composerCategory, composer) != null) {
-                        Text("This looks like a sales advertisement and cannot be published to Feed.",
-                            style = MaterialTheme.typography.bodySmall,
+                    val desktopMarketWarning = BlinkPostGrowthTips.marketOnlyReason(
+                        composerCategory, composer
+                    )
+                    if (desktopMarketWarning != null) {
+                        Text(desktopMarketWarning, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = { state.selectedRoute = "market" }) {
+                            Text("Create a Market listing")
+                        }
+                    } else {
+                        TextButton(onClick = { composerShowTips = !composerShowTips }) {
+                            Text(if (composerShowTips) "Hide posting tips" else "Posting tips & Feed rules")
+                        }
+                        if (composerShowTips) {
+                            Text(BlinkPostGrowthTips.suggestion(
+                                hasImages = false, hasVideo = false, hasPoll = false),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Product listings belong in Market. Hashtags are optional.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                     }
-                    Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
+                    Text("Trending hashtags • optional, maximum 5",
+                        style = MaterialTheme.typography.labelMedium)
                     val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
                         BlinkSmartTags.suggest(
                             text = composer,
@@ -578,8 +586,8 @@ fun HomeScreen(
                                         return@launch
                                     }
                                     val tags = BlinkSmartTags.allTags(composer, selectedTags)
-                                    if (tags.size !in 1..BlinkSmartTags.MAX_TAGS) {
-                                        error = "Include 1–5 relevant hashtags before posting."
+                                    if (tags.size > BlinkSmartTags.MAX_TAGS) {
+                                        error = "Use no more than 5 hashtags per post."
                                         return@launch
                                     }
                                     runCatching {
@@ -610,7 +618,9 @@ fun HomeScreen(
                                         .onFailure { error = it.message }
                                 }
                             },
-                            enabled = composer.isNotBlank() && composerLinkValid,
+                            enabled = composer.isNotBlank() && composerLinkValid &&
+                                desktopMarketWarning == null &&
+                                BlinkSmartTags.allTags(composer, selectedTags).size <= BlinkSmartTags.MAX_TAGS,
                         ) {
                             Icon(Icons.Rounded.Add, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
