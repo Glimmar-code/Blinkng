@@ -332,6 +332,11 @@ fun GetVerifiedSheet(
                             isDark = isDark
                         )
                         VerificationFeatureItem(
+                            icon = Icons.Default.AutoAwesome,
+                            text = "Creator workspace: prepare tailored briefs for the existing BLINK AI service",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
                             icon = Icons.Default.Storefront,
                             text = "Recognizable seller identity on supported Marketplace surfaces",
                             isDark = isDark
@@ -561,6 +566,16 @@ fun GetVerifiedSheet(
                         VerificationFeatureItem(
                             icon = Icons.Default.Analytics,
                             text = "Gold Creator Studio: strongest hashtags and shareable content reports",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.CalendarMonth,
+                            text = "Gold Channel Pro for admins: announcement templates and loaded-update insights",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Event,
+                            text = "Gold event invitation builder and public creator portfolio sharing",
                             isDark = isDark
                         )
                         VerificationFeatureItem(
