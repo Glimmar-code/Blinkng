@@ -59,17 +59,47 @@ create table public.blink_contest_votes (
   unique (contest_id,voter_id)
 );
 create index blink_contest_votes_entry_idx on public.blink_contest_votes(entry_id);
+alter table public.blink_contest_votes
+  add column review_status text not null default 'valid'
+    check (review_status in ('valid','under_review','invalidated')),
+  add column review_reason text,
+  add column reviewed_by uuid references auth.users(id),
+  add column reviewed_at timestamptz;
+create index blink_contest_votes_review_idx
+  on public.blink_contest_votes(contest_id,review_status,created_at);
 
+
+create table public.blink_contest_prizes (
+  id uuid primary key default gen_random_uuid(),
+  contest_id uuid not null references public.blink_contests(id) on delete restrict,
+  entry_id uuid not null,
+  user_id uuid not null references auth.users(id),
+  place integer not null check (place between 1 and 3),
+  amount_ngn integer not null check (amount_ngn >= 0),
+  payment_status text not null default 'pending'
+    check (payment_status in ('pending','processing','failed','paid')),
+  payment_reference text,
+  payment_note text,
+  announced_at timestamptz not null default now(),
+  processed_at timestamptz,
+  processed_by uuid references auth.users(id),
+  foreign key (contest_id,entry_id) references public.blink_contest_entries(contest_id,id),
+  unique(contest_id,place),
+  unique(contest_id,entry_id)
+);
 -- Direct table writes cannot bypass server-side time, identity, and approval rules.
 alter table public.blink_contests enable row level security;
 alter table public.blink_contest_entries enable row level security;
 alter table public.blink_contest_votes enable row level security;
+alter table public.blink_contest_prizes enable row level security;
 revoke all on table public.blink_contests from public, anon, authenticated;
 revoke all on table public.blink_contest_entries from public, anon, authenticated;
 revoke all on table public.blink_contest_votes from public, anon, authenticated;
+revoke all on table public.blink_contest_prizes from public, anon, authenticated;
 grant select, insert, update, delete on table public.blink_contests to service_role;
 grant select, insert, update, delete on table public.blink_contest_entries to service_role;
 grant select, insert, update, delete on table public.blink_contest_votes to service_role;
+grant select, insert, update, delete on table public.blink_contest_prizes to service_role;
 
 create function public.list_blink_contests()
 returns jsonb language sql stable security definer set search_path = '' as $$
@@ -105,7 +135,7 @@ begin
   if not found then raise exception 'CONTEST_NOT_AVAILABLE'; end if;
   with scores as (
     select e.id, e.user_id, e.statement, e.media_url, e.submitted_at,
-           count(v.id)::integer votes
+           count(v.id) filter (where v.review_status='valid')::integer votes
     from public.blink_contest_entries e
     left join public.blink_contest_votes v on v.entry_id=e.id
     where e.contest_id=p_contest_id and e.status='approved'
@@ -136,7 +166,14 @@ begin
     'leaderboard',v_top,'my_rank',v_myrank,'my_entry_id',v_entry,
     'my_vote_entry_id',v_vote,'total_ranked',v_total,
     'my_entry_status',(select status from public.blink_contest_entries
-       where id=v_entry)
+       where id=v_entry),
+    'winners',coalesce((select jsonb_agg(jsonb_build_object(
+      'place',w.place,'user_id',w.user_id,'username',p.username,
+      'prize_amount',w.amount_ngn,'payment_status',w.payment_status,
+      'announced_at',w.announced_at) order by w.place)
+      from public.blink_contest_prizes w
+      left join public.profiles p on p.id=w.user_id
+      where w.contest_id=p_contest_id),'[]'::jsonb)
   );
 end; $$;
 
@@ -258,7 +295,6 @@ begin
   if not ((p_action='publish' and c.status='draft' and c.voting_closes_at>now())
      or (p_action='pause' and c.status='published')
      or (p_action='resume' and c.status='paused' and c.voting_closes_at>now())
-     or (p_action='complete' and c.status in ('published','paused') and now()>=c.voting_closes_at)
      or (p_action='cancel' and c.status in ('draft','published','paused')))
      then raise exception 'INVALID_CONTEST_TRANSITION'; end if;
   update public.blink_contests set status=case p_action
@@ -313,9 +349,9 @@ declare v_candidate jsonb;
 begin
   with ranked as (
     select e.id, e.contest_id, e.user_id, e.statement, e.media_url,
-           e.submitted_at, count(v.id)::integer as votes,
+           e.submitted_at, count(v.id) filter (where v.review_status='valid')::integer as votes,
            row_number() over (
-             order by count(v.id) desc, e.submitted_at asc, e.id asc
+             order by count(v.id) filter (where v.review_status='valid') desc, e.submitted_at asc, e.id asc
            )::integer as rank
     from public.blink_contest_entries e
     left join public.blink_contest_votes v on v.entry_id=e.id
