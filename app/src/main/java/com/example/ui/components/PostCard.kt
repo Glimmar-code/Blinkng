@@ -1135,20 +1135,15 @@ private fun RowScope.PremiumPostAction(
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = tween(100),
-        label = "postActionPressScale"
-    )
     Box(
         modifier = Modifier
             .weight(1f)
             .heightIn(min = 48.dp)
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
+            .blinkPressFeedback(
+                interactionSource = interactionSource,
+                enabled = enabled,
+                pressedScale = 0.97f
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

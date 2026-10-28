@@ -18,6 +18,7 @@ document as 300 shipped animations.** Keep a single PR and merge to main only wh
 - Reusable press feedback with the same `MutableInteractionSource` as each click target.
 - Reduced-motion static skeletons rather than continuously pulsating placeholders.
 - Auth login/signup buttons and shared cards/chips use the consistent press feedback.
+- Feed post actions, Market product cards and Leaderboard profile rows reuse the same reduced-motion-safe press behavior without duplicate per-surface animation loops.
 - Auth route changes use modest directional transitions; startup/SPLASH stays unanimated.
 - Primary navigation and Reels selection states respond consistently, without moving text baselines.
 - Pure JVM unit tests cover disabled, reduced-motion, malformed and normal press states.
