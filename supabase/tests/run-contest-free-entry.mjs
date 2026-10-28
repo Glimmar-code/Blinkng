@@ -7,6 +7,9 @@ const db = new PGlite();
 const migration = readFileSync(
   new URL('../migrations/20261028185000_blink_contests_free_entry.sql', import.meta.url), 'utf8'
 );
+const growthMigration = readFileSync(
+  new URL('../migrations/20261028200000_blink_contest_growth_v1.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -39,7 +42,19 @@ try {
     create role service_role;
     create schema auth;
     create schema private;
-    create table auth.users(id uuid primary key);
+    create table auth.users(id uuid primary key,
+      created_at timestamptz not null default now()-interval '20 days');
+    create type public.notification_type_enum as enum ('system');
+    create table public.notifications(
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references auth.users(id),
+      actor_id uuid references auth.users(id),
+      type public.notification_type_enum not null,
+      target_type text,target_id uuid,text text,sub_text text,
+      is_read boolean not null default false,
+      metadata jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    );
     create table public.profiles(
       id uuid primary key references auth.users(id),
       username text,full_name text,avatar_url text,university text
@@ -68,6 +83,7 @@ try {
       [id,username,username.toUpperCase(),'FUTA']);
   }
   await db.exec(migration);
+  await db.exec(growthMigration);
   await setUser(creator1);
   await assert.rejects(() => rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
     [null,JSON.stringify(payload)]), /ADMIN_REQUIRED/);
@@ -78,6 +94,8 @@ try {
   assert.equal(created.status,'draft');
   const id = created.id;
   assert.equal(created.prize_first, 30000);
+  await assert.rejects(() => rpc('admin_finalize_blink_contest','$1::uuid',[created.id]),
+    /RESULTS_NOT_READY/);
   await rpc('admin_transition_blink_contest', '$1::uuid,$2::text',[id,'publish']);
 
   await setUser(creator1);
@@ -107,6 +125,11 @@ try {
   assert.equal(approved.name, 'CREATORONE');
   assert.equal(approved.rank, 1);
   assert.equal(approved.votes, 0);
+  await assert.rejects(() => rpc('record_blink_contest_share','$1::uuid,$2::uuid,$3::text',
+    [id,'99999999-9999-4999-8999-999999999999','copy']), /CANDIDATE_NOT_AVAILABLE/);
+  const shared = json((await rpc('record_blink_contest_share','$1::uuid,$2::uuid,$3::text',
+    [id,first.entry_id,'native'])).rows[0].result);
+  assert.equal(shared.recorded,true);
   await assert.rejects(() => rpc('get_blink_contest_candidate', '$1::uuid,$2::uuid',
     [id,'99999999-9999-4999-8999-999999999999']), /CANDIDATE_NOT_AVAILABLE/);
 
@@ -134,6 +157,22 @@ try {
   assert.equal(details.leaderboard[0].votes, 1);
   assert.equal(details.my_rank, 1);
   assert.equal(details.total_ranked, 2);
+  const voteRow=(await q('select id from public.blink_contest_votes where voter_id=$1',[voter])).rows[0].id;
+  await setUser(admin);
+  const stats1=json((await rpc('admin_blink_contest_insights','$1::uuid',[id])).rows[0].result);
+  assert.equal(Number(stats1.shares),1);
+  assert.equal(Number(stats1.unique_sharers),1);
+  assert.equal(Number(stats1.counted_votes),1);
+  const held=json((await rpc('admin_review_blink_contest_vote','$1::uuid,$2::text,$3::text',
+    [voteRow,'hold','Suspicious coordinated pattern'])).rows[0].result);
+  assert.equal(held.status,'under_review');
+  const stats2=json((await rpc('admin_blink_contest_insights','$1::uuid',[id])).rows[0].result);
+  assert.equal(Number(stats2.review_votes),1);
+  assert.equal(Number(stats2.counted_votes),0);
+  const approvedVote=json((await rpc('admin_review_blink_contest_vote','$1::uuid,$2::text,$3::text',
+    [voteRow,'approve','Manual investigation completed'])).rows[0].result);
+  assert.equal(approvedVote.status,'valid');
+
 
   const updated = json((await rpc('get_blink_contest_candidate', '$1::uuid,$2::uuid',
     [id,first.entry_id])).rows[0].result);
@@ -149,6 +188,34 @@ try {
   await setUser(admin);
   await assert.rejects(() => rpc('admin_transition_blink_contest', '$1::uuid,$2::text',
     [id,'complete']), /INVALID_CONTEST_TRANSITION/);
+
+  // Close the disposable contest and snapshot winners by trustworthy counted votes.
+  await q(`update public.blink_contests set voting_closes_at=now()-interval '1 hour',
+    results_at=now()-interval '30 minutes' where id=$1`,[id]);
+  const final=json((await rpc('admin_finalize_blink_contest','$1::uuid',[id])).rows[0].result);
+  assert.equal(final.status,'completed');
+  assert.equal(final.winner_count,2);
+  const finalDetail=json((await rpc('get_blink_contest','$1::uuid',[id])).rows[0].result);
+  assert.equal(finalDetail.winners.length,2);
+  assert.equal(finalDetail.winners[0].prize_amount,30000);
+  assert.equal(finalDetail.winners[0].payment_status,'pending');
+  const prizes=json((await rpc('admin_blink_contest_insights','$1::uuid',[id])).rows[0].result).prizes;
+  assert.equal(prizes.length,2);
+  await assert.rejects(() => rpc('admin_record_blink_contest_prize',
+    '$1::uuid,$2::text,$3::text,$4::text',[prizes[0].id,'paid','',null]),
+    /RECEIPT_REFERENCE_REQUIRED/);
+  const paid=json((await rpc('admin_record_blink_contest_prize',
+    '$1::uuid,$2::text,$3::text,$4::text',
+    [prizes[0].id,'paid','external-receipt-123','Manually verified receipt'])).rows[0].result);
+  assert.equal(paid.status,'paid');
+  await assert.rejects(() => rpc('admin_record_blink_contest_prize',
+    '$1::uuid,$2::text,$3::text,$4::text',
+    [prizes[0].id,'processing',null,null]), /PAID_PRIZE_LOCKED/);
+  const rows=(await q(`select text from public.notifications where metadata->>'kind'='blink_contest_winner'`)).rows;
+  assert.equal(rows.length,2);
+  await setUser(creator1);
+  await assert.rejects(() => rpc('admin_blink_contest_insights','$1::uuid',[id]), /ADMIN_REQUIRED/);
+  console.log('PASS BLINK Contest growth: secure share analytics, vote alerts, review queue, winners and payment ledger');
   console.log('PASS BLINK Contest: SQL migration, admin role, entry approval, one free vote, ranking and timing');
 } finally {
   await db.close();
