@@ -43,6 +43,8 @@ jobs:
           deno-version: v2.x
       - name: Type-check server-only signer
         run: deno check supabase/functions/blink-r2-media/index.ts
+      - name: Reject oversized or spoofed R2 control requests
+        run: deno test --no-check --allow-none supabase/functions/blink-r2-media/request-body.test.ts
 
   shared-media-policy:
     runs-on: ubuntu-latest
