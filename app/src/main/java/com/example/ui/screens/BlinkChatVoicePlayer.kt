@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import com.example.media.BlinkVoiceWaveformAnalyzer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -46,6 +48,13 @@ internal fun BlinkChatVoicePlayer(
     var elapsed by remember(url) { mutableIntStateOf(0) }
     var duration by remember(url) { mutableIntStateOf(0) }
     var speedStep by remember(url) { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    var measuredHeights by remember(url) { mutableStateOf<List<Int>?>(null) }
+    LaunchedEffect(ready, url) {
+        if (ready && url != null) {
+            measuredHeights = BlinkVoiceWaveformAnalyzer.analyze(context.cacheDir, url)
+        }
+    }
     val speeds = listOf(1f, 1.5f, 2f)
     DisposableEffect(url) {
         onDispose {
@@ -152,8 +161,7 @@ internal fun BlinkChatVoicePlayer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                val heights = listOf(8, 13, 22, 14, 10, 20, 26, 11,
-                    17, 24, 12, 9, 21, 17, 26, 13, 8, 18, 23, 10, 16, 12, 20, 8)
+                val heights = measuredHeights ?: List(24) { 7 }
                 heights.forEachIndexed { index, height ->
                     Box(
                         Modifier.weight(1f)
