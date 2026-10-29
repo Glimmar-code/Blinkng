@@ -106,6 +106,7 @@ internal fun BlinkChatMediaGallerySheet(
     onDocument: () -> Unit,
     onDocumentScan: () -> Unit,
     onAudio: () -> Unit,
+    onVoiceNote: () -> Unit,
     onVideo: () -> Unit,
     onSticker: () -> Unit,
     onViewOnce: () -> Unit,
@@ -121,6 +122,7 @@ internal fun BlinkChatMediaGallerySheet(
     }
     var images by remember(permissionVersion) { mutableStateOf<List<BlinkGalleryPhoto>>(emptyList()) }
     var album by remember { mutableStateOf("Recent") }
+    var showAttachmentMenu by remember { mutableStateOf(true) }
     var gallerySearchOpen by remember { mutableStateOf(false) }
     var galleryQuery by remember { mutableStateOf("") }
     var newestFirst by remember { mutableStateOf(true) }
@@ -141,17 +143,123 @@ internal fun BlinkChatMediaGallerySheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (palette.isLight) Color(0xFFF5F5F8) else Color(0xFF171C24),
+        containerColor = if (palette.isLight) Color(0xFFF5F5F8) else Color(0xFF101B2B),
         contentColor = palette.textPrimary,
         dragHandle = {
             Box(Modifier.padding(top = 10.dp, bottom = 8.dp).size(38.dp, 4.dp)
                 .clip(CircleShape).background(Color.Gray.copy(alpha = .55f)))
         }
     ) {
+        if (showAttachmentMenu) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Share with this chat",
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        color = palette.textPrimary)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close attachments",
+                            tint = palette.textSecondary)
+                    }
+                }
+                Text(
+                    "Choose what to send",
+                    color = palette.textSecondary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                data class Shortcut(
+                    val title: String,
+                    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+                    val tint: Color,
+                    val action: () -> Unit
+                )
+                val shortcuts = listOf(
+                    Shortcut("Gallery", Icons.Default.PhotoLibrary,
+                        Color(0xFF21BFA0), { showAttachmentMenu = false }),
+                    Shortcut("Camera", Icons.Default.CameraAlt,
+                        Color(0xFF288DFF), onCamera),
+                    Shortcut("Video", Icons.Default.Videocam,
+                        Color(0xFF7652F5), onVideo),
+                    Shortcut("Audio", Icons.Default.MusicNote,
+                        Color(0xFFE66ADE), onAudio),
+                    Shortcut("Document", Icons.Default.Description,
+                        Color(0xFF2C9DF3), onDocument),
+                    Shortcut("Poll", Icons.Default.Poll,
+                        Color(0xFFF3B914), onCreatePoll),
+                    Shortcut("Location", Icons.Default.Place,
+                        Color(0xFFEF695B), onShareLocation),
+                    Shortcut("Contact", Icons.Default.Person,
+                        Color(0xFF428AFF), onPickContact),
+                    Shortcut("Sticker", Icons.Default.EmojiEmotions,
+                        Color(0xFFED70BB), onSticker)
+                )
+                shortcuts.chunked(3).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { shortcut ->
+                            Column(
+                                Modifier.weight(1f)
+                                    .clickable(onClickLabel = "Attach ${shortcut.title}",
+                                        onClick = shortcut.action)
+                                    .padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = shortcut.tint,
+                                    modifier = Modifier.size(62.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            shortcut.icon,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(27.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    shortcut.title,
+                                    color = palette.textPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(color = palette.border)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(onClick = onVoiceNote) { Text("Voice note") }
+                    OutlinedButton(onClick = onViewOnce) { Text("View once") }
+                    OutlinedButton(onClick = onDocumentScan) { Text("Scan") }
+                    OutlinedButton(onClick = onShareArticle) { Text("Article") }
+                }
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onDismiss
+                ) { Text("Cancel", color = palette.textSecondary) }
+            }
+        } else {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(onClick = { showAttachmentMenu = true }) {
+                Icon(Icons.Default.ArrowBack, "Back to attachment options",
+                    tint = palette.textPrimary)
+            }
             Text("Gallery", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
             if (selected.isEmpty()) {
@@ -356,6 +464,7 @@ internal fun BlinkChatMediaGallerySheet(
                         overflow = TextOverflow.Ellipsis)
                 }
             }
+        }
         }
         Spacer(Modifier.navigationBarsPadding())
     }

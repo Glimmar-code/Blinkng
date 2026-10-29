@@ -241,12 +241,12 @@ object MessageMediaService {
     suspend fun hydratePhotoAlbumMetadata(
         messages: List<ChatMessage>, conversationId: String
     ): List<ChatMessage> = withContext(Dispatchers.IO) {
-        if (messages.none { it.messageType.equals("image", ignoreCase = true) } ||
+        if (messages.none { it.messageType.equals("image", ignoreCase = true) || it.messageType.equals("video", ignoreCase = true) } ||
             !photoMetadataSupported()) return@withContext messages
         val owner = uid() ?: return@withContext messages
         val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
             ?: return@withContext messages
-        val ids = messages.filter { it.messageType.equals("image", ignoreCase = true) }
+        val ids = messages.filter { it.messageType.equals("image", ignoreCase = true) || it.messageType.equals("video", ignoreCase = true) }
             .mapNotNull { runCatching { UUID.fromString(it.id).toString() }.getOrNull() }
         if (ids.isEmpty()) return@withContext messages
 
@@ -271,7 +271,8 @@ object MessageMediaService {
 
         messages.map { message ->
             val row = metadata[message.id] ?: return@map message
-            if (!message.messageType.equals("image", ignoreCase = true) ||
+            if (!(message.messageType.equals("image", ignoreCase = true) ||
+                    message.messageType.equals("video", ignoreCase = true)) ||
                 message.imageViewOnce || row.optString("sender_id") != message.senderId) {
                 return@map message
             }
@@ -307,6 +308,22 @@ object MessageMediaService {
      * RPC (never by client-side insertion of another user's membership).
      * Retrying with the same message UUID cannot create another chat message.
      */
+    @Volatile private var serverHasVideoAlbums: Boolean? = null
+
+    private fun videoAlbumSupported(): Boolean {
+        serverHasVideoAlbums?.let { return it }
+        val supported = runCatching {
+            client.newCall(
+                builder("/rest/v1/rpc/blink_chat_video_album_supported")
+                    .post("{}".toRequestBody(jsonType)).build()
+            ).execute().use { response ->
+                response.isSuccessful && response.body?.string()?.trim() == "true"
+            }
+        }.getOrDefault(false)
+        if (supported) serverHasVideoAlbums = true
+        return supported
+    }
+
     @Volatile private var serverHasPhotoMetadata: Boolean? = null
     private fun photoMetadataSupported(): Boolean {
         serverHasPhotoMetadata?.let { return it }
@@ -405,13 +422,19 @@ object MessageMediaService {
                 ))
             }
 
+            val effectiveAlbum = if (kind == BlinkChatAttachmentKind.VIDEO &&
+                album.grouped && !videoAlbumSupported()) {
+                // Older databases enforce image-only album metadata. Preserve
+                // successful standalone delivery until the verified migration runs.
+                BlinkChatPhotoAlbum.single()
+            } else album
             val selected = if (kind == BlinkChatAttachmentKind.IMAGE)
                 BlinkChatImagePreparer.open(context, uri, imageQuality)
             else BoundedMessageAttachment.open(context, uri, kind)
             selected.use { staged ->
                 if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
-                val expandedMetadata = kind == BlinkChatAttachmentKind.IMAGE &&
-                    photoMetadataSupported()
+                val expandedMetadata = (kind == BlinkChatAttachmentKind.IMAGE ||
+                    kind == BlinkChatAttachmentKind.VIDEO) && photoMetadataSupported()
                 val objectPath =
                     "conversations/$conversationId/users/$senderId/${kind.wireType}/$safeMessageId.${staged.extension}"
                 client.newCall(
@@ -462,10 +485,10 @@ object MessageMediaService {
                     .put("is_read", false)
                     .put("message_type", kind.wireType)
                 if (expandedMetadata) {
-                    if (album.grouped) {
-                        messageBody.put("image_album_id", album.id)
-                            .put("image_album_position", album.position)
-                            .put("image_album_size", album.size)
+                    if (effectiveAlbum.grouped) {
+                        messageBody.put("image_album_id", effectiveAlbum.id)
+                            .put("image_album_position", effectiveAlbum.position)
+                            .put("image_album_size", effectiveAlbum.size)
                     }
                     privatePreviewPath?.let {
                         messageBody.put("image_preview_url", "$PRIVATE_BUCKET:$it")
@@ -505,9 +528,10 @@ object MessageMediaService {
                         voiceDuration = if (durationMs > 0) "${durationMs / 1000}s" else "",
                         voiceAudioUrl = url.takeIf { kind == BlinkChatAttachmentKind.VOICE },
                         attachedImageUrl = url.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
-                        imageAlbumId = album.id.takeIf { expandedMetadata && album.grouped },
-                        imageAlbumPosition = if (expandedMetadata) album.position else 0,
-                        imageAlbumSize = if (expandedMetadata) album.size else 1,
+                        imageAlbumId = effectiveAlbum.id.takeIf { expandedMetadata && effectiveAlbum.grouped },
+                        messageType = kind.wireType,
+                        imageAlbumPosition = if (expandedMetadata) effectiveAlbum.position else 0,
+                        imageAlbumSize = if (expandedMetadata) effectiveAlbum.size else 1,
                         imagePreviewUrl = privatePreviewPath?.let(::signedUrl),
                         attachedVideoUrl = url.takeIf { kind == BlinkChatAttachmentKind.VIDEO },
                         attachedDocumentUrl = url.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT },

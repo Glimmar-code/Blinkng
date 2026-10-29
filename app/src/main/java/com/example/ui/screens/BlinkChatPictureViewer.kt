@@ -17,6 +17,9 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -41,6 +44,7 @@ import com.blinkng.shared.BlinkChatMediaSwipe
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,6 +93,8 @@ internal fun BlinkChatPictureViewer(
     hasNext: Boolean = false,
     photoIndex: Int = 0,
     totalPhotos: Int = 0,
+    galleryPhotos: List<ChatMessage> = emptyList(),
+    onPickPhoto: (ChatMessage) -> Unit = {},
     groupConversationId: String? = null,
     onAskBlinkAi: (Uri) -> Unit = {},
 ) {
@@ -355,7 +361,7 @@ internal fun BlinkChatPictureViewer(
             if (chromeVisible) {
                 Row(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                        .background(Color(0xFF101317)).statusBarsPadding()
+                        .background(Color(0xFF09131E)).statusBarsPadding()
                         .padding(horizontal = 4.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -454,7 +460,7 @@ internal fun BlinkChatPictureViewer(
                 }
                 Column(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                        .background(Color(0xFF0D1317))
+                        .background(Color(0xFF060D16))
                         .navigationBarsPadding()
                         .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 8.dp)
                 ) {
@@ -484,10 +490,37 @@ internal fun BlinkChatPictureViewer(
                                 modifier = Modifier.clickable { captionExpanded = true })
                         }
                     }
+                    if (galleryPhotos.size > 1) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 8.dp)
+                                .testTag("chat_reference_image_filmstrip"),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            galleryPhotos.take(24).forEach { tile ->
+                                val active = tile.id == message.id
+                                AsyncImage(
+                                    model = tile.imagePreviewUrl ?: tile.attachedImageUrl,
+                                    contentDescription = if (active) "Current photo" else "Open photo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(width = 54.dp, height = 50.dp)
+                                        .clip(RoundedCornerShape(7.dp))
+                                        .border(
+                                            if (active) 2.dp else 1.dp,
+                                            if (active) Color(0xFF1685FF)
+                                            else Color(0xFF25384D),
+                                            RoundedCornerShape(7.dp)
+                                        )
+                                        .clickable { onPickPhoto(tile) }
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-                            .background(Color(0xFF23313C)).padding(horizontal = 8.dp),
+                            .background(Color(0xFF17283A)).padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Reply", color = Color.White.copy(alpha = .55f),

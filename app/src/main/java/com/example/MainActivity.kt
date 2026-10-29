@@ -1981,6 +1981,7 @@ fun MainAppContent(
                             viewModel.updateChatPresence(partner, state)
                         },
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
+                        onSendVideoAlbum = { partner, videos -> viewModel.sendVideoAlbum(partner, videos) },
                         onSendViewOncePicture = { partner, uri, caption, quality ->
                             viewModel.sendViewOncePicture(partner, uri, caption, quality)
                         },
@@ -2960,6 +2961,9 @@ fun MainAppContent(
                     allConversations = uiState.conversations,
                     isLoadingMessages = uiState.loadingInitialConversationId == convo.id,
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
+                    onSendVideoAlbum = { videos ->
+                        viewModel.sendVideoAlbum(convo.partnerUsername, videos)
+                    },
                     onSendAttachment = { uri, kind, _, caption, quality, album ->
                         viewModel.sendAttachmentMessage(
                             convo.partnerUsername, uri, kind,
