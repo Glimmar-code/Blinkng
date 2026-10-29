@@ -2383,7 +2383,7 @@ private fun PremiumChatDetail(
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
                                 videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
-                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty())
+                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty(), palette)
                             } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
@@ -3865,6 +3865,39 @@ private fun MessageBubble(
                     bottomStart = if (isMine) 16.dp else 4.dp,
                     bottomEnd = if (isMine) 4.dp else 16.dp
                 )
+                val compactMedia = palette.mode == MessageThemeMode.DARK &&
+                    !message.deletedForEveryone && !message.isForwarded &&
+                    !message.isPinned && !message.isStarred && message.replyToMessageId == null &&
+                    (!message.attachedAudioUrl.isNullOrBlank() || !message.attachedDocumentUrl.isNullOrBlank()) &&
+                    message.text.trim().lowercase() in setOf("", "voice message", "audio", "document", "file")
+                if (compactMedia) {
+                    Row(Modifier.widthIn(max = 292.dp).testTag("chat_reference_compact_media_" + message.id),
+                        verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Surface(Modifier.weight(1f), shape = bubbleShape,
+                            color = if (message.attachedAudioUrl.isNullOrBlank()) Color.Transparent
+                                else if (isMine) Color(BlinkChatReferenceStyle.Outgoing) else palette.incomingBubble) {
+                            MessageContent(message = message, isMine = isMine, palette = palette,
+                                allowLinkPreviews = allowLinkPreviews, onCancelAttachment = onCancelAttachment,
+                                onOpenImage = onOpenImage, videoActive = activeVideoMessageId == message.id,
+                                onVideoActivate = onVideoActivate, onVideoDeactivate = onVideoDeactivate,
+                                onLegacyPollChoice = onLegacyPollChoice)
+                        }
+                        Row(Modifier.padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(when (message.status) {
+                                MessageStatus.SENDING -> "Sending…"
+                                MessageStatus.FAILED -> "Retry"
+                                else -> message.timestamp
+                            }, color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
+                                fontSize = 9.sp, maxLines = 1)
+                            if (isMine && message.status in setOf(MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ)) {
+                                Icon(if (message.status == MessageStatus.SENT) Icons.Default.Check else Icons.Default.DoneAll,
+                                    contentDescription = if (message.status == MessageStatus.READ) "Read" else if (message.status == MessageStatus.DELIVERED) "Delivered" else "Sent",
+                                    tint = if (message.status == MessageStatus.READ) palette.accent else palette.textSecondary,
+                                    modifier = Modifier.size(13.dp))
+                            }
+                        }
+                    }
+                } else {
                 Column(
                     modifier = Modifier
                         .widthIn(max = 292.dp)
@@ -4048,6 +4081,8 @@ private fun MessageBubble(
                         }
                     }
                     }
+
+                }
 
                 }
 
@@ -4264,7 +4299,8 @@ private fun MessageContent(
                     onDismiss = { pdfOpen = false }
                 )
                 Surface(
-                    color = if (palette.mode == MessageThemeMode.DARK) Color(0xFF292D31)
+                    color = if (palette.mode == MessageThemeMode.DARK)
+                        if (isMine) Color(BlinkChatReferenceStyle.Outgoing) else Color(0xFF292D31)
                         else contentColor.copy(alpha = .08f),
                     contentColor = contentColor,
                     shape = RoundedCornerShape(15.dp),

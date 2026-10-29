@@ -475,8 +475,8 @@ internal fun BlinkReferenceComposerToolbar(
 ) {
     val actions = listOf(
         Triple(Icons.Default.Image, "Add photo", onPhoto),
-        Triple(Icons.Default.VideoLibrary, "Add video", onVideo),
-        Triple(Icons.Default.Poll, "Create poll", onPoll),
+        Triple(Icons.Default.Videocam, "Add video", onVideo),
+        Triple(Icons.Default.BarChart, "Create poll", onPoll),
         Triple(Icons.Default.InsertEmoticon, "Insert emoji", onEmoji),
         Triple(Icons.Default.Tag, "Add tag", onTag),
         Triple(Icons.Default.AlternateEmail, "Mention student", onMention),

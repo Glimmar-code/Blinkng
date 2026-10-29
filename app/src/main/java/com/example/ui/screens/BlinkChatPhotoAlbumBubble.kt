@@ -78,8 +78,8 @@ internal fun BlinkChatPhotoAlbumBubble(
                 .padding(4.dp)
         ) {
             // Match the supplied 1 / 2 / 3 / 4-photo reference layouts.
-            // A trio is one wide hero photo above two equal thumbnails, not
-            // a half-empty 2×2 grid. Every tile still opens the existing viewer.
+            // A trio is three adjacent landscape thumbnails. Every tile opens
+            // the existing viewer without changing the album's ordering.
             when (visible.size) {
                 1 -> AlbumPhotoTile(visible[0], 0, groupedCount,
                     Modifier.fillMaxWidth().height(196.dp), onOpen)
@@ -99,7 +99,7 @@ internal fun BlinkChatPhotoAlbumBubble(
                     // The current screenshot uses three equally sized adjacent photos.
                     visible.forEachIndexed { index, photo ->
                         AlbumPhotoTile(photo, index, groupedCount,
-                            Modifier.weight(1f).height(112.dp), onOpen)
+                            Modifier.weight(1f).aspectRatio(BlinkChatReferenceStyle.TrioPhotoAspect), onOpen)
                     }
                 }
                 else -> {

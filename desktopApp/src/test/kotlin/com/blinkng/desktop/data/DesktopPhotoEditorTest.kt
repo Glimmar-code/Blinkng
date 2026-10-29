@@ -33,6 +33,24 @@ class DesktopPhotoEditorTest {
         val cropped = DesktopPhotoEditor.render(source(), PhotoEdit(crop = "Square"))
         assertEquals(80, cropped.width); assertEquals(80, cropped.height)
         assertEquals(Color.RED.rgb, cropped.getRGB(5, 5)); assertEquals(Color.BLUE.rgb, cropped.getRGB(75, 5))
+        val right = DesktopPhotoEditor.render(source(), PhotoEdit(crop = "Square", cropPosition = PhotoPoint(1f, .5f)))
+        assertEquals(Color.BLUE.rgb, right.getRGB(30, 40))
+        val left = DesktopPhotoEditor.render(source(), PhotoEdit(crop = "Square", cropPosition = PhotoPoint(0f, .5f)))
+        assertEquals(Color.RED.rgb, left.getRGB(30, 40))
+    }
+    @Test fun overlayPlacementMovesTheExportedPixels() {
+        val image = BufferedImage(400, 300, BufferedImage.TYPE_INT_ARGB)
+        val before = DesktopPhotoEditor.render(image, PhotoEdit(sticker = "★", stickerPosition = PhotoPoint(.1f, .2f)))
+        val after = DesktopPhotoEditor.render(image, PhotoEdit(sticker = "★", stickerPosition = PhotoPoint(.7f, .8f)))
+        fun count(bitmap: BufferedImage, x: Int, y: Int) = (x until x + 100).sumOf { column ->
+            (y until y + 70).count { row -> bitmap.getRGB(column, row) ushr 24 != 0 }
+        }
+        assertTrue(count(before, 30, 5) > 0)
+        assertEquals(0, count(after, 30, 5))
+        assertTrue(count(after, 270, 180) > 0)
+        assertThrows(IllegalArgumentException::class.java) {
+            DesktopPhotoEditor.render(image, PhotoEdit(textPosition = PhotoPoint(Float.NaN, 0f)))
+        }
     }
     @Test fun filtersAndDoodlesAreAppliedToPixels() {
         val mono = DesktopPhotoEditor.render(source(), PhotoEdit(filter = "Mono"))

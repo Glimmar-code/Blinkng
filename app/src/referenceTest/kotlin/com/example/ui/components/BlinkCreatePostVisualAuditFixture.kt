@@ -155,6 +155,9 @@ abstract class BlinkCreatePostVisualAuditFixture {
         }
         rule.onNodeWithTag("blink_create_choice_text").performClick()
         rule.onNodeWithTag("blink_create_post_full_screen").assertExists()
+        val header = rule.onNodeWithTag("blink_create_post_editor_header").fetchSemanticsNode().boundsInRoot
+        val field = rule.onAllNodes(hasSetTextAction()).onFirst().fetchSemanticsNode().boundsInRoot
+        check(header.bottom <= field.top) { "Editor header overlaps the text field" }
         capture("create-post-full-text-staging.png", "blink_create_post_full_screen")
 
         rule.onAllNodes(hasSetTextAction()).onFirst().performTextReplacement("@a")
@@ -276,7 +279,9 @@ abstract class BlinkCreatePostVisualAuditFixture {
                 )
             }
         }
-        rule.waitForIdle()
+        rule.waitUntil(12_000) {
+            rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty()
+        }
         capture("create-post-mentions-staging.png")
     }
 

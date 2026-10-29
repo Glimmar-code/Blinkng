@@ -43,6 +43,8 @@ internal fun DesktopPhotoEditorDialog(file: File, onDismiss: () -> Unit, onApply
     fun change(next: PhotoEdit) {
         if (!exporting && next != edit) { history = (history.take(position + 1) + next).takeLast(50); position = history.lastIndex }
     }
+    val currentEdit by rememberUpdatedState(edit)
+    val applyEdit by rememberUpdatedState<(PhotoEdit) -> Unit>({ change(it) })
     LaunchedEffect(file) {
         try { source = withContext(Dispatchers.IO) { DesktopPhotoEditor.load(file) } }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -96,6 +98,19 @@ internal fun DesktopPhotoEditorDialog(file: File, onDismiss: () -> Unit, onApply
                         val imageHeight = maxWidth * image.height / image.width
                         Box(Modifier.fillMaxWidth().height(imageHeight)) {
                             Image(image, "Photo edit preview", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                            if ((tool == "Text" || tool == "Stickers") && !exporting) {
+                                Canvas(Modifier.fillMaxSize().pointerInput(tool) {
+                                    var location = PhotoPoint(0f, 0f)
+                                    detectDragGestures(onDragStart = {
+                                        location = if (tool == "Text") currentEdit.textPosition else currentEdit.stickerPosition
+                                    }) { gesture, delta ->
+                                        gesture.consume()
+                                        location = PhotoPoint((location.x + delta.x / size.width).coerceIn(0f, 1f),
+                                            (location.y + delta.y / size.height).coerceIn(0f, 1f))
+                                        applyEdit(if (tool == "Text") currentEdit.copy(textPosition = location) else currentEdit.copy(stickerPosition = location))
+                                    }
+                                }) {}
+                            }
                             if (tool == "Doodle" && !exporting) Canvas(Modifier.fillMaxSize().pointerInput(edit, tool) {
                                 detectDragGestures(onDragStart = { p -> stroke = listOf(PhotoPoint(p.x / size.width, p.y / size.height)) },
                                     onDrag = { change, _ -> change.consume(); stroke = stroke + PhotoPoint(change.position.x / size.width, change.position.y / size.height) },
@@ -114,9 +129,15 @@ internal fun DesktopPhotoEditorDialog(file: File, onDismiss: () -> Unit, onApply
                 }
                 when (tool) {
                     "Crop" -> {
-                        Text("Centered crop · rotate in 90° steps")
+                        Text("Crop framing · rotate in 90° steps")
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("Original", "Square", "Portrait", "Wide").forEach { value -> FilterChip(edit.crop == value, { change(edit.copy(crop = value)) }, enabled = !exporting, label = { Text(value) }) }
+                        }
+                        if (edit.crop != "Original") {
+                            Text("Horizontal framing")
+                            Slider(edit.cropPosition.x, { change(edit.copy(cropPosition = edit.cropPosition.copy(x = it))) }, enabled = !exporting)
+                            Text("Vertical framing")
+                            Slider(edit.cropPosition.y, { change(edit.copy(cropPosition = edit.cropPosition.copy(y = it))) }, enabled = !exporting)
                         }
                         TextButton(onClick = { change(edit.copy(turns = (edit.turns + 1) % 4)) }, enabled = !exporting) { Text("Rotate clockwise") }
                     }
@@ -129,7 +150,10 @@ internal fun DesktopPhotoEditorDialog(file: File, onDismiss: () -> Unit, onApply
                         Text("Contrast")
                         Slider(edit.contrast, { change(edit.copy(contrast = it)) }, enabled = !exporting, valueRange = .5f..1.5f)
                     }
-                    "Text" -> OutlinedTextField(edit.text, { change(edit.copy(text = it.take(160))) }, enabled = !exporting, label = { Text("Caption overlay") }, modifier = Modifier.fillMaxWidth())
+                    "Text" -> {
+                        OutlinedTextField(edit.text, { change(edit.copy(text = it.take(160))) }, enabled = !exporting, label = { Text("Caption overlay") }, modifier = Modifier.fillMaxWidth())
+                        Text("Drag on the preview to position the text.")
+                    }
                     "Stickers" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("", "★", "♥", "✓", "!").forEach { value -> FilterChip(edit.sticker == value, { change(edit.copy(sticker = value)) }, enabled = !exporting, label = { Text(value.ifBlank { "None" }) }) }
                     }

@@ -166,6 +166,7 @@ jobs:
             if ($task.ExitCode -ne 0) { throw "Packaged media diagnostic failed with exit $($task.ExitCode)" }
             $report = Get-Content $reportPath -Raw | ConvertFrom-Json
             if ($report.status -ne 'passed') { throw 'Packaged media diagnostic did not pass' }
+            if ($report.windows_dpapi -ne 'passed') { throw 'Packaged Windows DPAPI draft verification did not pass' }
             $report | ConvertTo-Json
           } catch {
             $detail = $_.Exception.Message

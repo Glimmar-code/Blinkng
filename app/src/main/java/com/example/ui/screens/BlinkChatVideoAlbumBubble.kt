@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,10 +27,11 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.blinkng.shared.BlinkChatReferenceStyle
+import com.example.ui.theme.MessagePalette
 
 /** An album includes only confirmed videos with the same server-recorded ID. */
 @Composable
-internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
+internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: MessagePalette) {
     val videos = remember(messages) {
         messages.sortedBy { it.imageAlbumPosition }
             .filter { !it.attachedVideoUrl.isNullOrBlank() && !it.deletedForEveryone }
@@ -50,14 +53,14 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
       Column(Modifier.widthIn(max = 276.dp).clip(RoundedCornerShape(14.dp))
-        .background(Color(BlinkChatReferenceStyle.Incoming)).padding(4.dp)) {
+        .padding(4.dp)) {
         groups.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 row.forEach { message ->
                     val index = videos.indexOfFirst { it.id == message.id }
                     Box(
                         Modifier.weight(1f)
-                            .height(if (videos.size <= 2) 162.dp else 120.dp)
+                            .aspectRatio(BlinkChatReferenceStyle.VideoTileAspect)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(BlinkChatReferenceStyle.Canvas))
                             .clickable { selected = index },
@@ -72,8 +75,11 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
                             contentDescription = "Video " + (index + 1),
                             contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                         )
-                        Text("▶", color = Color.White, fontSize = 26.sp,
-                            modifier = Modifier.align(Alignment.Center))
+                        Box(Modifier.size(38.dp).background(Color.Black.copy(alpha = .55f), CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null,
+                                tint = Color.White, modifier = Modifier.size(27.dp))
+                        }
                         if (index == 3 && videos.size > 4) {
                             Box(Modifier.fillMaxSize()
                                 .background(Color(0x99090D10)),
@@ -92,14 +98,14 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(latest.timestamp, color = Color(BlinkChatReferenceStyle.Subtle),
+            Text(latest.timestamp, color = palette.textSecondary,
                 fontSize = 10.sp)
             if (isMine && latest.status !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
                 Spacer(Modifier.width(3.dp))
                 Icon(if (delivered) Icons.Default.DoneAll else Icons.Default.Check,
                     contentDescription = if (read) "Read" else if (delivered) "Delivered" else "Sent",
                     tint = if (read) Color(BlinkChatReferenceStyle.BlueBright)
-                        else Color(BlinkChatReferenceStyle.Subtle),
+                        else palette.textSecondary,
                     modifier = Modifier.size(14.dp))
             }
         }

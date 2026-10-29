@@ -5,6 +5,43 @@ This updates the historical reports in `reference-design-20261029.md` and
 `Testlab/contest-create-post-chat-20261029`, draft PR
 [#646](https://github.com/Glimmar-code/Blinkng/pull/646).
 
+## Latest repair and evidence update
+
+The latest Testlab follow-up replaces several earlier holds below with actual
+results. It does not certify a production deployment or an exact visual match.
+
+- All required GitHub CI checks on `09c8947b` passed, including actual Android
+  unit/lint/APK/AAB/instrumentation execution and both Windows jobs. Windows run
+  40918665054 built EXE/MSI and a standalone app image, exercised the packaged
+  H.264/AAC exporter, and uploaded installers.
+- New isolated Supabase service run **40958927594** on `a4efb1dc` passed actual
+  password sessions, Contest registration/approval/vote races, Realtime delivery,
+  recipient-only reads, Storage ACLs/deletion, Chat poll permissions and posting
+  guards. The first service run caught missing owner SELECT on Storage objects;
+  migration `20261029190000_blink_contest_media_owner_select.sql` fixed the actual
+  failure without weakening its assertion. See `supabase/tests/local-features/`.
+- New real local Compose captures cover the full existing Create Post fixture
+  matrix and rich Chat at three scroll positions. They exposed an overlapping
+  text-editor header, unreadable inherited poll labels and an early blank mention
+  capture. These are repaired with sequential layout, explicit contrast, and a
+  real loaded-results wait. Reference choice icons/gradients and photo tools
+  were also corrected. Original production content is never replaced with fixtures.
+- Windows crop framing and text/sticker movement now affect exported pixels.
+  The local desktop suite passed **37 tests**; Linux media CLI export/probe passed.
+  A new Windows-only packaged DPAPI check awaits final-candidate CI execution. All 18 local reference-fixture tests and device-test compilation passed on the final UI source, including actual dark/light messaging preferences. Local Android lint also passed on the preceding layout repair; final CI must recheck its later UI refinements.
+
+The local full Supabase image pull failed from disk exhaustion; it did not run
+integration assertions or contact production. CI supplied the safe service host.
+The application prerequisite/admin schema is synthetic: deployed-schema/admin
+compatibility, full authorized message/post transport and two-running-client
+acceptance remain unverified. Local captures do not establish hardware gestures,
+video playback or complete Windows visual behavior. The final candidate must
+pass fresh CI and remaining acceptance gates before main promotion.
+
+The rest of this document retains historical evidence and the failures that
+motivated these repairs; its earlier pending-CI/service statements are superseded
+only where explicitly resolved above.
+
 ## GitHub recovery
 
 Authenticated GitHub API access succeeded as `Glimmar-code`, with repository

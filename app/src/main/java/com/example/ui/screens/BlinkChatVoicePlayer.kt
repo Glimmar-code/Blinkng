@@ -75,7 +75,7 @@ internal fun BlinkChatVoicePlayer(
         }
     }
     Row(
-        modifier = modifier.testTag("chat_voice_playback"),
+        modifier = modifier.fillMaxWidth().testTag("chat_voice_playback"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
@@ -157,7 +157,7 @@ internal fun BlinkChatVoicePlayer(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Column(Modifier.widthIn(min = 100.dp, max = 152.dp)) {
+        Column(Modifier.weight(1f)) {
             val progress = if (duration > 0) {
                 (elapsed.toFloat() / duration).coerceIn(0f, 1f)
             } else 0f

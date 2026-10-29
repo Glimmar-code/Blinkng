@@ -108,6 +108,7 @@ jobs:
             test -s app/build/visual-audit/chat-reference-full-media.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
             test -s app/build/visual-audit/chat-reference-full-bottom.png
+            for theme in dark light; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-outgoing-document-${theme}.png" "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" && test -s "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" || exit 1; done
 
       - name: Upload instrumentation reports
         if: always()

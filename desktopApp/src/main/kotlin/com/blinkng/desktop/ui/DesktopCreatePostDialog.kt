@@ -336,7 +336,7 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
                                         }
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) { Text("Multiple answers", Modifier.weight(1f)); Switch(false, {}, enabled = false) }
-                                    Text("Single-answer voting is enforced by the server.", fontSize = 12.sp)
+                                    Text("Each person can choose one answer.", fontSize = 12.sp)
                                 }
                                 if (trending.isNotEmpty()) {
                                     Text("Trending tags", fontWeight = FontWeight.SemiBold)

@@ -20,6 +20,9 @@ data class PhotoEdit(
     val text: String = "",
     val sticker: String = "",
     val strokes: List<PhotoStroke> = emptyList(),
+    val cropPosition: PhotoPoint = PhotoPoint(.5f, .5f),
+    val textPosition: PhotoPoint = PhotoPoint(.05f, .9f),
+    val stickerPosition: PhotoPoint = PhotoPoint(.05f, .2f),
 )
 
 /** Pure Java2D export; original files are never modified. Coordinates follow the edited preview. */
@@ -61,6 +64,9 @@ object DesktopPhotoEditor {
 
     fun render(source: BufferedImage, edit: PhotoEdit): BufferedImage {
         require(edit.brightness in -1f..1f && edit.contrast in .5f..1.5f)
+        require(listOf(edit.cropPosition, edit.textPosition, edit.stickerPosition).all {
+            it.x in 0f..1f && it.y in 0f..1f
+        }) { "Keep crop and overlays inside the image." }
         val turns = Math.floorMod(edit.turns, 4)
         val rotated = BufferedImage(if (turns % 2 == 0) source.width else source.height,
             if (turns % 2 == 0) source.height else source.width, BufferedImage.TYPE_INT_ARGB)
@@ -82,7 +88,9 @@ object DesktopPhotoEditor {
         val width = minOf(rotated.width, (rotated.height * ratio).roundToInt()).coerceAtLeast(1)
         val height = minOf(rotated.height, (rotated.width / ratio).roundToInt()).coerceAtLeast(1)
         val output = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
-        output.createGraphics().useGraphics { it.drawImage(rotated, -(rotated.width - width) / 2, -(rotated.height - height) / 2, null) }
+        output.createGraphics().useGraphics { it.drawImage(rotated,
+            -((rotated.width - width) * edit.cropPosition.x).roundToInt(),
+            -((rotated.height - height) * edit.cropPosition.y).roundToInt(), null) }
         rotated.flush()
         require(edit.filter in listOf("Original", "Mono", "Warm", "Cool"))
         fun channel(value: Double) = (((value / 255.0 - .5) * edit.contrast + .5 + edit.brightness) * 255)
@@ -115,16 +123,25 @@ object DesktopPhotoEditor {
             val label = edit.text.take(160)
             if (label.isNotBlank()) {
                 val lines = label.chunked(maxOf(1, width / maxOf(1, fontSize * 3 / 5) - 2))
+                val left = (edit.textPosition.x * width).roundToInt()
+                    .coerceIn(0, maxOf(0, width - lines.maxOf { g.fontMetrics.stringWidth(it) } - 2))
+                val baseline = (edit.textPosition.y * height).roundToInt()
+                    .coerceIn(minOf(height - 1, fontSize * lines.size), height - 1)
                 lines.forEachIndexed { i, line ->
-                    val y = height - fontSize * (lines.size - i)
-                    g.color = Color.BLACK; g.drawString(line, width / 20 + 2, y + 2)
-                    g.color = Color.WHITE; g.drawString(line, width / 20, y)
+                    val y = baseline - fontSize * (lines.size - 1 - i)
+                    g.color = Color.BLACK; g.drawString(line, left + 2, y + 2)
+                    g.color = Color.WHITE; g.drawString(line, left, y)
                 }
             }
             if (edit.sticker.isNotBlank()) {
                 g.font = Font(Font.SANS_SERIF, Font.BOLD, maxOf(14, width / 8))
                 g.color = Color(0xFFCC33)
-                g.drawString(edit.sticker.take(8), width / 20, maxOf(18, height / 5))
+                val sticker = edit.sticker.take(8)
+                val x = (edit.stickerPosition.x * width).roundToInt()
+                    .coerceIn(0, maxOf(0, width - g.fontMetrics.stringWidth(sticker)))
+                val y = (edit.stickerPosition.y * height).roundToInt()
+                    .coerceIn(minOf(g.fontMetrics.ascent, height - 1), height - 1)
+                g.drawString(sticker, x, y)
             }
         }
         return output

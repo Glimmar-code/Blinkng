@@ -117,6 +117,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
@@ -1073,8 +1074,12 @@ fun CreatePostSheet(
             colorScheme = if (useClassicComposer && selectedVideo == null && mode != "reel") {
                 outerScheme
             } else darkColorScheme(
-                    primary = Color.White,
-                    onPrimary = Color.Black,
+                    primary = Color(0xFF5245F2),
+                    onPrimary = Color.White,
+                    secondaryContainer = Color(0xFF202328),
+                    onSecondaryContainer = Color.White,
+                    outline = Color(0xFF30343E),
+                    outlineVariant = Color(0xFF30343E),
                     background = Color.Black,
                     onBackground = Color.White,
                     surface = Color(0xFF141414),
@@ -1348,6 +1353,7 @@ fun CreatePostSheet(
                     uploadProgress = uploadProgress
                 )
             } else {
+            Column(Modifier.fillMaxSize()) {
             val isEditingReel = selectedVideo != null && reelEditorStage
             ComposerTopBar(
                 isSubmitting = isSubmitting,
@@ -1421,6 +1427,7 @@ fun CreatePostSheet(
                     }
                 )
 
+                if (useClassicComposer || showLegacyPostActions) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -1467,6 +1474,8 @@ fun CreatePostSheet(
                     )
                 }
 
+                }
+
                 if (marketOnlyWarning != null) {
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -1481,7 +1490,7 @@ fun CreatePostSheet(
                             }
                         }
                     }
-                } else {
+                } else if (useClassicComposer || showLegacyPostActions) {
                     TextButton(
                         onClick = { showPublishingTips = !showPublishingTips },
                         modifier = Modifier.padding(start = 8.dp),
@@ -1511,6 +1520,7 @@ fun CreatePostSheet(
 
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
                 if (textOnlyComposer) {
+                    if (useClassicComposer) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1531,11 +1541,14 @@ fun CreatePostSheet(
                         )
                     }
 
+                    }
+
                     if (textPresentation == "color") {
                         ColoredTextComposer(
                             text = text,
                             onTextChanged = { if (it.length <= 5000) text = it },
                             selectedStyleKey = selectedTextStyle,
+                            showStylePicker = useClassicComposer,
                             onStyleSelected = { selectedTextStyle = it },
                             enabled = !isSubmitting
                         )
@@ -1548,16 +1561,21 @@ fun CreatePostSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
-                            minLines = 7,
+                            minLines = if (useClassicComposer) 7 else 4,
                             maxLines = 14,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = if (useClassicComposer) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                unfocusedBorderColor = if (useClassicComposer) MaterialTheme.colorScheme.outline else Color.Transparent,
+                            ),
                             placeholder = { Text("What's on your mind?") },
                             supportingText = {
                                 Row(Modifier.fillMaxWidth()) {
-                                    Text(
+                                    if (useClassicComposer) Text(
                                         "Plain text post",
                                         modifier = Modifier.weight(1f),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    else Spacer(Modifier.weight(1f))
                                     Text("${text.length}/5000")
                                 }
                             },
@@ -1593,6 +1611,22 @@ fun CreatePostSheet(
                         },
                         shape = RoundedCornerShape(20.dp)
                     )
+                }
+
+                if (textOnlyComposer && !useClassicComposer) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        item {
+                            Surface(Modifier.size(34.dp, 24.dp).clickable(enabled = !isSubmitting) { textPresentation = "plain" },
+                                shape = RoundedCornerShape(5.dp), color = Color.Black,
+                                border = BorderStroke(1.dp, if (textPresentation == "plain") Color.White else Color(0xFF30343E))) {
+                                Box(contentAlignment = Alignment.Center) { Text("Aa", color = Color.White, fontSize = 11.sp) }
+                            }
+                        }
+                        items(TextPostStyles, key = { it.key }) { option ->
+                            Box(Modifier.size(34.dp, 24.dp).clip(RoundedCornerShape(5.dp)).background(option.brush())
+                                .clickable(enabled = !isSubmitting) { selectedTextStyle = option.key; textPresentation = "color" })
+                        }
+                    }
                 }
 
                 BlinkPostMentionSuggestions(
@@ -1826,6 +1860,7 @@ fun CreatePostSheet(
                 )
                 }
 
+                if (useClassicComposer || showLegacyPostActions) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     shape = RoundedCornerShape(18.dp),
@@ -1931,6 +1966,28 @@ fun CreatePostSheet(
                     }
                 }
 
+                } else {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Trending tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        if (trendingTags.isEmpty()) Text("Add #topics to your caption", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(trendingTags.take(7), key = { it }) { tag ->
+                                AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                            }
+                        }
+                        if (recentUsedTags.isNotEmpty()) {
+                            Text("Recent tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(recentUsedTags, key = { it }) { tag ->
+                                    AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                                }
+                            }
+                        }
+                        tagWarning?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                }
+
+                if (useClassicComposer || showLegacyPostActions || showAdvancedSettings) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2119,6 +2176,8 @@ fun CreatePostSheet(
                     }
                 }
 
+                } // legacy/detail settings are available through More tools and Details
+                if (useClassicComposer || showLegacyPostActions) {
                 if (savedDrafts.isNotEmpty()) {
                     Text(
                         "Recent drafts",
@@ -2238,8 +2297,10 @@ fun CreatePostSheet(
                         )
                     }
                 }
+                } // optional legacy draft/scheduling controls
             }
             }
+            } // editor header and scrollable body must be sequential, not AnimatedContent siblings
             } // reference landing / editor / publishing options
             } // crossfade between Create Post reference stages
         }
@@ -2649,6 +2710,7 @@ private fun ColoredTextComposer(
     text: String,
     onTextChanged: (String) -> Unit,
     selectedStyleKey: String,
+    showStylePicker: Boolean = true,
     onStyleSelected: (String) -> Unit,
     enabled: Boolean
 ) {
@@ -2702,7 +2764,7 @@ private fun ColoredTextComposer(
         )
     }
 
-    Column(
+    if (showStylePicker) Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp, bottom = 4.dp)
@@ -2763,6 +2825,7 @@ private fun ComposerTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("blink_create_post_editor_header")
             .heightIn(min = 60.dp)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -2772,7 +2835,7 @@ private fun ComposerTopBar(
         }
 
         Text(
-            text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create post",
+            text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create Post",
             fontWeight = FontWeight.Black,
             fontSize = 20.sp,
             maxLines = 1,
@@ -2998,7 +3061,7 @@ internal fun PollComposer(
         Card(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
             shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B0D12)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B0D12), contentColor = Color.White),
             border = BorderStroke(1.dp, Color(0xFF252831))
         ) {
         Column(Modifier.padding(14.dp)) {
@@ -3088,7 +3151,7 @@ internal fun PollComposer(
                 Column(Modifier.weight(1f)) {
                     Text("Multiple answers", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Single-choice voting is active. Multi-answer voting requires a separate secure backend upgrade.",
+                        "Each person can choose one answer.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall
                     )

@@ -383,17 +383,21 @@ fun BlinkUniversalPhotoEditor(
                 }
             }
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                Modifier.fillMaxWidth()
                     .background(Color(0xFF151515)).padding(vertical=5.dp,horizontal=8.dp),
-                horizontalArrangement=Arrangement.spacedBy(8.dp)
+                horizontalArrangement=Arrangement.spacedBy(2.dp)
             ) {
                 photoControls.forEach { (name,icon) ->
                     TextButton(onClick={tool=name},enabled=!busy,
+                        modifier=Modifier.weight(1f).heightIn(min=56.dp),
+                        contentPadding=PaddingValues(horizontal=1.dp,vertical=4.dp),
                         colors=ButtonDefaults.textButtonColors(
                             contentColor=if(tool==name) Color(0xFF8D85FF) else Color.LightGray)) {
-                        Icon(icon,contentDescription=null,modifier=Modifier.size(18.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text(when(name) { "DRAW" -> "Doodle"; "STICKER" -> "Stickers"; else -> name.lowercase().replaceFirstChar { it.uppercase() } },fontSize=11.sp)
+                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                            Icon(icon,contentDescription=null,modifier=Modifier.size(20.dp))
+                            Spacer(Modifier.height(4.dp))
+                            Text(when(name) { "DRAW" -> "Doodle"; "STICKER" -> "Stickers"; else -> name.lowercase().replaceFirstChar { it.uppercase() } },fontSize=10.sp,maxLines=1)
+                        }
                     }
                 }
             }
