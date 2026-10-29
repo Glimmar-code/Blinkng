@@ -87,11 +87,8 @@ jobs:
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/inbox-reference-staging-light.png app/build/visual-audit/inbox-reference-staging-light.png
             test -s app/build/visual-audit/inbox-reference-staging-light.png
             # Reference composer screenshots are produced on the emulator, not fabricated.
-            for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do
-              adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" \
-                "app/build/visual-audit/create-post-${view}-staging.png"
-              test -s "app/build/visual-audit/create-post-${view}-staging.png"
-            done
+            # android-emulator-runner executes each script line separately. Keep the loop on one line.
+            for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
 
       - name: Upload instrumentation reports
         if: always()
