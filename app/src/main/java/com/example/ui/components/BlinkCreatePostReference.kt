@@ -369,25 +369,59 @@ internal fun BlinkCreatePostPublishOptions(
         ) { Text("Preview Post") }
         Spacer(Modifier.height(8.dp))
         Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
-        BlinkPostMenuRow(
-            title = "WhatsApp",
-            detail = "Choose WhatsApp in the share sheet",
-            icon = Icons.Default.Share, onClick = onShareCaption
-        )
-        BlinkPostMenuRow(
-            title = "Copy link",
-            detail = "Available after the post is published",
-            icon = Icons.Default.Link, onClick = {}, enabled = false
-        )
-        BlinkPostMenuRow(
-            title = "Other apps",
-            detail = "Share the selected media or caption",
-            icon = Icons.Default.Share, onClick = onShareCaption
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            BlinkPostShareRow(
+                title = "WhatsApp", icon = Icons.Default.Share,
+                accent = Color(0xFF1DBF69), onClick = onShareCaption
+            )
+            BlinkPostShareRow(
+                title = "Copy link", icon = Icons.Default.Link,
+                accent = Color(0xFF5B616D), enabled = false,
+                onClick = {}
+            )
+            BlinkPostShareRow(
+                title = "Other apps", icon = Icons.Default.Share,
+                accent = Color(0xFF5B616D), onClick = onShareCaption
+            )
+        }
         Text(
             "Before publication, sharing sends only your media and caption. It does not post to BLINK.",
             fontSize = 12.sp, color = Color(0xFFAAB1BE)
         )
+    }
+}
+
+@Composable
+private fun BlinkPostShareRow(
+    title: String,
+    icon: ImageVector,
+    accent: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = Color(0xFF1A1D24), shape = RoundedCornerShape(11.dp),
+        modifier = Modifier.fillMaxWidth().height(55.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(color = accent, shape = RoundedCornerShape(9.dp)) {
+                Icon(icon, contentDescription = null, tint = Color.White,
+                    modifier = Modifier.padding(8.dp).size(18.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(title, color = if (enabled) Color.White else Color(0xFF9399A7),
+                fontSize = 13.sp, modifier = Modifier.weight(1f))
+            if (enabled) {
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null,
+                    tint = Color(0xFFB5BAC7))
+            } else {
+                Text("After posting", color = Color(0xFF9399A7), fontSize = 11.sp)
+            }
+        }
     }
 }
 
