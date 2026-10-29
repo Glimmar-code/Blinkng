@@ -91,10 +91,12 @@ jobs:
             test -s app/build/visual-audit/chat-reference-staging-dark.png
             # Three slices of the actual Compose conversation with synthetic
             # media fixtures. Retain all captures for manual side-by-side review.
-            for name in top media bottom; do
-              adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-${name}.png" "app/build/visual-audit/chat-reference-full-${name}.png"
-              test -s "app/build/visual-audit/chat-reference-full-${name}.png"
-            done
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-top.png app/build/visual-audit/chat-reference-full-top.png
+            test -s app/build/visual-audit/chat-reference-full-top.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-media.png app/build/visual-audit/chat-reference-full-media.png
+            test -s app/build/visual-audit/chat-reference-full-media.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
+            test -s app/build/visual-audit/chat-reference-full-bottom.png
 
       - name: Upload instrumentation reports
         if: always()
