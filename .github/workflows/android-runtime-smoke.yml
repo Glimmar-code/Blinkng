@@ -77,6 +77,7 @@ jobs:
             adb shell settings put global transition_animation_scale 1.0
             adb shell settings put global animator_duration_scale 1.0
             echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
+            mkdir -p app/build
             gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > app/build/runtime-gradle.log 2>&1 || { tail -n 80 app/build/runtime-gradle.log; exit 1; }
             # Export emulator-rendered Compose staging fixture for visual audit.
             # This test data is separate from the production APK and account content.
