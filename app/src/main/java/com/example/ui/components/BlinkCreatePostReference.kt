@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.TextFields
@@ -136,9 +137,9 @@ internal fun BlinkCreatePostLanding(
                 Color(0xFFF7B52C), onPoll, Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Recent drafts", color = white, fontWeight = FontWeight.SemiBold,
+            Text("Recent", color = white, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
-            Text(drafts.size.toString(), color = Color(0xFF7D83F9), fontSize = 12.sp)
+            Text(if (drafts.isEmpty()) "Drafts" else "See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
         }
         if (drafts.isEmpty()) {
             Surface(
@@ -310,18 +311,24 @@ internal fun BlinkCreatePostPublishOptions(
         Box(Modifier.fillMaxWidth().height(60.dp)) {
             IconButton(onClick = onBack, enabled = !isSubmitting,
                 modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.Close, contentDescription = "Back to editor", tint = Color.White)
+                Icon(Icons.Default.ChevronLeft, contentDescription = "Back to editor", tint = Color.White)
             }
             Text("Post Options", color = Color.White,
                 fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center))
         }
         Button(
-            onClick = onPost, enabled = canPublish && !isSubmitting, modifier = Modifier.fillMaxWidth().height(52.dp),
+            onClick = onPost,
+            enabled = canPublish && !isSubmitting,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF315CFF), Color(0xFF8434E9)))),
             shape = RoundedCornerShape(13.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4D45ED),
-                contentColor = Color.White)
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent,
+                contentColor = Color.White, disabledContainerColor = Color(0xFF343544))
         ) {
+            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 if (isSubmitting) {
                     if (uploadProgress == null) "Publishing..."
@@ -336,7 +343,11 @@ internal fun BlinkCreatePostPublishOptions(
         OutlinedButton(
             onClick = onSaveDraft, enabled = !isSubmitting,
             modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(13.dp)
+            shape = RoundedCornerShape(13.dp),
+            border = BorderStroke(1.dp, Color(0xFF30333A)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color(0xFF181B22), contentColor = Color.White
+            )
         ) {
             Icon(Icons.Default.Save, contentDescription = null)
             Spacer(Modifier.width(8.dp))
@@ -348,7 +359,7 @@ internal fun BlinkCreatePostPublishOptions(
             shape = RoundedCornerShape(13.dp)
         ) { Text("Preview Post") }
         Spacer(Modifier.height(8.dp))
-        Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold)
+        Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
         BlinkPostMenuRow(
             title = "WhatsApp",
             detail = "Choose WhatsApp in the share sheet",
@@ -356,7 +367,7 @@ internal fun BlinkCreatePostPublishOptions(
         )
         BlinkPostMenuRow(
             title = "Copy link",
-            detail = "A real post link is available after publishing",
+            detail = "Available after the post is published",
             icon = Icons.Default.Link, onClick = {}, enabled = false
         )
         BlinkPostMenuRow(
