@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -15,6 +16,7 @@ import com.blinkng.shared.BlinkChatPollDraft
 import com.example.data.models.ChatMessage
 import com.example.data.supabase.BlinkChatNativePollService
 import com.example.ui.theme.MessagePalette
+import com.example.ui.theme.MessageThemeMode
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -49,62 +51,76 @@ internal fun BlinkChatNativePollCard(
     val options = actual.optJSONArray("options")
     val mine = if (actual.isNull("my_vote")) -1 else actual.optInt("my_vote", -1)
     val closed = actual.optBoolean("closed")
-    Surface(color = palette.glassElevated,
-        shape = RoundedCornerShape(15.dp),
-        border = BorderStroke(1.dp, palette.border),
-        modifier = Modifier.widthIn(min = 210.dp, max = 292.dp)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("▥ " + actual.optString("question"), color = textColor,
-                fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text(total.toString() + (if (total == 1) " vote" else " votes") +
-                if (closed) " · Closed" else " · Tap to vote",
-                color = palette.textSecondary, fontSize = 11.sp)
+    val referenceDark = palette.mode == MessageThemeMode.DARK
+    val cardText = if (referenceDark) palette.textPrimary else textColor
+    Surface(
+        color = if (referenceDark) palette.incomingBubble else palette.glassElevated,
+        shape = RoundedCornerShape(17.dp),
+        border = if (referenceDark) null else BorderStroke(1.dp, palette.border),
+        modifier = Modifier.widthIn(min = 220.dp, max = 305.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("▥  Quick Poll", color = cardText, fontSize = 13.sp,
+                fontWeight = FontWeight.Bold)
+            Text(actual.optString("question"), color = palette.textSecondary, fontSize = 12.sp)
             for (index in 0 until (options?.length() ?: 0)) {
                 val item = options?.optJSONObject(index) ?: continue
                 val count = item.optInt("votes").coerceAtLeast(0)
                 val percent = if (total > 0) count * 100 / total else 0
-                Surface(
-                    color = if (mine == index) palette.accent.copy(alpha = .17f)
-                        else palette.glass,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp,
-                        if (mine == index) palette.accent else palette.border),
-                    modifier = Modifier.fillMaxWidth().clickable(
-                        enabled = !closed && !sending
-                    ) {
-                        sending = true
-                        scope.launch {
-                            service.vote(message.id, index)
-                                .onSuccess { poll = it; error = null }
-                                .onFailure { error = "Could not record your vote. Try again." }
-                            sending = false
+                val selected = mine == index
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable(enabled = !closed && !sending) {
+                            sending = true
+                            scope.launch {
+                                service.vote(message.id, index)
+                                    .onSuccess { poll = it; error = null }
+                                    .onFailure {
+                                        error = "Could not record your vote. Try again."
+                                    }
+                                sending = false
+                            }
                         }
-                    }
+                        .padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Row {
-                            Text(item.optString("label"), color = textColor,
-                                fontWeight = if (mine == index) FontWeight.Bold
-                                    else FontWeight.Normal,
-                                fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            Text(percent.toString() + "%", color = palette.accent,
-                                fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                    Surface(
+                        color = if (selected) palette.accent else Color.Transparent,
+                        shape = RoundedCornerShape(100.dp),
+                        border = BorderStroke(1.dp,
+                            if (selected) palette.accent else palette.textMuted)
+                    ) {
+                        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                            Text(('A' + index).toString(),
+                                color = if (selected) Color.White else cardText,
+                                fontSize = 10.sp)
                         }
-                        LinearProgressIndicator(
-                            progress = { if (total == 0) 0f else count.toFloat() / total },
-                            color = palette.accent,
-                            trackColor = palette.border,
-                            modifier = Modifier.fillMaxWidth().height(4.dp)
-                        )
                     }
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.optString("label"), color = cardText, fontSize = 11.sp,
+                        modifier = Modifier.weight(1f), maxLines = 1)
+                    Spacer(Modifier.width(5.dp))
+                    LinearProgressIndicator(
+                        progress = { if (total == 0) 0f else count.toFloat() / total },
+                        color = if (selected) palette.accent else palette.textMuted,
+                        trackColor = palette.glass,
+                        modifier = Modifier.width(76.dp).height(6.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("$percent%", color = palette.textSecondary, fontSize = 10.sp,
+                        modifier = Modifier.width(34.dp))
                 }
             }
-            if (mine >= 0) Text("Your choice is selected; you can change it.",
-                color = palette.textSecondary, fontSize = 10.sp)
-            if (sending) LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(), color = palette.accent)
-            if (error != null) Text(error.orEmpty(), color = palette.danger, fontSize = 11.sp)
+            Text(
+                total.toString() + (if (total == 1) " vote" else " votes") +
+                    if (closed) " · Closed" else "",
+                color = palette.textMuted, fontSize = 10.sp
+            )
+            if (sending) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(),
+                color = palette.accent)
+            if (error != null) Text(error.orEmpty(), color = palette.danger,
+                fontSize = 11.sp)
         }
     }
 }

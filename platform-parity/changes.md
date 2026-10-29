@@ -1,3 +1,12 @@
+## 2026-10-29 — BLINK conversation charcoal reference (Testlab, verification pending)
+
+- **Source:** Owner-supplied screenshot (black/charcoal chat, pale outgoing bubbles, blue controls and read ticks), replacing the navy/blue outgoing style introduced in PR #640. This is a new visual reference; do not misreport PR #640 as a pixel match.
+- **Shared:** Added `BlinkChatReferenceStyle` tokens so both platforms consume the same values for canvas, incoming/outgoing bubbles, text, and blue accents.
+- **Android:** Updated conversation-only palette, plain header/call actions, presence, slim pinned row, incoming avatar handling, outgoing receipt contrast, reply surface, compact poll, and separated + / emoji / message+camera+microphone / blue send composer. Existing Supabase RPCs, permissions, attachment flows, voice note recording, media, and delivery states are unchanged.
+- **Windows:** Conversation background, header, bubbles, receipt contrast and attachment affordance use the same shared colour values. Desktop layout and platform-specific file/media actions remain desktop-native.
+- **Verification gate:** The Android screenshot must be captured on a device/emulator with the *same fixture*, matched/cropped to the reference display and compared using `scripts/testing/compare_chat_reference.py`. The script writes cropped images, an overlay, a difference heatmap and machine-readable metrics. The existence of a screenshot test is **not** evidence of a pixel match; UI/device results must be recorded before promotion.
+- **Status:** Staged in Testlab. Do not merge to production on static edits alone. Run relevant Android build, instrumentation screenshot comparison and Windows build/parity before promoting. No backend migrations or credentials are included.
+
 ## 2026-10-28 — BLINK Chat reference screenshots (Testlab PR #640)
 
 - **Android:** The dark conversation uses the supplied black/navy/cobalt palette rather than the former green reference, the pinned-message banner jumps to the original message, and the plus composer opens a 3×3 attachment menu. Existing voice recording, media permissions, outbox, privacy, sent/delivered/read receipts, photo editor, polls, replies and forwarding remain connected.
