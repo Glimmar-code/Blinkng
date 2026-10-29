@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.example.performance.rememberBlinkReduceMotion
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkChatReferenceStyle
 import com.blinkng.shared.BlinkReplySwipePhysics
 import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -91,6 +92,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.testTag
@@ -161,6 +163,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -176,6 +179,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -2102,40 +2106,48 @@ private fun PremiumChatDetail(
                 onToggleFullScreen = onToggleFullScreen
             )
 
-            // Screenshot reference: slim, actionable blue pinned-message banner
-            // directly beneath the chat header; close only hides this preview.
+            // A single-row reference banner: jump to the actual pinned message.
             val pinnedPreview = conversation.messages.lastOrNull { it.isPinned }
             if (showReferencePinBar && pinnedPreview != null && !pinnedOnly) {
-                Surface(
-                    color = palette.glassElevated,
-                    border = BorderStroke(0.5.dp, palette.border),
-                    modifier = Modifier.fillMaxWidth().testTag("chat_reference_pinned_banner")
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(palette.glassElevated)
+                        .heightIn(min = 44.dp)
+                        .testTag("chat_reference_pinned_banner"),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
-                            .clickable {
-                                pendingReplyTargetId = pinnedPreview.id
-                                lastRequestedReplyOldestId = null
-                            }.padding(start = 12.dp, end = 5.dp, top = 7.dp, bottom = 7.dp),
+                        modifier = Modifier.weight(1f).clickable {
+                            pendingReplyTargetId = pinnedPreview.id
+                            lastRequestedReplyOldestId = null
+                        }.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Drawn glyph avoids relying on a Material icon that is
-                        // absent from BLINK's configured icon artifact.
-                        Text("📌", fontSize = 18.sp, modifier = Modifier.size(21.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Pinned message", color = palette.accent,
-                                fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                pinnedPreview.text.ifBlank { "Pinned media" },
-                                color = palette.textSecondary, fontSize = 12.sp,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis
-                            )
+                        Canvas(Modifier.size(17.dp)) {
+                            val c = palette.accent
+                            drawLine(c, Offset(size.width * .27f, size.height * .22f),
+                                Offset(size.width * .76f, size.height * .22f), 3.dp.toPx(), StrokeCap.Round)
+                            drawLine(c, Offset(size.width * .40f, size.height * .22f),
+                                Offset(size.width * .40f, size.height * .52f), 3.dp.toPx(), StrokeCap.Round)
+                            drawLine(c, Offset(size.width * .22f, size.height * .54f),
+                                Offset(size.width * .79f, size.height * .54f), 3.dp.toPx(), StrokeCap.Round)
+                            drawLine(c, Offset(size.width * .53f, size.height * .54f),
+                                Offset(size.width * .46f, size.height * .92f), 2.dp.toPx(), StrokeCap.Round)
                         }
-                        IconButton(onClick = { showReferencePinBar = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "Hide pinned banner",
-                                tint = palette.textSecondary, modifier = Modifier.size(17.dp))
-                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "Pinned: " + pinnedPreview.text.ifBlank { "Pinned media" },
+                            color = palette.textPrimary, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("›", color = palette.textPrimary, fontSize = 23.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp))
+                    }
+                    IconButton(onClick = { showReferencePinBar = false },
+                        modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Hide pinned banner",
+                            tint = palette.textSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -3382,31 +3394,29 @@ private fun ChatHeader(
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit
 ) {
-    // Keep contact, calling, and menu actions visible at ordinary phone widths.
-    // A weighted name column ellipsizes before it can overlap the action buttons.
+    val referenceDark = palette.mode == MessageThemeMode.DARK
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(palette.headerBrush())
-            .border(1.dp, palette.border)
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 6.dp, vertical = 7.dp),
+        modifier = Modifier.fillMaxWidth()
+            .background(if (referenceDark) Color(BlinkChatReferenceStyle.Header) else palette.glass)
+            .heightIn(min = 70.dp)
+            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .testTag("chat_reference_header"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        GlassIconButton(
-            Icons.Default.ArrowBack, "Back", palette, 40.dp,
-            onClick = onBack
-        )
-        Spacer(Modifier.width(2.dp))
+        IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Back",
+                tint = palette.textPrimary, modifier = Modifier.size(25.dp))
+        }
+        Spacer(Modifier.width(5.dp))
         RingAvatar(
             url = conversation.partnerAvatar,
             name = conversation.partnerName,
             palette = palette,
-            size = 38.dp,
-            online = conversation.isOnline,
+            size = 44.dp,
+            emphasizeRing = false,
             modifier = Modifier.clickable(onClick = onProfileClick)
         )
-        Spacer(Modifier.width(7.dp))
+        Spacer(Modifier.width(9.dp))
         Column(
             modifier = Modifier.weight(1f).clickable(onClick = onProfileClick),
             verticalArrangement = Arrangement.Center
@@ -3415,7 +3425,7 @@ private fun ChatHeader(
                 Text(
                     text = conversation.partnerName,
                     color = palette.textPrimary,
-                    fontSize = 14.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -3428,28 +3438,34 @@ private fun ChatHeader(
                     modifier = Modifier.padding(start = 2.dp)
                 )
             }
-            Text(
-                conversation.presenceLabel.ifBlank {
-                    if (conversation.isOnline) "Active now" else conversation.lastSeen
-                },
-                color = if (conversation.isOnline) palette.online else palette.textSecondary,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (conversation.isOnline) {
+                    Box(Modifier.size(7.dp).background(palette.online, CircleShape))
+                    Spacer(Modifier.width(5.dp))
+                }
+                Text(
+                    text = conversation.presenceLabel.ifBlank {
+                        if (conversation.isOnline) "Online" else conversation.lastSeen
+                    },
+                    color = palette.textSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        GlassIconButton(
-            Icons.Default.Call, "Voice call", palette, 38.dp,
-            onClick = onAudioCall
-        )
-        GlassIconButton(
-            Icons.Default.Videocam, "Video call", palette, 38.dp,
-            onClick = onVideoCall
-        )
-        GlassIconButton(
-            Icons.Default.MoreVert, "More chat options", palette, 38.dp,
-            onClick = onMore
-        )
+        IconButton(onClick = onVideoCall, modifier = Modifier.size(37.dp)) {
+            Icon(Icons.Default.Videocam, contentDescription = "Video call",
+                tint = palette.textPrimary, modifier = Modifier.size(25.dp))
+        }
+        IconButton(onClick = onAudioCall, modifier = Modifier.size(37.dp)) {
+            Icon(Icons.Default.Call, contentDescription = "Voice call",
+                tint = palette.textPrimary, modifier = Modifier.size(24.dp))
+        }
+        IconButton(onClick = onMore, modifier = Modifier.size(35.dp)) {
+            Icon(Icons.Default.MoreVert, contentDescription = "More chat options",
+                tint = palette.textPrimary, modifier = Modifier.size(24.dp))
+        }
     }
 }
 
@@ -3827,7 +3843,7 @@ private fun MessageBubble(
             horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
             verticalAlignment = Alignment.Bottom
         ) {
-            if (!isMine) {
+            if (!isMine && palette.mode != MessageThemeMode.DARK) {
                 RingAvatar(url = partnerAvatar, name = partnerName, palette = palette, size = 31.dp)
                 Spacer(Modifier.width(8.dp))
             }
@@ -3865,7 +3881,8 @@ private fun MessageBubble(
                     }
                     if (message.replyToMessageId != null) {
                         Surface(
-                            color = palette.glass.copy(alpha = .45f),
+                            color = if (isMine && palette.mode == MessageThemeMode.DARK)
+                                Color(0xFFE1E4E9) else palette.glass.copy(alpha = .45f),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, palette.border.copy(alpha = .55f)),
                             modifier = Modifier
@@ -3882,7 +3899,8 @@ private fun MessageBubble(
                                 )
                                 Text(
                                     replyTarget?.text?.ifBlank { "Media message" } ?: "Original message unavailable",
-                                    color = palette.textSecondary,
+                                    color = if (isMine && palette.mode == MessageThemeMode.DARK)
+                                        palette.outgoingText.copy(alpha = .65f) else palette.textSecondary,
                                     fontSize = 11.sp,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
@@ -3919,7 +3937,8 @@ private fun MessageBubble(
                         Text(
                             metadata,
                             color = if (message.status == MessageStatus.FAILED)
-                                palette.danger else palette.textSecondary,
+                                palette.danger else if (isMine && palette.mode == MessageThemeMode.DARK)
+                                palette.outgoingText.copy(alpha = .52f) else palette.textSecondary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -3946,7 +3965,8 @@ private fun MessageBubble(
                                         else -> "Sent"
                                     },
                                     tint = if (confirmedStatus == MessageStatus.READ)
-                                        Color(0xFF1685FF) else palette.textSecondary,
+                                        Color(0xFF1685FF) else if (palette.mode == MessageThemeMode.DARK)
+                                        palette.outgoingText.copy(alpha = .55f) else palette.textSecondary,
                                     modifier = Modifier.size(15.dp)
                                 )
                             }
@@ -4485,186 +4505,114 @@ private fun MessageComposer(
     onVoiceStop: () -> Unit,
     onVoiceCancel: () -> Unit
 ) {
-    val reducedVoiceMotion = rememberBlinkReduceMotion()
-    val voiceIndicatorAlpha by animateFloatAsState(
-        targetValue = if (isRecording && !reducedVoiceMotion && recordingSeconds % 2 == 0) 1f else .55f,
-        animationSpec = tween(if (reducedVoiceMotion) 0 else 240),
-        label = "recordingVoiceStatus"
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            // The chat root consumes overlapping IME/navigation-bar insets.
-            // Applying navigationBarsPadding here would create a second gap.
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .testTag("chat_message_composer")
+    // Four separate controls match the supplied chat: +, emoji, input with
+    // camera/microphone, and persistent blue send. All actions remain wired.
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .testTag("chat_message_composer"),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
-            color = palette.glass.copy(alpha = if (palette.isLight) .97f else .94f),
+            shape = CircleShape, color = palette.glass,
+            modifier = Modifier.size(40.dp).clickable(
+                enabled = !isRecording, onClick = onAttachment
+            ).testTag("chat_reference_attachment_plus")
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Add, contentDescription = "Open attachments",
+                    tint = palette.textPrimary, modifier = Modifier.size(27.dp))
+            }
+        }
+        Surface(
+            shape = CircleShape, color = palette.glass,
+            modifier = Modifier.size(38.dp).clickable(
+                enabled = !isRecording, onClick = onEmoji
+            ).testTag("chat_reference_emoji")
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.EmojiEmotions, contentDescription = "Choose emoji",
+                    tint = palette.textPrimary, modifier = Modifier.size(23.dp))
+            }
+        }
+        Surface(
+            color = palette.glass,
             contentColor = palette.textPrimary,
-            shape = RoundedCornerShape(30.dp),
-            border = BorderStroke(1.dp, palette.border),
-            shadowElevation = 10.dp,
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(27.dp),
+            modifier = Modifier.weight(1f)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 44.dp)
+                    .padding(start = 13.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isRecording) {
-                    GlassIconButton(
-                        icon = Icons.Default.Close,
-                        contentDescription = "Cancel voice note",
-                        palette = palette,
-                        size = 40.dp,
-                        onClick = onVoiceCancel
-                    )
-                } else {
-                    Surface(
-                        shape = CircleShape,
-                        color = palette.accent,
-                        contentColor = Color.White,
-                        modifier = Modifier.size(40.dp)
-                            .clickable(onClick = onAttachment)
-                            .testTag("chat_reference_attachment_plus")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Add, contentDescription = "Open attachments",
-                                tint = Color.White, modifier = Modifier.size(25.dp))
-                        }
-                    }
-                }
-                Spacer(Modifier.width(5.dp))
-
-                if (isRecording) {
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp)
-                            .padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = palette.danger.copy(alpha = voiceIndicatorAlpha),
-                            modifier = Modifier.size(9.dp)
-                        ) {}
-                        Spacer(Modifier.width(9.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Recording voice note",
-                                color = palette.textPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                formatCallDuration(recordingSeconds),
-                                color = palette.textSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
+                    Text("Recording · ${formatCallDuration(recordingSeconds)}",
+                        color = palette.textPrimary, fontSize = 12.sp,
+                        modifier = Modifier.weight(1f), maxLines = 1)
+                    IconButton(onClick = onVoiceCancel, modifier = Modifier.size(31.dp)) {
+                        Icon(Icons.Default.Close, "Cancel voice note",
+                            tint = palette.textSecondary, modifier = Modifier.size(21.dp))
                     }
                 } else {
-                    TextField(
+                    BasicTextField(
                         value = value,
                         onValueChange = onValueChange,
-                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 14.sp) },
+                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 14.sp),
+                        cursorBrush = SolidColor(palette.accent),
                         maxLines = 4,
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedTextColor = palette.textPrimary,
-                            unfocusedTextColor = palette.textPrimary,
-                            cursorColor = palette.accent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Send
                         ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp, max = 112.dp)
-                    )
-                }
-
-                if (!isRecording) {
-                    GlassIconButton(
-                        icon = Icons.Default.EmojiEmotions,
-                        contentDescription = "Choose emoji",
-                        palette = palette,
-                        size = 40.dp,
-                        onClick = onEmoji
-                    )
-                    GlassIconButton(
-                        icon = Icons.Default.CameraAlt,
-                        contentDescription = "Open camera",
-                        palette = palette,
-                        size = 40.dp,
-                        onClick = onCamera
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                when {
-                    isRecording -> {
-                        Surface(
-                            shape = CircleShape,
-                            color = palette.accent,
-                            contentColor = Color.White,
-                            modifier = Modifier.size(42.dp).clickable(onClick = onVoiceStop)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Send,
-                                    contentDescription = "Send voice note",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(21.dp)
+                        keyboardActions = KeyboardActions(
+                            onSend = { if (value.isNotBlank()) onSubmit() }
+                        ),
+                        modifier = Modifier.weight(1f).heightIn(min = 22.dp, max = 94.dp),
+                        decorationBox = { innerTextField ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (value.isBlank()) Text(
+                                    "Message", color = palette.textMuted, fontSize = 14.sp
                                 )
+                                innerTextField()
                             }
                         }
+                    )
+                    IconButton(onClick = onCamera, modifier = Modifier.size(33.dp)) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Open camera",
+                            tint = palette.textPrimary, modifier = Modifier.size(21.dp))
                     }
-                    value.isNotBlank() -> {
-                        Surface(
-                            shape = CircleShape,
-                            color = palette.accent,
-                            contentColor = Color.White,
-                            modifier = Modifier.size(42.dp).clickable(onClick = onSubmit)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Send,
-                                    contentDescription = "Send message",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-                        }
-                    }
-                    else -> {
-                        Surface(
-                            shape = CircleShape,
-                            color = palette.accent,
-                            contentColor = Color.White,
-                            modifier = Modifier
-                                .size(42.dp)
-                                .pointerInput(onDictation, onVoiceStart) {
-                                    detectTapGestures(
-                                        onTap = { onDictation() },
-                                        onLongPress = { onVoiceStart() }
-                                    )
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Mic,
-                                    contentDescription = "Tap for voice typing, hold for voice note",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-                        }
+                    Box(
+                        modifier = Modifier.size(33.dp).pointerInput(onDictation, onVoiceStart) {
+                            detectTapGestures(
+                                onTap = { onDictation() },
+                                onLongPress = { onVoiceStart() }
+                            )
+                        },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Mic,
+                            contentDescription = "Tap for voice typing, hold for voice note",
+                            tint = palette.textPrimary, modifier = Modifier.size(21.dp))
                     }
                 }
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = palette.accent,
+            contentColor = Color.White,
+            modifier = Modifier.size(46.dp)
+                .clickable(enabled = isRecording || value.isNotBlank()) {
+                    if (isRecording) onVoiceStop() else onSubmit()
+                }
+                .testTag("chat_reference_send")
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Send,
+                    contentDescription = if (isRecording) "Send voice note" else "Send message",
+                    tint = Color.White, modifier = Modifier.size(22.dp))
             }
         }
     }
