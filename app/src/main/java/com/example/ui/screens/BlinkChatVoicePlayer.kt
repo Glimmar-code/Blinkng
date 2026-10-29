@@ -214,7 +214,11 @@ internal fun BlinkChatVoicePlayer(
                 .testTag("chat_reference_voice_speed")
         ) {
             Text(
-                "${speeds[speedStep]}×",
+                when (speedStep) {
+                    0 -> "1x"
+                    1 -> "1.5x"
+                    else -> "2x"
+                },
                 color = tint, fontSize = 12.sp,
                 maxLines = 1
             )
