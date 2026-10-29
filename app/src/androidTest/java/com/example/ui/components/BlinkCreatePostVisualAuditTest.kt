@@ -20,6 +20,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.assertExists
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.models.PostDraft
@@ -140,6 +148,45 @@ class BlinkCreatePostVisualAuditTest {
             }
         }
         capture("create-post-text-toolbar-staging.png")
+    }
+
+
+    @Test fun fullTextComposerAndMentionResultsAreCapturedFromActualCreatePostScreen() {
+        val avatar = "android.resource://" +
+            InstrumentationRegistry.getInstrumentation().targetContext.packageName +
+            "/${com.example.R.drawable.app_icon}"
+        rule.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-composer",
+                        fullName = "BLINK Test Student",
+                        username = "blink_visual_test",
+                        avatarUrl = avatar,
+                        university = "FUTA"
+                    ),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true,
+                    searchMentions = { _, _, _, _ ->
+                        listOf(
+                            UserProfile(id = "audit-ayo", fullName = "Ayo", username = "ayo_futa", avatarUrl = avatar),
+                            UserProfile(id = "audit-abby", fullName = "Abby", username = "abby_official", avatarUrl = avatar),
+                            UserProfile(id = "audit-adeola", fullName = "Adeola", username = "adeola_futa", avatarUrl = avatar)
+                        )
+                    }
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_create_choice_text").performClick()
+        rule.onNodeWithTag("blink_create_post_full_screen").assertExists()
+        capture("create-post-full-text-staging.png", "blink_create_post_full_screen")
+
+        rule.onAllNodes(hasSetTextAction()).onFirst().performTextReplacement("@a")
+        rule.waitUntil(12_000) {
+            rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty()
+        }
+        capture("create-post-full-mentions-staging.png", "blink_create_post_full_screen")
     }
 
     @Test fun realPollOptionsAndDurationsFixture() {
