@@ -4045,8 +4045,9 @@ private fun MessageBubble(
                         Text(
                             metadata,
                             color = if (message.status == MessageStatus.FAILED)
-                                palette.danger else if (isMine && palette.mode == MessageThemeMode.DARK)
-                                palette.outgoingText.copy(alpha = .52f) else palette.textSecondary,
+                                palette.danger else if (isMine)
+                                palette.outgoingText.copy(alpha = if (palette.mode == MessageThemeMode.DARK) .52f else .9f)
+                                else palette.textSecondary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
