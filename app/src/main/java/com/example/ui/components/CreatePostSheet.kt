@@ -2982,20 +2982,24 @@ internal fun PollComposer(
     onDurationChanged: (Int) -> Unit,
     enabled: Boolean
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
-        )
-    ) {
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = Color(0xFF6456F5),
+        surface = Color(0xFF15181F),
+        surfaceVariant = Color(0xFF23262E),
+        onSurface = Color.White,
+        onSurfaceVariant = Color(0xFFADB4C2)
+    )) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B0D12)),
+            border = BorderStroke(1.dp, Color(0xFF252831))
+        ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Poll, contentDescription = null)
                 Spacer(Modifier.width(7.dp))
-                Text("Create Poll", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Poll", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text(options.size.toString() + " / 4 options",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3057,6 +3061,20 @@ internal fun PollComposer(
                 }
             }
 
+            if (options.size < 4) {
+                TextButton(
+                    onClick = { onOptionsChanged(options + "") },
+                    enabled = enabled
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add option")
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -3106,20 +3124,8 @@ internal fun PollComposer(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            if (options.size < 4) {
-                TextButton(
-                    onClick = { onOptionsChanged(options + "") },
-                    enabled = enabled
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add option")
-                }
-            }
+
+        }
         }
     }
 }
