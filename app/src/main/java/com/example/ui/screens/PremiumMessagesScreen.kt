@@ -3855,10 +3855,10 @@ private fun MessageBubble(
 
             Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
                 val bubbleShape = RoundedCornerShape(
-                    topStart = if (isMine) 16.dp else 4.dp,
-                    topEnd = if (isMine) 4.dp else 16.dp,
-                    bottomStart = 16.dp,
-                    bottomEnd = 16.dp
+                    topStart = 16.dp,
+                    topEnd = 16.dp,
+                    bottomStart = if (isMine) 16.dp else 4.dp,
+                    bottomEnd = if (isMine) 4.dp else 16.dp
                 )
                 Column(
                     modifier = Modifier
