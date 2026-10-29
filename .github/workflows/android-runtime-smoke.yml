@@ -86,6 +86,9 @@ jobs:
             test -s app/build/visual-audit/home-reference-with-create.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/inbox-reference-staging-light.png app/build/visual-audit/inbox-reference-staging-light.png
             test -s app/build/visual-audit/inbox-reference-staging-light.png
+            # Capture the actual Contest test fixture to inspect small alignment errors.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-hero-podium-winners-staging.png app/build/visual-audit/contest-hero-podium-winners-staging.png
+            test -s app/build/visual-audit/contest-hero-podium-winners-staging.png
 
       - name: Upload instrumentation reports
         if: always()
