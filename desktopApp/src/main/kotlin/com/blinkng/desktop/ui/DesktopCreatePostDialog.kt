@@ -142,7 +142,8 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
                     text = snapshot.text, isReel = snapshot.kind == "Video", videoUrl = video,
                     imageUrls = photos, audience = snapshot.audience,
                     location = snapshot.location.takeIf(String::isNotBlank), allowComments = snapshot.allowComments,
-                    clientRequestId = snapshot.requestId, textStyle = snapshot.textStyle,
+                    clientRequestId = snapshot.requestId,
+                    textStyle = snapshot.textStyle.takeIf { snapshot.kind == "Text" },
                     poll = if (snapshot.kind == "Poll") BlinkPostComposerPolicy.preparePoll(
                         snapshot.question, snapshot.options, snapshot.durationHours) else null,
                 )
@@ -367,7 +368,7 @@ private fun DesktopDraftPreview(state: DesktopAppState, draft: DesktopPostDraft)
                 AsyncImage(state.profile?.avatarUrl, "Your profile photo", Modifier.size(40.dp).clip(CircleShape))
                 Column { Text(state.profile?.fullName.orEmpty(), fontWeight = FontWeight.Bold); Text("Preview · ${draft.audience}", fontSize = 12.sp) }
             }
-            DesktopPostText(draft.text, draft.textStyle)
+            DesktopPostText(draft.text, draft.textStyle.takeIf { draft.kind == "Text" })
             if (draft.photos.isNotEmpty()) {
                 var photo by remember { mutableStateOf(0) }
                 AsyncImage(File(draft.photos[photo.coerceIn(draft.photos.indices)]), "Preview photo ${photo + 1}",

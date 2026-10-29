@@ -102,4 +102,12 @@ class DesktopPostPublishingTest {
         assertThrows(IllegalArgumentException::class.java) { runBlocking { client(ledger).createPost("Private", audience = "Only me") } }
         assertEquals(0, ledger.calls)
     }
+
+    @Test fun publishesTheValidatedPollInsteadOfBlankOrUntrimmedOptions() = runBlocking {
+        val ledger = Ledger()
+        val poll = com.blinkng.shared.BlinkFeedPollDraft(" Choose? ", listOf(" Yes ", "No", " "), 24)
+        client(ledger).createPost("", poll = poll)
+        assertEquals("Choose?", ledger.polls.single().getString("question"))
+        assertEquals(listOf("Yes", "No"), ledger.options.map { it.getString("option_text") })
+    }
 }

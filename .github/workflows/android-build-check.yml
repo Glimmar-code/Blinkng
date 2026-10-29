@@ -3,7 +3,7 @@ name: Android quality gate
 # Keep this gate explicit for main-branch integration validation.
 on:
   push:
-    branches: [main]
+    branches: [main, 'Testlab/**']
   pull_request:
   workflow_dispatch:
 

@@ -1264,7 +1264,9 @@ class DesktopSupabaseClient(
         require(!isReel || (!videoUrl.isNullOrBlank() && imageUrls.isEmpty() && poll == null)) {
             "Choose a video for your Reel."
         }
-        poll?.let { com.blinkng.shared.BlinkPostComposerPolicy.preparePoll(it.question, it.options, it.durationHours) }
+        val preparedPoll = poll?.let {
+            com.blinkng.shared.BlinkPostComposerPolicy.preparePoll(it.question, it.options, it.durationHours)
+        }
         require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
             "Item sales belong in BLINK Market."
         }
@@ -1315,15 +1317,15 @@ class DesktopSupabaseClient(
             getArray("/rest/v1/feed_posts?id=eq.${encode(requestId)}&user_id=eq.${encode(active.userId)}&select=*&limit=1")
                 .optJSONObject(0) ?: throw failure
         }
-        if (poll != null) {
+        if (preparedPoll != null) {
             val pollId = UUID.nameUUIDFromBytes("$requestId:poll".toByteArray()).toString()
             var savedPoll = getArray("/rest/v1/polls?post_id=eq.${encode(requestId)}&select=id&limit=1").optJSONObject(0)
             if (savedPoll == null) {
                 val publishedAt = created.optNullableString("created_at")?.let { Instant.parse(it).toEpochMilli() }
                     ?: System.currentTimeMillis()
                 val payload = JSONObject().put("id", pollId).put("post_id", requestId)
-                    .put("question", poll.question).put("allows_multiple", false)
-                    .put("expires_at", Instant.ofEpochMilli(poll.expiresAtMillis(publishedAt)).toString())
+                    .put("question", preparedPoll.question).put("allows_multiple", false)
+                    .put("expires_at", Instant.ofEpochMilli(preparedPoll.expiresAtMillis(publishedAt)).toString())
                 savedPoll = runCatching {
                     postArray("/rest/v1/polls", payload, prefer = "return=representation").optJSONObject(0)
                 }.getOrElse { failure ->
@@ -1332,7 +1334,7 @@ class DesktopSupabaseClient(
                 }
             }
             val savedId = requireNotNull(savedPoll).getString("id")
-            for ((index, option) in poll.options.withIndex()) {
+            for ((index, option) in preparedPoll.options.withIndex()) {
                 val optionId = UUID.nameUUIDFromBytes("$savedId:$index".toByteArray()).toString()
                 val savedOptions = getArray("/rest/v1/poll_options?poll_id=eq.${encode(savedId)}&select=id,position")
                 if ((0 until savedOptions.length()).none { savedOptions.getJSONObject(it).optInt("position", -1) == index }) {

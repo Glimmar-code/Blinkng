@@ -68,3 +68,11 @@ This Linux machine has no `/dev/kvm`, attached Android handset or Windows instal
 Remaining Windows capability gaps are native photo editing/markup and multi-clip/video effects/export. Desktop accepts already edited photos/videos; these gaps are not described as completed parity. Hosted storage, timed polls, DPAPI and two-account messaging still require safe integration validation. Private posting remains disabled. No new production credentials or paid infrastructure were requested.
 
 Do not promote this branch to production until these release gates and the applicable repository checks have passed. Main and production backend remain unchanged.
+
+## GitHub application follow-up
+
+The owner subsequently authorized fixing remaining issues and applying the work to GitHub. The follow-up fixes canonicalize poll questions/answers before writing them (including trimming/removing empty optional answers), prevent text-post backgrounds leaking into photo/video previews, and make Android quality/runtime and Windows packaging workflows run on `Testlab/**` pushes. The separate `Testlab` branch does not exist remotely; the integration remains isolated on its existing Testlab-prefixed branch.
+
+The follow-up desktop suite passed 21 tests, including the new real-client normalization regression. Workflow YAML parsing and branch-pattern checks passed. Earlier Android and isolated Supabase results above remain historical evidence for their unchanged application/backend inputs; new GitHub CI must establish the remote candidate's checks.
+
+GitHub API access is currently blocked by the environment proxy with HTTP CONNECT 403. The custom network draft now adds only `api.github.com`, preserving the package-manager presets and other settings. Saving that draft did not apply or publish it. PR creation, CI inspection and any promotion remain pending until API access works and the required checks pass. Original PRs and main must be preserved. Windows native editing, physical-device comparison and hosted integration gaps listed above remain unresolved; this follow-up does not claim all feature/release gates are complete.
