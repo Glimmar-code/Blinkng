@@ -319,7 +319,8 @@ internal fun PremiumReelEditor(
                     Triple(Icons.Default.EmojiEmotions, "Stickers", { showAdvanced = true }),
                     Triple(Icons.Default.FilterVintage, "Filters", { grayscale = !grayscale }),
                     Triple(Icons.Default.AutoAwesome, "Effects", {
-                        rotation = (rotation + 90f) % 360f
+                        // Open the existing effect controls; never silently rotate the Reel.
+                        showAdvanced = true
                     }),
                     Triple(Icons.Default.Tune, "Adjust", { showAdvanced = true }),
                     Triple(Icons.Default.ContentCut, "Trim", {
