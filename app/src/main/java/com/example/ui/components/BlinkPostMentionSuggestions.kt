@@ -85,11 +85,11 @@ fun BlinkPostMentionSuggestions(
             Surface(
                 modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+                color = Color(0xFF17191F)
             ) {
                 Text(
                     if (loading) "Finding students..." else "No matching student accounts",
-                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD5D7DF), style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(14.dp)
                 )
             }
@@ -101,7 +101,7 @@ fun BlinkPostMentionSuggestions(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text("Mention a BLINK student", style = MaterialTheme.typography.labelMedium)
+        Text("Mention a BLINK student", color = Color(0xFFE8EAF1), style = MaterialTheme.typography.labelMedium)
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -109,7 +109,7 @@ fun BlinkPostMentionSuggestions(
             items(ranked.take(visibleCount), key = { it.id }) { person ->
                 Surface(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f),
+                    color = Color(0xFF17191F),
                     modifier = Modifier.fillMaxWidth().clickable {
                         val current = BlinkMentionTokenPolicy.active(text)
                         if (current != null) {
@@ -131,8 +131,8 @@ fun BlinkPostMentionSuggestions(
                                 .background(MaterialTheme.colorScheme.outlineVariant)
                         )
                         Column(Modifier.padding(start = 10.dp)) {
-                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
-                            Text("@" + person.username, style = MaterialTheme.typography.labelSmall)
+                            Text(person.fullName.ifBlank { person.username }, color = Color.White, maxLines = 1)
+                            Text("@" + person.username, color = Color(0xFFA2A9BC), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -163,7 +163,7 @@ fun BlinkPostMentionSuggestions(
                                 }
                             }
                         }
-                    ) { Text("See more") }
+                    ) { Text("See more", color = Color(0xFF8B81FF)) }
                 }
             }
         }
