@@ -227,7 +227,14 @@ fun BlinkContestScreen(
                         Text("Prizes: 1st " + cash(c.optInt("prize_first")) +
                             " · 2nd " + cash(c.optInt("prize_second")) +
                             " · 3rd " + cash(c.optInt("prize_third")), fontWeight = FontWeight.Bold)
-                        Text("Applications close " + dateLabel(c.optString("registration_closes_at")))
+                        when (status) {
+                            "upcoming" -> Text(
+                                "Applications open " + dateLabel(c.optString("registration_opens_at"))
+                            )
+                            "registration" -> Text(
+                                "Applications close " + dateLabel(c.optString("registration_closes_at"))
+                            )
+                        }
                         Surface(color = Color(0xFF0B1626),
                             shape = RoundedCornerShape(12.dp)) {
                             Box(Modifier.padding(12.dp)) {
