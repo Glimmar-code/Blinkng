@@ -65,10 +65,6 @@ internal object PostComposerRules {
         !isSubmitting
 
     fun validPoll(question: String, options: List<String>): Boolean {
-        val cleaned = options.map(String::trim).filter(String::isNotBlank)
-        if (question.trim().isEmpty() || question.length > 240 ||
-            options.size !in 2..4 || cleaned.size < 2 ||
-            cleaned.any { it.length > 120 }) return false
-        return cleaned.map { it.lowercase(Locale.US) }.distinct().size == cleaned.size
+        return com.blinkng.shared.BlinkPostComposerPolicy.validPoll(question, options)
     }
 }

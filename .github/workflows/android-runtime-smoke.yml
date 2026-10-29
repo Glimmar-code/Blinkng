@@ -92,6 +92,22 @@ jobs:
             test -s app/build/visual-audit/contest-hero-podium-winners-staging.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-applicant-card-staging.png app/build/visual-audit/contest-applicant-card-staging.png
             test -s app/build/visual-audit/contest-applicant-card-staging.png
+            # Reference composer screenshots are produced on the emulator, not fabricated.
+            # android-emulator-runner executes each script line separately. Keep the loop on one line.
+            for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # These captures use the actual full CreatePostSheet, not isolated toolbar fixtures.
+            for view in full-text full-mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # Capture native dark conversation chrome for the reference audit.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-staging-dark.png app/build/visual-audit/chat-reference-staging-dark.png
+            test -s app/build/visual-audit/chat-reference-staging-dark.png
+            # Three slices of the actual Compose conversation with synthetic
+            # media fixtures. Retain all captures for manual side-by-side review.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-top.png app/build/visual-audit/chat-reference-full-top.png
+            test -s app/build/visual-audit/chat-reference-full-top.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-media.png app/build/visual-audit/chat-reference-full-media.png
+            test -s app/build/visual-audit/chat-reference-full-media.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
+            test -s app/build/visual-audit/chat-reference-full-bottom.png
 
       - name: Upload instrumentation reports
         if: always()
