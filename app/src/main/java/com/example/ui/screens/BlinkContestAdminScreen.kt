@@ -50,6 +50,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var pendingEntryDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var previewEntryMedia by remember { mutableStateOf<String?>(null) }
     var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     var title by remember { mutableStateOf("") }
@@ -323,6 +324,13 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Text("@" + entry.optString("username") + " · " + entry.optString("status"),
                         fontWeight = FontWeight.SemiBold)
                     Text(entry.optString("statement"))
+                    val media = entry.optString("media_url")
+                    if (media.startsWith("https://")) {
+                        TextButton(onClick = { previewEntryMedia = media }) {
+                            Text(if (contestMediaExtension(media) == "mp4") "Preview entry video"
+                                else "Preview entry photo")
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("approve", "reject", "disqualify").forEach { action ->
                             TextButton(enabled = !busy, onClick = {
@@ -343,6 +351,29 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    previewEntryMedia?.let { media ->
+        AlertDialog(
+            onDismissRequest = { previewEntryMedia = null },
+            title = { Text("Application media") },
+            text = {
+                when (contestMediaExtension(media)) {
+                    "jpg", "jpeg", "png", "webp" -> AsyncImage(
+                        model = media,
+                        contentDescription = "Contest application photo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(280.dp)
+                    )
+                    "mp4" -> BlinkContestVideoPreview(
+                        media, Modifier.fillMaxWidth().height(280.dp)
+                    )
+                    else -> Text("This media format cannot be previewed.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { previewEntryMedia = null }) { Text("Close") }
+            }
+        )
     }
     pendingEntryDecision?.let { (entryId, action) ->
         AlertDialog(
