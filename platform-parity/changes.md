@@ -1,3 +1,10 @@
+## 2026-10-29 — Combined Contest, Create Post and Chat repair
+
+- Preserves PR #638, #639 and #644 histories on `Testlab/contest-create-post-chat-20261029`.
+- Shared Contest voting handles JSON-null votes correctly and fails closed for existing votes, self-votes, invalid candidates and closed contests. Completed/cancelled history, Windows load retry and explicit native media upload use matching limits on Android/Windows. Invitation outages preserve the explicit app-opening action without automatic votes.
+- Combined APK/lint/instrumentation compilation, 26 focused Android tests, 25 Windows tests, full isolated SQL suite and invitation regressions passed. Native Android checks took 27m 10s; CI has a 60-minute budget for the larger full suite without dropping checks.
+- Remote CI/review, hosted deployment/storage and device/Windows installer verification remain outstanding. GitHub API is blocked by the current proxy allowlist. No merge to main or production SQL deployment is claimed.
+
 ## 2026-10-29 — Combined Chat and Create Post reference implementation
 
 - Integrated PR #639 at `96f0f2d05c83698a0db3ade66fc1fc5fc723c87f` and PR #644 at `0300879e20a4897b3a086013607d59e15ecdf82a` on local `Testlab/chat-create-post-reference-20261029`. Both original histories and screenshot-export checks are preserved. Main, original PRs and Contest work were not modified remotely.
