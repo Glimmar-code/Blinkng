@@ -49,6 +49,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
+    var pendingEntryDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -202,22 +204,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                         }) { Text(action.replaceFirstChar { it.uppercase() }) }
                         if (contest.optString("status") in listOf("published", "paused")) {
                             TextButton(enabled = !busy, onClick = {
-                                busy = true
-                                scope.launch {
-                                    api.adminFinalize(contest.optString("id"))
-                                        .onSuccess { message = "Results finalized."; revision++ }
-                                        .onFailure { message = it.message ?: "Finalize failed." }
-                                    busy = false
-                                }
+                                pendingContestDecision = contest.optString("id") to "finalize"
                             }) { Text("Finalize") }
                             TextButton(enabled = !busy, onClick = {
-                                busy = true
-                                scope.launch {
-                                    api.adminTransition(contest.optString("id"), "cancel")
-                                        .onSuccess { message = "Contest cancelled."; revision++ }
-                                        .onFailure { message = it.message ?: "Cancel failed." }
-                                    busy = false
-                                }
+                                pendingContestDecision = contest.optString("id") to "cancel"
                             }) { Text("Cancel") }
                         }
                     }
@@ -336,12 +326,16 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("approve", "reject", "disqualify").forEach { action ->
                             TextButton(enabled = !busy, onClick = {
-                                busy = true
-                                scope.launch {
-                                    api.adminReview(entry.optString("id"), action)
-                                        .onSuccess { message = "Entry reviewed."; revision++ }
-                                        .onFailure { message = it.message ?: "Review failed." }
-                                    busy = false
+                                if (action != "approve") {
+                                    pendingEntryDecision = entry.optString("id") to action
+                                } else {
+                                    busy = true
+                                    scope.launch {
+                                        api.adminReview(entry.optString("id"), action)
+                                            .onSuccess { message = "Entry approved."; revision++ }
+                                            .onFailure { message = it.message ?: "Review failed." }
+                                        busy = false
+                                    }
                                 }
                             }) { Text(action.replaceFirstChar { it.uppercase() }) }
                         }
@@ -349,6 +343,53 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    pendingEntryDecision?.let { (entryId, action) ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) pendingEntryDecision = null },
+            title = { Text(if (action == "reject") "Reject application?" else "Disqualify contestant?") },
+            text = { Text("This changes the contestant's eligibility. Confirm the decision before continuing.") },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        api.adminReview(entryId, action)
+                            .onSuccess { message = "Application updated."; revision++ }
+                            .onFailure { message = it.message ?: "Review failed." }
+                        busy = false
+                        pendingEntryDecision = null
+                    }
+                }) { Text("Confirm " + action) }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { pendingEntryDecision = null }) { Text("Go back") }
+            }
+        )
+    }
+    pendingContestDecision?.let { (contestId, action) ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) pendingContestDecision = null },
+            title = { Text(if (action == "finalize") "Finalize contest results?" else "Cancel contest?") },
+            text = { Text(if (action == "finalize")
+                "Check the voting deadline and pending vote reviews before publishing final winners."
+                else "Cancelling will end applications and voting for this contest.") },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        val result = if (action == "finalize") api.adminFinalize(contestId)
+                        else api.adminTransition(contestId, "cancel")
+                        result.onSuccess { message = "Contest updated."; revision++ }
+                            .onFailure { message = it.message ?: "Contest action failed." }
+                        busy = false
+                        pendingContestDecision = null
+                    }
+                }) { Text(if (action == "finalize") "Finalize" else "Cancel contest") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { pendingContestDecision = null }) { Text("Go back") }
+            }
+        )
     }
 }
 
