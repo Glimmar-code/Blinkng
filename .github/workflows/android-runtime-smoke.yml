@@ -89,6 +89,8 @@ jobs:
             # Reference composer screenshots are produced on the emulator, not fabricated.
             # android-emulator-runner executes each script line separately. Keep the loop on one line.
             for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # These captures use the actual full CreatePostSheet, not isolated toolbar fixtures.
+            for view in full-text full-mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
 
       - name: Upload instrumentation reports
         if: always()
