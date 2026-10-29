@@ -18,7 +18,9 @@ data class PostPoll(
     val question: String,
     val options: List<PollOption>,
     val totalVotes: Int = 0,
-    val hasVoted: Boolean = false
+    val hasVoted: Boolean = false,
+    val allowsMultiple: Boolean = false,
+    val expiresAtMillis: Long? = null
 )
 
 data class CreatePostRequest(
@@ -113,6 +115,7 @@ data class PostDraft(
     val isDisappearing: Boolean = false,
     val pollQuestion: String = "",
     val pollOptions: List<String> = emptyList(),
+    val pollDurationHours: Int = 24,
     val savedAtTimestamp: Long = System.currentTimeMillis(),
     val audioTrack: String? = null,
     val altText: String? = null,

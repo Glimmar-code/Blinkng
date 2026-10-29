@@ -1,0 +1,59 @@
+name: BLINK posting guards isolated PostgreSQL
+
+on:
+  push:
+    branches: ['Testlab/**', 'Testlab-*']
+    paths:
+      - 'supabase/migrations/20261028200903_blink_poll_vote_expiration_guard_20261028.sql'
+      - 'supabase/migrations/20261028200938_blink_block_unprotected_private_audiences_20261028.sql'
+      - 'supabase/tests/blink_posting_guards_*'
+      - '.github/workflows/blink-posting-guards-postgres.yml'
+  pull_request:
+    branches: [main, Testlab]
+    paths:
+      - 'supabase/migrations/20261028200903_blink_poll_vote_expiration_guard_20261028.sql'
+      - 'supabase/migrations/20261028200938_blink_block_unprotected_private_audiences_20261028.sql'
+      - 'supabase/tests/blink_posting_guards_*'
+      - '.github/workflows/blink-posting-guards-postgres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  posting-guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated_runner_only
+          POSTGRES_DB: blink_posting_ci
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_posting_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: isolated_runner_only
+      PGDATABASE: blink_posting_ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create isolated fake users and polls
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_posting_guards_fixture.pgfixture
+      - name: Apply the exact deployed migrations in disposable database
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261028200903_blink_poll_vote_expiration_guard_20261028.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261028200938_blink_block_unprotected_private_audiences_20261028.sql
+      - name: Assert deadline, option ownership, user identity and private-audience guard
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_posting_guards_assertions.sql
+      - name: Confirm no hosted resources were used
+        run: echo 'Disposable PostgreSQL only. No production database credentials were configured.'

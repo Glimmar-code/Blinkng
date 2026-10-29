@@ -3,13 +3,24 @@ package com.example.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,7 +52,8 @@ fun BlinkPostMentionSuggestions(
     val token = remember(text) { BlinkMentionTokenPolicy.active(text) }
     var candidates by remember(token?.query) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var loading by remember(token?.query) { mutableStateOf(false) }
-    var visibleCount by remember(token?.query) { mutableIntStateOf(10) }
+    var hasSearched by remember(token?.query) { mutableStateOf(false) }
+    var visibleCount by remember(token?.query) { mutableIntStateOf(7) }
     var hasMoreServer by remember(token?.query) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -59,6 +71,7 @@ fun BlinkPostMentionSuggestions(
             hasMoreServer = false
         } finally {
             loading = false
+            hasSearched = true
         }
     }
 
@@ -67,31 +80,62 @@ fun BlinkPostMentionSuggestions(
         candidates, token.query,
         username = { it.username }, displayName = { it.fullName }
     )
-    if (ranked.isEmpty()) return
+    if (ranked.isEmpty()) {
+        if (loading || hasSearched) {
+            Surface(
+                modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                color = Color(0xFF17191F)
+            ) {
+                Text(
+                    if (loading) "Finding students..." else "No matching student accounts",
+                    color = Color(0xFFD5D7DF), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
+        return
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text("Mention a BLINK student", style = MaterialTheme.typography.labelMedium)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Mention a BLINK student", color = Color(0xFFE8EAF1), style = MaterialTheme.typography.labelMedium)
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             items(ranked.take(visibleCount), key = { it.id }) { person ->
-                AssistChip(
-                    onClick = {
+                Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color = Color(0xFF17191F),
+                    modifier = Modifier.fillMaxWidth().clickable {
                         val current = BlinkMentionTokenPolicy.active(text)
                         if (current != null) {
                             onTextChanged(
                                 BlinkMentionTokenPolicy.replace(text, current, person.username)
                             )
                         }
-                    },
-                    label = {
-                        Column {
-                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
-                            Text("@" + person.username, style = MaterialTheme.typography.labelSmall)
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = person.avatarUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(38.dp).clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
+                        Column(Modifier.padding(start = 10.dp)) {
+                            Text(person.fullName.ifBlank { person.username }, color = Color.White, maxLines = 1)
+                            Text("@" + person.username, color = Color(0xFFA2A9BC), style = MaterialTheme.typography.labelSmall)
                         }
                     }
-                )
+                }
             }
             if (ranked.size > visibleCount || hasMoreServer) {
                 item(key = "more_mention_results") {
@@ -119,7 +163,7 @@ fun BlinkPostMentionSuggestions(
                                 }
                             }
                         }
-                    ) { Text("See more") }
+                    ) { Text("See more", color = Color(0xFF8B81FF)) }
                 }
             }
         }
