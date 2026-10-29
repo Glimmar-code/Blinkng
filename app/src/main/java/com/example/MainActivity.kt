@@ -1009,6 +1009,22 @@ class MainActivity : ComponentActivity() {
                                                 onResult = onResult
                                             )
                                         },
+                                        onSavePhone = { number, onResult ->
+                                            // Empty is optional; a user clearing an existing
+                                            // number must actually clear it on the server.
+                                            if (number.isBlank() && uiState.myProfile.phone.value.isBlank()) {
+                                                onResult(true, null)
+                                            } else {
+                                                lifecycleScope.launch {
+                                                    val saved = com.example.data.supabase.SupabaseService()
+                                                        .updateMyProfilePhone(number)
+                                                    onResult(
+                                                        saved,
+                                                        if (saved) null else "Could not save your private phone number."
+                                                    )
+                                                }
+                                            }
+                                        },
                                         onSaveInterests = { interests, onResult ->
                                             viewModel.saveOnboardingInterests(interests, onResult)
                                         },
@@ -1132,6 +1148,21 @@ class MainActivity : ComponentActivity() {
                                         "marketplace" -> viewModel.setTab(MainTab.MARKET)
                                     }
                                 },
+                            )
+                        }
+
+                        // Ask after login or signup only when Home is idle.
+                        // Backend absence suppresses this prompt safely.
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            com.example.ui.components.BlinkContactSyncLoginPrompt(
+                                accountId = uiState.myProfile.id,
+                                safeToShow = idleHomeForPrompts &&
+                                    !showStartupIntro &&
+                                    !adminAnnouncementOpen &&
+                                    justCompletedOnboardingAccount == null &&
+                                    newStudentDiscoveryAccount == null &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed)
                             )
                         }
 

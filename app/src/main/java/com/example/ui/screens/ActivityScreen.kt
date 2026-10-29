@@ -889,6 +889,7 @@ private fun NotificationCard(
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit
 ) {
+    val isContactMatch = item.action.contains("possible contact", ignoreCase = true)
     val isOfficial = item.targetType.equals("notification", ignoreCase = true) ||
         item.targetType.equals("system", ignoreCase = true)
     val safeAction = item.action.takeUnless {
@@ -1042,6 +1043,11 @@ private fun NotificationCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
+                if (isContactMatch && canOpenProfile) {
+                    TextButton(onClick = { onProfileClick(username) }) {
+                        Text("View possible contact")
+                    }
+                }
                 if (safePreview != null) {
                     Spacer(Modifier.height(3.dp))
                     Text(
@@ -1159,6 +1165,7 @@ private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter
 private fun notificationIcon(item: ActivityItem): ImageVector {
     val action = item.action.lowercase()
     return when {
+        action.contains("possible contact") -> Icons.Default.PersonAdd
         item.targetType.equals("notification", ignoreCase = true) ||
             item.targetType.equals("system", ignoreCase = true) -> Icons.Default.Campaign
         item.targetType.equals("market", ignoreCase = true) || action.contains("market") -> Icons.Default.Storefront

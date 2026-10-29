@@ -1729,6 +1729,32 @@ fun getCurrentUserId(): String? {
         }
     }
 
+    /**
+     * Save a user-supplied (not SMS-verified) profile number. Do not use this
+     * field as phone-ownership proof for contact discovery or authentication.
+     * Update ONLY the signed-in owner's row; never send a stale whole profile.
+     * New numbers stay private until the owner deliberately changes visibility.
+     */
+    suspend fun updateMyProfilePhone(rawPhone: String): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId()?.takeIf { it.isNotBlank() } ?: return@withContext false
+        val cleanPhone = rawPhone.trim()
+        val body = JSONObject()
+            .put("phone", cleanPhone)
+            .put("phone_visibility", "PRIVATE")
+            .put("updated_at", nowIso())
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/profiles?id=eq.${encodeValue(uid)}", true)
+                    .addHeader("Prefer", "return=representation")
+                    .patch(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                response.isSuccessful && responseBody.isNotBlank() && responseBody != "[]"
+            }
+        }.getOrDefault(false)
+    }
+
     suspend fun updatePrivateBirthDate(birthDate: String): Boolean = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId()?.takeIf { it.isNotBlank() } ?: return@withContext false
         val clean = birthDate.trim()

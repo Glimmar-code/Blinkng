@@ -43,7 +43,7 @@ class NewMemberTests(unittest.TestCase):
         card = source("app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt")
         for s in ("blink_contact_settings", "blink_contact_imports", "enable row level security", "to service_role"):
             self.assertIn(s, migration)
-        for s in ("BLINK_CONTACT_HMAC_SECRET", "auth.getUser(jwt)", "phone_confirmed_at"):
+        for s in ("BLINK_CONTACT_HMAC_SECRET", "auth.getUser(jwt)", "blink_contact_upsert_opted_in"):
             self.assertIn(s, edge)
         self.assertIn("READ_CONTACTS", app)
         self.assertIn("numbers.isEmpty()", app)
@@ -53,25 +53,33 @@ class NewMemberTests(unittest.TestCase):
         self.assertIn("}.onFailure { problem =", card)
         self.assertNotIn("READ_CALL_LOG", app)
 
-    def test_returning_member_can_verify_phone_before_enabling_discovery(self):
-        android_auth = source("app/src/main/java/com/example/auth/BlinkPhoneVerificationClient.kt")
-        android_connect = source("app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt")
-        desktop_auth = source("desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt")
-        desktop_connect = source("desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt")
-        for part in (android_auth, android_connect, desktop_auth, desktop_connect):
-            self.assertIn("phone_confirmed_at" if part in (android_auth, desktop_auth) else "Verify phone", part)
-        self.assertIn("phoneClient.verify(phoneNumber, phoneCode)", android_connect)
-        self.assertIn("verifyOnboardingPhoneCode(contactPhoneNumber, contactPhoneCode)", desktop_connect)
-        self.assertNotIn("READ_CALL_LOG", android_connect)
+    def test_no_sms_android_consent_still_requires_real_backend(self):
+        onboarding = source("app/src/main/java/com/example/ui/screens/AccountOnboardingScreen.kt")
+        contacts = source("app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt")
+        prompt = source("app/src/main/java/com/example/ui/components/BlinkContactSyncLoginPrompt.kt")
+        service = source("app/src/main/java/com/example/data/supabase/SupabaseService.kt")
+        for ui in (onboarding, contacts):
+            self.assertNotIn("Send SMS code", ui)
+            self.assertNotIn("BlinkPhoneVerificationClient", ui)
+        self.assertIn("Phone number (optional)", onboarding)
+        self.assertIn("onSavePhone(number)", onboarding)
+        self.assertIn("phone_visibility", service)
+        self.assertIn('"PRIVATE"', service)
+        self.assertIn("ActivityResultContracts.RequestPermission()", prompt)
+        self.assertIn("val snapshot = runCatching { client.get() }", prompt)
+        self.assertIn("return@LaunchedEffect", prompt)
 
-    def test_sms_does_not_block_new_accounts_before_provider_activation(self):
-        policy = source("shared/src/main/kotlin/com/blinkng/shared/BlinkPhonePolicy.kt")
-        client = source("app/src/main/java/com/example/auth/BlinkPhoneVerificationClient.kt")
-        screen = source("app/src/main/java/com/example/ui/screens/AccountOnboardingScreen.kt")
-        self.assertIn("REQUIRE_VERIFIED_PHONE_IN_ONBOARDING: Boolean = false", policy)
-        self.assertIn("phone_change", client)
-        self.assertIn("SMS service is temporarily unavailable", client)
-        self.assertIn("Entering your number does not send an SMS", screen)
+    def test_sync_is_opt_in_without_sms_and_signup_is_not_blocked(self):
+        onboarding = source("app/src/main/java/com/example/ui/screens/AccountOnboardingScreen.kt")
+        client = source("app/src/main/java/com/example/data/repository/BlinkContactsDiscoveryClient.kt")
+        app = source("app/src/main/java/com/example/MainActivity.kt")
+        self.assertIn("No SMS verification", onboarding)
+        self.assertIn("BlinkPhonePolicy.normalize(phoneNumber)", onboarding)
+        self.assertIn("phoneNumber.isBlank()", onboarding)
+        self.assertIn("BlinkContactSyncLoginPrompt(", app)
+        self.assertIn("READ_CONTACTS", client)
+        self.assertIn("Consent(", client)
+        self.assertNotIn("READ_CALL_LOG", client)
 
 if __name__ == "__main__":
     unittest.main()
