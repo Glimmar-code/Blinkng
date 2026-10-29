@@ -95,7 +95,11 @@ This blocks artifact inspection, not local testing. New Windows CI must also pas
 on the editor commit. Main remains held until all applicable verification passes.
 
 The first Windows CI runs on `217f3830` failed in compile/test before packaging.
-The actual failure logs redirect to the blocked artifact host; the visible
-annotation only reports exit 1. The workflow now emits JUnit failures and the
-build-log tail as check annotations so the real error can be diagnosed through
-the accessible GitHub API. This diagnostic change does not waive the failure.
+The workflow now emits JUnit failures as check annotations, overcoming the log
+download restriction. Run 40915683469 confirmed the actual failure:
+`cancellingAnActiveExportRemovesPartialOutput` left a native export log behind.
+Windows held the file until the killed process exited. Cleanup now waits for
+termination before deletion; the full local 36-test suite passed again. Editors
+also inherit the reference dark palette when opened from a light desktop host.
+Fresh Windows build/test/packaged-export verification is still required for
+this repair. Diagnostic annotations never waive a failure.

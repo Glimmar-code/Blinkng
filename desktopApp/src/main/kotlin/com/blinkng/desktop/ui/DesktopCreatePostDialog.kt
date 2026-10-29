@@ -167,26 +167,29 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
         }
     }
 
-    editingPhoto?.let { path ->
-        DesktopPhotoEditorDialog(File(path), onDismiss = { editingPhoto = null }, onApply = { edited ->
-            draft = draft.copy(photos = draft.photos.map { if (it == path) edited.absolutePath else it })
-            editingPhoto = null
-        })
-    }
-    editingVideo?.let { path ->
-        DesktopVideoEditorDialog(File(path), onDismiss = { editingVideo = null }, onApply = { edited ->
-            draft = draft.copy(video = edited.absolutePath)
-            editingVideo = null
-        })
+    val composerColors = darkColorScheme(
+        primary = Color(BlinkPostReferenceStyle.PrimaryEnd),
+        background = Color(BlinkPostReferenceStyle.Canvas), surface = Color(BlinkPostReferenceStyle.Card),
+        onSurface = Color.White, onBackground = Color.White, outline = Color(BlinkPostReferenceStyle.Border),
+    )
+    MaterialTheme(colorScheme = composerColors) {
+        editingPhoto?.let { path ->
+            DesktopPhotoEditorDialog(File(path), onDismiss = { editingPhoto = null }, onApply = { edited ->
+                draft = draft.copy(photos = draft.photos.map { if (it == path) edited.absolutePath else it })
+                editingPhoto = null
+            })
+        }
+        editingVideo?.let { path ->
+            DesktopVideoEditorDialog(File(path), onDismiss = { editingVideo = null }, onApply = { edited ->
+                draft = draft.copy(video = edited.absolutePath)
+                editingVideo = null
+            })
+        }
     }
     if (editingVideo != null) return
     if (editingPhoto != null) return
     Dialog(onDismissRequest = ::close) {
-        MaterialTheme(colorScheme = darkColorScheme(
-            primary = Color(BlinkPostReferenceStyle.PrimaryEnd),
-            background = Color(BlinkPostReferenceStyle.Canvas), surface = Color(BlinkPostReferenceStyle.Card),
-            onSurface = Color.White, onBackground = Color.White, outline = Color(BlinkPostReferenceStyle.Border),
-        )) {
+        MaterialTheme(colorScheme = composerColors) {
             Surface(Modifier.widthIn(max = 900.dp).fillMaxWidth().heightIn(max = 820.dp),
                 shape = RoundedCornerShape(24.dp), color = Color.Black, border = BorderStroke(1.dp, Color(BlinkPostReferenceStyle.Border))) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

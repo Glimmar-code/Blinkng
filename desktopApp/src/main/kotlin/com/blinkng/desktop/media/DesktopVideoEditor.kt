@@ -131,7 +131,9 @@ object DesktopVideoEditor {
             success = true
             return output
         } finally {
-            process?.takeIf { it.isAlive }?.destroyForcibly()
+            // Windows cannot unlink media/logs while the native process holds
+            // them. Wait for termination before removing cancelled exports.
+            process?.takeIf { it.isAlive }?.let { it.destroyForcibly(); it.waitFor(5, TimeUnit.SECONDS) }
             overlay.delete(); log.delete(); status.delete()
             if (!success) output.delete()
         }
@@ -139,11 +141,15 @@ object DesktopVideoEditor {
 
     private fun command(args: List<String>, timeout: Long): String {
         val log = File.createTempFile("blink-media-probe-", ".txt")
-        val process = ProcessBuilder(args).redirectErrorStream(true).redirectOutput(log).start()
+        var process: Process? = null
         try {
-            check(process.waitFor(timeout, TimeUnit.SECONDS)) { "The video processor did not respond." }
-            check(process.exitValue() == 0 && log.length() < 2_000_000) { "This media file could not be processed." }
+            val running = ProcessBuilder(args).redirectErrorStream(true).redirectOutput(log).start().also { process = it }
+            check(running.waitFor(timeout, TimeUnit.SECONDS)) { "The video processor did not respond." }
+            check(running.exitValue() == 0 && log.length() < 2_000_000) { "This media file could not be processed." }
             return log.readText()
-        } finally { if (process.isAlive) process.destroyForcibly(); log.delete() }
+        } finally {
+            process?.takeIf { it.isAlive }?.let { it.destroyForcibly(); it.waitFor(5, TimeUnit.SECONDS) }
+            log.delete()
+        }
     }
 }
