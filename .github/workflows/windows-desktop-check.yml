@@ -119,7 +119,29 @@ jobs:
 
       - name: Compile and test desktop app
         if: steps.reuse.outputs.reuse != 'true'
-        run: gradle -p desktopApp build --stacktrace --no-daemon
+        shell: pwsh
+        run: |
+          gradle -p desktopApp build --stacktrace --no-daemon 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/blink-desktop-build.log"
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) {
+            # Keep the actual failure available through check annotations even
+            # when a reviewer's environment cannot download Actions artifacts.
+            Get-ChildItem 'desktopApp/build/test-results' -Recurse -Filter 'TEST-*.xml' -ErrorAction SilentlyContinue | ForEach-Object {
+              [xml]$results = Get-Content $_.FullName -Raw
+              foreach ($case in $results.testsuite.testcase) {
+                foreach ($failure in @($case.failure) + @($case.error)) {
+                  if ($null -ne $failure) {
+                    $message = "$($case.classname).$($case.name): $($failure.message) $($failure.InnerText)"
+                    $message = $message.Substring(0, [Math]::Min(6000, $message.Length)).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                    Write-Output "::error title=Desktop test failure::$message"
+                  }
+                }
+              }
+            }
+            $tail = ((Get-Content "$env:RUNNER_TEMP/blink-desktop-build.log" -Tail 70) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Desktop build log tail::$tail"
+            exit $buildExit
+          }
 
       - name: Build Windows EXE and MSI
         if: steps.reuse.outputs.reuse != 'true'

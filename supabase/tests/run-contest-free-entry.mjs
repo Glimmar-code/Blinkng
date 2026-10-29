@@ -36,45 +36,7 @@ const rpc = async (name, params, args) => q('select public.' + name + '(' + para
 const json = (v) => typeof v === 'string' ? JSON.parse(v) : v;
 
 try {
-  await db.exec(`
-    create role anon;
-    create role authenticated;
-    create role service_role;
-    create schema auth;
-    create schema private;
-    create table auth.users(id uuid primary key,
-      created_at timestamptz not null default now()-interval '20 days');
-    create type public.notification_type_enum as enum ('system');
-    create table public.notifications(
-      id uuid primary key default gen_random_uuid(),
-      user_id uuid not null references auth.users(id),
-      actor_id uuid references auth.users(id),
-      type public.notification_type_enum not null,
-      target_type text,target_id uuid,text text,sub_text text,
-      is_read boolean not null default false,
-      metadata jsonb not null default '{}'::jsonb,
-      created_at timestamptz not null default now()
-    );
-    create table public.profiles(
-      id uuid primary key references auth.users(id),
-      username text,full_name text,avatar_url text,university text
-    );
-    create function auth.uid() returns uuid language sql stable
-      as 'select nullif(current_setting(''request.jwt.claim.sub'',true),'''')::uuid';
-    create function auth.jwt() returns jsonb language sql stable
-      as 'select jsonb_build_object(''is_anonymous'',false)';
-    create function private.require_blink_admin() returns uuid
-      language plpgsql security definer set search_path=''
-      as $func$
-      begin
-        if auth.uid() <> 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid
-           or auth.uid() is null then
-          raise exception 'ADMIN_REQUIRED' using errcode='42501';
-        end if;
-        return auth.uid();
-      end;
-      $func$;
-  `);
+  await db.exec(readFileSync(new URL('./contest-fixture.pgfixture', import.meta.url), 'utf8'));
   for (const [id,username] of [
     [admin,'contestadmin'],[creator1,'creatorone'],[creator2,'creatortwo'],[voter,'voterthree']
   ]) {
