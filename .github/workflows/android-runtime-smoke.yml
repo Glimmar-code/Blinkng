@@ -89,6 +89,8 @@ jobs:
             # Capture the actual Contest test fixture to inspect small alignment errors.
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-hero-podium-winners-staging.png app/build/visual-audit/contest-hero-podium-winners-staging.png
             test -s app/build/visual-audit/contest-hero-podium-winners-staging.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-applicant-card-staging.png app/build/visual-audit/contest-applicant-card-staging.png
+            test -s app/build/visual-audit/contest-applicant-card-staging.png
 
       - name: Upload instrumentation reports
         if: always()
