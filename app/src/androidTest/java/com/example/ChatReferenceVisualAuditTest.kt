@@ -63,8 +63,11 @@ class ChatReferenceVisualAuditTest {
         }
         rule.waitForIdle()
         rule.onNodeWithTag("chat_conversation_root").assertExists()
+        rule.onNodeWithTag("chat_reference_header").assertExists()
         rule.onNodeWithTag("chat_reference_pinned_banner").assertExists()
         rule.onNodeWithTag("chat_reference_attachment_plus").assertExists()
+        rule.onNodeWithTag("chat_reference_emoji").assertExists()
+        rule.onNodeWithTag("chat_reference_send").assertExists()
 
         // Capture the actual rendered dark chat for CI's side-by-side review.
         val rendered = rule.onNodeWithTag("chat_conversation_root").captureToImage()
