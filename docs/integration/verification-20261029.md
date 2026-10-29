@@ -112,3 +112,11 @@ cancellation test/assertions remain intact; all 36 local tests passed again.
 The executable's `-L` output was also inspected: this native build enables
 LGPLv3. Matching LGPLv3 and incorporated GPLv3 texts are included and verified
 inside the desktop JAR alongside the existing notices.
+
+Both Windows jobs on `09f31fb8` passed compile/tests and built EXE/MSI installers.
+The diagnostic annotations then identified a CI setup failure: the standalone
+launcher image was absent. Installer generation does not guarantee that image;
+the build now explicitly requests `createDistributable` before running its
+launcher. This is not yet evidence that the Windows packaged media export passes.
+The same local Linux packaged-image task and actual launcher export both passed
+using the trimmed bundled JRE, independently of Gradle's test/run classpath.
