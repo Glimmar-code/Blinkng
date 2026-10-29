@@ -28,6 +28,7 @@ for (const name of [
   '20261028200903_blink_poll_vote_expiration_guard_20261028.sql',
   '20261028200938_blink_block_unprotected_private_audiences_20261028.sql',
   '20261028212000_blink_contest_media_bucket.sql',
+  '20261029190000_blink_contest_media_owner_select.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
