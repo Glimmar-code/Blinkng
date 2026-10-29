@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -190,6 +191,20 @@ private fun AlbumPhotoTile(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
+        if (position == 0 && total > 1) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color.Black.copy(alpha = .65f))
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Image, contentDescription = null, tint = Color.White,
+                    modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(3.dp))
+                Text(total.toString(), color = Color.White, fontSize = 11.sp)
+            }
+        }
         if (position == 3 && total > 4) {
             Box(
                 Modifier.fillMaxSize()
