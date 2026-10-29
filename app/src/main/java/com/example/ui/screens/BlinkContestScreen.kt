@@ -43,7 +43,7 @@ private fun dateLabel(value: String) = value.replace('T', ' ').take(16)
 
 /** An explicit preview: uploaded Contest videos never auto-play in the scrolling UI. */
 @Composable
-private fun BlinkContestVideoPreview(url: String, modifier: Modifier = Modifier) {
+internal fun BlinkContestVideoPreview(url: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
@@ -65,7 +65,7 @@ private fun BlinkContestVideoPreview(url: String, modifier: Modifier = Modifier)
         modifier = modifier
     )
 }
-private fun contestMediaExtension(url: String): String =
+internal fun contestMediaExtension(url: String): String =
     runCatching { Uri.parse(url).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase() }
         .getOrDefault("")
 
