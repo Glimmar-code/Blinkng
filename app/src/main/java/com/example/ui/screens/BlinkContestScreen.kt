@@ -11,6 +11,11 @@ import com.example.data.supabase.BlinkContestMediaUpload
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +41,34 @@ internal fun JSONArray.contestObjects(): List<JSONObject> =
 private fun cash(value: Int) = "₦" + NumberFormat.getIntegerInstance(Locale("en", "NG")).format(value)
 private fun dateLabel(value: String) = value.replace('T', ' ').take(16)
 
+/** An explicit preview: uploaded Contest videos never auto-play in the scrolling UI. */
+@Composable
+private fun BlinkContestVideoPreview(url: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val player = remember(url) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            playWhenReady = false
+            prepare()
+        }
+    }
+    DisposableEffect(player) { onDispose { player.release() } }
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                useController = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                this.player = player
+            }
+        },
+        update = { it.player = player },
+        modifier = modifier
+    )
+}
+private fun contestMediaExtension(url: String): String =
+    runCatching { Uri.parse(url).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase() }
+        .getOrDefault("")
+
 @Composable
 fun BlinkContestScreen(
     onDiscoverPeople: () -> Unit,
@@ -57,6 +90,8 @@ fun BlinkContestScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { selected -> mediaChoice = selected }
     var error by remember { mutableStateOf<String?>(null) }
+    var loadingContests by remember { mutableStateOf(true) }
+    var detailLoadError by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
@@ -92,14 +127,17 @@ fun BlinkContestScreen(
     }
 
     LaunchedEffect(revision) {
-        api.contests().onSuccess { contests = it.contestObjects() }
+        loadingContests = true
+        api.contests().onSuccess { contests = it.contestObjects(); error = null }
             .onFailure { error = it.message ?: "Unable to load contests." }
+        loadingContests = false
     }
     LaunchedEffect(selectedId, revision) {
         detail = null
+        detailLoadError = null
         selectedId?.let { id ->
             api.detail(id).onSuccess { detail = it }
-                .onFailure { error = it.message ?: "Unable to open contest." }
+                .onFailure { detailLoadError = it.message ?: "Unable to open contest." }
         }
     }
 
@@ -134,8 +172,16 @@ fun BlinkContestScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (rows.isEmpty()) item {
-                    Text("No " + tab.lowercase() + " contests yet. Check again soon.",
-                        modifier = Modifier.padding(18.dp))
+                    if (loadingContests) {
+                        CircularProgressIndicator(modifier = Modifier.padding(18.dp))
+                    } else if (error == null) {
+                        Text("No " + tab.lowercase() + " contests yet. Check again soon.",
+                            modifier = Modifier.padding(18.dp))
+                    } else {
+                        Button(onClick = { revision++ }, modifier = Modifier.padding(18.dp)) {
+                            Text("Retry loading contests")
+                        }
+                    }
                 }
                 items(rows, key = { it.optString("id") }) { contest ->
                     BlinkContestHeroCard(contest) {
@@ -148,7 +194,14 @@ fun BlinkContestScreen(
         } else {
             val d = detail
             if (d == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                if (detailLoadError == null) {
+                    CircularProgressIndicator()
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(detailLoadError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                        Button(onClick = { revision++ }) { Text("Retry contest") }
+                    }
+                }
             } else {
                 val c = d.optJSONObject("contest") ?: JSONObject()
                 val status = c.optString("status")
@@ -233,8 +286,13 @@ fun BlinkContestScreen(
                                     model = selected, contentDescription = "Selected contest photo",
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier.fillMaxWidth().height(160.dp)
-                                ) else Text("Selected video · Review before applying",
-                                    color = MaterialTheme.colorScheme.primary)
+                                ) else if (mime.startsWith("video/")) {
+                                    BlinkContestVideoPreview(
+                                        selected.toString(),
+                                        Modifier.fillMaxWidth().height(190.dp)
+                                    )
+                                } else Text("This media format cannot be previewed.",
+                                    color = MaterialTheme.colorScheme.error)
                                 TextButton(onClick = { mediaChoice = null }) { Text("Remove attachment") }
                             }
                             OutlinedTextField(
@@ -391,12 +449,15 @@ fun BlinkContestScreen(
                         color = Color(0xFF1685FF)
                     )
                     val image = candidate.optString("media_url")
-                    if (image.startsWith("https://") &&
-                        (image.contains(".jpg",true) || image.contains(".png",true) ||
-                         image.contains(".webp",true) || image.contains(".jpeg",true))) {
-                        AsyncImage(model = image, contentDescription = "Contestant entry photo",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp))
+                    if (image.startsWith("https://")) {
+                        when (contestMediaExtension(image)) {
+                            "jpg", "jpeg", "png", "webp" ->
+                                AsyncImage(model = image, contentDescription = "Contestant entry photo",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp))
+                            "mp4" ->
+                                BlinkContestVideoPreview(image, Modifier.fillMaxWidth().height(240.dp))
+                        }
                     }
                     Text("One free vote per account. Self-voting isn't permitted.",
                         fontSize = 11.sp)
