@@ -7,6 +7,23 @@ This updates the historical reports in `reference-design-20261029.md` and
 
 ## Latest repair and evidence update
 
+Follow-up on `ef7fadac`: actual Android emulator runs **40965779514** and
+**40965788539** passed instrumentation and screenshot export. Windows run
+**40965788189** passed packaging, native video export and Windows DPAPI encrypted
+draft round trip. Isolated Supabase service run **40965788275** passed. Other
+candidate checks were still running when this update was written; this is not
+an assertion that all checks passed.
+
+A new explicit `--reference-ui-smoke` adapter captures the real packaged desktop
+photo editor and the video editor at top/bottom scroll positions. The first local
+attempt failed because Compose hosted its dialog inside the application window;
+the adapter now handles both window modes while restricting capture to its own
+process. The second local packaged Linux run captured all three PNGs, inspected
+manually with the six photo tools, trim/frame/speed/filter/audio/overlay/export
+controls visible. These are Linux GUI captures, not Windows evidence. The new
+Windows CI step must execute and its PNGs must be reviewed separately. Its report
+deliberately says `captured-awaiting-review`, never automatically visually passed.
+
 The latest Testlab follow-up replaces several earlier holds below with actual
 results. It does not certify a production deployment or an exact visual match.
 

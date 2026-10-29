@@ -1805,3 +1805,12 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 
 - Android light appearance uses its outgoing foreground for metadata rather than an unrelated surface color. Windows now uses onPrimaryContainer for outgoing light-bubble text/metadata, keeping the same readable result with its native palette; dark reference colors remain governed by the shared contract.
 - Native Android runtime failures are exposed as check annotations and retained reports so a real failing device case can be diagnosed even when the environment blocks artifact downloads. This does not waive the failing check or permit promotion.
+### Packaged Windows editor visual diagnostic (2026-10-29)
+
+`--reference-ui-smoke <empty-directory>` captures real desktop photo/video editor
+windows with explicitly synthetic media. It does not construct app state, load
+accounts or call Supabase. This Windows/runtime adapter complements Android's
+existing instrumentation visual fixtures; it changes no feature contracts.
+Local packaged Linux captures were inspected. Windows CI captures require their
+own run and manual artifact review; capture completion alone is not visual approval.
+

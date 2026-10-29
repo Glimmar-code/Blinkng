@@ -179,6 +179,46 @@ jobs:
             throw
           }
 
+      - name: Capture actual packaged Windows editor windows
+        if: steps.reuse.outputs.reuse != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Get-ChildItem 'desktopApp/build/compose/binaries/main/app' -Recurse -Filter 'Blinkng.exe' | Select-Object -First 1
+          if (-not $app) { throw 'Packaged Blinkng launcher is missing' }
+          $capture = Join-Path $env:RUNNER_TEMP 'blink-reference-ui'
+          $task = Start-Process -FilePath $app.FullName -RedirectStandardOutput "$env:RUNNER_TEMP/blink-reference-stdout.log" -RedirectStandardError "$env:RUNNER_TEMP/blink-reference-stderr.log" -ArgumentList @('--reference-ui-smoke', ('"' + $capture + '"')) -PassThru
+          if (-not $task.WaitForExit(120000)) { $task.Kill(); throw 'Windows GUI capture timed out' }
+          $reportPath = Join-Path $capture 'reference-ui.json'
+          if (Test-Path $reportPath) { Get-Content $reportPath -Raw | Write-Host }
+          if ($task.ExitCode -ne 0) {
+            $detail = "Native GUI capture failed with exit $($task.ExitCode)"
+            foreach ($path in @($reportPath, "$env:RUNNER_TEMP/blink-reference-stderr.log")) {
+              if (Test-Path $path) { $detail += "`n" + ((Get-Content $path -Tail 30) -join "`n") }
+            }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows GUI capture failure::$detail"
+            throw 'Actual Windows editor capture did not complete'
+          }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          if ($report.status -ne 'captured-awaiting-review') { throw 'Missing native GUI evidence' }
+          foreach ($name in @('photo-editor.png', 'video-editor-top.png', 'video-editor-bottom.png')) {
+            if ((Get-Item (Join-Path $capture $name)).Length -lt 1000) { throw "Missing Windows capture: $name" }
+          }
+
+      - name: Upload Windows visual evidence
+        if: always() && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-reference-ui-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/blink-reference-ui/*.png
+            ${{ runner.temp }}/blink-reference-ui/reference-ui.json
+            ${{ runner.temp }}/blink-reference-stdout.log
+            ${{ runner.temp }}/blink-reference-stderr.log
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Verify native Godot assets in Windows installer build
         if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
