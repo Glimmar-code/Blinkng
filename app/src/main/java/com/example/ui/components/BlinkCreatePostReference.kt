@@ -69,6 +69,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.OutlinedButton
@@ -766,7 +767,8 @@ internal fun BlinkReferenceMediaReview(
                 modifier = Modifier.weight(1f).height(56.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                itemsIndexed(images, key = { _, uri -> uri }) { index, uri ->
+                items(count = images.size, key = { index -> images[index] }) { index ->
+                    val uri = images[index]
                     AsyncImage(
                         model = uri,
                         contentDescription = "Preview selected photo " + (index + 1),
