@@ -86,6 +86,9 @@ jobs:
             test -s app/build/visual-audit/home-reference-with-create.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/inbox-reference-staging-light.png app/build/visual-audit/inbox-reference-staging-light.png
             test -s app/build/visual-audit/inbox-reference-staging-light.png
+            # Capture native dark conversation chrome for the reference audit.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-staging-dark.png app/build/visual-audit/chat-reference-staging-dark.png
+            test -s app/build/visual-audit/chat-reference-staging-dark.png
 
       - name: Upload instrumentation reports
         if: always()
