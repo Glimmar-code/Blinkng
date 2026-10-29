@@ -150,6 +150,29 @@ internal fun BlinkCreatePostLanding(
                 Text("Saved drafts", color = Color(0xFF7D83F9), fontSize = 12.sp)
             }
         }
+        // Only show media the user already selected for a local draft. Android's
+        // Photo Picker controls access to any other gallery photos.
+        val mediaDrafts = drafts.filter { !it.imageUri.isNullOrBlank() }
+        if (mediaDrafts.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(mediaDrafts.take(if (showAllDrafts) 30 else 8), key = { it.id }) { draft ->
+                    val raw = draft.imageUri.orEmpty()
+                    val first = if (raw.startsWith("[")) {
+                        runCatching { JSONArray(raw).optString(0) }.getOrDefault("")
+                    } else raw
+                    AsyncImage(
+                        model = first,
+                        contentDescription = "Resume recent photo draft",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(width = 88.dp, height = 80.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onDraft(draft) }
+                    )
+                }
+            }
+            Text("Recent photos from saved drafts", color = Color(0xFFAAB0BC),
+                fontSize = 11.sp)
+        }
         if (drafts.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
