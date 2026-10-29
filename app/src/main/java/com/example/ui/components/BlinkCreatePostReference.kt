@@ -468,6 +468,35 @@ internal fun BlinkReferencePostDetails(
     onTemporaryChange: (Boolean) -> Unit,
     onNext: () -> Unit,
 ) {
+    var showAudienceChooser by remember { mutableStateOf(false) }
+    if (showAudienceChooser) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showAudienceChooser = false },
+            title = { Text("Who can see this post?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("Everyone", "Campus", "Followers").forEach { option ->
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                onAudienceChange(option)
+                                showAudienceChooser = false
+                            }
+                        ) {
+                            Text(if (option == "Everyone") "Public" else option)
+                        }
+                    }
+                    Text(
+                        "Only me is unavailable until private-post security is verified.",
+                        color = Color(0xFF9EA5B4), fontSize = 12.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAudienceChooser = false }) { Text("Close") }
+            }
+        )
+    }
     Column(
         modifier = Modifier.fillMaxSize().background(Color.Black)
             .verticalScroll(rememberScrollState())
@@ -539,29 +568,22 @@ internal fun BlinkReferencePostDetails(
                 singleLine = true
             )
         }
-        Text("Who can see this post?", color = Color.White, fontWeight = FontWeight.SemiBold)
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        Surface(
+            color = Color(0xFF191D24), shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().clickable { showAudienceChooser = true }
         ) {
-            listOf("Everyone", "Campus", "Followers").forEach { option ->
-                FilterChip(
-                    selected = audience == option,
-                    onClick = { onAudienceChange(option) },
-                    label = { Text(if (option == "Everyone") "Public" else option) }
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Who can see this post?", color = Color.White, fontSize = 13.sp,
+                    modifier = Modifier.weight(1f))
+                Text(if (audience == "Everyone") "Public" else audience,
+                    color = Color(0xFFC1C6D4), fontSize = 12.sp)
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Default.ChevronRight, "Choose post audience", tint = Color.White)
             }
         }
-        FilterChip(
-            selected = false,
-            onClick = {},
-            enabled = false,
-            label = { Text("Only me · Requires secure rollout") }
-        )
-        Text(
-            "Only me will become available after server access, media privacy, and discovery checks pass. Until then, save a draft instead.",
-            color = Color(0xFFB1B8C7), fontSize = 11.sp
-        )
         Text("Post category", color = Color.White, fontWeight = FontWeight.SemiBold)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
