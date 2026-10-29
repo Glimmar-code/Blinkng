@@ -23,6 +23,7 @@ import android.content.Intent
 import android.net.Uri
 import com.example.data.supabase.MessageMediaService
 import com.example.data.supabase.BlinkChatMediaPreferences
+import com.example.data.supabase.BlinkChatNativePollService
 import com.example.data.supabase.BlinkChatPhotoEditor
 import com.blinkng.shared.BlinkChatImageQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -186,6 +187,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import com.example.data.models.ActivityItem
 import com.blinkng.shared.BlinkMessageDatePolicy
 import com.example.data.models.ChatConversation
@@ -211,6 +214,11 @@ import kotlin.math.abs
 private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
 
+private data class PendingChatNativePoll(
+    val draft: com.blinkng.shared.BlinkChatPollDraft,
+    val existingIds: Set<String>,
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
 private data class ChatPhotoReviewItem(
     val id: String = java.util.UUID.randomUUID().toString(),
     val uri: Uri,
@@ -260,6 +268,7 @@ fun PremiumMessagesScreen(
     onSendMessage: (String, String, String?) -> Unit,
     onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendVideoAlbum: (String, List<Uri>) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
     onSendPhotoAlbum: (String, List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
@@ -418,6 +427,7 @@ fun PremiumMessagesScreen(
                                 onSendMessage = onSendMessage,
                                 onForwardMessage = onForwardMessage,
                                 onSendVideo = onSendVideo,
+                                onSendVideoAlbum = onSendVideoAlbum,
                                 onSendAttachment = onSendAttachment,
                                 onSendPhotoAlbum = onSendPhotoAlbum,
                                 onSendViewOncePicture = onSendViewOncePicture,
@@ -559,6 +569,7 @@ private fun PremiumMessagesMasterDetail(
     onSendMessage: (String, String, String?) -> Unit,
     onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
+    onSendVideoAlbum: (String, List<Uri>) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
     onSendPhotoAlbum: (String, List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
@@ -639,6 +650,7 @@ private fun PremiumMessagesMasterDetail(
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onSendVideoAlbum = { onSendVideoAlbum(displayedConversation.partnerUsername, it) },
                 onSendAttachment = { uri, kind ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind)
                 },
@@ -1564,6 +1576,7 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
+    onSendVideoAlbum: (List<Uri>) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
     onSendPhotoAlbum: (List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (Uri) -> Unit,
@@ -1644,6 +1657,16 @@ private fun PremiumChatDetail(
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var chatExtraMode by remember(conversation.id) { mutableStateOf<String?>(null) }
+    val nativePollService = remember(conversation.id) { BlinkChatNativePollService() }
+    var nativePollEnabled by remember(conversation.id) { mutableStateOf(false) }
+    var pendingNativePoll by remember(conversation.id) {
+        mutableStateOf<PendingChatNativePoll?>(null)
+    }
+    LaunchedEffect(chatExtraMode) {
+        if (chatExtraMode == "poll") {
+            nativePollEnabled = nativePollService.isSupported()
+        }
+    }
     var selectedContact by remember(conversation.id) { mutableStateOf<Pair<String,String>?>(null) }
     val contactPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -1694,6 +1717,7 @@ private fun PremiumChatDetail(
         scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
     )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showReferencePinBar by remember(conversation.id) { mutableStateOf(true) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
@@ -1844,8 +1868,18 @@ private fun PremiumChatDetail(
         onPresenceChange("online")
     }
     var pendingVideoReview by remember(conversation.id) { mutableStateOf<Uri?>(null) }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) pendingVideoReview = uri
+    // Android's media picker allows 1–10 videos without broad storage access.
+    // Every selected video must pass the existing explicit edit/review dialog.
+    var pendingVideoBatch by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
+    var videoBatchPreview by remember(conversation.id) { mutableStateOf(false) }
+    var editedVideoBatch by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
+    val videoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        pendingVideoBatch = uris.take(10)
+        editedVideoBatch = emptyList()
+        pendingVideoReview = if (pendingVideoBatch.size == 1) pendingVideoBatch.first() else null
+        videoBatchPreview = pendingVideoBatch.size > 1
         onPresenceChange("online")
     }
     var pendingFileReview by remember(conversation.id) { mutableStateOf<Pair<Uri, Boolean>?>(null) }
@@ -1907,12 +1941,20 @@ private fun PremiumChatDetail(
                 it.imageAlbumSize > 1 && !it.attachedImageUrl.isNullOrBlank()
         }.groupBy { it.imageAlbumId.orEmpty() }
     }
-    val visibleMessages = remember(matchedMessages, albumGroups) {
+    val videoAlbumGroups = remember(matchedMessages) {
+        matchedMessages.filter {
+            !it.imageAlbumId.isNullOrBlank() && it.imageAlbumSize > 1 &&
+                !it.attachedVideoUrl.isNullOrBlank() && !it.deletedForEveryone
+        }.groupBy { it.imageAlbumId.orEmpty() }
+    }
+    val visibleMessages = remember(matchedMessages, albumGroups, videoAlbumGroups) {
         val displayedAlbumIds = hashSetOf<String>()
         matchedMessages.filter { item ->
             val id = item.imageAlbumId
-            if (id.isNullOrBlank() || albumGroups[id].orEmpty().size < 2) true
-            else displayedAlbumIds.add(id)
+            val group = if (item.messageType == "video") videoAlbumGroups[id]
+                else albumGroups[id]
+            if (id.isNullOrBlank() || group.orEmpty().size < 2) true
+            else displayedAlbumIds.add(item.messageType + id)
         }
     }
     val messagesById = remember(conversation.messages) {
@@ -1980,6 +2022,32 @@ private fun PremiumChatDetail(
     }
 
     val latestVisibleMessageId = conversation.messages.lastOrNull()?.id
+    LaunchedEffect(latestVisibleMessageId, pendingNativePoll) {
+        val pending = pendingNativePoll ?: return@LaunchedEffect
+        val match = conversation.messages.lastOrNull {
+            it.isFromMe && it.id !in pending.existingIds &&
+                it.text == pending.draft.question &&
+                it.status != MessageStatus.SENDING &&
+                runCatching { java.util.UUID.fromString(it.id) }.isSuccess
+        }
+        if (match != null) {
+            pendingNativePoll = null // Never attach twice, including on recompose.
+            nativePollService.attach(match.id, pending.draft.question,
+                pending.draft.options).onFailure {
+                Toast.makeText(context,
+                    "Question sent, but native poll setup failed. Retry after server verification.",
+                    Toast.LENGTH_LONG).show()
+            }
+        } else if (System.currentTimeMillis() - pending.createdAtMillis >= 120_000L) {
+            pendingNativePoll = null
+            Toast.makeText(context, "Poll delivery was not confirmed.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(pendingNativePoll) {
+        val pending = pendingNativePoll ?: return@LaunchedEffect
+        delay(120_000L)
+        if (pendingNativePoll === pending) pendingNativePoll = null
+    }
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
         val previous = previousLatestVisibleMessageId
@@ -2033,6 +2101,44 @@ private fun PremiumChatDetail(
                 isFullScreen = isFullScreen,
                 onToggleFullScreen = onToggleFullScreen
             )
+
+            // Screenshot reference: slim, actionable blue pinned-message banner
+            // directly beneath the chat header; close only hides this preview.
+            val pinnedPreview = conversation.messages.lastOrNull { it.isPinned }
+            if (showReferencePinBar && pinnedPreview != null && !pinnedOnly) {
+                Surface(
+                    color = palette.glassElevated,
+                    border = BorderStroke(0.5.dp, palette.border),
+                    modifier = Modifier.fillMaxWidth().testTag("chat_reference_pinned_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
+                            .clickable {
+                                pendingReplyTargetId = pinnedPreview.id
+                                lastRequestedReplyOldestId = null
+                            }.padding(start = 12.dp, end = 5.dp, top = 7.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Drawn glyph avoids relying on a Material icon that is
+                        // absent from BLINK's configured icon artifact.
+                        Text("📌", fontSize = 18.sp, modifier = Modifier.size(21.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Pinned message", color = palette.accent,
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                pinnedPreview.text.ifBlank { "Pinned media" },
+                                color = palette.textSecondary, fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(onClick = { showReferencePinBar = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Hide pinned banner",
+                                tint = palette.textSecondary, modifier = Modifier.size(17.dp))
+                        }
+                    }
+                }
+            }
 
             if (conversation.inboxCategory == "requests") {
                 Surface(
@@ -2258,6 +2364,9 @@ private fun PremiumChatDetail(
                                 }
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
+                                videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
+                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty())
+                            } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
                                     messages = albumGroups[message.imageAlbumId].orEmpty(),
@@ -2438,7 +2547,13 @@ private fun PremiumChatDetail(
                 .sortedWith(compareBy<ChatMessage> { it.rawTimestamp }
                     .thenBy { it.imageAlbumPosition })
         }
-        val pictureIndex = normalPictures.indexOfFirst { it.id == message.id }
+        // A shared 2/3-photo album opens its own sequence just like the reference.
+        // All media remains reachable through the viewer's existing overflow action.
+        val albumPictures = message.imageAlbumId?.let { albumId ->
+            normalPictures.filter { it.imageAlbumId == albumId }
+        }.orEmpty()
+        val viewerPictures = if (albumPictures.size > 1) albumPictures else normalPictures
+        val pictureIndex = viewerPictures.indexOfFirst { it.id == message.id }
         if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
             BlinkChatPictureViewer(
                 message = message,
@@ -2490,15 +2605,17 @@ private fun PremiumChatDetail(
                     viewedImageMessage = null
                 },
                 hasPrevious = pictureIndex > 0,
-                hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
+                hasNext = pictureIndex >= 0 && pictureIndex < viewerPictures.lastIndex,
                 photoIndex = pictureIndex + 1,
-                totalPhotos = normalPictures.size,
+                totalPhotos = viewerPictures.size,
+                galleryPhotos = viewerPictures,
+                onPickPhoto = { selected -> viewedImageMessage = selected },
                 onPrevious = {
-                    if (pictureIndex > 0) viewedImageMessage = normalPictures[pictureIndex - 1]
+                    if (pictureIndex > 0) viewedImageMessage = viewerPictures[pictureIndex - 1]
                 },
                 onNext = {
-                    if (pictureIndex in 0 until normalPictures.lastIndex)
-                        viewedImageMessage = normalPictures[pictureIndex + 1]
+                    if (pictureIndex in 0 until viewerPictures.lastIndex)
+                        viewedImageMessage = viewerPictures[pictureIndex + 1]
                 }
             )
         }
@@ -2994,15 +3111,88 @@ private fun PremiumChatDetail(
             }
         )
     }
+    if (videoBatchPreview && pendingVideoBatch.size > 1) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                videoBatchPreview = false
+                pendingVideoBatch = emptyList()
+            },
+            title = { Text("Review selected videos", color = palette.textPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Choose 2–10 videos. Each video is reviewed and uploaded individually.",
+                        fontSize = 12.sp, color = palette.textSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.testTag("chat_reference_multi_video_preview")) {
+                        itemsIndexed(pendingVideoBatch) { index, uri ->
+                            Column(Modifier.width(126.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.width(126.dp).height(120.dp)
+                                    .clip(RoundedCornerShape(12.dp))) {
+                                    AsyncImage(
+                                        model = remember(uri) {
+                                            ImageRequest.Builder(context).data(uri)
+                                                .videoFrameMillis(1000L).build()
+                                        },
+                                        contentDescription = "Video " + (index + 1),
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Text("▶ " + (index + 1),
+                                        modifier = Modifier.align(Alignment.BottomStart)
+                                            .background(Color(0xAA06111C)).padding(6.dp),
+                                        color = Color.White, fontSize = 11.sp)
+                                }
+                                androidx.compose.material3.TextButton(onClick = {
+                                    pendingVideoBatch = pendingVideoBatch.filterIndexed {
+                                        i, _ -> i != index
+                                    }
+                                    if (pendingVideoBatch.size == 1) {
+                                        videoBatchPreview = false
+                                        pendingVideoReview = pendingVideoBatch.first()
+                                    }
+                                }) { Text("Remove", color = palette.textSecondary) }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    videoBatchPreview = false
+                    pendingVideoReview = pendingVideoBatch.firstOrNull()
+                }) { Text("Review & send " + pendingVideoBatch.size, color = palette.accent) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    videoBatchPreview = false
+                    pendingVideoBatch = emptyList()
+                }) { Text("Cancel") }
+            }
+        )
+    }
     pendingVideoReview?.let { selected ->
         BlinkChatVideoEditorDialog(
             sourceUri = selected,
             onSend = { finalVideo ->
-                pendingVideoReview = null
-                onPresenceChange("uploading")
-                onSendVideo(finalVideo)
+                val approved = editedVideoBatch + finalVideo
+                val remaining = pendingVideoBatch.drop(1)
+                pendingVideoBatch = remaining
+                pendingVideoReview = remaining.firstOrNull()
+                if (remaining.isEmpty()) {
+                    editedVideoBatch = emptyList()
+                    onPresenceChange("uploading")
+                    if (approved.size > 1) onSendVideoAlbum(approved)
+                    else approved.firstOrNull()?.let(onSendVideo)
+                } else {
+                    editedVideoBatch = approved
+                    onPresenceChange("online")
+                }
             },
             onDismiss = {
+                // A cancellation never silently uploads any remaining selected video.
+                pendingVideoBatch = emptyList()
+                editedVideoBatch = emptyList()
                 pendingVideoReview = null
                 onPresenceChange("online")
             }
@@ -3080,9 +3270,15 @@ private fun PremiumChatDetail(
                 showAttachmentSheet = false
                 audioPicker.launch("audio/*")
             },
+            onVoiceNote = {
+                showAttachmentSheet = false
+                beginVoiceRecording()
+            },
             onVideo = {
                 showAttachmentSheet = false
-                videoPicker.launch("video/*")
+                videoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                )
             },
             onSticker = {
                 showAttachmentSheet = false
@@ -3120,6 +3316,16 @@ private fun PremiumChatDetail(
         BlinkChatExtrasDialog(
             mode = mode,
             contact = selectedContact,
+            nativePollEnabled = nativePollEnabled,
+            onNativePoll = { draft ->
+                pendingNativePoll = PendingChatNativePoll(
+                    draft = draft,
+                    existingIds = conversation.messages.map { it.id }.toSet()
+                )
+                chatExtraMode = null
+                selectedContact = null
+                onSend(draft.question, null)
+            },
             onSend = { content ->
                 chatExtraMode = null
                 selectedContact = null
@@ -3740,7 +3946,7 @@ private fun MessageBubble(
                                         else -> "Sent"
                                     },
                                     tint = if (confirmedStatus == MessageStatus.READ)
-                                        Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
+                                        Color(0xFF1685FF) else palette.textSecondary,
                                     modifier = Modifier.size(15.dp)
                                 )
                             }
@@ -3952,6 +4158,14 @@ private fun MessageContent(
                 )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
+                val pdf = message.attachmentMimeType == "application/pdf" ||
+                    message.attachmentName.orEmpty().endsWith(".pdf", ignoreCase = true)
+                var pdfOpen by remember(message.id) { mutableStateOf(false) }
+                if (pdf && pdfOpen) BlinkChatPdfViewer(
+                    url = message.attachedDocumentUrl,
+                    filename = message.attachmentName ?: "Document.pdf",
+                    onDismiss = { pdfOpen = false }
+                )
                 Surface(
                     color = contentColor.copy(alpha = .08f),
                     contentColor = contentColor,
@@ -3959,7 +4173,10 @@ private fun MessageContent(
                     border = BorderStroke(1.dp, contentColor.copy(alpha = .16f)),
                     modifier = Modifier
                         .widthIn(min = 190.dp, max = 240.dp)
-                        .clickable { openExternalUri(context, Uri.parse(message.attachedDocumentUrl)) }
+                        .clickable {
+                            if (pdf) pdfOpen = true else
+                                openExternalUri(context, Uri.parse(message.attachedDocumentUrl))
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
@@ -3976,18 +4193,19 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
+                            Text(if (pdf) "Preview PDF" else "Open document", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
                         }
                     }
                 }
             }
             val legacyPoll = com.blinkng.shared.BlinkChatPollPolicy.parseTextFallback(message.text)
-            if (legacyPoll != null) {
-                BlinkChatLegacyPollCard(
-                    draft = legacyPoll,
+            if (legacyPoll != null || message.messageType == "poll") {
+                BlinkChatNativePollCard(
+                    message = message,
+                    fallback = legacyPoll,
                     palette = palette,
                     textColor = contentColor,
-                    onChoice = onLegacyPollChoice
+                    onLegacyChoice = onLegacyPollChoice
                 )
             }
             val sharedContact = com.blinkng.shared.BlinkChatContactCardPolicy.parse(message.text)
@@ -4006,7 +4224,8 @@ private fun MessageContent(
                         (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
                     !message.attachedDocumentUrl.isNullOrBlank()
             if (message.text.isNotBlank() && !placeholderOnly &&
-                !message.isVoiceNote && sharedContact == null && legacyPoll == null) {
+                !message.isVoiceNote && sharedContact == null &&
+                legacyPoll == null && message.messageType != "poll") {
                 Text(
                     message.text,
                     color = contentColor,
@@ -4301,13 +4520,19 @@ private fun MessageComposer(
                         onClick = onVoiceCancel
                     )
                 } else {
-                    GlassIconButton(
-                        icon = Icons.Default.EmojiEmotions,
-                        contentDescription = "Choose emoji",
-                        palette = palette,
-                        size = 40.dp,
-                        onClick = onEmoji
-                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = palette.accent,
+                        contentColor = Color.White,
+                        modifier = Modifier.size(40.dp)
+                            .clickable(onClick = onAttachment)
+                            .testTag("chat_reference_attachment_plus")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Add, contentDescription = "Open attachments",
+                                tint = Color.White, modifier = Modifier.size(25.dp))
+                        }
+                    }
                 }
                 Spacer(Modifier.width(5.dp))
 
@@ -4365,11 +4590,11 @@ private fun MessageComposer(
 
                 if (!isRecording) {
                     GlassIconButton(
-                        icon = Icons.Default.AttachFile,
-                        contentDescription = "Attach picture, file or location",
+                        icon = Icons.Default.EmojiEmotions,
+                        contentDescription = "Choose emoji",
                         palette = palette,
                         size = 40.dp,
-                        onClick = onAttachment
+                        onClick = onEmoji
                     )
                     GlassIconButton(
                         icon = Icons.Default.CameraAlt,

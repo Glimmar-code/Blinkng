@@ -68,53 +68,50 @@ internal fun BlinkChatPhotoAlbumBubble(
                 .combinedClickable(onClick = onReply, onLongClick = onActions)
                 .padding(4.dp)
         ) {
-            val rows = (visible.size + 1) / 2
-            repeat(rows) { row ->
-                Row(
+            // Match the supplied 1 / 2 / 3 / 4-photo reference layouts.
+            // A trio is one wide hero photo above two equal thumbnails, not
+            // a half-empty 2×2 grid. Every tile still opens the existing viewer.
+            when (visible.size) {
+                1 -> AlbumPhotoTile(visible[0], 0, groupedCount,
+                    Modifier.fillMaxWidth().height(196.dp), onOpen)
+                2 -> Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    for (index in row * 2 until minOf((row + 1) * 2, visible.size)) {
-                        val photo = visible[index]
-                        Box(
-                            Modifier.weight(1f)
-                                .height(if (rows == 1) 172.dp else 128.dp)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(Color(0xFF282830))
-                                .clickable { onOpen(photo) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AsyncImage(
-                                model = photo.imagePreviewUrl ?: photo.attachedImageUrl
-                                    ?: photo.localAttachmentUri,
-                                contentDescription = "Photo ${index + 1} of $groupedCount",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            if (index == 3 && groupedCount > 4) {
-                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .56f)),
-                                    contentAlignment = Alignment.Center) {
-                                    Text("+${groupedCount - 4}", color = Color.White,
-                                        fontWeight = FontWeight.Bold, fontSize = 24.sp)
-                                }
-                            }
-                            if (photo.status == MessageStatus.SENDING) {
-                                Box(Modifier.align(Alignment.TopEnd).padding(5.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.Black.copy(alpha = .6f))
-                                    .padding(horizontal = 7.dp, vertical = 4.dp)) {
-                                    Text("${photo.uploadProgress ?: 0}%", color = Color.White,
-                                        fontSize = 10.sp)
-                                }
-                            }
-                        }
-                    }
-                    // When 3 photos are sent, the third spans half the row by design.
-                    if (visible.size == 1 || (visible.size == 3 && row == 1)) {
-                        Spacer(Modifier.weight(1f))
+                    visible.forEachIndexed { index, photo ->
+                        AlbumPhotoTile(photo, index, groupedCount,
+                            Modifier.weight(1f).height(172.dp), onOpen)
                     }
                 }
-                if (row + 1 < rows) Spacer(Modifier.height(3.dp))
+                3 -> {
+                    AlbumPhotoTile(visible[0], 0, groupedCount,
+                        Modifier.fillMaxWidth().height(170.dp), onOpen)
+                    Spacer(Modifier.height(3.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        visible.drop(1).forEachIndexed { index, photo ->
+                            AlbumPhotoTile(photo, index + 1, groupedCount,
+                                Modifier.weight(1f).height(120.dp), onOpen)
+                        }
+                    }
+                }
+                else -> {
+                    repeat(2) { row ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            (row * 2 until minOf((row + 1) * 2, visible.size))
+                                .forEach { index ->
+                                    AlbumPhotoTile(visible[index], index, groupedCount,
+                                        Modifier.weight(1f).height(128.dp), onOpen)
+                                }
+                        }
+                        if (row == 0) Spacer(Modifier.height(3.dp))
+                    }
+                }
             }
             if (caption.isNotBlank()) {
                 var expanded by remember(anchor.imageAlbumId) { mutableStateOf(false) }
@@ -153,11 +150,57 @@ internal fun BlinkChatPhotoAlbumBubble(
                             MessageStatus.DELIVERED -> "Delivered"
                             else -> "Sent"
                         },
-                        tint = if (status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue)
+                        tint = if (status == MessageStatus.READ) Color(0xFF1685FF)
                             else palette.textSecondary,
                         modifier = Modifier.size(15.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+/** Single media cell keeps download overlays and "+N" behavior consistent. */
+@Composable
+private fun AlbumPhotoTile(
+    photo: ChatMessage,
+    position: Int,
+    total: Int,
+    modifier: Modifier,
+    onOpen: (ChatMessage) -> Unit
+) {
+    Box(
+        modifier.clip(RoundedCornerShape(9.dp))
+            .background(Color(0xFF19283B))
+            .clickable { onOpen(photo) },
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = photo.imagePreviewUrl ?: photo.attachedImageUrl
+                ?: photo.localAttachmentUri,
+            contentDescription = "Photo ${position + 1} of $total",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        if (position == 3 && total > 4) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color.Black.copy(alpha = .60f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("+${total - 4}", color = Color.White,
+                    fontWeight = FontWeight.Bold, fontSize = 24.sp)
+            }
+        }
+        if (photo.status == MessageStatus.SENDING) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(5.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = .65f))
+                    .padding(horizontal = 7.dp, vertical = 4.dp)
+            ) {
+                Text("${photo.uploadProgress ?: 0}%", color = Color.White,
+                    fontSize = 10.sp)
             }
         }
     }

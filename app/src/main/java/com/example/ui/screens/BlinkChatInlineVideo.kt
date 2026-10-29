@@ -15,6 +15,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,6 +40,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -64,6 +75,7 @@ internal fun BlinkChatInlineVideo(
     var failed by remember(url) { mutableStateOf(false) }
     var retryVersion by remember(url) { androidx.compose.runtime.mutableIntStateOf(0) }
     var buffering by remember(url) { mutableStateOf(false) }
+    var fullScreen by remember(url) { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -118,9 +130,60 @@ internal fun BlinkChatInlineVideo(
                         this.player = player
                     }
                 },
-                update = { it.player = player },
+                update = { it.player = if (fullScreen) null else player },
                 modifier = Modifier.fillMaxSize(),
             )
+            if (!fullScreen) {
+                IconButton(
+                    onClick = { fullScreen = true },
+                    modifier = Modifier.align(Alignment.TopEnd)
+                        .background(Color(0xAA06101C), RoundedCornerShape(12.dp))
+                ) {
+                    Icon(Icons.Default.Fullscreen,
+                        contentDescription = "Open video full screen",
+                        tint = Color.White)
+                }
+            }
+            if (fullScreen) {
+                Dialog(
+                    onDismissRequest = { fullScreen = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .background(Color(0xFF060D16))
+                            .testTag("chat_reference_fullscreen_video")
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PlayerView(ctx).apply {
+                                    useController = true
+                                    controllerAutoShow = true
+                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                }
+                            },
+                            update = { it.player = player },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Row(
+                            Modifier.align(Alignment.TopStart)
+                                .fillMaxWidth().background(Color(0x99060D16))
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { fullScreen = false }) {
+                                Icon(Icons.Default.Close, "Close full screen video",
+                                    tint = Color.White)
+                            }
+                            Text("Video message", color = Color.White, fontSize = 15.sp,
+                                modifier = Modifier.weight(1f))
+                            BlinkChatDownloadAction(
+                                url = url, kind = "video", extension = "mp4"
+                            )
+                        }
+                    }
+                }
+            }
             if (buffering && !failed) {
                 CircularProgressIndicator(
                     color = Color.White,
@@ -129,21 +192,26 @@ internal fun BlinkChatInlineVideo(
             }
         }
         if (!isActive) {
+            AsyncImage(
+                model = remember(url) {
+                    ImageRequest.Builder(context).data(url)
+                        .videoFrameMillis(1000L).build()
+                },
+                contentDescription = "Video thumbnail",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { onActivate() }
+                modifier = Modifier.fillMaxSize()
+                    .background(Color(0x44060D16))
+                    .clickable(onClickLabel = "Play video message") { onActivate() }
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(
-                    Icons.Default.PlayCircle,
-                    contentDescription = "Play video message in chat",
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp),
-                )
-                Text("Play video", color = Color.White, fontSize = 13.sp)
+                Icon(Icons.Default.PlayCircle, "Play video message in chat",
+                    tint = Color.White, modifier = Modifier.size(48.dp))
+                Text("Tap to play video", color = Color.White, fontSize = 12.sp)
             }
         }
         if (failed) {

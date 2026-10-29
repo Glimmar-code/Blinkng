@@ -1,3 +1,11 @@
+## 2026-10-28 — BLINK Chat reference screenshots (Testlab PR #640)
+
+- **Android:** The dark conversation uses the supplied black/navy/cobalt palette rather than the former green reference, the pinned-message banner jumps to the original message, and the plus composer opens a 3×3 attachment menu. Existing voice recording, media permissions, outbox, privacy, sent/delivered/read receipts, photo editor, polls, replies and forwarding remain connected.
+- **Media:** One/two/three photo albums now use 1-up, 2-up, or a 1+2 collage; full-screen image browsing adds an interactive album filmstrip. Video can expand to a full-screen native ExoPlayer. Voice playback shows actual position, decorative waveform bars and selectable 1×/1.5×/2× speed.
+- **Windows:** Conversation bubbles and header use the same reference color values; the attachment action now opens a functional Windows attachment dialog (gallery, stickers, view-once and existing text-poll composer).
+- **PARITY-EXCEPTION: chat-native-android-media-capture** — Android's CameraX/system photo/video picker, microphone recording, OS contact/location intents and player operate through native Android APIs. Windows uses a desktop file picker, the existing desktop picture viewer and Windows-supported chat actions instead of unimplemented Android intents.
+- **Limit:** The supplied mockups are generated design references with mutually inconsistent phone sizes, dummy photos and variants. No sample conversation or generated people are included in the production APK. Visual parity must be checked on an Android test device at multiple sizes before any merge.
+
 ## 2026-10-28 — Create Post reference design and interaction polish (PR #639)
 
 - **Android reference flow:** Repaired missing `@Composable` on poll renderer; all Create Post stages now use a short 210ms Crossfade, preserving the existing validated publish path. System Back from final Post Options returns to Post Details, then to the editor; media selection Back returns to entry without erasing the draft.
