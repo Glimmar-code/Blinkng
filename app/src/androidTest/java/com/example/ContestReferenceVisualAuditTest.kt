@@ -12,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -68,7 +69,21 @@ class ContestReferenceVisualAuditTest {
 
     @Test fun adminApplicantMediaCardShowsThumbnailAndOpensPreview() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val imageUri = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
+        // A genuine PNG file lets Coil exercise the same file decoding path that
+        // real, selected photos use; XML launcher icons are not reliable fixtures.
+        val fixture = java.io.File(context.cacheDir, "contest-visual-fixture.png")
+        val bitmap = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.rgb(20, 93, 192))
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(245, 199, 89)
+        }
+        canvas.drawCircle(80f, 80f, 46f, paint)
+        fixture.outputStream().use {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        bitmap.recycle()
+        val imageUri = android.net.Uri.fromFile(fixture).toString()
         var opened = false
         rule.setContent {
             BlinkTheme(darkTheme = true) {
@@ -78,6 +93,10 @@ class ContestReferenceVisualAuditTest {
             }
         }
         rule.onNodeWithText("View application photo").assertExists()
+        rule.waitUntil(12_000) {
+            rule.onAllNodesWithContentDescription("Loaded application photo")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         capture("contest-applicant-card-staging.png")
         rule.onNodeWithText("View application photo").performClick()
         rule.runOnIdle { org.junit.Assert.assertTrue(opened) }
