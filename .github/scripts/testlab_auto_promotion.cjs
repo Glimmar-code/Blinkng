@@ -15,6 +15,7 @@ const OPT_IN = 'auto-promote';
 const STAGING = 'staging-verified';
 const DEVICE_REQUIRED = 'needs-device-verification';
 const DEVICE_VERIFIED = 'device-verified';
+const VISUAL_VERIFIED = 'visual-verified';
 const BASE_CHECKS = ['validate', 'guard', 'migration-safety', 'parity', 'windows-build', 'integrity'];
 
 /**
@@ -28,6 +29,14 @@ function requiresDeviceVerification(files, labels = new Set()) {
     /^app\/src\/main\/jniLibs\//i.test(path) ||
     /^app\/src\/main\/java\/.*(?:\/call\/|\/calling\/|\/webrtc\/|\/telecom\/|\/updater\/|\/installer\/|\/notifications?\/)/i.test(path) ||
     /^app\/src\/main\/java\/.*(?:Call|WebRTC|WebRtc|Telecom|Bluetooth|AudioRoute|InAppUpdate|ApkUpdate|ApkInstall|PushNotification)[\w]*\.kt$/i.test(path)
+  );
+}
+
+function requiresVisualVerification(files) {
+  return files.some(path =>
+    /^app\/src\/main\/java\/.*\/ui\/(?:screens|components)\/.*\.kt$/i.test(path) ||
+    /^desktopApp\/src\/main\/.*\.(?:kt|css)$/i.test(path) ||
+    /^web\/.*\.(?:html|css|jsx?|tsx?)$/i.test(path)
   );
 }
 
@@ -113,6 +122,14 @@ function preflight(pr, changedFiles) {
   if (/\bdo not auto-merge\b/i.test(pr.body || '')) return 'PR explicitly prohibits auto-merge';
   if (filePathsRequireStaging(changedFiles) && !labels.has(STAGING)) return 'Staging verification is not attested';
   if (requiresDeviceVerification(changedFiles, labels) && !labels.has(DEVICE_VERIFIED)) return 'Independent physical-device verification is not attested';
+  if (requiresVisualVerification(changedFiles)) {
+    if (!labels.has(VISUAL_VERIFIED)) return 'Screenshot reference comparison is not attested';
+    const marker = '<!-- BLINK_VISUAL_VERIFIED_SHA: ' + pr.head.sha + ' -->';
+    if ((pr.body || '').split(marker).length !== 2 ||
+        !/<!--\s*BLINK_VISUAL_VERIFIED_SHA:\s*[a-f0-9]{40}\s*-->/.test(pr.body || '')) {
+      return 'Visual approval is missing or stale for current SHA';
+    }
+  }
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') return 'PR is not cleanly mergeable';
   if ((pr.changed_files || 0) > changedFiles.length) return 'Could not examine every changed file';
   // Labels survive code pushes until the synchronize event clears them.
@@ -139,7 +156,7 @@ async function revokeStaleOptIn(github, context, core) {
   if (pr.head?.repo?.full_name !== OWNER + '/' + REPO) return false;
   // A code update invalidates all prior promotion and staging/device
   // attestations, even if GitHub retains the labels across commits.
-  for (const name of [OPT_IN, STAGING, DEVICE_VERIFIED]) {
+  for (const name of [OPT_IN, STAGING, DEVICE_VERIFIED, VISUAL_VERIFIED]) {
     try {
       await github.rest.issues.removeLabel({
         owner: OWNER, repo: REPO, issue_number: pr.number, name
@@ -200,6 +217,7 @@ async function run({github, context, core}) {
   await ensureLabel(github, STAGING, '5319e7', 'Staging validation verified for backend or release changes');
   await ensureLabel(github, DEVICE_REQUIRED, 'd73a4a', 'This PR needs independent physical-device or hosted device-lab testing');
   await ensureLabel(github, DEVICE_VERIFIED, '0e8a16', 'Independent physical-device acceptance evidence reviewed on current SHA');
+  await ensureLabel(github, VISUAL_VERIFIED, '0e8a16', 'Reference screenshot overlays and diffs reviewed on current SHA');
 
   // A fresh code push must never inherit AI release opt-in or stale validation.
   if (await revokeStaleOptIn(github, context, core)) return;
@@ -306,6 +324,7 @@ module.exports = run;
 module.exports.preflight = preflight;
 module.exports.revokeStaleOptIn = revokeStaleOptIn;
 module.exports.requiresDeviceVerification = requiresDeviceVerification;
+module.exports.requiresVisualVerification = requiresVisualVerification;
 module.exports.requiredChecks = requiredChecks;
 module.exports.checkGate = checkGate;
 module.exports.filePathsRequireStaging = filePathsRequireStaging;
