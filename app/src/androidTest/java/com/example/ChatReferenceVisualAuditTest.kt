@@ -267,8 +267,12 @@ class ChatReferenceVisualAuditTest {
         list.performScrollToIndex(1)
         saveFrame("chat-reference-full-top.png")
         list.performScrollToIndex(6)
+        rule.onNodeWithTag("chat_reference_voice_waveform").assertExists()
         saveFrame("chat-reference-full-media.png")
+        list.performScrollToIndex(9)
+        rule.onNodeWithTag("chat_reference_document_card").assertExists()
         list.performScrollToIndex(10)
+        rule.onNodeWithTag("chat_reference_legacy_poll").assertExists()
         saveFrame("chat-reference-full-bottom.png")
     }
 
