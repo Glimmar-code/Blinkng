@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -672,7 +673,7 @@ internal fun BlinkReferenceMediaReview(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.Close, contentDescription = "Back from selected photos", tint = Color.White)
+                Icon(Icons.Default.ChevronLeft, contentDescription = "Back from selected photos", tint = Color.White)
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text("Select Media", color = Color.White,
@@ -697,7 +698,7 @@ internal fun BlinkReferenceMediaReview(
         ) {
             itemsIndexed(images, key = { _, uri -> uri }) { index, uri ->
                 Box(
-                    Modifier.fillMaxWidth().height(140.dp)
+                    Modifier.fillMaxWidth().aspectRatio(1f)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFF20242B))
                 ) {
@@ -760,9 +761,28 @@ internal fun BlinkReferenceMediaReview(
                 }
             }
         }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            LazyRow(
+                modifier = Modifier.weight(1f).height(56.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                itemsIndexed(images, key = { _, uri -> uri }) { index, uri ->
+                    AsyncImage(
+                        model = uri,
+                        contentDescription = "Preview selected photo " + (index + 1),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable { previewIndex = index }
+                    )
+                }
+            }
+            Text(images.size.toString() + " selected",
+                modifier = Modifier.padding(start = 8.dp),
+                color = Color(0xFFD3D6DE), fontSize = 12.sp)
+        }
         Text(
-            "The first photo is the cover. Tap to preview; use arrows to reorder.",
-            color = Color(0xFFB0B7C4), fontSize = 12.sp
+            "First photo is the cover. Use arrows to change the order.",
+            color = Color(0xFFB0B7C4), fontSize = 11.sp
         )
         OutlinedButton(
             onClick = onAddMore, enabled = images.size < 10,
