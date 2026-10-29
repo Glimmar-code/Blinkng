@@ -103,3 +103,12 @@ termination before deletion; the full local 36-test suite passed again. Editors
 also inherit the reference dark palette when opened from a light desktop host.
 Fresh Windows build/test/packaged-export verification is still required for
 this repair. Diagnostic annotations never waive a failure.
+
+On `9654accc`, the PR Windows job passed compile/tests and reached packaging,
+while the simultaneous push job reproduced brief log-handle retention after
+process exit. Temporary-file deletion now retries for at most three seconds,
+then reports a real cleanup error rather than silently leaving files. The
+cancellation test/assertions remain intact; all 36 local tests passed again.
+The executable's `-L` output was also inspected: this native build enables
+LGPLv3. Matching LGPLv3 and incorporated GPLv3 texts are included and verified
+inside the desktop JAR alongside the existing notices.

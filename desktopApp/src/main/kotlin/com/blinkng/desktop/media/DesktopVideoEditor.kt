@@ -134,8 +134,7 @@ object DesktopVideoEditor {
             // Windows cannot unlink media/logs while the native process holds
             // them. Wait for termination before removing cancelled exports.
             process?.takeIf { it.isAlive }?.let { it.destroyForcibly(); it.waitFor(5, TimeUnit.SECONDS) }
-            overlay.delete(); log.delete(); status.delete()
-            if (!success) output.delete()
+            removeTemporaryFiles(listOf(overlay, log, status) + if (!success) listOf(output) else emptyList())
         }
     }
 
@@ -149,7 +148,21 @@ object DesktopVideoEditor {
             return log.readText()
         } finally {
             process?.takeIf { it.isAlive }?.let { it.destroyForcibly(); it.waitFor(5, TimeUnit.SECONDS) }
-            log.delete()
+            removeTemporaryFiles(listOf(log))
         }
+    }
+
+    private fun removeTemporaryFiles(files: List<File>) {
+        // Windows can briefly retain an inherited handle after process exit.
+        // Retry deletion itself, never the export or a failed verification.
+        repeat(30) { attempt ->
+            val remaining = files.filter { file ->
+                try { java.nio.file.Files.deleteIfExists(file.toPath()); false }
+                catch (_: java.nio.file.FileSystemException) { true }
+            }
+            if (remaining.isEmpty()) return
+            if (attempt < 29) Thread.sleep(100)
+        }
+        error("Could not remove temporary media files. Close any program using the export folder and retry.")
     }
 }

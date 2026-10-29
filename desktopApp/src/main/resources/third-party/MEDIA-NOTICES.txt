@@ -1,6 +1,9 @@
 BLINK desktop video processing components
 
 FFmpeg 8.1.2, JavaCPP preset 1.5.14, unmodified LGPL native package.
+The executable reports LGPL version 3 or later (--enable-version3).
+FFmpeg-LGPL-3.0.txt and its incorporated GPL-3.0.txt terms accompany it;
+FFmpeg-LGPL-2.1.txt also covers upstream files offered under that license.
 JavaCPP and preset Java bindings: Apache License 2.0 / GPLv2 with Classpath exception.
 OpenH264: BSD license, copyright Cisco Systems.
 
