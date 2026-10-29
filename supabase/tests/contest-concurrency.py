@@ -31,7 +31,7 @@ def docker(*args, **kwargs):
 
 
 def sql(statement, *, success=True):
-    result = docker("exec", "-i", NAME, "psql", "-U", "postgres", "-X", "-qAt",
+    result = docker("exec", "-i", NAME, "psql", "-h", "127.0.0.1", "-U", "postgres", "-X", "-qAt",
                     "-v", "ON_ERROR_STOP=1", input=statement)
     if success and result.returncode:
         raise AssertionError(result.stderr)
@@ -52,7 +52,9 @@ try:
                      "--env", "POSTGRES_HOST_AUTH_METHOD=trust", IMAGE)
     assert started.returncode == 0, started.stderr
     for attempt in range(60):
-        if docker("exec", NAME, "pg_isready", "-U", "postgres").returncode == 0:
+        # The image's temporary init server accepts Unix sockets, then exits.
+        # TCP becomes ready only for the final server inside this container.
+        if docker("exec", NAME, "pg_isready", "-h", "127.0.0.1", "-U", "postgres").returncode == 0:
             break
         time.sleep(1)
     else:

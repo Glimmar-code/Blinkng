@@ -58,6 +58,8 @@ Local verification executed successfully on Linux/JDK 17/Gradle 8.12.1:
   Eight independent connections produced exactly one vote and notification;
   anonymous/direct-table/admin escalation/self-vote and pause gates passed.
   The exact test container was removed. This is not hosted Auth/Storage evidence.
+  A subsequent run exposed the image's temporary initialization server readiness
+  race. Waiting for the final TCP server fixed it; the complete test then passed.
 
 An initial export test failed because the LGPL build lacks FFmpeg's `eq` filter.
 The implementation now uses supported RGB LUT filters; the full suite reran
