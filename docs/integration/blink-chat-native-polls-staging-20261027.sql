@@ -48,7 +48,7 @@ CREATE FUNCTION private.blink_chat_poll_direct_blocked(
     p_conversation_id uuid, p_actor uuid
 ) RETURNS boolean
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
-AS $
+AS $$
     SELECT EXISTS (
         SELECT 1
         FROM public.conversations c
@@ -62,7 +62,7 @@ AS $
         WHERE c.id = p_conversation_id
           AND c.is_group IS FALSE
     );
-$;
+$$;
 REVOKE ALL ON FUNCTION private.blink_chat_poll_direct_blocked(uuid, uuid)
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION private.blink_chat_poll_direct_blocked(uuid, uuid)
@@ -142,6 +142,9 @@ BEGIN
         (message_id, conversation_id, created_by, question, options)
     VALUES (p_message_id, v_message.conversation_id, v_actor,
             v_question, to_jsonb(v_labels));
+    -- Mark this as a native poll so authenticated clients fetch actual results;
+    -- older clients can still show the question as text.
+    UPDATE public.messages SET message_type='poll' WHERE id=p_message_id;
     RETURN p_message_id;
 END;
 $$;

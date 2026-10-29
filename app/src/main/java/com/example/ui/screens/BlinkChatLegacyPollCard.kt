@@ -5,6 +5,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,9 +46,9 @@ internal fun BlinkChatLegacyPollCard(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("📊 " + draft.question, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            Text("▥  " + draft.question, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 color = textColor)
-            Text("Text poll · responses are chat replies", color = palette.textSecondary,
+            Text("Reply with your choice", color = palette.textSecondary,
                 fontSize = 11.sp)
             draft.options.forEachIndexed { index, option ->
                 Surface(
@@ -56,8 +61,16 @@ internal fun BlinkChatLegacyPollCard(
                         onClick = { onChoice(index) }
                     )
                 ) {
-                    Row(Modifier.padding(horizontal = 11.dp, vertical = 11.dp)) {
-                        Text("${index + 1}. $option", color = textColor, fontSize = 13.sp)
+                    Row(
+                        Modifier.padding(horizontal = 11.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(19.dp)
+                                .border(1.5.dp, palette.accent, CircleShape)
+                        )
+                        Text(option, color = textColor, fontSize = 13.sp,
+                            modifier = Modifier.padding(start = 11.dp))
                     }
                 }
             }
