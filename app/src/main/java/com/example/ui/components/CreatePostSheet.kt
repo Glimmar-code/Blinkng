@@ -465,6 +465,7 @@ fun CreatePostSheet(
             selectedCoverUri = null
             coverFrameIndex = -1
             selectedImages = emptyList()
+            showMediaReview = false
             reelEditorStage = true
             mode = "reel"
             showPoll = false
@@ -1210,6 +1211,11 @@ fun CreatePostSheet(
                         imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
+                    },
+                    onPickVideos = {
+                        // Confirm a media-type change before replacing selected photos.
+                        pickerOpenedFromLanding = false
+                        pendingMediaSwitch = "reel"
                     },
                     onNext = { showMediaReview = false }
                 )
