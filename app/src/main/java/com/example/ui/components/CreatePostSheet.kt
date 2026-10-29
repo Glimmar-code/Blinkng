@@ -1084,7 +1084,7 @@ fun CreatePostSheet(
                 )
         ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().testTag("blink_create_post_full_screen"),
             color = if (useClassicComposer && selectedVideo == null && mode != "reel")
                 outerScheme.background else Color.Black
         ) {
