@@ -1,5 +1,11 @@
 package com.example
 
+import android.content.ContentValues
+import android.os.Environment
+import android.provider.MediaStore
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -72,6 +78,28 @@ class ChatReferenceVisualAuditTest {
         // Capture the actual rendered dark chat for CI's side-by-side review.
         val rendered = rule.onNodeWithTag("chat_conversation_root").captureToImage()
         check(rendered.width > 100 && rendered.height > 200)
+        // Export a real emulator-rendered screenshot, not a fabricated mockup.
+        // This isolated fixture verifies the chrome and contrast; comparing a
+        // full media-rich conversation requires matching content on a device.
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "chat-reference-staging-dark.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/BLINK-Visual-Audit")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = requireNotNull(
+            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        )
+        resolver.openOutputStream(uri).use { stream ->
+            checkNotNull(stream)
+            check(rendered.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        check(resolver.update(uri, values, null, null) == 1)
 
         rule.onNodeWithTag("chat_reference_attachment_plus").performClick()
         rule.onNodeWithText("Share with this chat").assertExists()
