@@ -113,6 +113,7 @@ class BlinkCreatePostReferenceTest {
             }
         }
         composeRule.onNodeWithTag("blink_post_details_stage").assertExists()
+        composeRule.onNodeWithText("Public").performClick()
         composeRule.onNodeWithText("Followers").performClick()
         composeRule.onNodeWithText("Next: Post options").performScrollTo().performClick()
         composeRule.runOnIdle {
