@@ -2136,7 +2136,8 @@ private fun PremiumChatDetail(
                         }
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            "Pinned: " + pinnedPreview.text.ifBlank { "Pinned media" },
+                            "Pinned: " + pinnedPreview.text.ifBlank { "Pinned media" }
+                                .replace(Regex("^Pinned:\\s*", RegexOption.IGNORE_CASE), ""),
                             color = palette.textPrimary, fontSize = 12.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
@@ -3444,8 +3445,12 @@ private fun ChatHeader(
                     Spacer(Modifier.width(5.dp))
                 }
                 Text(
-                    text = conversation.presenceLabel.ifBlank {
-                        if (conversation.isOnline) "Online" else conversation.lastSeen
+                    text = when {
+                        conversation.presenceLabel.isNotBlank() &&
+                            !conversation.presenceLabel.equals("Active now", ignoreCase = true) ->
+                            conversation.presenceLabel
+                        conversation.isOnline -> "Online"
+                        else -> conversation.lastSeen
                     },
                     color = palette.textSecondary,
                     fontSize = 11.sp,
