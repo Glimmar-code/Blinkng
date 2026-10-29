@@ -71,6 +71,7 @@ class BlinkCreatePostReferenceTest {
                     onMove = { from, to -> actions += "move:" + from + "->" + to },
                     onEdit = { actions += "edit:" + it },
                     onAddMore = { actions += "add" },
+                    onPickVideos = { actions += "video" },
                     onNext = { actions += "next" }
                 )
             }
@@ -79,9 +80,10 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("2 / 10 selected").assertExists()
         composeRule.onNodeWithTag("blink_gallery_edit_0").performClick()
         composeRule.onNodeWithText("Add more photos").performClick()
+        composeRule.onNodeWithTag("blink_media_tab_videos").performClick()
         composeRule.onNodeWithText("Next (2)").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("edit:content://sample/1", "add", "next"), actions)
+            assertEquals(listOf("edit:content://sample/1", "add", "video", "next"), actions)
         }
     }
 
