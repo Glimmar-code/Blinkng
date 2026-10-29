@@ -32,7 +32,7 @@ class BlinkContestMediaUpload {
                 "video/mp4" -> "mp4"
                 else -> error("Choose a JPG, PNG, WebP or MP4 file.")
             }
-            val max = if (mime == "video/mp4") 26_214_400 else 8_388_608
+            val max = com.blinkng.shared.BlinkContestMediaPolicy.maxBytes(mime)
             val data = context.contentResolver.openInputStream(selected)?.use { input ->
                 val output = java.io.ByteArrayOutputStream()
                 val buf = ByteArray(16384)

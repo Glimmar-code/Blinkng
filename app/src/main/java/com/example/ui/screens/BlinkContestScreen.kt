@@ -158,7 +158,7 @@ fun BlinkContestScreen(
         if (selectedId == null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf("Ongoing", "Upcoming", "Winners").forEach { name ->
+                listOf("Ongoing", "Upcoming", "Completed").forEach { name ->
                     FilterChip(selected = tab == name, onClick = { tab = name }, label = { Text(name) })
                 }
             }

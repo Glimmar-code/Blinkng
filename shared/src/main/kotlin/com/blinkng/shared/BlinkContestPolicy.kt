@@ -5,7 +5,7 @@ object BlinkContestPolicy {
     const val MAX_STATEMENT = 500
     const val MIN_STATEMENT = 10
     fun section(status: String): String = when (status) {
-        "completed" -> "Winners"
+        "completed", "cancelled" -> "Completed"
         "upcoming" -> "Upcoming"
         else -> "Ongoing"
     }
@@ -20,5 +20,6 @@ object BlinkContestPolicy {
     }
     fun validStatement(text: String) = text.trim().length in MIN_STATEMENT..MAX_STATEMENT
     fun canVote(status: String, voteId: String?, ownId: String, candidateId: String): Boolean =
-        status == "voting" && voteId.isNullOrBlank() && ownId != candidateId
+        status == "voting" && (voteId.isNullOrBlank() || voteId == "null") &&
+            candidateId.isNotBlank() && candidateId != "null" && ownId != candidateId
 }

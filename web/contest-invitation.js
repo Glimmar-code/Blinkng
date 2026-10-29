@@ -63,16 +63,22 @@
         status.textContent = 'Contest information is temporarily unavailable. The voting link remains available.';
         return;
       }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let unavailable = false;
       try {
         const response = await fetch(apiBase + '/rest/v1/rpc/get_blink_contest_candidate', {
           method: 'POST',
           headers: { 'apikey': key, 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({p_contest_id: contestId, p_entry_id: entryId}),
-          cache: 'no-store'
+          cache: 'no-store', signal: controller.signal
         });
-        if (!response.ok) throw Error('not_available');
+        if (!response.ok) {
+          unavailable = [400, 404, 410].includes(response.status);
+          throw Error('not_available');
+        }
         const candidate = await response.json();
-        if (!candidate || String(candidate.id).toLowerCase() !== entryId.toLowerCase()) throw Error('not_available');
+        if (!candidate || String(candidate.id).toLowerCase() !== entryId.toLowerCase()) { unavailable = true; throw Error('not_available'); }
         const name = String(candidate.name || candidate.username || 'BLINK contestant').slice(0, 90);
         const username = String(candidate.username || '').slice(0, 40);
         root.querySelector('#contest-invite-name').textContent = name;
@@ -101,9 +107,13 @@
       } catch (_) {
         root.querySelector('#contest-invite-name').textContent = 'Contestant unavailable';
         status.textContent = 'This entry could not be verified. Only approved contest entries can receive votes.';
-        open.setAttribute('aria-disabled', 'true');
-        open.removeAttribute('href');
-      }
+        if (unavailable) {
+          open.setAttribute('aria-disabled', 'true');
+          open.removeAttribute('href');
+        } else {
+          status.textContent = 'Contest information could not be loaded. You can still open BLINK to verify this invitation and vote.';
+        }
+      } finally { clearTimeout(timeout); }
     })();
     return true;
   }

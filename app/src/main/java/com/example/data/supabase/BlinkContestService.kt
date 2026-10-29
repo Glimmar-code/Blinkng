@@ -39,67 +39,75 @@ class BlinkContestService {
             response.use {
                 val raw = it.body?.string().orEmpty()
                 if (!it.isSuccessful) {
-                    val msg = runCatching { JSONObject(raw).optString("message") }
+                    val msg = contestResult { JSONObject(raw).optString("message") }
                         .getOrNull().orEmpty().ifBlank { "Contest request failed (" + it.code + ")." }
                     error(msg.replace('_', ' '))
                 }
                 raw
             }
         }
-    suspend fun contests(): Result<JSONArray> = runCatching { JSONArray(call("list_blink_contests")) }
-    suspend fun detail(id: String): Result<JSONObject> = runCatching {
+    suspend fun contests(): Result<JSONArray> = contestResult { JSONArray(call("list_blink_contests")) }
+    suspend fun detail(id: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
     }
-    suspend fun candidate(contestId: String, entryId: String): Result<JSONObject> = runCatching {
+    suspend fun candidate(contestId: String, entryId: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest_candidate", JSONObject()
             .put("p_contest_id", contestId).put("p_entry_id", entryId)))
     }
-    suspend fun apply(id: String, statement: String, mediaUrl: String): Result<JSONObject> = runCatching {
+    suspend fun apply(id: String, statement: String, mediaUrl: String): Result<JSONObject> = contestResult {
         JSONObject(call("apply_blink_contest", JSONObject().put("p_contest_id", id)
             .put("p_statement", statement.trim())
             .put("p_media_url", mediaUrl.trim().takeIf { it.isNotEmpty() } ?: JSONObject.NULL)))
     }
-    suspend fun vote(id: String, entryId: String): Result<JSONObject> = runCatching {
+    suspend fun vote(id: String, entryId: String): Result<JSONObject> = contestResult {
         JSONObject(call("vote_blink_contest", JSONObject().put("p_contest_id", id)
             .put("p_entry_id", entryId)))
     }
-    suspend fun adminContests(): Result<JSONArray> = runCatching {
+    suspend fun adminContests(): Result<JSONArray> = contestResult {
         JSONArray(call("admin_list_blink_contests"))
     }
-    suspend fun adminEntries(id: String): Result<JSONArray> = runCatching {
+    suspend fun adminEntries(id: String): Result<JSONArray> = contestResult {
         JSONArray(call("admin_list_blink_contest_entries", JSONObject().put("p_contest_id", id)))
     }
-    suspend fun adminSave(data: JSONObject, id: String? = null): Result<JSONObject> = runCatching {
+    suspend fun adminSave(data: JSONObject, id: String? = null): Result<JSONObject> = contestResult {
         JSONObject(call("admin_save_blink_contest", JSONObject()
             .put("p_id", id ?: JSONObject.NULL).put("p_data", data)))
     }
-    suspend fun adminTransition(id: String, action: String): Result<JSONObject> = runCatching {
+    suspend fun adminTransition(id: String, action: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_transition_blink_contest", JSONObject()
             .put("p_contest_id", id).put("p_action", action)))
     }
-    suspend fun recordShare(contestId: String, entryId: String, channel: String): Result<JSONObject> = runCatching {
+    suspend fun recordShare(contestId: String, entryId: String, channel: String): Result<JSONObject> = contestResult {
         JSONObject(call("record_blink_contest_share", JSONObject()
             .put("p_contest_id", contestId).put("p_entry_id", entryId)
             .put("p_channel", channel)))
     }
-    suspend fun adminInsights(contestId: String): Result<JSONObject> = runCatching {
+    suspend fun adminInsights(contestId: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_blink_contest_insights", JSONObject().put("p_contest_id", contestId)))
     }
-    suspend fun adminVoteReview(id: String, action: String, reason: String): Result<JSONObject> = runCatching {
+    suspend fun adminVoteReview(id: String, action: String, reason: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_review_blink_contest_vote", JSONObject().put("p_vote_id", id)
             .put("p_action", action).put("p_reason", reason)))
     }
-    suspend fun adminFinalize(contestId: String): Result<JSONObject> = runCatching {
+    suspend fun adminFinalize(contestId: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_finalize_blink_contest", JSONObject().put("p_contest_id", contestId)))
     }
-    suspend fun adminPrize(id: String, status: String, receipt: String, note: String): Result<JSONObject> = runCatching {
+    suspend fun adminPrize(id: String, status: String, receipt: String, note: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_record_blink_contest_prize", JSONObject().put("p_prize_id", id)
             .put("p_status", status)
             .put("p_reference", if (receipt.isBlank()) JSONObject.NULL else receipt.trim())
             .put("p_note", note.trim())))
     }
-    suspend fun adminReview(entryId: String, action: String): Result<JSONObject> = runCatching {
+    suspend fun adminReview(entryId: String, action: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_review_blink_contest_entry", JSONObject()
             .put("p_entry_id", entryId).put("p_action", action)))
     }
+}
+
+private suspend inline fun <T> contestResult(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (cancelled: kotlinx.coroutines.CancellationException) {
+    throw cancelled
+} catch (failure: Exception) {
+    Result.failure(failure)
 }

@@ -10,7 +10,7 @@ class BlinkContestPolicyTest {
         assertEquals("Upcoming", BlinkContestPolicy.section("upcoming"))
         assertEquals("Ongoing", BlinkContestPolicy.section("registration"))
         assertEquals("Ongoing", BlinkContestPolicy.section("voting"))
-        assertEquals("Winners", BlinkContestPolicy.section("completed"))
+        assertEquals("Completed", BlinkContestPolicy.section("completed"))
     }
 
     @Test fun statementLengthIsBounded() {

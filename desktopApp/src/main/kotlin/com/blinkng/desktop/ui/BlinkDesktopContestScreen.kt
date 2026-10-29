@@ -38,9 +38,11 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
+    var detailError by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf("Ongoing") }
     var statement by remember { mutableStateOf("") }
     var mediaUrl by remember { mutableStateOf("") }
+    var entryFile by remember(selected) { mutableStateOf<java.io.File?>(null) }
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
@@ -61,9 +63,10 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     }
     LaunchedEffect(selected, revision) {
         detail = null
+        detailError = null
         selected?.let { id ->
             runCatching { api.contestDetail(id) }.onSuccess { detail = it }
-                .onFailure { message = it.message.orEmpty() }
+                .onFailure { detailError = it.message ?: "Unable to load this contest." }
         }
     }
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -76,7 +79,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
         if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
         if (selected == null) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf("Ongoing", "Upcoming", "Winners").forEach { t ->
+                listOf("Ongoing", "Upcoming", "Completed").forEach { t ->
                     FilterChip(selected = tab == t, onClick = { tab = t }, label = { Text(t) })
                 }
                 TextButton(onClick = { state.selectedRoute = "people" }) { Text("People discovery") }
@@ -120,7 +123,12 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
             }
         } else {
             val d = detail
-            if (d == null) CircularProgressIndicator() else {
+            if (d == null) {
+                if (detailError != null) {
+                    Text(detailError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = { revision++ }) { Text("Retry contest") }
+                } else CircularProgressIndicator()
+            } else {
                 val c = d.optJSONObject("contest") ?: JSONObject()
                 val status = c.optString("status")
                 val own = d.optString("my_entry_id", "").takeUnless { it == "null" }.orEmpty()
@@ -177,6 +185,37 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             OutlinedTextField(mediaUrl, { mediaUrl = it },
                                 label = { Text("Optional entry photo/Reel URL") },
                                 modifier = Modifier.fillMaxWidth())
+                            Text("Uploaded media is publicly accessible before approval. Do not attach private documents.", style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(enabled = !busy, onClick = {
+                                scope.launch {
+                                    entryFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        var picked: java.io.File? = null
+                                        javax.swing.SwingUtilities.invokeAndWait {
+                                            val chooser = javax.swing.JFileChooser().apply {
+                                                fileFilter = javax.swing.filechooser.FileNameExtensionFilter("Contest photo or video", "jpg", "jpeg", "png", "webp", "mp4")
+                                                isAcceptAllFileFilterUsed = false
+                                            }
+                                            if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) picked = chooser.selectedFile
+                                        }
+                                        picked
+                                    }
+                                }
+                            }) { Text("Choose photo or video") }
+                            entryFile?.let { file ->
+                                Text(file.name)
+                                OutlinedButton(enabled = !busy, onClick = {
+                                    busy = true
+                                    scope.launch {
+                                        try {
+                                            mediaUrl = api.uploadContestMedia(file)
+                                            message = "Public preview uploaded. Submit your application to finish."
+                                            entryFile = null
+                                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                        catch (failure: Exception) { message = failure.message ?: "Media upload failed. Try again." }
+                                        finally { busy = false }
+                                    }
+                                }) { Text("Upload public preview") }
+                            }
                             Button(enabled = !busy && BlinkContestPolicy.validStatement(statement), onClick = {
                                 busy = true
                                 scope.launch {

@@ -3,7 +3,7 @@ name: Windows desktop quality gate
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'Testlab/**']
   workflow_dispatch:
 
 permissions:

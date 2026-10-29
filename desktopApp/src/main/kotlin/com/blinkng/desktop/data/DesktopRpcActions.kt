@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -485,6 +486,25 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .post(image.bytes.toRequestBody(image.mime.toMediaType()))
             .build())
         "$baseUrl/storage/v1/object/public/$bucket/$path"
+    }
+
+    suspend fun uploadContestMedia(file: java.io.File): String = withContext(Dispatchers.IO) {
+        require(file.isFile) { "Choose an existing media file." }
+        val extension = file.extension.lowercase()
+        val mime = when (extension) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "mp4" -> "video/mp4"
+            else -> throw IllegalArgumentException("Choose a JPG, PNG, WebP or MP4 file.")
+        }
+        com.blinkng.shared.BlinkContestMediaPolicy.validate(mime, file.length())
+        val owner = requireSessionUserId()
+        val path = "$owner/${UUID.randomUUID()}.$extension"
+        execute(requestBuilder("/storage/v1/object/blink-contest-media/$path")
+            .header("x-upsert", "false")
+            .post(file.asRequestBody(mime.toMediaType())).build())
+        "$baseUrl/storage/v1/object/public/blink-contest-media/$path"
     }
 
     suspend fun adminGlobalSearch(query: String): JSONObject {
