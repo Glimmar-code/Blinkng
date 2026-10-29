@@ -140,9 +140,10 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithTag("blink_create_post_publish_options").assertExists()
         composeRule.onNodeWithText("Preview Post").performClick()
         composeRule.onNodeWithText("Save as Draft").performClick()
-        composeRule.onNodeWithText("WhatsApp / other apps").performClick()
-        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share"), selected) }
-        composeRule.onNodeWithText("Post Now").performClick()
-        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "post"), selected) }
+        composeRule.onNodeWithText("WhatsApp").performScrollTo().performClick()
+        composeRule.onNodeWithText("Other apps").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "share"), selected) }
+        composeRule.onNodeWithText("Post Now").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "share", "post"), selected) }
     }
 }
