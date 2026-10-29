@@ -2334,7 +2334,7 @@ private fun PremiumChatDetail(
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("chat_reference_history_list"),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
