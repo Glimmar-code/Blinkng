@@ -20,8 +20,15 @@ import java.time.Instant
 
 private val contestNavy = Color(0xFF0B1626)
 private val contestBlue = Color(0xFF1685FF)
+internal fun contestDeadline(contest: JSONObject): Pair<String, String> = when (contest.optString("status")) {
+    "upcoming" -> "Applications open" to contest.optString("registration_opens_at")
+    "registration" -> "Applications close" to contest.optString("registration_closes_at")
+    "voting" -> "Voting closes" to contest.optString("voting_closes_at")
+    "review", "completed" -> "Results announced" to contest.optString("results_at")
+    else -> "Voting closes" to contest.optString("voting_closes_at")
+}
 @Composable
-internal fun BlinkContestCountdown(iso: String) {
+internal fun BlinkContestCountdown(iso: String, label: String = "Voting closes") {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(iso) { while (true) { now = System.currentTimeMillis(); delay(30_000) } }
     val end = remember(iso) { runCatching { OffsetDateTime.parse(iso).toInstant() }.getOrNull()
@@ -33,7 +40,7 @@ internal fun BlinkContestCountdown(iso: String) {
         left.toDays() > 0 -> left.toDays().toString() + "d " + (left.toHours() % 24) + "h"
         else -> left.toHours().toString() + "h " + (left.toMinutes() % 60) + "m"
     }
-    Text("Voting closes · " + remaining, color = Color(0xFFBDDFFF), fontSize = 12.sp)
+    Text(label + " · " + remaining, color = Color(0xFFBDDFFF), fontSize = 12.sp)
 }
 @Composable
 internal fun BlinkContestHeroCard(contest: JSONObject, onOpen: () -> Unit) {
@@ -58,7 +65,8 @@ internal fun BlinkContestHeroCard(contest: JSONObject, onOpen: () -> Unit) {
                     "   🥈 ₦" + "%,d".format(contest.optInt("prize_second")) +
                     "   🥉 ₦" + "%,d".format(contest.optInt("prize_third")),
                     color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                BlinkContestCountdown(contest.optString("voting_closes_at"))
+                val (deadlineLabel, deadline) = contestDeadline(contest)
+                BlinkContestCountdown(deadline, deadlineLabel)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(contest.optInt("contestants").toString() + " contestants",
                         color = Color(0xFFCAD5E6), fontSize = 11.sp,
