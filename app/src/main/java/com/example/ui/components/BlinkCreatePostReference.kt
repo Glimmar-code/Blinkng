@@ -109,6 +109,7 @@ internal fun BlinkCreatePostLanding(
     onDraft: (PostDraft) -> Unit
 ) {
     val white = Color.White
+    var showAllDrafts by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState())
             .testTag("blink_create_post_landing")
@@ -139,7 +140,13 @@ internal fun BlinkCreatePostLanding(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Recent", color = white, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
-            Text(if (drafts.isEmpty()) "Drafts" else "See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
+            if (drafts.size > 8) {
+                TextButton(onClick = { showAllDrafts = !showAllDrafts }) {
+                    Text(if (showAllDrafts) "Show less" else "See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
+                }
+            } else {
+                Text("Saved drafts", color = Color(0xFF7D83F9), fontSize = 12.sp)
+            }
         }
         if (drafts.isEmpty()) {
             Surface(
@@ -156,7 +163,7 @@ internal fun BlinkCreatePostLanding(
             }
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                items(drafts.take(8), key = { it.id }) { draft ->
+                items(if (showAllDrafts) drafts else drafts.take(8), key = { it.id }) { draft ->
                     val rawImage = draft.imageUri.orEmpty()
                     val previewImage = if (rawImage.startsWith("[")) {
                         runCatching { JSONArray(rawImage).optString(0) }.getOrDefault("")
