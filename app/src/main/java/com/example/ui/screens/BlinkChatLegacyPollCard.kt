@@ -71,14 +71,12 @@ internal fun BlinkChatLegacyPollCard(
                     Surface(
                         color = if (referenceDark) palette.glass else Color.Transparent,
                         shape = CircleShape,
-                        border = BorderStroke(1.dp, if (index == 1)
-                            palette.accent else palette.textMuted),
+                        border = BorderStroke(1.dp, palette.textMuted),
                         modifier = Modifier.size(22.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(('A' + index).toString(), fontSize = 10.sp,
-                                color = if (index == 1) palette.accent else
-                                    if (referenceDark) palette.textSecondary else textColor)
+                                color = if (referenceDark) palette.textSecondary else textColor)
                         }
                     }
                     Spacer(Modifier.width(9.dp))
