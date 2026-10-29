@@ -23,9 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkChatReferenceStyle
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.ui.theme.MessagePalette
+import com.example.ui.theme.MessageThemeMode
 
 /** Telegram-style single caption + tightly spaced responsive photo tiles. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -60,11 +62,17 @@ internal fun BlinkChatPhotoAlbumBubble(
         if (isMine) Arrangement.End else Arrangement.Start) {
         Column(
             Modifier.widthIn(max = 306.dp).clip(corner)
-                .background(if (isMine) palette.outgoingBrush()
+                .background(if (palette.mode == MessageThemeMode.DARK && caption.isBlank())
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            listOf(Color.Transparent, Color.Transparent)
+                        )
+                    else if (isMine) palette.outgoingBrush()
                     else androidx.compose.ui.graphics.Brush.linearGradient(
                         listOf(palette.incomingBubble, palette.incomingBubble)
                     ))
-                .border(1.dp, palette.border.copy(alpha = .5f), corner)
+                .border(1.dp,
+                    if (palette.mode == MessageThemeMode.DARK) Color.Transparent
+                    else palette.border.copy(alpha = .5f), corner)
                 .combinedClickable(onClick = onReply, onLongClick = onActions)
                 .padding(4.dp)
         ) {
@@ -138,7 +146,10 @@ internal fun BlinkChatPhotoAlbumBubble(
             ) {
                 Text(if (status == MessageStatus.SENDING) "Sending…" else if (status == MessageStatus.FAILED)
                     "Waiting to retry" else ordered.last().timestamp,
-                    color = if (status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
+                    color = if (status == MessageStatus.FAILED) palette.danger
+                        else if (isMine && caption.isNotBlank() && palette.mode == MessageThemeMode.DARK)
+                            palette.outgoingText.copy(alpha = .55f)
+                        else palette.textSecondary,
                     fontSize = 10.sp
                 )
                 if (isMine && status !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
@@ -151,7 +162,8 @@ internal fun BlinkChatPhotoAlbumBubble(
                             else -> "Sent"
                         },
                         tint = if (status == MessageStatus.READ) Color(0xFF1685FF)
-                            else palette.textSecondary,
+                            else if (isMine && caption.isNotBlank() && palette.mode == MessageThemeMode.DARK)
+                                palette.outgoingText.copy(alpha = .55f) else palette.textSecondary,
                         modifier = Modifier.size(15.dp)
                     )
                 }
@@ -171,7 +183,7 @@ private fun AlbumPhotoTile(
 ) {
     Box(
         modifier.clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF19283B))
+            .background(Color(BlinkChatReferenceStyle.Incoming))
             .clickable { onOpen(photo) },
         contentAlignment = Alignment.Center
     ) {
