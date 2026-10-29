@@ -10,14 +10,12 @@ test('onboarding MaterialTheme error cannot return', () => {
   assert.match(onboarding, /^import androidx\.compose\.material3\.MaterialTheme$/m);
   assert.match(onboarding, /MaterialTheme\.colorScheme\.error/);
 });
-test('SMS OTP is transient, not saved in Activity state', () => {
-  assert.match(onboarding, /var phoneCode by remember\(profile\.id\) \{ mutableStateOf\(""\) \}/);
-  assert.doesNotMatch(onboarding, /var phoneCode by rememberSaveable/);
-  assert.match(onboarding, /var phoneNumber by remember\(profile\.id\) \{ mutableStateOf\(""\) \}/);
-  assert.match(onboarding, /var phoneCodeSent by remember\(profile\.id\) \{ mutableStateOf\(false\) \}/);
-  assert.match(onboarding, /var phoneVerified by remember\(profile\.id\) \{ mutableStateOf\(false\) \}/);
-  assert.doesNotMatch(onboarding, /var (?:phoneNumber|phoneCodeSent|phoneVerified) by rememberSaveable/);
-  assert.match(onboarding, /BlinkPhonePolicy\.otpIsValid\(phoneCode\)/);
+test('onboarding uses an optional private phone without SMS verification', () => {
+  assert.match(onboarding, /Phone number \(optional\)/);
+  assert.match(onboarding, /BlinkPhonePolicy\.normalize\(phoneNumber\)/);
+  assert.match(onboarding, /onSavePhone\(number\)/);
+  assert.match(onboarding, /var phoneNumber by remember\(profile\.id\)/);
+  assert.doesNotMatch(onboarding, /BlinkPhoneVerificationClient|Send SMS code|Six-digit SMS code|phoneCodeSent|phoneVerified/);
 });
 test('both signup paths use the same strict real birthday policy', () => {
   assert.match(onboarding, /BlinkBirthdayPolicy\.isValid\(birthDate\)/);

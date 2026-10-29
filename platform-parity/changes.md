@@ -14,6 +14,14 @@
 - **Web/Cloudflare:** /contest/{contest_uuid}/{entry_uuid} serves an approved-contestant invitation with Open BLINK to vote, APK download and copyable URL. Installation via APK cannot reliably reopen an app automatically; the page retains the link and provides an explicit post-install Open action.
 - **Release hold:** No production migration, live voting, link-verification guarantee, deployed website or merged PR is claimed. Backend fixture, Android+Windows compilation, security/permissions, route and device testing must pass before main.
 
+## 2026-10-28 — Contact sync opt-in, no-SMS profile numbers (Testlab)
+
+- **Android:** Removed in-app SMS code and phone-verification controls from onboarding and Find Friends. New optional signup number is normalized and saved only to the authenticated user's profile. Visibility defaults to PRIVATE; the owner can change it later in Edit Profile.
+- **Consent:** Once Home is idle following login or onboarding, BLINK offers an optional contact-sync and join-alert invitation, with Android READ_CONTACTS permission requested only on explicit acceptance. Not now triggers a reminder no sooner than 14 days. Returning opted-in users may resync under existing permission. Backend errors never erase a previous contact list.
+- **Production hold:** Read-only Supabase inspection confirmed NO live contact settings tables, matching RPC or deployed `blink-contact-discovery` Edge Function on 2026-10-28. The prompt checks backend health before requesting access. The existing staged HMAC matching design requires independently verified phone ownership; no-SMS self-declared numbers cannot be treated as identity proof. A reviewed safe replacement and deployment are required before joined notifications can be claimed to work.
+- **PARITY-EXCEPTION: android-phone-address-book-permission:** Windows has no Android runtime Contacts permission or device API equivalent. Shared server contact consent/discovery must remain governed by the same privacy contract; Windows contact import requires its own OS-specific design. This does not remove or change Windows features.
+- **Release gates:** Latest SHA Android/Windows/Supabase CI, permission denial/revocation, signed-in phone save, real contact matching and new-member notification integration must all be verified. No production DB or app publication in this change.
+
 ## 2026-10-28 — Full-app audit Search and credential recovery (PR #635)
 
 - **Search:** Android and Windows both expose a 30-day-first trending-tags entry point and retain truthful seven-day fallback until the new authenticated RPC is deployed. No fabricated trends or creators. The staged backend excludes expired verification badges.

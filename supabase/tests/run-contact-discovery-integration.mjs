@@ -7,6 +7,7 @@ const db = new PGlite();
 const owner = '11111111-1111-4111-8111-111111111111';
 const joiner = '22222222-2222-4222-8222-222222222222';
 const digest = 'a'.repeat(64);
+const ownerDigest = 'b'.repeat(64);
 try {
   await db.exec(`
     create role anon;
@@ -55,16 +56,23 @@ try {
        ('${owner}','old_user',true),
        ('${joiner}','new_user',true);
     insert into public.blink_contact_settings(user_id,sync_enabled,discoverable,join_alerts)
-    values ('${owner}',true,false,true),('${joiner}',true,true,false);
+    values ('${owner}',true,true,true),('${joiner}',true,true,false);
     select public.blink_contact_replace_imports('${owner}',array['${digest}']::text[]);
-    select public.blink_contact_upsert_verified('${joiner}','${digest}');
+    select public.blink_contact_upsert_opted_in('${owner}','${ownerDigest}');
+    select public.blink_contact_upsert_opted_in('${joiner}','${digest}');
   `);
+  assert.equal((await db.query(`select user_id from public.blink_contact_matches_for('${owner}')`)).rows.length, 0,
+    'one-sided imports must never expose a self-declared phone identity');
+  assert.equal((await db.query('select * from private.blink_contact_join_alerts')).rows.length, 0,
+    'one-sided import must not produce a join notification');
+  await db.exec(`select public.blink_contact_replace_imports('${joiner}',array['${ownerDigest}']::text[]);
+    select public.blink_contact_notify_my_join('${joiner}');`);
   const matches = await db.query(`select user_id from public.blink_contact_matches_for('${owner}')`);
-  assert.equal(matches.rows.length, 1, 'opted-in owner discovers verified contact');
+  assert.equal(matches.rows.length, 1, 'mutual opt-in contacts can be suggested without SMS');
   assert.equal(matches.rows[0].user_id, joiner);
   const alert = await db.query(`select notification_id from private.blink_contact_join_alerts
     where owner_id='${owner}' and joiner_id='${joiner}'`);
-  assert.equal(alert.rows.length, 1, 'verified new account generates only one joined alert');
+  assert.equal(alert.rows.length, 1, 'mutually opted-in new account generates one guarded alert');
   assert.ok(alert.rows[0].notification_id);
   let permission = await db.query(`select public.blink_contact_push_is_authorized('${alert.rows[0].notification_id}') as permitted`);
   assert.equal(permission.rows[0].permitted, true, 'only consented alerts may be pushed');
@@ -79,11 +87,34 @@ try {
   permission = await db.query(`select public.blink_contact_push_is_authorized('${alert.rows[0].notification_id}') as permitted`);
   assert.equal(permission.rows[0].permitted, false, 'revoking join alerts suppresses push');
   await db.exec(`update public.blink_contact_settings set discoverable=false where user_id='${joiner}';
-    select public.blink_contact_upsert_verified('${joiner}','${digest}');`);
+    select public.blink_contact_upsert_opted_in('${joiner}','${digest}');`);
   assert.equal((await db.query(`select * from public.blink_contact_matches_for('${owner}')`)).rows.length, 0,
     'disabling discoverability removes directory matches');
 
-  console.log('PASS opted-in contacts: private/RLS grants, matching, dedup, blocks, revocation');
+  // The established member can sync AFTER the new member and must still get
+  // a privacy-authorized notification without requiring the joiner to reopen BLINK.
+  await db.exec(`update public.blink_contact_settings set join_alerts=true where user_id='${owner}';
+    update public.blink_contact_settings set discoverable=true where user_id='${joiner}';
+    select public.blink_contact_upsert_opted_in('${joiner}','${digest}');
+    select public.blink_contact_replace_imports('${owner}',array['${digest}']::text[]);`);
+  const lateAlerts = await db.query(`select notification_id
+    from public.blink_contact_notify_recent_matches('${owner}')`);
+  assert.equal(lateAlerts.rows.length, 1, 'late importing owner receives one possible-contact alert');
+  assert.ok(lateAlerts.rows[0].notification_id);
+  const repeated = await db.query(`select count(*)::integer as total
+      from public.notifications
+      where user_id='${owner}' and metadata->>'kind'='blink_contact_joined'`);
+  assert.equal(repeated.rows[0].total, 1,
+    'resyncing the same contacts must not create duplicate joined notifications');
+  await db.exec(`select public.blink_contact_clear_imports('${owner}');`);
+  const cleared = await db.query(`select * from private.blink_contact_join_alerts where owner_id='${owner}'`);
+  assert.equal(cleared.rows.length, 0, 'revoking sync deletes derived contact alert records');
+  const afterDelete = await db.query(`select count(*)::integer as total
+      from public.notifications
+      where user_id='${owner}' and metadata->>'kind'='blink_contact_joined'`);
+  assert.equal(afterDelete.rows[0].total, 0,
+    'deleting contact data removes only previously generated contact alerts');
+  console.log('PASS mutual no-SMS contacts: RLS, reciprocity, dedup, blocks, revocation');
 } finally {
   await db.close();
 }

@@ -29,9 +29,14 @@ class BlinkContactsDiscoveryClient {
     data class Consent(
         val syncEnabled: Boolean = false,
         val discoverable: Boolean = false,
-        val joinAlerts: Boolean = false
+        val joinAlerts: Boolean = false,
+        val lastSyncedAt: String = ""
     )
-    data class Snapshot(val consent: Consent, val people: List<UserProfile>)
+    data class Snapshot(
+        val consent: Consent,
+        val people: List<UserProfile>,
+        val mutualMatchingReady: Boolean = false
+    )
 
     private suspend fun post(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         val token = requireNotNull(SupabaseService.accessToken()) { "Sign in to use contact discovery." }
@@ -43,7 +48,7 @@ class BlinkContactsDiscoveryClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val label = when (response.code) {
-                    409 -> "Verify your phone number before becoming discoverable."
+                    409 -> "Your profile is not eligible for contact discovery yet. You can still sync contacts."
                     403 -> "Enable contact syncing first."
                     429 -> "You synced recently. Try again later."
                     503, 404 -> "Contact discovery is not available yet."
@@ -73,12 +78,17 @@ class BlinkContactsDiscoveryClient {
     private fun consent(body: JSONObject?): Consent = Consent(
         syncEnabled = body?.optBoolean("sync_enabled") == true,
         discoverable = body?.optBoolean("discoverable") == true,
-        joinAlerts = body?.optBoolean("join_alerts") == true
+        joinAlerts = body?.optBoolean("join_alerts") == true,
+        lastSyncedAt = body?.optString("last_synced_at").orEmpty().takeUnless { it == "null" }.orEmpty()
     )
 
     suspend fun get(): Snapshot {
         val result = post(JSONObject().put("action", "get"))
-        return Snapshot(consent(result.optJSONObject("settings")), parsePeople(result.optJSONArray("matches")))
+        return Snapshot(
+            consent(result.optJSONObject("settings")),
+            parsePeople(result.optJSONArray("matches")),
+            mutualMatchingReady = result.optString("match_policy") == "reciprocal_opt_in_v1"
+        )
     }
 
     suspend fun set(value: Consent): Consent {
