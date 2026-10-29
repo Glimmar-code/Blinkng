@@ -1,6 +1,14 @@
 package com.example
 
+import android.content.ContentValues
+import android.graphics.Bitmap
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -53,5 +61,24 @@ class ContestReferenceVisualAuditTest {
         rule.onNodeWithText("Open contest →").assertExists()
         rule.onNodeWithText("Leaderboard leaders").assertExists()
         rule.onNodeWithText("Prize ₦30,000").assertExists()
+        // Save the actual emulator-rendered Contest surfaces for visual review.
+        val image = rule.onRoot().captureToImage().asAndroidBitmap()
+        val resolver = InstrumentationRegistry.getInstrumentation()
+            .targetContext.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "contest-hero-podium-winners-staging.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/BLINK-Visual-Audit")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+        resolver.openOutputStream(uri).use { stream ->
+            checkNotNull(stream)
+            check(image.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        check(resolver.update(uri, values, null, null) == 1)
     }
 }
