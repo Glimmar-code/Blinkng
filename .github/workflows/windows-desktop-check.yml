@@ -152,18 +152,29 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $app = Get-ChildItem 'desktopApp/build/compose/binaries/main/app' -Recurse -Filter 'Blinkng.exe' | Select-Object -First 1
-          if (-not $app) { throw 'Packaged Blinkng launcher is missing' }
-          $diagnostic = Join-Path $env:RUNNER_TEMP 'blink-media-smoke'
-          New-Item -ItemType Directory -Force -Path $diagnostic | Out-Null
-          $task = Start-Process -FilePath $app.FullName -ArgumentList @('--media-export-smoke', ('"' + $diagnostic + '"')) -PassThru
-          if (-not $task.WaitForExit(120000)) { $task.Kill(); throw 'Packaged media diagnostic timed out' }
-          $reportPath = Join-Path $diagnostic 'media-smoke.json'
-          if (Test-Path $reportPath) { Get-Content $reportPath -Raw | Write-Host }
-          if ($task.ExitCode -ne 0) { throw "Packaged media diagnostic failed with exit $($task.ExitCode)" }
-          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
-          if ($report.status -ne 'passed') { throw 'Packaged media diagnostic did not pass' }
-          $report | ConvertTo-Json
+          try {
+            $app = Get-ChildItem 'desktopApp/build/compose/binaries/main/app' -Recurse -Filter 'Blinkng.exe' | Select-Object -First 1
+            if (-not $app) { throw 'Packaged Blinkng launcher is missing' }
+            $diagnostic = Join-Path $env:RUNNER_TEMP 'blink-media-smoke'
+            New-Item -ItemType Directory -Force -Path $diagnostic | Out-Null
+            $task = Start-Process -FilePath $app.FullName -RedirectStandardOutput (Join-Path $diagnostic 'launcher-stdout.log') -RedirectStandardError (Join-Path $diagnostic 'launcher-stderr.log') -ArgumentList @('--media-export-smoke', ('"' + $diagnostic + '"')) -PassThru
+            if (-not $task.WaitForExit(120000)) { $task.Kill(); throw 'Packaged media diagnostic timed out' }
+            $reportPath = Join-Path $diagnostic 'media-smoke.json'
+            if (Test-Path $reportPath) { Get-Content $reportPath -Raw | Write-Host }
+            if ($task.ExitCode -ne 0) { throw "Packaged media diagnostic failed with exit $($task.ExitCode)" }
+            $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+            if ($report.status -ne 'passed') { throw 'Packaged media diagnostic did not pass' }
+            $report | ConvertTo-Json
+          } catch {
+            $detail = $_.Exception.Message
+            foreach ($name in @('media-smoke.json', 'launcher-stdout.log', 'launcher-stderr.log', 'fixture.log')) {
+              $path = Join-Path $env:RUNNER_TEMP ('blink-media-smoke/' + $name)
+              if (Test-Path $path) { $detail += "`n${name}: " + ((Get-Content $path -Tail 40) -join "`n") }
+            }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Packaged native media failure::$detail"
+            throw
+          }
 
       - name: Verify native Godot assets in Windows installer build
         if: steps.reuse.outputs.reuse != 'true'
