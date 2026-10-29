@@ -91,18 +91,14 @@ internal fun BlinkChatPhotoAlbumBubble(
                             Modifier.weight(1f).height(172.dp), onOpen)
                     }
                 }
-                3 -> {
-                    AlbumPhotoTile(visible[0], 0, groupedCount,
-                        Modifier.fillMaxWidth().height(170.dp), onOpen)
-                    Spacer(Modifier.height(3.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        visible.drop(1).forEachIndexed { index, photo ->
-                            AlbumPhotoTile(photo, index + 1, groupedCount,
-                                Modifier.weight(1f).height(120.dp), onOpen)
-                        }
+                3 -> Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    // The current screenshot uses three equally sized adjacent photos.
+                    visible.forEachIndexed { index, photo ->
+                        AlbumPhotoTile(photo, index, groupedCount,
+                            Modifier.weight(1f).height(112.dp), onOpen)
                     }
                 }
                 else -> {
