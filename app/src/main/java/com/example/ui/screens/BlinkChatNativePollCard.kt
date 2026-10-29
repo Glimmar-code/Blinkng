@@ -69,47 +69,54 @@ internal fun BlinkChatNativePollCard(
                 val count = item.optInt("votes").coerceAtLeast(0)
                 val percent = if (total > 0) count * 100 / total else 0
                 val selected = mine == index
-                Column(
-                    modifier = Modifier.fillMaxWidth().clickable(
-                        enabled = !closed && !sending
-                    ) {
-                        sending = true
-                        scope.launch {
-                            service.vote(message.id, index)
-                                .onSuccess { poll = it; error = null }
-                                .onFailure { error = "Could not record your vote. Try again." }
-                            sending = false
-                        }
-                    }.padding(vertical = 3.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            color = if (selected) palette.accent else Color.Transparent,
-                            shape = RoundedCornerShape(100.dp),
-                            border = BorderStroke(1.dp,
-                                if (selected) palette.accent else palette.textMuted)
-                        ) {
-                            Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
-                                Text(('A' + index).toString(), color = cardText, fontSize = 11.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable(enabled = !closed && !sending) {
+                            sending = true
+                            scope.launch {
+                                service.vote(message.id, index)
+                                    .onSuccess { poll = it; error = null }
+                                    .onFailure {
+                                        error = "Could not record your vote. Try again."
+                                    }
+                                sending = false
                             }
                         }
-                        Spacer(Modifier.width(9.dp))
-                        Text(item.optString("label"), color = cardText, fontSize = 12.sp,
-                            modifier = Modifier.weight(1f), maxLines = 1)
-                        Text("$percent%", color = palette.textSecondary, fontSize = 11.sp)
+                        .padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = if (selected) palette.accent else Color.Transparent,
+                        shape = RoundedCornerShape(100.dp),
+                        border = BorderStroke(1.dp,
+                            if (selected) palette.accent else palette.textMuted)
+                    ) {
+                        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                            Text(('A' + index).toString(),
+                                color = if (selected) Color.White else cardText,
+                                fontSize = 10.sp)
+                        }
                     }
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.optString("label"), color = cardText, fontSize = 11.sp,
+                        modifier = Modifier.weight(1f), maxLines = 1)
+                    Spacer(Modifier.width(5.dp))
                     LinearProgressIndicator(
                         progress = { if (total == 0) 0f else count.toFloat() / total },
                         color = if (selected) palette.accent else palette.textMuted,
                         trackColor = palette.glass,
-                        modifier = Modifier.fillMaxWidth().height(5.dp)
+                        modifier = Modifier.width(76.dp).height(6.dp)
                     )
+                    Spacer(Modifier.width(6.dp))
+                    Text("$percent%", color = palette.textSecondary, fontSize = 10.sp,
+                        modifier = Modifier.width(34.dp))
                 }
             }
-            Text(total.toString() + (if (total == 1) " vote" else " votes") +
-                if (closed) " · Closed" else " · Tap a choice to vote",
-                color = palette.textMuted, fontSize = 10.sp)
+            Text(
+                total.toString() + (if (total == 1) " vote" else " votes") +
+                    if (closed) " · Closed" else "",
+                color = palette.textMuted, fontSize = 10.sp
+            )
             if (sending) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(),
                 color = palette.accent)
             if (error != null) Text(error.orEmpty(), color = palette.danger,
