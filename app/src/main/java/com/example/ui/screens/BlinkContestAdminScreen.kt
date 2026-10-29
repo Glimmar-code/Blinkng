@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.net.Uri
@@ -457,11 +458,31 @@ internal fun BlinkContestApplicantMediaCard(media: String, onPreview: () -> Unit
                     }
                 }
             } else {
-                AsyncImage(
-                    model = media, contentDescription = "Submitted application photo",
-                    contentScale = ContentScale.Crop,
+                var imageLoaded by remember(media) { mutableStateOf(false) }
+                var imageFailed by remember(media) { mutableStateOf(false) }
+                Box(
                     modifier = Modifier.size(76.dp).clip(RoundedCornerShape(10.dp))
-                )
+                        .background(Color(0xFF27303C)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = media,
+                        contentDescription = if (imageLoaded) "Loaded application photo"
+                            else "Submitted application photo",
+                        contentScale = ContentScale.Crop,
+                        onSuccess = { imageLoaded = true; imageFailed = false },
+                        onError = { imageLoaded = false; imageFailed = true },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (imageFailed) {
+                        Text("Photo unavailable", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(5.dp))
+                    } else if (!imageLoaded) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp)
+                    }
+                }
             }
             Column(Modifier.weight(1f)) {
                 Text(if (isVideo) "View application video" else "View application photo",
