@@ -67,10 +67,14 @@ class BlinkCreatePostVisualAuditTest {
     }
 
     @Test fun landingMatchesReferenceLayoutFixture() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val icon = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
         rule.setContent {
             AuditSurface {
                 BlinkCreatePostLanding(
-                    drafts = listOf(PostDraft(id = "audit-draft", text = "Campus news")),
+                    drafts = listOf(PostDraft(
+                        id = "audit-draft", text = "Campus news", imageUri = icon
+                    )),
                     onClose = {}, onText = {}, onPhoto = {}, onVideo = {},
                     onPoll = {}, onClassic = {}, onCamera = {}, onDraft = {}
                 )
