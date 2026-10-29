@@ -213,15 +213,17 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
                                 listOf(listOf("Text", "Photo"), listOf("Video", "Poll")).forEach { row ->
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         row.forEach { kind ->
-                                            val icon = when (kind) { "Photo" -> Icons.Rounded.Image; "Video" -> Icons.Rounded.Videocam; "Poll" -> Icons.Rounded.Poll; else -> Icons.Rounded.TextFields }
-                                            val color = when (kind) { "Photo" -> BlinkPostReferenceStyle.Photo; "Video" -> BlinkPostReferenceStyle.Video; "Poll" -> BlinkPostReferenceStyle.Poll; else -> BlinkPostReferenceStyle.Primary }
+                                            val icon = when (kind) { "Photo" -> Icons.Rounded.PhotoLibrary; "Video" -> Icons.Rounded.Videocam; "Poll" -> Icons.Rounded.BarChart; else -> Icons.Rounded.TextFields }
                                             Surface(Modifier.weight(1f).height(140.dp).clickable(enabled = !locked) {
                                                 if (dirty && kind != draft.kind) changeKind = kind
                                                 else { draft = draft.copy(kind = kind); stage = "Create ${if (kind == "Video") "Reel" else "Post"}" }
                                             }, shape = RoundedCornerShape(14.dp), color = Color(BlinkPostReferenceStyle.Card), border = BorderStroke(1.dp, Color(BlinkPostReferenceStyle.Border))) {
                                                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Surface(Modifier.size(46.dp), shape = RoundedCornerShape(16.dp), color = Color(color)) {
-                                                        Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = if (kind == "Poll") Color.Black else Color.White) }
+                                                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(13.dp))
+                                                        .background(Brush.verticalGradient(BlinkPostReferenceStyle.choiceGradients.getValue(kind).map { Color(it) })),
+                                                        contentAlignment = Alignment.Center) {
+                                                        if (kind == "Text") Text("Aa", color = Color.White, fontSize = 22.sp)
+                                                        else Icon(icon, null, tint = if (kind == "Poll") Color(0xFF292B30) else Color.White)
                                                     }
                                                     Text(kind, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
                                                     Text(when (kind) { "Text" -> "Share your thoughts"; "Photo" -> "Share images"; "Video" -> "Publish a Reel"; else -> "Ask a question" }, fontSize = 12.sp)

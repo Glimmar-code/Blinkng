@@ -1,6 +1,7 @@
 package com.blinkng.desktop.media
 
 import org.bytedeco.javacpp.Loader
+import com.blinkng.shared.BlinkReelEditPolicy
 import org.json.JSONObject
 import java.io.File
 import java.util.Locale
@@ -49,7 +50,7 @@ object DesktopVideoEditor {
     }
 
     fun export(edit: VideoEdit, folder: File, cancel: () -> Unit = {}, progress: (Double) -> Unit = {}): File {
-        require(edit.clips.size in 1..4) { "Choose 1–4 clips." }
+        require(edit.clips.size in 1..BlinkReelEditPolicy.MAX_CLIPS) { "Choose 1–4 clips." }
         require(edit.speed in listOf(.5, 1.0, 1.5, 2.0)) { "Choose a supported playback speed." }
         require(edit.brightness in -.5.. .5 && edit.contrast in .5..1.5 && edit.originalVolume in 0.0..1.0)
         require(edit.filter in listOf("Original", "Mono", "Warm", "Cool"))
@@ -60,7 +61,7 @@ object DesktopVideoEditor {
             (end - clip.start) / edit.speed
         }
         val duration = durations.sum()
-        require(duration <= 180.05) { "The edited Reel must be at most 3 minutes." }
+        require(duration <= BlinkReelEditPolicy.MAX_TOTAL_DURATION_MS / 1000.0 + .05) { "The edited Reel must be at most 3 minutes." }
         val first = info.first()
         val target = when (edit.aspect) {
             "Portrait" -> 720 to 1280; "Square" -> 1080 to 1080; "Wide" -> 1280 to 720

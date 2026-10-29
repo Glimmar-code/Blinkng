@@ -1785,3 +1785,10 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 - Windows now edits local photos (EXIF, crop/rotation, filters, adjustments, text/symbol/doodle, undo/redo, PNG/JPEG) and exports ordered/trimmed multi-clip H.264/AAC video with aspect padding, speed, filters, text, volume/music and cancellation cleanup. Native FFmpeg dependencies are pinned and included in packaging.
 - Uses desktop mouse/file dialogs and OS playback of actual exported files. Mobile timeline, draggable overlays and advanced animated effects remain differences requiring further work/visual verification.
 - Local desktop suite passed 36 tests; synthetic media CLI smoke passed. New packaged Windows CI, device screenshot comparison and isolated Supabase Auth/Storage/Realtime checks remain release gates. No production backend changes or main merge. See `docs/integration/verification-20261029.md`.
+
+## 2026-10-29 — Reference comparison and isolated service verification (#646)
+
+- Android and Windows share reference choice gradients and Reel clip/duration constants. Both show the reference Aa/photo/video/bar-chart affordances with the yellow poll icon's dark foreground.
+- Device and local Robolectric Create Post captures now use the same shared test fixtures, covering the complete existing 12-case visual matrix without shipping test profiles/media in the app.
+- Added a disposable Supabase HTTP suite for actual password sessions, Contest RPC/concurrent votes, Storage ACL/public preview, Realtime notification delivery, Chat polls/block privacy and posting guards. The administrative/prerequisite schema remains synthetic; this cannot establish deployed-schema compatibility or two-device E2E.
+- Local desktop 36 tests and Android visual fixture 15 tests/instrumentation compilation passed. Explicit screenshot recording and the new service integration CI still require inspection/results before merge. Full local Supabase startup exceeded disk capacity; no production resource was contacted or changed.

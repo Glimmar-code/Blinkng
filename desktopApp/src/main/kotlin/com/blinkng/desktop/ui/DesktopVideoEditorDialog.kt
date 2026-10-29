@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.blinkng.desktop.media.*
+import com.blinkng.shared.BlinkReelEditPolicy
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.io.File
@@ -75,8 +76,8 @@ internal fun DesktopVideoEditorDialog(file: File, onDismiss: () -> Unit, onApply
                 }
                 OutlinedButton(onClick = { scope.launch {
                     val picked = withContext(Dispatchers.IO) { chooseEditorFiles(false) }
-                    clips = (clips + picked.map { TrimClip(it) }).distinctBy { it.file.absolutePath }.take(4)
-                } }, enabled = !busy && clips.size < 4) { Text("Add clips (${clips.size}/4)") }
+                    clips = (clips + picked.map { TrimClip(it) }).distinctBy { it.file.absolutePath }.take(BlinkReelEditPolicy.MAX_CLIPS)
+                } }, enabled = !busy && clips.size < BlinkReelEditPolicy.MAX_CLIPS) { Text("Add clips (${clips.size}/4)") }
                 Text("Frame · original aspect is preserved with padding")
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     listOf("Original", "Portrait", "Square", "Wide").forEach { value -> FilterChip(aspect == value, { aspect = value }, enabled = !busy, label = { Text(value) }) }

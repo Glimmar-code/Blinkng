@@ -30,6 +30,12 @@ object BlinkPostComposerPolicy {
     }
 }
 
+/** Native editor adapters use the same clip and duration limits. */
+object BlinkReelEditPolicy {
+    const val MAX_CLIPS = 4
+    const val MAX_TOTAL_DURATION_MS = 180_000L
+}
+
 data class BlinkFeedPollDraft(val question: String, val options: List<String>, val durationHours: Int) {
     fun expiresAtMillis(publishedAtMillis: Long): Long =
         Math.addExact(publishedAtMillis, Math.multiplyExact(durationHours.toLong(), 3_600_000L))
@@ -47,6 +53,12 @@ object BlinkPostReferenceStyle {
     const val Photo = 0xFF0AC98AL
     const val Video = 0xFFFF476CL
     const val Poll = 0xFFF7B52CL
+    val choiceGradients = mapOf(
+        "Text" to listOf(0xFF5265FFL, 0xFF8135FFL),
+        "Photo" to listOf(0xFF10D6A2L, 0xFF0AC56DL),
+        "Video" to listOf(0xFFFF6284L, 0xFFFF3558L),
+        "Poll" to listOf(0xFFFFD04AL, 0xFFF7B52CL),
+    )
     val textBackgrounds = mapOf(
         "aurora" to listOf(0xFF6A7CFFL, 0xFF8B5CF6L, 0xFF52C7EAL),
         "ocean" to listOf(0xFF0D47A1L, 0xFF1976D2L, 0xFF26C6DAL),

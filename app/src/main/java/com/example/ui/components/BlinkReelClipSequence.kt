@@ -31,8 +31,8 @@ import kotlinx.coroutines.withContext
  * with the existing single-video post API. Originals remain untouched on failure.
  */
 internal object BlinkReelClipPolicy {
-    const val MAX_CLIPS = 4
-    const val MAX_TOTAL_DURATION_MS = 180_000L
+    const val MAX_CLIPS = com.blinkng.shared.BlinkReelEditPolicy.MAX_CLIPS
+    const val MAX_TOTAL_DURATION_MS = com.blinkng.shared.BlinkReelEditPolicy.MAX_TOTAL_DURATION_MS
     fun validate(count: Int, totalDurationMs: Long) {
         require(count in 2..MAX_CLIPS) { "Select 2–4 videos for one Reel." }
         require(totalDurationMs in 1_000..MAX_TOTAL_DURATION_MS) {

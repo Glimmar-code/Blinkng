@@ -50,6 +50,9 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Visibility
@@ -132,13 +135,13 @@ internal fun BlinkCreatePostLanding(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BlinkPostChoice("Text", "Share your thoughts", Icons.Default.TextFields,
                 Color(0xFF5148EA), onText, Modifier.weight(1f))
-            BlinkPostChoice("Photo", "Share images", Icons.Default.Image,
+            BlinkPostChoice("Photo", "Share images", Icons.Default.PhotoLibrary,
                 Color(BlinkPostReferenceStyle.Photo), onPhoto, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BlinkPostChoice("Video", "Share videos", Icons.Default.VideoLibrary,
+            BlinkPostChoice("Video", "Share videos", Icons.Default.Videocam,
                 Color(BlinkPostReferenceStyle.Video), onVideo, Modifier.weight(1f))
-            BlinkPostChoice("Poll", "Ask a question", Icons.Default.Poll,
+            BlinkPostChoice("Poll", "Ask a question", Icons.Default.BarChart,
                 Color(BlinkPostReferenceStyle.Poll), onPoll, Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -282,9 +285,14 @@ private fun BlinkPostChoice(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(color = accent, shape = RoundedCornerShape(13.dp)) {
-                Icon(image, contentDescription = null, tint = Color.White,
-                    modifier = Modifier.padding(12.dp).size(24.dp))
+            val colors = BlinkPostReferenceStyle.choiceGradients[title]?.map { Color(it) }
+                ?: listOf(accent, accent)
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(13.dp))
+                .background(Brush.verticalGradient(colors)), contentAlignment = Alignment.Center) {
+                if (title == "Text") Text("Aa", color = Color.White, fontSize = 22.sp)
+                else Icon(image, contentDescription = null,
+                    tint = if (title == "Poll") Color(0xFF292B30) else Color.White,
+                    modifier = Modifier.size(24.dp))
             }
             Spacer(Modifier.height(8.dp))
             Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
