@@ -3888,28 +3888,44 @@ private fun MessageBubble(
                         Surface(
                             color = if (isMine && palette.mode == MessageThemeMode.DARK)
                                 Color(0xFFE1E4E9) else palette.glass.copy(alpha = .45f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, palette.border.copy(alpha = .55f)),
+                            shape = RoundedCornerShape(10.dp),
+                            border = if (palette.mode == MessageThemeMode.DARK) null
+                                else BorderStroke(1.dp, palette.border.copy(alpha = .55f)),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(start = 5.dp, end = 5.dp, top = 5.dp)
                                 .clickable(onClick = onReplyTargetClick)
                         ) {
-                            Column(Modifier.padding(horizontal = 9.dp, vertical = 6.dp)) {
-                                Text(
-                                    if (replyTarget?.isFromMe == true) "You" else partnerName,
-                                    color = palette.accent,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
+                            Row(
+                                modifier = Modifier.padding(start = 5.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.width(3.dp).height(33.dp)
+                                        .background(palette.accent, RoundedCornerShape(3.dp))
                                 )
-                                Text(
-                                    replyTarget?.text?.ifBlank { "Media message" } ?: "Original message unavailable",
-                                    color = if (isMine && palette.mode == MessageThemeMode.DARK)
-                                        palette.outgoingText.copy(alpha = .65f) else palette.textSecondary,
-                                    fontSize = 11.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Spacer(Modifier.width(7.dp))
+                                Column {
+                                    Text(
+                                        if (replyTarget?.isFromMe == true) "You" else partnerName,
+                                        color = palette.accent,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val replyPreview = replyTarget?.let { target ->
+                                        com.blinkng.shared.BlinkChatPollPolicy
+                                            .parseTextFallback(target.text)?.question
+                                            ?: target.text.ifBlank { "Media message" }
+                                    } ?: "Original message unavailable"
+                                    Text(
+                                        replyPreview,
+                                        color = if (isMine && palette.mode == MessageThemeMode.DARK)
+                                            palette.outgoingText.copy(alpha = .65f) else palette.textSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
@@ -3921,7 +3937,7 @@ private fun MessageBubble(
                     }
 
                     val compactTextOnly = message.text.isNotBlank() &&
-                        message.text.length <= 28 &&
+                        message.text.length <= 120 &&
                         message.replyToMessageId == null &&
                         !message.isPinned && !message.isStarred &&
                         !message.isForwarded && !message.deletedForEveryone &&
