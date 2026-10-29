@@ -9,6 +9,11 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.example.data.supabase.BlinkContestMediaUpload
@@ -330,10 +335,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Text(entry.optString("statement"))
                     val media = entry.optString("media_url")
                     if (media.startsWith("https://")) {
-                        TextButton(onClick = { previewEntryMedia = media }) {
-                            Text(if (contestMediaExtension(media) == "mp4") "Preview entry video"
-                                else "Preview entry photo")
-                        }
+                        BlinkContestApplicantMediaCard(media) { previewEntryMedia = media }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         listOf("approve", "reject", "disqualify").forEach { action ->
@@ -425,6 +427,50 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 TextButton(enabled = !busy, onClick = { pendingContestDecision = null }) { Text("Go back") }
             }
         )
+    }
+}
+
+/** Readable application-media preview, shared by live admin UI and emulator visual tests. */
+@Composable
+internal fun BlinkContestApplicantMediaCard(media: String, onPreview: () -> Unit) {
+    val isVideo = contestMediaExtension(media) == "mp4"
+    Surface(
+        onClick = onPreview,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(13.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (isVideo) {
+                Surface(
+                    color = Color(0xFF19293A), shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.size(76.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.PlayCircleOutline,
+                            contentDescription = "Video application",
+                            tint = Color(0xFFB1D6FF), modifier = Modifier.size(32.dp))
+                    }
+                }
+            } else {
+                AsyncImage(
+                    model = media, contentDescription = "Submitted application photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(76.dp).clip(RoundedCornerShape(10.dp))
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(if (isVideo) "View application video" else "View application photo",
+                    fontWeight = FontWeight.SemiBold)
+                Text("Inspect before approving", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null)
+        }
     }
 }
 
