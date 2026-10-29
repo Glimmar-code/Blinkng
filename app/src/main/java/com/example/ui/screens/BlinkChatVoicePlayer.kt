@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.PauseCircle
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -76,6 +79,9 @@ internal fun BlinkChatVoicePlayer(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
+            modifier = Modifier.size(40.dp)
+                .background(Color(0xFF0879F8), CircleShape)
+                .testTag("chat_reference_voice_play"),
             enabled = url?.startsWith("https://") == true && !preparing && !failed,
             onClick = {
                 val live = player
@@ -136,8 +142,8 @@ internal fun BlinkChatVoicePlayer(
             Icon(
                 when {
                     failed -> Icons.Rounded.ErrorOutline
-                    isPlaying -> Icons.Rounded.PauseCircle
-                    else -> Icons.Rounded.PlayCircle
+                    isPlaying -> Icons.Default.Pause
+                    else -> Icons.Default.PlayArrow
                 },
                 contentDescription = when {
                     failed -> "Voice note failed to play"
@@ -146,11 +152,12 @@ internal fun BlinkChatVoicePlayer(
                     url.isNullOrBlank() -> "Voice note unavailable"
                     else -> "Play voice note"
                 },
-                tint = tint,
-                modifier = Modifier.size(29.dp)
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
             )
         }
-        Column(Modifier.widthIn(min = 130.dp, max = 180.dp)) {
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.widthIn(min = 100.dp, max = 152.dp)) {
             val progress = if (duration > 0) {
                 (elapsed.toFloat() / duration).coerceIn(0f, 1f)
             } else 0f
@@ -161,26 +168,23 @@ internal fun BlinkChatVoicePlayer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                val heights = measuredHeights ?: List(24) { 7 }
+                val heights = measuredHeights ?: List(32) { index ->
+                    // Stable placeholder geometry, not fabricated audio analytics.
+                    listOf(8, 13, 18, 10, 20, 13, 7, 16, 23, 12, 17, 9)[index % 12]
+                }
                 heights.forEachIndexed { index, height ->
                     Box(
                         Modifier.weight(1f)
                             .height(height.dp)
                             .background(
                                 if (index.toFloat() / heights.size <= progress)
-                                    Color(0xFF5AB6FF) else tint.copy(alpha = .45f),
+                                    Color(0xFF1685FF) else Color(0xFF6B747E),
                                 RoundedCornerShape(2.dp)
                             )
                     )
                 }
             }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = Color(0xFF1685FF),
-                trackColor = tint.copy(alpha = .16f)
-            )
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(2.dp))
             Text(
                 when {
                     failed -> "Unable to play · refresh chat"
@@ -194,7 +198,8 @@ internal fun BlinkChatVoicePlayer(
                 maxLines = 1
             )
         }
-        BlinkChatDownloadAction(url = url, kind = "voice", extension = "m4a")
+        BlinkChatDownloadAction(url = url, kind = "voice", extension = "m4a",
+            compact = true)
         TextButton(
             enabled = ready,
             onClick = {
@@ -205,7 +210,8 @@ internal fun BlinkChatVoicePlayer(
                     }
                 }
             },
-            modifier = Modifier.testTag("chat_reference_voice_speed")
+            modifier = Modifier.widthIn(min = 38.dp)
+                .testTag("chat_reference_voice_speed")
         ) {
             Text(
                 "${speeds[speedStep]}×",
