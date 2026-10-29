@@ -48,6 +48,12 @@ dependencies {
     // Windows DPAPI wrapper used to protect persisted refresh/access tokens at rest.
     implementation("net.java.dev.jna:jna-platform:5.17.0")
     implementation("com.google.zxing:core:3.5.3")
+    // LGPL FFmpeg tools, pinned and packaged for the build host. Windows installers
+    // carry their own processor; users do not need an external FFmpeg installation.
+    implementation("org.bytedeco:ffmpeg:8.1.2-1.5.14")
+    val mediaPlatform = if (System.getProperty("os.name").startsWith("Windows")) "windows-x86_64" else "linux-x86_64"
+    runtimeOnly("org.bytedeco:ffmpeg:8.1.2-1.5.14:$mediaPlatform")
+    runtimeOnly("org.bytedeco:javacpp:1.5.14:$mediaPlatform")
 }
 
 tasks.withType<Test>().configureEach { useJUnitPlatform() }
@@ -71,6 +77,7 @@ compose.desktop {
         mainClass = "com.blinkng.desktop.MainKt"
 
         nativeDistributions {
+            modules("java.desktop", "jdk.unsupported")
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             appResourcesRootDir.set(layout.buildDirectory.dir("nativeResources"))
             packageName = "Blinkng"

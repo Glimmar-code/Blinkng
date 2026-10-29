@@ -1,0 +1,20 @@
+BLINK desktop video processing components
+
+FFmpeg 8.1.2, JavaCPP preset 1.5.14, unmodified LGPL native package.
+JavaCPP and preset Java bindings: Apache License 2.0 / GPLv2 with Classpath exception.
+OpenH264: BSD license, copyright Cisco Systems.
+
+The corresponding upstream sources and reproducible native build recipes are:
+https://github.com/FFmpeg/FFmpeg/tree/n8.1.2
+https://github.com/bytedeco/javacpp-presets/tree/1.5.14/ffmpeg
+https://github.com/bytedeco/javacpp/tree/1.5.14
+https://github.com/cisco/openh264
+
+License texts accompany this notice. The LGPL build is used, not the optional
+GPL-only FFmpeg artifact. Video processing runs in a separate executable using
+the packaged native libraries. These components can be rebuilt/replaced using
+the upstream sources and JavaCPP build recipes; BLINK does not restrict their
+modification or debugging. No music files or music licensing rights are bundled.
+
+Keep these notices and corresponding source/build links with redistributed
+installers. Source and binary versions must remain matched when updating them.

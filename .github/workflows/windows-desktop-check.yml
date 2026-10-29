@@ -125,6 +125,24 @@ jobs:
         if: steps.reuse.outputs.reuse != 'true'
         run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
 
+      - name: Exercise the packaged Windows video processor
+        if: steps.reuse.outputs.reuse != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Get-ChildItem 'desktopApp/build/compose/binaries/main/app' -Recurse -Filter 'Blinkng.exe' | Select-Object -First 1
+          if (-not $app) { throw 'Packaged Blinkng launcher is missing' }
+          $diagnostic = Join-Path $env:RUNNER_TEMP 'blink-media-smoke'
+          New-Item -ItemType Directory -Force -Path $diagnostic | Out-Null
+          $task = Start-Process -FilePath $app.FullName -ArgumentList @('--media-export-smoke', ('"' + $diagnostic + '"')) -PassThru
+          if (-not $task.WaitForExit(120000)) { $task.Kill(); throw 'Packaged media diagnostic timed out' }
+          $reportPath = Join-Path $diagnostic 'media-smoke.json'
+          if (Test-Path $reportPath) { Get-Content $reportPath -Raw | Write-Host }
+          if ($task.ExitCode -ne 0) { throw "Packaged media diagnostic failed with exit $($task.ExitCode)" }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          if ($report.status -ne 'passed') { throw 'Packaged media diagnostic did not pass' }
+          $report | ConvertTo-Json
+
       - name: Verify native Godot assets in Windows installer build
         if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh

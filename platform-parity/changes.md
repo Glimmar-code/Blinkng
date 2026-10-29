@@ -1778,3 +1778,10 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 
 ### Profile repair merge reconciliation — 27 October 2026
 - Integrated main after Feed PR #626 without clobbering its Windows Photos/Polls metadata handling, DesktopFeedPost.hasPoll, Android feed changes or feed parity notes. The profile-security migration and all Testlab profile changes remain isolated until latest-head Android, Windows and PostgreSQL gates pass.
+
+## 2026-10-29 — Create Post desktop native media adapters (Testlab #646)
+
+- Retains shared publishing permissions, media limits, draft and server contracts; Android's existing photo/Media3 adapters remain unchanged.
+- Windows now edits local photos (EXIF, crop/rotation, filters, adjustments, text/symbol/doodle, undo/redo, PNG/JPEG) and exports ordered/trimmed multi-clip H.264/AAC video with aspect padding, speed, filters, text, volume/music and cancellation cleanup. Native FFmpeg dependencies are pinned and included in packaging.
+- Uses desktop mouse/file dialogs and OS playback of actual exported files. Mobile timeline, draggable overlays and advanced animated effects remain differences requiring further work/visual verification.
+- Local desktop suite passed 36 tests; synthetic media CLI smoke passed. New packaged Windows CI, device screenshot comparison and isolated Supabase Auth/Storage/Realtime checks remain release gates. No production backend changes or main merge. See `docs/integration/verification-20261029.md`.

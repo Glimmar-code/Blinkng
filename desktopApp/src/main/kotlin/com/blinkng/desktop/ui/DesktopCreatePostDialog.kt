@@ -55,6 +55,8 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
     var progress by remember { mutableStateOf("") }
     var confirmClose by remember { mutableStateOf(false) }
     var changeKind by remember { mutableStateOf<String?>(null) }
+    var editingPhoto by remember { mutableStateOf<String?>(null) }
+    var editingVideo by remember { mutableStateOf<String?>(null) }
     var published by remember { mutableStateOf<DesktopFeedPost?>(null) }
     var mentions by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var mentionLoading by remember { mutableStateOf(false) }
@@ -165,6 +167,20 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
         }
     }
 
+    editingPhoto?.let { path ->
+        DesktopPhotoEditorDialog(File(path), onDismiss = { editingPhoto = null }, onApply = { edited ->
+            draft = draft.copy(photos = draft.photos.map { if (it == path) edited.absolutePath else it })
+            editingPhoto = null
+        })
+    }
+    editingVideo?.let { path ->
+        DesktopVideoEditorDialog(File(path), onDismiss = { editingVideo = null }, onApply = { edited ->
+            draft = draft.copy(video = edited.absolutePath)
+            editingVideo = null
+        })
+    }
+    if (editingVideo != null) return
+    if (editingPhoto != null) return
     Dialog(onDismissRequest = ::close) {
         MaterialTheme(colorScheme = darkColorScheme(
             primary = Color(BlinkPostReferenceStyle.PrimaryEnd),
@@ -275,6 +291,7 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
                                                     AsyncImage(File(path), "Selected photo ${index + 1}", Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Text("${index + 1}${if (index == 0) " · Cover" else ""}", fontSize = 11.sp)
+                                                        IconButton(onClick = { editingPhoto = path }, enabled = !locked) { Icon(Icons.Rounded.Edit, "Edit photo ${index + 1}") }
                                                         IconButton(onClick = { draft = draft.copy(photos = draft.photos.filterIndexed { i, _ -> i != index }) }, enabled = !locked) { Icon(Icons.Rounded.Close, "Remove photo ${index + 1}") }
                                                         if (index > 0) IconButton(onClick = {
                                                             val next = draft.photos.toMutableList(); next.removeAt(index); next.add(index - 1, path); draft = draft.copy(photos = next)
@@ -289,6 +306,9 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
                                 if (draft.kind == "Video") {
                                     Text(draft.video?.let { File(it).name } ?: "Select an exported video for your Reel.")
                                     OutlinedButton(onClick = { chooseFiles(true) }, enabled = !locked) { Icon(Icons.Rounded.Videocam, null); Spacer(Modifier.width(8.dp)); Text("Select video") }
+                                    draft.video?.let { path ->
+                                        OutlinedButton(onClick = { editingVideo = path }, enabled = !locked) { Text("Edit clips, trim and effects") }
+                                    }
                                     draft.video?.let { path -> TextButton(onClick = {
                                         runCatching { Desktop.getDesktop().open(File(path)) }.onFailure { message = "No video player is available." }
                                     }) { Text("Preview in video player") } }
