@@ -649,7 +649,8 @@ fun MessagesScreen(state: DesktopAppState) {
                                 contentColor = if (MaterialTheme.colorScheme.background.luminance() < .4f) {
                                     if (mine) Color(BlinkChatReferenceStyle.OutgoingText)
                                     else Color(BlinkChatReferenceStyle.Text)
-                                } else MaterialTheme.colorScheme.onSurface,
+                                } else if (mine) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                                 color = if (MaterialTheme.colorScheme.background.luminance() < .4f) {
                                     if (mine) Color(BlinkChatReferenceStyle.Outgoing)
                                     else Color(BlinkChatReferenceStyle.Incoming)
@@ -792,6 +793,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                                 color = if (receipt == "READ") Color(BlinkChatReferenceStyle.BlueBright)
                                                     else if (mine && MaterialTheme.colorScheme.background.luminance() < .4f)
                                                         Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .55f)
+                                                    else if (mine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f)
                                                     else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
@@ -804,6 +806,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                             fontSize = 10.sp,
                                             color = if (mine && MaterialTheme.colorScheme.background.luminance() < .4f)
                                                 Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .6f)
+                                            else if (mine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .85f)
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }

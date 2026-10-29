@@ -77,7 +77,7 @@ jobs:
             adb shell settings put global transition_animation_scale 1.0
             adb shell settings put global animator_duration_scale 1.0
             echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
-            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon
+            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > app/build/runtime-gradle.log 2>&1 || { tail -n 80 app/build/runtime-gradle.log; exit 1; }
             # Export emulator-rendered Compose staging fixture for visual audit.
             # This test data is separate from the production APK and account content.
             mkdir -p app/build/visual-audit
@@ -110,6 +110,36 @@ jobs:
             test -s app/build/visual-audit/chat-reference-full-bottom.png
             for theme in dark light; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-outgoing-document-${theme}.png" "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" && test -s "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" || exit 1; done
 
+      - name: Expose actual runtime failures through check annotations
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as E
+          def report(title, text):
+              text = re.sub(r'eyJ[A-Za-z0-9_.-]+', '[token omitted]', text)
+              text = re.sub(r'sb_(?:secret|publishable)_[A-Za-z0-9_-]+', '[key omitted]', text)
+              text = text[:6500].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title={title}::{text}')
+          for path in Path('app/build/outputs/androidTest-results/connected').rglob('*.xml'):
+              try:
+                  root = E.parse(path).getroot()
+              except E.ParseError:
+                  continue
+              for case in root.iter('testcase'):
+                  for kind in ('failure', 'error'):
+                      for failure in case.findall(kind):
+                          report('Android runtime test', f"{case.get('classname')}.{case.get('name')}: {failure.get('message', '')}\n{failure.text or ''}")
+          log = Path('app/build/runtime-gradle.log')
+          if log.exists():
+              lines = log.read_text(errors='replace').splitlines()
+              errors = [line for line in lines if re.search(r'^e:|FAILURE:|Caused by:|Execution failed|FAILED|failed tests', line)]
+              report('Android runtime build', '\n'.join(errors[:20] or lines[-50:]))
+          report('Runtime capture files', '\n'.join(str(p) for p in Path('app/build/visual-audit').glob('*.png')))
+          PY
+
       - name: Upload instrumentation reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -119,5 +149,6 @@ jobs:
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
             app/build/visual-audit/
+            app/build/runtime-gradle.log
           if-no-files-found: warn
           retention-days: 14

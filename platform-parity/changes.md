@@ -1800,3 +1800,8 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 - Shared native device/Robolectric Chat fixtures capture the actual album, voice, video, document, poll, reply and reaction components at three scroll positions. Shared aspect constants keep photo/video previews landscape; Windows retains its desktop message layout and OS media playback.
 - Windows photo export now supports crop framing and movable text/stickers with verified pixel placement; the packaged diagnostic additionally checks actual Windows DPAPI encrypted draft persistence/isolation. Local desktop 37 tests and Linux media CLI passed; new Windows native verification must run on the final candidate.
 - All 18 local Android reference fixture tests and device-test compilation passed on the final UI source; dark/light outgoing-file captures and compact media metadata were inspected. Android lint passed on the preceding layout repair. Repeat applicable checks on the final candidate. Captures use synthetic media; full two-client/device acceptance and deployed-schema compatibility remain distinct release gates.
+
+## 2026-10-29 — Outgoing timestamp contrast across surfaces (#646)
+
+- Android light appearance uses its outgoing foreground for metadata rather than an unrelated surface color. Windows now uses onPrimaryContainer for outgoing light-bubble text/metadata, keeping the same readable result with its native palette; dark reference colors remain governed by the shared contract.
+- Native Android runtime failures are exposed as check annotations and retained reports so a real failing device case can be diagnosed even when the environment blocks artifact downloads. This does not waive the failing check or permit promotion.
