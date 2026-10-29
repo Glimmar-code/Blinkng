@@ -4285,7 +4285,8 @@ private fun MessageContent(
                         BlinkChatDownloadAction(
                             url = message.attachedDocumentUrl,
                             kind = "document",
-                            extension = if (pdf) "pdf" else "bin"
+                            extension = if (pdf) "pdf" else "bin",
+                            compact = true
                         )
                     }
                 }
