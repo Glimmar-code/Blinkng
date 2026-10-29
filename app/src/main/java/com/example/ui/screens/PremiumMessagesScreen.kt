@@ -2335,8 +2335,8 @@ private fun PremiumChatDetail(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).testTag("chat_reference_history_list"),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(11.dp)
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
                     if (isLoadingOlder) {
                         item(key = "message_history_loading") {
@@ -3862,7 +3862,7 @@ private fun MessageBubble(
                 )
                 Column(
                     modifier = Modifier
-                        .widthIn(max = 300.dp)
+                        .widthIn(max = 292.dp)
                         .clip(bubbleShape)
                         .background(
                             brush = if (isMine) palette.outgoingBrush() else Brush.linearGradient(listOf(palette.incomingBubble, palette.incomingBubble)),
@@ -3913,6 +3913,62 @@ private fun MessageBubble(
                             }
                         }
                     }
+                    val metadata = when (message.status) {
+                        MessageStatus.SENDING -> "Sending…"
+                        MessageStatus.FAILED -> "Waiting to retry"
+                        MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ ->
+                            message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
+                    }
+
+                    val compactTextOnly = message.text.isNotBlank() &&
+                        message.text.length <= 28 &&
+                        message.replyToMessageId == null &&
+                        !message.isPinned && !message.isStarred &&
+                        !message.isForwarded && !message.deletedForEveryone &&
+                        message.messageType == "text" &&
+                        message.attachedImageUrl.isNullOrBlank() &&
+                        message.attachedVideoUrl.isNullOrBlank() &&
+                        message.attachedAudioUrl.isNullOrBlank() &&
+                        message.attachedDocumentUrl.isNullOrBlank() &&
+                        !message.isVoiceNote && !message.imageViewOnce &&
+                        !message.text.contains("https://") &&
+                        !message.text.contains("http://")
+                    if (compactTextOnly) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            Text(
+                                message.text,
+                                color = if (isMine) palette.outgoingText else palette.textPrimary,
+                                fontSize = 14.sp, lineHeight = 19.sp,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Text(metadata,
+                                color = if (message.status == MessageStatus.FAILED)
+                                    palette.danger else if (isMine)
+                                    palette.outgoingText.copy(alpha = .52f) else palette.textSecondary,
+                                fontSize = 10.sp, maxLines = 1
+                            )
+                            if (isMine && message.status in setOf(
+                                MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
+                            )) {
+                                Icon(
+                                    imageVector = if (message.status == MessageStatus.SENT)
+                                        Icons.Default.Check else Icons.Default.DoneAll,
+                                    contentDescription = when (message.status) {
+                                        MessageStatus.READ -> "Read"
+                                        MessageStatus.DELIVERED -> "Delivered"
+                                        else -> "Sent"
+                                    },
+                                    tint = if (message.status == MessageStatus.READ)
+                                        Color(0xFF1685FF) else palette.outgoingText.copy(alpha = .55f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    } else {
                     MessageContent(
                         message = message,
                         isMine = isMine,
@@ -3925,13 +3981,6 @@ private fun MessageBubble(
                         onVideoDeactivate = onVideoDeactivate,
                         onLegacyPollChoice = onLegacyPollChoice
                     )
-                    // Compact inside-bubble timestamp and one overlapping double-check glyph.
-                    val metadata = when (message.status) {
-                        MessageStatus.SENDING -> "Sending…"
-                        MessageStatus.FAILED -> "Waiting to retry"
-                        MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ ->
-                            message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
-                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 8.dp, bottom = 5.dp),
                         horizontalArrangement = Arrangement.End,
@@ -3977,6 +4026,8 @@ private fun MessageBubble(
                             }
                         }
                     }
+                    }
+
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -4026,7 +4077,7 @@ private fun MessageContent(
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
-    Column(modifier = Modifier.padding(5.dp)) {
+    Column(modifier = Modifier.padding(2.dp)) {
         if (message.deletedForEveryone) {
             Text(
                 "This message was deleted",
@@ -4192,34 +4243,50 @@ private fun MessageContent(
                     onDismiss = { pdfOpen = false }
                 )
                 Surface(
-                    color = contentColor.copy(alpha = .08f),
+                    color = if (palette.mode == MessageThemeMode.DARK) Color(0xFF292D31)
+                        else contentColor.copy(alpha = .08f),
                     contentColor = contentColor,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, contentColor.copy(alpha = .16f)),
+                    shape = RoundedCornerShape(15.dp),
                     modifier = Modifier
-                        .widthIn(min = 190.dp, max = 240.dp)
+                        .widthIn(min = 225.dp, max = 288.dp)
                         .clickable {
                             if (pdf) pdfOpen = true else
                                 openExternalUri(context, Uri.parse(message.attachedDocumentUrl))
                         }
+                        .testTag("chat_reference_document_card")
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(start = 9.dp, top = 7.dp, bottom = 7.dp, end = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(21.dp))
-                        Spacer(Modifier.width(9.dp))
+                        Surface(
+                            shape = RoundedCornerShape(5.dp),
+                            color = if (pdf) Color(0xFFEB404D) else palette.accent,
+                            modifier = Modifier.size(width = 35.dp, height = 43.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(if (pdf) "PDF" else "FILE", color = Color.White,
+                                    fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 message.attachmentName ?: message.text.ifBlank { "Document" },
                                 color = contentColor,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(if (pdf) "Preview PDF" else "Open document", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
+                            Text(if (pdf) "PDF document" else "Document",
+                                color = contentColor.copy(alpha = .55f), fontSize = 10.sp)
                         }
+                        BlinkChatDownloadAction(
+                            url = message.attachedDocumentUrl,
+                            kind = "document",
+                            extension = if (pdf) "pdf" else "bin"
+                        )
                     }
                 }
             }
@@ -4256,7 +4323,7 @@ private fun MessageContent(
                     color = contentColor,
                     fontSize = 14.sp,
                     lineHeight = 20.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                 )
                 if (allowLinkPreviews && !message.imageViewOnce && !message.deletedForEveryone) {
                     com.example.ui.components.BlinkRichLinkPreview(
