@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkPostReferenceStyle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -113,7 +115,7 @@ internal fun BlinkCreatePostLanding(
     val white = Color.White
     var showAllDrafts by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState())
+        Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas)).verticalScroll(rememberScrollState())
             .testTag("blink_create_post_landing")
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -131,13 +133,13 @@ internal fun BlinkCreatePostLanding(
             BlinkPostChoice("Text", "Share your thoughts", Icons.Default.TextFields,
                 Color(0xFF5148EA), onText, Modifier.weight(1f))
             BlinkPostChoice("Photo", "Share images", Icons.Default.Image,
-                Color(0xFF0AC98A), onPhoto, Modifier.weight(1f))
+                Color(BlinkPostReferenceStyle.Photo), onPhoto, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BlinkPostChoice("Video", "Share videos", Icons.Default.VideoLibrary,
-                Color(0xFFFF476C), onVideo, Modifier.weight(1f))
+                Color(BlinkPostReferenceStyle.Video), onVideo, Modifier.weight(1f))
             BlinkPostChoice("Poll", "Ask a question", Icons.Default.Poll,
-                Color(0xFFF7B52C), onPoll, Modifier.weight(1f))
+                Color(BlinkPostReferenceStyle.Poll), onPoll, Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Recent", color = white, fontWeight = FontWeight.SemiBold,
@@ -170,7 +172,7 @@ internal fun BlinkCreatePostLanding(
                     )
                 }
             }
-            Text("Recent photos from saved drafts", color = Color(0xFFAAB0BC),
+            Text("Recent photos from saved drafts", color = Color(BlinkPostReferenceStyle.Muted),
                 fontSize = 11.sp)
         }
         if (drafts.isEmpty()) {
@@ -182,7 +184,7 @@ internal fun BlinkCreatePostLanding(
             ) {
                 Text(
                     "No drafts yet. Your selected photos and videos stay in the editor.",
-                    color = Color(0xFFAAB0BC), fontSize = 12.sp,
+                    color = Color(BlinkPostReferenceStyle.Muted), fontSize = 12.sp,
                     modifier = Modifier.padding(16.dp)
                 )
             }
@@ -221,7 +223,7 @@ internal fun BlinkCreatePostLanding(
                                 overflow = TextOverflow.Ellipsis,
                                 fontSize = 10.sp, color = white,
                                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                                    .background(Color.Black.copy(alpha = .72f)).padding(5.dp)
+                                    .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f)).padding(5.dp)
                             )
                         }
                     }
@@ -272,7 +274,7 @@ private fun BlinkPostChoice(
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag("blink_create_choice_" + title.lowercase()),
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color(0xFF30343E)),
+        border = BorderStroke(1.dp, Color(BlinkPostReferenceStyle.Border)),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF13161D))
     ) {
         Column(
@@ -334,7 +336,7 @@ internal fun BlinkCreatePostPublishOptions(
     uploadProgress: Int?
 ) {
     Column(
-        Modifier.fillMaxSize().background(Color.Black)
+        Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas))
             .testTag("blink_create_post_publish_options")
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
@@ -555,7 +557,7 @@ internal fun BlinkReferencePostDetails(
         )
     }
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black)
+        modifier = Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas))
             .verticalScroll(rememberScrollState())
             .testTag("blink_post_details_stage")
             .padding(horizontal = 14.dp),
@@ -745,7 +747,7 @@ internal fun BlinkReferenceMediaReview(
         }
     }
     Column(
-        Modifier.fillMaxSize().background(Color.Black)
+        Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas))
             .testTag("blink_media_review")
             .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -785,7 +787,7 @@ internal fun BlinkReferenceMediaReview(
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             tab,
-                            color = if (selectedTab == tab) Color.Black else Color.White,
+                            color = if (selectedTab == tab) Color(BlinkPostReferenceStyle.Canvas) else Color.White,
                             fontSize = 12.sp,
                             fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
                         )
@@ -831,7 +833,7 @@ internal fun BlinkReferenceMediaReview(
                     }
                     Row(
                         modifier = Modifier.align(Alignment.BottomCenter)
-                            .background(Color.Black.copy(alpha = .72f), RoundedCornerShape(8.dp)),
+                            .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f), RoundedCornerShape(8.dp)),
                         horizontalArrangement = Arrangement.Center
                     ) {
                         IconButton(
@@ -852,7 +854,7 @@ internal fun BlinkReferenceMediaReview(
                             .padding(bottom = 39.dp, end = 4.dp)
                             .testTag("blink_gallery_edit_" + index)
                             .clickable { onEdit(uri) },
-                        color = Color.Black.copy(alpha = 0.78f),
+                        color = Color(BlinkPostReferenceStyle.Canvas).copy(alpha = 0.78f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text("Edit", color = Color.White, fontWeight = FontWeight.SemiBold,
@@ -924,7 +926,7 @@ internal fun BlinkReelClipReview(
     onBack: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black)
+        modifier = Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas))
             .verticalScroll(rememberScrollState()).testTag("blink_reel_clip_review")
             .padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)

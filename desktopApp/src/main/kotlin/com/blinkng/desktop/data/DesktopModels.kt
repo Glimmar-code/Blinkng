@@ -104,6 +104,13 @@ data class DesktopFeedPost(
     val linkUrl: String? = null,
     val hasPoll: Boolean = false,
     val pollMetadataAvailable: Boolean = true,
+    val textStyle: String? = null,
+)
+
+data class DesktopFeedPollOption(val id: String, val text: String, val votes: Int)
+data class DesktopFeedPoll(
+    val id: String, val question: String, val expiresAt: String?,
+    val options: List<DesktopFeedPollOption>, val votedOptionId: String?,
 )
 
 data class DesktopComment(

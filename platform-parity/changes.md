@@ -1,3 +1,12 @@
+## 2026-10-29 — Combined Chat and Create Post reference implementation
+
+- Integrated PR #639 at `96f0f2d05c83698a0db3ade66fc1fc5fc723c87f` and PR #644 at `0300879e20a4897b3a086013607d59e15ecdf82a` on local `Testlab/chat-create-post-reference-20261029`. Both original histories and screenshot-export checks are preserved. Main, original PRs and Contest work were not modified remotely.
+- Android retains the charcoal conversation, real media/poll/voice components and reference Create Post flow. Removed invalid Compose test imports and corrected the Gradle distribution to the minimum required by AGP 9.1.1, with its official SHA256. Reference posting colors, text backgrounds and poll validation now share Kotlin contracts with Windows.
+- Windows now has a separate reference composer alongside the retained Classic composer: text, ordered photo albums/cover selection, an exported video published as a Reel, timed single-answer polls, mentions, real trending tags, audience/location/comments, preview, encrypted account-scoped drafts and publication confirmation. Feed poll results/voting use authenticated server data; private posting stays disabled. Streamed photo/video uploads use the existing `users/<account>/posts/` storage policy. Retry preserves request/object IDs and completes partially created polls before reporting success.
+- Windows conversation native poll cards now share the charcoal palette. Desktop adaptations use resizable desktop layouts/file dialogs and native video playback rather than phone hardware frames or Android permission dialogs.
+- **Remaining parity limitations:** Windows does not implement Android Media3 montage/export, in-app photo crop/markup, or the full native video effects editor. It accepts already edited files. These are outstanding capabilities, not a claim that editing parity is complete. Desktop polls, storage authorization and DPAPI persistence still need authenticated Windows/backend integration evidence.
+- **Verification:** See `docs/integration/reference-design-20261029.md` for executed checks and explicit device/visual/release limitations. No production migration, merge, deployment, PR publication or environment publication was performed.
+
 ## 2026-10-29 — BLINK conversation charcoal reference (Testlab, verification pending)
 
 - **Source:** Owner-supplied screenshot (black/charcoal chat, pale outgoing bubbles, blue controls and read ticks), replacing the navy/blue outgoing style introduced in PR #640. This is a new visual reference; do not misreport PR #640 as a pixel match.

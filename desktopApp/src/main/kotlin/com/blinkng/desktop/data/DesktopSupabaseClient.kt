@@ -70,6 +70,8 @@ data class DesktopPendingGroupInvite(
 
 class DesktopSupabaseClient(
     private val sessionStore: DesktopSessionStore = DesktopSessionStore(),
+    httpClient: OkHttpClient? = null,
+    initialSession: DesktopSession? = null,
 ) {
     private val baseUrl = BlinkBackendDefaults.resolve(
         System.getenv("SUPABASE_URL") ?: System.getenv("VITE_SUPABASE_URL"),
@@ -80,7 +82,7 @@ class DesktopSupabaseClient(
         BlinkBackendDefaults.SUPABASE_ANON_KEY,
     )
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
-    private val http = OkHttpClient.Builder()
+    private val http = httpClient ?: OkHttpClient.Builder()
         .connectTimeout(25, TimeUnit.SECONDS)
         .readTimeout(45, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
@@ -88,7 +90,7 @@ class DesktopSupabaseClient(
     private val profileCache = mutableMapOf<String, DesktopProfile>()
 
     @Volatile
-    var session: DesktopSession? = sessionStore.load()
+    var session: DesktopSession? = initialSession ?: sessionStore.load()
         private set
 
     suspend fun restoreSession(): DesktopSession? = withContext(Dispatchers.IO) {
@@ -1251,15 +1253,28 @@ class DesktopSupabaseClient(
         hideLikes: Boolean = false,
         isDisappearing: Boolean = false,
         clientRequestId: String = UUID.randomUUID().toString(),
+        imageUrls: List<String> = emptyList(),
+        poll: com.blinkng.shared.BlinkFeedPollDraft? = null,
+        textStyle: String? = null,
     ): DesktopFeedPost = withContext(Dispatchers.IO) {
+        com.blinkng.shared.BlinkPostComposerPolicy.requireAudience(audience)
+        require(imageUrls.size <= com.blinkng.shared.BlinkPostComposerPolicy.MAX_PHOTOS)
+        require(text.length <= com.blinkng.shared.BlinkPostComposerPolicy.MAX_TEXT)
+        require(isReel || videoUrl.isNullOrBlank()) { "Videos must be published as Reels." }
+        require(!isReel || (!videoUrl.isNullOrBlank() && imageUrls.isEmpty() && poll == null)) {
+            "Choose a video for your Reel."
+        }
+        poll?.let { com.blinkng.shared.BlinkPostComposerPolicy.preparePoll(it.question, it.options, it.durationHours) }
         require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
             "Item sales belong in BLINK Market."
         }
         val active = requireSession()
         val clean = text.trim()
         val effectiveTags = BlinkSmartTags.allTags(clean, tags)
-        require(effectiveTags.size in 1..BlinkSmartTags.MAX_TAGS) { "Include 1–5 relevant hashtags." }
-        require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
+        require(effectiveTags.size <= BlinkSmartTags.MAX_TAGS) { "Use no more than 5 hashtags." }
+        require(clean.isNotBlank() || !videoUrl.isNullOrBlank() || imageUrls.isNotEmpty() || poll != null) {
+            "Write something or attach media."
+        }
 
         val requestId = runCatching { UUID.fromString(clientRequestId.trim()).toString() }
             .getOrElse { UUID.randomUUID().toString() }
@@ -1267,10 +1282,6 @@ class DesktopSupabaseClient(
         val existing = getArray(
             "/rest/v1/feed_posts?id=eq.${encode(requestId)}&user_id=eq.${encode(active.userId)}&select=*&limit=1",
         ).optJSONObject(0)
-        if (existing != null) {
-            return@withContext parseFeedPost(existing, fetchProfile(active.userId), false)
-        }
-
         val last = getArray(
             "/rest/v1/feed_posts?user_id=eq.${encode(active.userId)}&select=creator_post_number&order=creator_post_number.desc&limit=1",
         )
@@ -1281,7 +1292,7 @@ class DesktopSupabaseClient(
             .put("text", clean.ifBlank { JSONObject.NULL })
             .put("caption", clean.ifBlank { JSONObject.NULL })
             .put("is_reel", isReel)
-            .put("type", if (isReel) "video" else "text")
+            .put("type", if (isReel) "video" else if (imageUrls.isNotEmpty()) "image" else "text")
             .put("creator_post_number", nextNumber)
             .put("tags", JSONArray(effectiveTags))
             .put("hashtags", JSONArray(effectiveTags))
@@ -1293,14 +1304,80 @@ class DesktopSupabaseClient(
         location?.trim()?.takeIf(String::isNotBlank)?.let { body.put("location", it) }
         linkUrl?.trim()?.takeIf(String::isNotBlank)?.let { body.put("link_url", it) }
         if (!videoUrl.isNullOrBlank()) body.put("video_url", videoUrl)
+        if (imageUrls.isNotEmpty()) body.put("image_url", imageUrls.first()).put("images", JSONArray(imageUrls))
+        textStyle?.let { body.put("gradient", JSONObject().put("key", it)) }
 
-        val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
-            .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
+        val created = existing ?: runCatching {
+            postArray("/rest/v1/feed_posts", body, prefer = "return=representation").optJSONObject(0)
+                ?: throw IllegalStateException("Post was created but no row was returned.")
+        }.getOrElse { failure ->
+            // Recover an acknowledged insert after a lost HTTP response; never create another ID.
+            getArray("/rest/v1/feed_posts?id=eq.${encode(requestId)}&user_id=eq.${encode(active.userId)}&select=*&limit=1")
+                .optJSONObject(0) ?: throw failure
+        }
+        if (poll != null) {
+            val pollId = UUID.nameUUIDFromBytes("$requestId:poll".toByteArray()).toString()
+            var savedPoll = getArray("/rest/v1/polls?post_id=eq.${encode(requestId)}&select=id&limit=1").optJSONObject(0)
+            if (savedPoll == null) {
+                val publishedAt = created.optNullableString("created_at")?.let { Instant.parse(it).toEpochMilli() }
+                    ?: System.currentTimeMillis()
+                val payload = JSONObject().put("id", pollId).put("post_id", requestId)
+                    .put("question", poll.question).put("allows_multiple", false)
+                    .put("expires_at", Instant.ofEpochMilli(poll.expiresAtMillis(publishedAt)).toString())
+                savedPoll = runCatching {
+                    postArray("/rest/v1/polls", payload, prefer = "return=representation").optJSONObject(0)
+                }.getOrElse { failure ->
+                    getArray("/rest/v1/polls?post_id=eq.${encode(requestId)}&select=id&limit=1").optJSONObject(0)
+                        ?: throw failure
+                }
+            }
+            val savedId = requireNotNull(savedPoll).getString("id")
+            for ((index, option) in poll.options.withIndex()) {
+                val optionId = UUID.nameUUIDFromBytes("$savedId:$index".toByteArray()).toString()
+                val savedOptions = getArray("/rest/v1/poll_options?poll_id=eq.${encode(savedId)}&select=id,position")
+                if ((0 until savedOptions.length()).none { savedOptions.getJSONObject(it).optInt("position", -1) == index }) {
+                    val payload = JSONObject().put("id", optionId).put("poll_id", savedId)
+                        .put("option_text", option).put("position", index)
+                    runCatching { postArray("/rest/v1/poll_options", payload, prefer = "return=minimal") }
+                        .getOrElse { failure ->
+                            if (getArray("/rest/v1/poll_options?id=eq.$optionId&select=id").length() == 0) throw failure
+                            JSONArray()
+                        }
+                }
+            }
+            patch("/rest/v1/feed_posts?id=eq.${encode(requestId)}&user_id=eq.${encode(active.userId)}",
+                JSONObject().put("poll_id", savedId))
+        }
         // A follow-up author refresh is optional. Once the server returns the
         // inserted row, a temporary profile timeout must not turn this into a
         // false "post failed" message on Windows either.
         val author = runCatching { fetchProfile(active.userId) }.getOrNull()
-        parseFeedPost(created, author, false)
+        parseFeedPost(created, author, false).copy(hasPoll = poll != null || !created.optNullableString("poll_id").isNullOrBlank())
+    }
+
+    suspend fun fetchFeedPoll(postId: String): DesktopFeedPoll = withContext(Dispatchers.IO) {
+        val active = requireSession()
+        val row = getArray("/rest/v1/polls?post_id=eq.${encode(postId)}&select=id,question,expires_at&limit=1")
+            .optJSONObject(0) ?: throw IllegalStateException("This poll is unavailable.")
+        val id = row.getString("id")
+        val options = getArray("/rest/v1/poll_options?poll_id=eq.${encode(id)}&select=id,option_text,vote_count&order=position.asc")
+        val voted = getArray("/rest/v1/poll_votes?poll_id=eq.${encode(id)}&user_id=eq.${encode(active.userId)}&select=option_id&limit=1")
+            .optJSONObject(0)?.optString("option_id")
+        DesktopFeedPoll(id, row.getString("question"), row.optNullableString("expires_at"),
+            (0 until options.length()).map { i -> options.getJSONObject(i).let {
+                DesktopFeedPollOption(it.getString("id"), it.getString("option_text"), it.optInt("vote_count"))
+            } }, voted)
+    }
+
+    suspend fun voteFeedPoll(postId: String, optionId: String): DesktopFeedPoll = withContext(Dispatchers.IO) {
+        val active = requireSession()
+        val poll = fetchFeedPoll(postId)
+        require(poll.votedOptionId == null) { "You have already voted in this poll." }
+        require(poll.expiresAt == null || Instant.now().isBefore(Instant.parse(poll.expiresAt))) { "This poll has closed." }
+        require(poll.options.any { it.id == optionId }) { "This answer does not belong to the poll." }
+        postArray("/rest/v1/poll_votes", JSONObject().put("poll_id", poll.id).put("option_id", optionId)
+            .put("user_id", active.userId), prefer = "return=minimal")
+        fetchFeedPoll(postId)
     }
 
     suspend fun toggleLike(postId: String): Boolean = withContext(Dispatchers.IO) {
@@ -3691,6 +3768,7 @@ class DesktopSupabaseClient(
         text = row.optNullableString("text"),
         caption = row.optNullableString("caption"),
         linkUrl = row.optNullableString("link_url"),
+        textStyle = row.optJSONObject("gradient")?.optString("key"),
         imageUrl = row.optNullableString("image_url"),
         videoUrl = row.optNullableString("video_url"),
         images = row.optStringList("images"),

@@ -795,7 +795,17 @@ fun MessagesScreen(state: DesktopAppState) {
                                                     else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
-                                        if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
+                                        Text(
+                                            runCatching {
+                                                java.time.format.DateTimeFormatter.ofPattern("h:mm a")
+                                                    .withZone(java.time.ZoneId.systemDefault())
+                                                    .format(Instant.parse(message.createdAt))
+                                            }.getOrDefault(""),
+                                            fontSize = 10.sp,
+                                            color = if (mine && MaterialTheme.colorScheme.background.luminance() < .4f)
+                                                Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .6f)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
                                 }
                             }

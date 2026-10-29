@@ -98,6 +98,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
@@ -1047,6 +1050,7 @@ private fun MessageBackground(
                 }
             }
         }
+        if (palette.mode != MessageThemeMode.DARK) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1078,6 +1082,7 @@ private fun MessageBackground(
                     )
                 )
         )
+        } // The charcoal reference has no colored glow behind the thread.
         content()
     }
 }
@@ -3460,11 +3465,11 @@ private fun ChatHeader(
             }
         }
         IconButton(onClick = onVideoCall, modifier = Modifier.size(37.dp)) {
-            Icon(Icons.Default.Videocam, contentDescription = "Video call",
+            Icon(Icons.Outlined.Videocam, contentDescription = "Video call",
                 tint = palette.textPrimary, modifier = Modifier.size(25.dp))
         }
         IconButton(onClick = onAudioCall, modifier = Modifier.size(37.dp)) {
-            Icon(Icons.Default.Call, contentDescription = "Voice call",
+            Icon(Icons.Outlined.Call, contentDescription = "Voice call",
                 tint = palette.textPrimary, modifier = Modifier.size(24.dp))
         }
         IconButton(onClick = onMore, modifier = Modifier.size(35.dp)) {
@@ -4621,7 +4626,7 @@ private fun MessageComposer(
             ).testTag("chat_reference_emoji")
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.EmojiEmotions, contentDescription = "Choose emoji",
+                Icon(Icons.Outlined.EmojiEmotions, contentDescription = "Choose emoji",
                     tint = palette.textPrimary, modifier = Modifier.size(23.dp))
             }
         }
