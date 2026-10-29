@@ -203,7 +203,11 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                                 busy = false
                             }
                         }) { Text(action.replaceFirstChar { it.uppercase() }) }
-                        if (contest.optString("status") in listOf("published", "paused")) {
+                    }
+                    // Separate critical actions from the regular actions so a narrow
+                    // Android screen never has four buttons competing in one row.
+                    if (contest.optString("status") in listOf("published", "paused")) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TextButton(enabled = !busy, onClick = {
                                 pendingContestDecision = contest.optString("id") to "finalize"
                             }) { Text("Finalize") }
@@ -331,7 +335,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                                 else "Preview entry photo")
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         listOf("approve", "reject", "disqualify").forEach { action ->
                             TextButton(enabled = !busy, onClick = {
                                 if (action != "approve") {
