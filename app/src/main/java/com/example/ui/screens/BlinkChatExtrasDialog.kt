@@ -38,7 +38,9 @@ internal fun BlinkChatExtrasDialog(
     mode: String,
     contact: Pair<String, String>? = null,
     onSend: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    nativePollEnabled: Boolean = false,
+    onNativePoll: (com.blinkng.shared.BlinkChatPollDraft) -> Unit = {}
 ) {
     var title by remember(mode) { mutableStateOf("") }
     var details by remember(mode) { mutableStateOf("") }
@@ -135,7 +137,7 @@ internal fun BlinkChatExtrasDialog(
     ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                .background(Color(0xFF182129), androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                .background(Color(0xFF111B2A), androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
                 .verticalScroll(rememberScrollState()).padding(20.dp)
         ) {
             Text(heading, style = MaterialTheme.typography.titleLarge, color = Color.White)
@@ -185,7 +187,10 @@ internal fun BlinkChatExtrasDialog(
                         color=Color.LightGray)
                 }
                 isPoll -> {
-                    Text("Text poll: participants reply with an option number. Native voting requires the server upgrade.",
+                    Text(
+                        if (nativePollEnabled)
+                            "Interactive poll: votes are recorded privately by the server. One choice per account."
+                        else "Text poll: reply with an option number. Native voting needs a verified server upgrade.",
                         color=Color.LightGray)
                     OutlinedTextField(
                         value=title, onValueChange={title=it.take(200)},
@@ -211,8 +216,12 @@ internal fun BlinkChatExtrasDialog(
                 TextButton(onClick=onDismiss) { Text("Cancel") }
                 Button(
                     enabled=text.isNotBlank(),
-                    onClick={onSend(text)},
-                    colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF00A884))
+                    onClick={
+                        if (isPoll && nativePollEnabled && pollDraft != null)
+                            onNativePoll(pollDraft)
+                        else onSend(text)
+                    },
+                    colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF0879F8))
                 ) { Text("Send") }
             }
         }

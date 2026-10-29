@@ -1481,6 +1481,20 @@ class DesktopSupabaseClient(
             ?: error("Only Channel owners can edit their Channel."))
     }
 
+    /** Native poll counts and votes are authorized by PostgreSQL membership.
+     * Missing backend errors are handled by the screen's text-poll fallback. */
+    suspend fun chatPollResults(messageId: String): JSONObject = withContext(Dispatchers.IO) {
+        val value = postObject("/rest/v1/rpc/blink_chat_poll_results",
+            JSONObject().put("p_message_id", messageId))
+        value as? JSONObject ?: error("Poll results are unavailable.")
+    }
+    suspend fun chatVotePoll(messageId: String, choice: Int): JSONObject = withContext(Dispatchers.IO) {
+        require(choice in 0..7)
+        postObject("/rest/v1/rpc/blink_chat_vote_poll",
+            JSONObject().put("p_message_id", messageId).put("p_option", choice))
+        chatPollResults(messageId)
+    }
+
     private suspend fun communityRpc(name: String, args: JSONObject): String = withContext(Dispatchers.IO) {
         (postObject("/rest/v1/rpc/" + name, args) as? JSONObject)
             ?.optString("value").orEmpty().removeSurrounding("\"")
