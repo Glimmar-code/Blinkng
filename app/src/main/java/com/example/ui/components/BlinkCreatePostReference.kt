@@ -682,9 +682,11 @@ internal fun BlinkReferenceMediaReview(
     onMove: (Int, Int) -> Unit,
     onEdit: (String) -> Unit,
     onAddMore: () -> Unit,
+    onPickVideos: () -> Unit,
     onNext: () -> Unit,
 ) {
     var previewIndex by remember { mutableIntStateOf(-1) }
+    var selectedTab by remember { mutableStateOf("All") }
     if (previewIndex in images.indices) {
         Dialog(onDismissRequest = { previewIndex = -1 }) {
             Column(
@@ -740,12 +742,41 @@ internal fun BlinkReferenceMediaReview(
                 Text("Next", color = Color(0xFF8F87FF), fontWeight = FontWeight.Bold)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf("All", "Photos", "Videos").forEach { tab ->
+                Surface(
+                    color = if (selectedTab == tab) Color.White else Color(0xFF1A1C23),
+                    shape = RoundedCornerShape(22.dp),
+                    modifier = Modifier.weight(1f).height(36.dp)
+                        .clickable {
+                            if (tab == "Videos") {
+                                // Keep Android's system picker in charge of device-library access.
+                                onPickVideos()
+                            } else selectedTab = tab
+                        }
+                        .testTag("blink_media_tab_" + tab.lowercase())
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            tab,
+                            color = if (selectedTab == tab) Color.Black else Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Photos", color = Color.White, fontWeight = FontWeight.SemiBold,
+                "Selected photos", color = Color.White, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
-            Text(images.size.toString() + " / 10 selected", color = Color(0xFFB9C0CE))
+            Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
         }
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
@@ -839,7 +870,7 @@ internal fun BlinkReferenceMediaReview(
                 color = Color(0xFFD3D6DE), fontSize = 12.sp)
         }
         Text(
-            "First photo is the cover. Use arrows to change the order.",
+            "Only media you selected is shown here. Choose Photos or Videos to open the device picker.",
             color = Color(0xFFB0B7C4), fontSize = 11.sp
         )
         OutlinedButton(
