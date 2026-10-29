@@ -231,7 +231,8 @@ fun BlinkContestScreen(
                         Surface(color = Color(0xFF0B1626),
                             shape = RoundedCornerShape(12.dp)) {
                             Box(Modifier.padding(12.dp)) {
-                                BlinkContestCountdown(c.optString("voting_closes_at"))
+                                val (deadlineLabel, deadline) = contestDeadline(c)
+                                BlinkContestCountdown(deadline, deadlineLabel)
                             }
                         }
                         if (c.optString("rules").isNotBlank()) Text("Rules: " + c.optString("rules"))
