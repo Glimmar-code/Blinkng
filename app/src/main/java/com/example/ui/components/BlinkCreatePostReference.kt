@@ -303,6 +303,7 @@ internal fun BlinkCreatePostPublishOptions(
     Column(
         Modifier.fillMaxSize().background(Color.Black)
             .testTag("blink_create_post_publish_options")
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
