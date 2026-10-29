@@ -12,9 +12,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.ui.screens.BlinkContestHeroCard
+import com.example.ui.screens.BlinkContestApplicantMediaCard
 import com.example.ui.screens.BlinkContestPodium
 import com.example.ui.screens.BlinkContestWinnerCard
 import com.example.ui.theme.BlinkTheme
@@ -61,12 +63,33 @@ class ContestReferenceVisualAuditTest {
         rule.onNodeWithText("Open contest →").assertExists()
         rule.onNodeWithText("Leaderboard leaders").assertExists()
         rule.onNodeWithText("Prize ₦30,000").assertExists()
-        // Save the actual emulator-rendered Contest surfaces for visual review.
+        capture("contest-hero-podium-winners-staging.png")
+    }
+
+    @Test fun adminApplicantMediaCardShowsThumbnailAndOpensPreview() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val imageUri = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
+        var opened = false
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    BlinkContestApplicantMediaCard(imageUri, onPreview = { opened = true })
+                }
+            }
+        }
+        rule.onNodeWithText("View application photo").assertExists()
+        capture("contest-applicant-card-staging.png")
+        rule.onNodeWithText("View application photo").performClick()
+        rule.runOnIdle { org.junit.Assert.assertTrue(opened) }
+    }
+
+    private fun capture(name: String) {
+        rule.waitForIdle()
         val image = rule.onRoot().captureToImage().asAndroidBitmap()
         val resolver = InstrumentationRegistry.getInstrumentation()
             .targetContext.contentResolver
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "contest-hero-podium-winners-staging.png")
+            put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
             put(MediaStore.Images.Media.RELATIVE_PATH,
                 "${Environment.DIRECTORY_PICTURES}/BLINK-Visual-Audit")
