@@ -68,12 +68,14 @@ abstract class ChatReferenceVisualAuditFixture {
         }
         }
         rule.onNodeWithText("Report.pdf").assertExists()
+        rule.onNodeWithTag("chat_reference_document_download_circle").assertExists()
         capture("chat-reference-outgoing-document-dark.png")
         rule.runOnIdle {
             check(preferences.edit().putString("message_theme", "light").commit())
             dark = false
         }
         rule.onNodeWithText("Report.pdf").assertExists()
+        rule.onNodeWithTag("chat_reference_document_download_circle").assertExists()
         capture("chat-reference-outgoing-document-light.png")
         } finally {
             val editor = preferences.edit()
