@@ -976,7 +976,7 @@ fun CreatePostSheet(
     }
 
     fun shareComposerDraft(whatsAppOnly: Boolean) {
-        val caption = BlinkPostShareActions.caption(text, pollQuestion)
+        val caption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "")
         val images = if (selectedVideo == null) selectedImages else emptyList()
         val shared = BlinkPostShareActions.share(
             context = context, caption = caption, images = images,
@@ -1340,7 +1340,7 @@ fun CreatePostSheet(
                     onShareWhatsApp = { shareComposerDraft(true) },
                     onShareOtherApps = { shareComposerDraft(false) },
                     onCopyCaption = {
-                        val caption = BlinkPostShareActions.caption(text, pollQuestion)
+                        val caption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "")
                         val copied = runCatching {
                             BlinkPostShareActions.copyCaption(context, caption)
                         }.getOrDefault(false)
@@ -1350,7 +1350,7 @@ fun CreatePostSheet(
                             Toast.LENGTH_SHORT
                         ).show()
                     },
-                    canCopyCaption = BlinkPostShareActions.caption(text, pollQuestion).isNotBlank(),
+                    canCopyCaption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "").isNotBlank(),
                     isSubmitting = isSubmitting,
                     canPublish = canSubmit,
                     uploadProgress = uploadProgress
