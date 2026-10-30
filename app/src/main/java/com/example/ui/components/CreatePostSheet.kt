@@ -987,18 +987,18 @@ fun CreatePostSheet(
         }
     }
 
-    fun saveDraft() {
+    fun saveDraft(): Boolean {
         if (videoClips.isNotEmpty() || combiningClips) {
             Toast.makeText(context, "Combine your video clips before saving this Reel.", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
             Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         if (!hasComposerInput) {
             Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
 
         val draftId = activeDraftId ?: "draft_${UUID.randomUUID()}"
@@ -1034,6 +1034,7 @@ fun CreatePostSheet(
             )
         )
         activeDraftId = draftId
+        return true
     }
 
     val currentHasContent by rememberUpdatedState(hasComposerInput)
@@ -1333,8 +1334,7 @@ fun CreatePostSheet(
                     onBack = { showPublishOptions = false; showReferenceDetails = true },
                     onPost = ::submit,
                     onSaveDraft = {
-                        saveDraft()
-                        showPublishOptions = false
+                        if (saveDraft()) showPublishOptions = false
                     },
                     onPreview = { showPreviewDialog = true },
                     onShareWhatsApp = { shareComposerDraft(true) },
@@ -2222,7 +2222,7 @@ fun CreatePostSheet(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedButton(
-                        onClick = ::saveDraft,
+                        onClick = { saveDraft() },
                         enabled = hasComposerInput && !isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
