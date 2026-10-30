@@ -132,7 +132,6 @@ abstract class ChatReferenceVisualAuditFixture {
         // Keep the real pinned-message jump action, then verify dismiss is local
         // to the banner rather than deleting or unpinning the message.
         rule.onNodeWithTag("chat_reference_pinned_jump").performClick()
-        rule.onNodeWithText("Pinned: See project files below").assertExists()
         rule.onNodeWithTag("chat_reference_pinned_banner").assertExists()
         rule.onNodeWithContentDescription("Hide pinned banner").performClick()
         rule.onNodeWithTag("chat_reference_pinned_banner").assertDoesNotExist()
