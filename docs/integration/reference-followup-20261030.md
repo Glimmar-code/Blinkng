@@ -46,3 +46,18 @@ desktop conventions. The device grid shows recent authorized photos, with the
 system picker available for additional files. No exact pixel comparison or full
 cross-client/backend acceptance is certified here. PR #646 remains Testlab work;
 main and production Supabase must remain unchanged until the required gates pass.
+
+The full composer fixture inherited the production trending-tag loader. The
+follow-up adds an optional loader and injects test tags in visual fixtures,
+removing that network dependency without changing normal production loading.
+Native keyboard coverage additionally asserts that Ayo's suggestion is displayed.
+Earlier capture attempts must not be described as network-free solely because
+no account was signed in; no production writes or migrations were performed.
+
+Both initial native runs on `37bf8380` failed the combined keyboard/mention
+wait (41021564419 and 41021559536). No pass is claimed for those runs. The
+follow-up separates mention loading from keyboard visibility, checks actual
+application window IME insets instead of accessibility-window enumeration, and
+requires the mention result to be displayed. Failed display captures are retained
+before the test exits. The updated native source compiled successfully locally
+(36 seconds); an emulator rerun is still required to establish its result.

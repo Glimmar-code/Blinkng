@@ -1820,3 +1820,7 @@ own run and manual artifact review; capture completion alone is not visual appro
 - Shared light conversation colors remove unexpected pink from Android Light appearance and supply the same pale blue outgoing background/dark foreground on Windows. Charcoal default and optional Pink personalization are preserved.
 - Native Android compositor capture coverage now includes the actual keyboard/mentions, real permissioned MediaStore selection, video preview and trim timeline. Windows' existing packaged GUI captures complement those platform-specific checks. New capture tests and fresh CI require execution and manual review before any visual approval.
 - See `docs/integration/reference-followup-20261030.md` for exact scope and remaining differences. No backend migration or production operation is part of this follow-up.
+
+### PARITY-EXCEPTION: android-reference-loader-isolation
+
+The Android composer accepts an optional trending-tag loader so native and Robolectric fixtures can supply test-only tags without the default repository request. Production continues to use its existing loader. This changes no user feature, permission, payload or backend contract. The Windows equivalent is its existing injected HTTP tests and explicit account-free packaged GUI diagnostic; Android's native IME/Media3 capture assertions are platform-specific. Mention visibility is now asserted on screen in addition to loading results.

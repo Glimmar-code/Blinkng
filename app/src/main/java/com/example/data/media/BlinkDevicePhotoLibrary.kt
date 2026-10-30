@@ -60,4 +60,3 @@ internal suspend fun readAvailableGalleryPhotos(context: Context): List<BlinkGal
         }
         output
     }
-

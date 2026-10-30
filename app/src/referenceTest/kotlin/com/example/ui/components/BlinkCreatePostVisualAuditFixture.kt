@@ -147,6 +147,7 @@ abstract class BlinkCreatePostVisualAuditFixture {
                     onDismiss = {},
                     onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
                     isDark = true,
+                    trendingTagsLoader = { _, _ -> listOf("FUTA", "SchoolLife", "Exam", "Campus") },
                     searchMentions = { _, _, _, _ ->
                         listOf(
                             UserProfile(id = "audit-ayo", fullName = "Ayo", username = "ayo_futa", avatarUrl = avatar),

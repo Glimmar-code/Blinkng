@@ -79,7 +79,7 @@ jobs:
             adb shell settings put secure show_ime_with_hard_keyboard 1
             echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
             mkdir -p app/build
-            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > app/build/runtime-gradle.log 2>&1 || { tail -n 80 app/build/runtime-gradle.log; exit 1; }
+            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > app/build/runtime-gradle.log 2>&1 || { mkdir -p app/build/visual-audit; adb pull /sdcard/Pictures/BLINK-Visual-Audit app/build/visual-audit/ || true; tail -n 80 app/build/runtime-gradle.log; exit 1; }
             # Export emulator-rendered Compose staging fixture for visual audit.
             # This test data is separate from the production APK and account content.
             mkdir -p app/build/visual-audit

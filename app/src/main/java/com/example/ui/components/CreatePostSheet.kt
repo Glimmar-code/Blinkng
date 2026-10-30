@@ -219,7 +219,8 @@ fun CreatePostSheet(
     startInReelMode: Boolean = false,
     isSubmitting: Boolean = false,
     uploadProgress: Int? = null,
-    searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
+    searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null,
+    trendingTagsLoader: (suspend (String?, Int) -> List<String>)? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -237,7 +238,10 @@ fun CreatePostSheet(
     var showMoreTrendingTags by rememberSaveable { mutableStateOf(false) }
     var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
     val tagsRepository = remember { SearchDiscoveryRepository() }
-    LaunchedEffect(profile.university) { trendingTags = tagsRepository.trendingTags(profile.university, 40) }
+    LaunchedEffect(profile.university, trendingTagsLoader) {
+        trendingTags = trendingTagsLoader?.invoke(profile.university, 40)
+            ?: tagsRepository.trendingTags(profile.university, 40)
+    }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }

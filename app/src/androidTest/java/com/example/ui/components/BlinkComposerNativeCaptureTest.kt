@@ -1,11 +1,11 @@
 package com.example.ui.components
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ContentValues
 import android.graphics.Bitmap
 import android.os.Environment
 import android.provider.MediaStore
-import android.view.accessibility.AccessibilityWindowInfo
+import android.view.WindowInsets
+import android.view.inspector.WindowInspector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -72,34 +72,45 @@ class BlinkComposerNativeCaptureTest {
         } finally { fixtures.forEach { resolver.delete(android.net.Uri.parse(it), null, null) } }
     }
 
-    @Test fun typingMentionsWithActualKeyboardVisible() {
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val prior = automation.serviceInfo
-        val flags = prior.flags
-        automation.serviceInfo = prior.apply { this.flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
-        try {
-            rule.setContent {
-                MaterialTheme(colorScheme = darkColorScheme()) {
-                    CreatePostSheet(
-                        profile = UserProfile(id = "native-visual-composer", fullName = "BLINK Test Student",
-                            username = "blink_visual_test", university = "FUTA"),
-                        onDismiss = {},
-                        onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
-                        isDark = true,
-                        searchMentions = { _, _, _, _ -> listOf(UserProfile(id = "native-audit-ayo", fullName = "Ayo", username = "ayo_futa")) }
-                    )
-                }
+    @Test @SdkSuppress(minSdkVersion = 30)
+    fun typingMentionsWithActualKeyboardVisible() {
+        rule.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                CreatePostSheet(
+                    profile = UserProfile(id = "native-visual-composer", fullName = "BLINK Test Student",
+                        username = "blink_visual_test", university = "FUTA"),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true,
+                    trendingTagsLoader = { _, _ -> listOf("FUTA", "Campus") },
+                    searchMentions = { _, _, _, _ -> listOf(UserProfile(id = "native-audit-ayo", fullName = "Ayo", username = "ayo_futa")) }
+                )
             }
-            rule.onNodeWithTag("blink_create_choice_text").performClick()
-            rule.onAllNodes(hasSetTextAction()).onFirst().performClick().performTextReplacement("@a")
-            rule.waitUntil(15_000) {
-                automation.windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } &&
-                    rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty()
-            }
-            captureDisplay("create-post-keyboard-mentions-staging.png")
-        } finally {
-            automation.serviceInfo = automation.serviceInfo.apply { this.flags = flags }
         }
+        rule.onNodeWithTag("blink_create_choice_text").performClick()
+        rule.onAllNodes(hasSetTextAction()).onFirst().performClick().performTextReplacement("@a")
+        try {
+            rule.waitUntil(15_000) { rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty() }
+        } catch (error: AssertionError) {
+            runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
+            throw AssertionError("Mention results were not loaded", error)
+        }
+        try {
+            rule.waitUntil(15_000) {
+                var visible = false
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    visible = WindowInspector.getGlobalWindowViews().any {
+                        it.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+                    }
+                }
+                visible
+            }
+        } catch (error: AssertionError) {
+            runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
+            throw AssertionError("Actual app window does not report a visible IME", error)
+        }
+        captureDisplay("create-post-keyboard-mentions-staging.png")
+        rule.onNodeWithText("Ayo").assertIsDisplayed()
     }
 
     @Test fun actualVideoPreviewAndTrimTimelineAreCaptured() {
