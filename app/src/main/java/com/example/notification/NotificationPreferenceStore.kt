@@ -107,9 +107,24 @@ object NotificationPreferenceStore {
             SupabaseService().getCurrentUserId().orEmpty()
         }.getOrDefault("")
         if (accountId != currentId) return false
+        val nextMode = ChatNotificationPreviewPolicy.normalized(mode)
         accountPrefs(context, accountId).edit()
-            .putString(CHAT_PREVIEW_MODE, ChatNotificationPreviewPolicy.normalized(mode))
+            .putString(CHAT_PREVIEW_MODE, nextMode)
             .apply()
+        if (nextMode != "full") {
+            // Existing unlocked notifications may still contain older message text.
+            NotificationMessageHistory.clear()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                runCatching {
+                    val manager = context.getSystemService(android.app.NotificationManager::class.java)
+                    manager?.activeNotifications?.forEach { shown ->
+                        if (shown.notification.channelId == BlinkNotificationHelper.CHANNEL_MESSAGES) {
+                            manager.cancel(shown.tag, shown.id)
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "Unable to clear stale chat previews", it) }
+            }
+        }
         return true
     }
 
