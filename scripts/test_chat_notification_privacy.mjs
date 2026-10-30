@@ -15,7 +15,10 @@ for (const marker of [
   'fun rememberChatPreviewMode(context: Context, accountId: String, mode: String)',
   'if (accountId.isBlank()) return "hidden"',
   'if (accountId != currentId) return false',
-  'ChatNotificationPreviewPolicy.normalized(mode)'
+  'ChatNotificationPreviewPolicy.normalized(mode)',
+  'NotificationMessageHistory.clear()',
+  'shown.notification.channelId == BlinkNotificationHelper.CHANNEL_MESSAGES',
+  'manager.cancel(shown.tag, shown.id)'
 ]) assert.ok(prefs.includes(marker), 'Missing account isolation: '+marker);
 
 for (const marker of ['"sender_only"', '"hidden"', '"full"', 'else -> "hidden"', 'fun allowHistory']) {
