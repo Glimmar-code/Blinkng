@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -122,6 +123,28 @@ class BlinkCreatePostReferenceTest {
         composeRule.runOnIdle {
             assertEquals(listOf("audience:Followers", "next"), selected)
         }
+    }
+
+    @Test
+    fun pollDurationMatchesCollapsedReferenceAndStillSavesUserSelection() {
+        val duration = mutableIntStateOf(24)
+        composeRule.setContent {
+            MaterialTheme {
+                PollComposer(
+                    question = "Which campus event?",
+                    onQuestionChanged = {},
+                    options = listOf("Sports", "Tech"),
+                    onOptionsChanged = {},
+                    durationHours = duration.intValue,
+                    onDurationChanged = { duration.intValue = it },
+                    enabled = true
+                )
+            }
+        }
+        composeRule.onNodeWithText("Poll duration").assertExists().performClick()
+        composeRule.onNodeWithText("3 days").performClick()
+        composeRule.runOnIdle { assertEquals(72, duration.intValue) }
+        composeRule.onNodeWithText("3 days").assertExists()
     }
 
     @Test
