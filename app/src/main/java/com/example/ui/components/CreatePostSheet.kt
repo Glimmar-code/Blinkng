@@ -1,4 +1,5 @@
 package com.example.ui.components
+import com.blinkng.shared.BlinkPostComposerPolicy
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
@@ -1189,16 +1190,17 @@ fun CreatePostSheet(
             } else if (visibleStage == "gallery") {
                 BlinkReferenceMediaReview(
                     images = selectedImages,
+                    onSelectPhoto = { uri ->
+                        if (!isSubmitting && uri !in selectedImages && selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                            selectedImages = selectedImages + uri
+                        }
+                    },
                     onBack = {
                         showMediaReview = false
                         showCreateLanding = true
                     },
                     onRemove = { index ->
                         selectedImages = selectedImages.filterIndexed { i, _ -> i != index }
-                        if (selectedImages.isEmpty()) {
-                            showMediaReview = false
-                            showCreateLanding = true
-                        }
                     },
                     onMove = { from, to ->
                         if (from in selectedImages.indices && to in selectedImages.indices) {
@@ -1243,9 +1245,9 @@ fun CreatePostSheet(
                         if (selectedVideo != null || showPoll || videoClips.isNotEmpty()) {
                             pendingMediaSwitch = "gallery"
                         } else {
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            pickerOpenedFromLanding = false
+                            mode = "post"
+                            showMediaReview = true
                         }
                     },
                     onVideo = {

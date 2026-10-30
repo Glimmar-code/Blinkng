@@ -1,6 +1,13 @@
 package com.example.ui.components
 
 import com.blinkng.shared.BlinkPostReferenceStyle
+import com.blinkng.shared.BlinkPostComposerPolicy
+import com.example.data.media.hasGalleryPermission
+import com.example.data.media.readAvailableGalleryPhotos
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -717,7 +724,28 @@ internal fun BlinkReferenceMediaReview(
     onAddMore: () -> Unit,
     onPickVideos: () -> Unit,
     onNext: () -> Unit,
+    onSelectPhoto: (String) -> Unit = {},
 ) {
+    val context = LocalContext.current
+    var permissionVersion by remember { mutableIntStateOf(0) }
+    var library by remember { mutableStateOf<List<String>>(emptyList()) }
+    var canBrowse by remember { mutableStateOf(hasGalleryPermission(context)) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        canBrowse = hasGalleryPermission(context)
+        permissionVersion++
+    }
+    fun requestLibrary() {
+        permission.launch(when {
+            android.os.Build.VERSION.SDK_INT >= 34 -> arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+            android.os.Build.VERSION.SDK_INT >= 33 -> arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES)
+            else -> arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        })
+    }
+    LaunchedEffect(permissionVersion, canBrowse) {
+        library = if (canBrowse) readAvailableGalleryPhotos(context).map { it.uri.toString() } else emptyList()
+    }
+    val visiblePhotos = (library + images).distinct()
     var previewIndex by remember { mutableIntStateOf(-1) }
     var selectedTab by remember { mutableStateOf("All") }
     if (previewIndex in images.indices) {
@@ -741,6 +769,28 @@ internal fun BlinkReferenceMediaReview(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxWidth().height(360.dp)
                 )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    TextButton(onClick = {
+                        val uri = images[previewIndex]
+                        previewIndex = -1
+                        onEdit(uri)
+                    }, modifier = Modifier.testTag("blink_gallery_edit_preview")) { Text("Edit") }
+                    TextButton(onClick = {
+                        val index = previewIndex
+                        previewIndex = -1
+                        onRemove(index)
+                    }) { Text("Remove") }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    TextButton(onClick = {
+                        onMove(previewIndex, previewIndex - 1)
+                        previewIndex--
+                    }, enabled = previewIndex > 0) { Text("Move earlier") }
+                    TextButton(onClick = {
+                        onMove(previewIndex, previewIndex + 1)
+                        previewIndex++
+                    }, enabled = previewIndex < images.lastIndex) { Text("Move later") }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(
                         onClick = { previewIndex = (previewIndex - 1).coerceAtLeast(0) },
@@ -788,7 +838,11 @@ internal fun BlinkReferenceMediaReview(
                             if (tab == "Videos") {
                                 // Keep Android's system picker in charge of device-library access.
                                 onPickVideos()
-                            } else selectedTab = tab
+                            } else {
+                                selectedTab = tab
+                                if (!hasGalleryPermission(context)) requestLibrary()
+                                else { canBrowse = true; permissionVersion++ }
+                            }
                         }
                         .testTag("blink_media_tab_" + tab.lowercase())
                 ) {
@@ -806,7 +860,7 @@ internal fun BlinkReferenceMediaReview(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Selected photos", color = Color.White, fontWeight = FontWeight.SemiBold,
+                if (canBrowse) "Recent photos" else "Selected photos", color = Color.White, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
             Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
@@ -817,7 +871,8 @@ internal fun BlinkReferenceMediaReview(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            itemsIndexed(images, key = { _, uri -> uri }) { index, uri ->
+            itemsIndexed(visiblePhotos, key = { _, uri -> uri }) { _, uri ->
+                val index = images.indexOf(uri)
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(1f)
                         .clip(RoundedCornerShape(10.dp))
@@ -825,11 +880,15 @@ internal fun BlinkReferenceMediaReview(
                 ) {
                     AsyncImage(
                         model = uri,
-                        contentDescription = "Selected photo " + (index + 1),
+                        contentDescription = if (index >= 0) "Selected photo " + (index + 1) else "Available device photo",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clickable { previewIndex = index }
+                        modifier = Modifier.fillMaxSize().testTag(if (index >= 0) "blink_gallery_photo_" + index else "blink_gallery_available_" + uri)
+                            .clickable {
+                                if (index >= 0) previewIndex = index
+                                else if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) onSelectPhoto(uri)
+                            }
                     )
-                    Surface(
+                    if (index >= 0) Surface(
                         modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
                         color = Color(0xFF5448F5), shape = RoundedCornerShape(20.dp)
                     ) {
@@ -839,46 +898,7 @@ internal fun BlinkReferenceMediaReview(
                             fontSize = 12.sp
                         )
                     }
-                    Row(
-                        modifier = Modifier.align(Alignment.BottomCenter)
-                            .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f), RoundedCornerShape(8.dp)),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        IconButton(
-                            onClick = { onMove(index, index - 1) },
-                            enabled = index > 0, modifier = Modifier.size(34.dp)
-                        ) { Icon(Icons.Default.ArrowUpward, "Move photo earlier", tint = Color.White) }
-                        IconButton(
-                            onClick = { previewIndex = index },
-                            modifier = Modifier.size(34.dp)
-                        ) { Icon(Icons.Default.Visibility, "Preview selected photo", tint = Color.White) }
-                        IconButton(
-                            onClick = { onMove(index, index + 1) },
-                            enabled = index < images.lastIndex, modifier = Modifier.size(34.dp)
-                        ) { Icon(Icons.Default.ArrowDownward, "Move photo later", tint = Color.White) }
-                    }
-                    Surface(
-                        modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(bottom = 39.dp, end = 4.dp)
-                            .testTag("blink_gallery_edit_" + index)
-                            .clickable { onEdit(uri) },
-                        color = Color(BlinkPostReferenceStyle.Canvas).copy(alpha = 0.78f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Edit", color = Color.White, fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-                    }
-                    IconButton(
-                        onClick = { onRemove(index) },
-                        modifier = Modifier.align(Alignment.TopStart).size(36.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Remove selected photo " + (index + 1),
-                            tint = Color.White
-                        )
-                    }
+
                 }
             }
         }
@@ -903,7 +923,7 @@ internal fun BlinkReferenceMediaReview(
                 color = Color(0xFFD3D6DE), fontSize = 12.sp)
         }
         Text(
-            "Only media you selected is shown here. Choose Photos or Videos to open the device picker.",
+            "Tap a photo to preview, edit or change its order.",
             color = Color(0xFFB0B7C4), fontSize = 11.sp
         )
         OutlinedButton(

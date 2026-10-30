@@ -80,6 +80,7 @@ abstract class BlinkCreatePostVisualAuditFixture {
     }
 
     @Test fun selectedPhotosUseNativeAlbumReviewFixture() {
+        var edited: String? = null
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val resource = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
         rule.setContent {
@@ -87,11 +88,14 @@ abstract class BlinkCreatePostVisualAuditFixture {
                 BlinkReferenceMediaReview(
                     images = listOf(resource, resource + "?two"),
                     onBack = {}, onRemove = {}, onMove = { _, _ -> },
-                    onEdit = {}, onAddMore = {}, onPickVideos = {}, onNext = {}
+                    onEdit = { edited = it }, onAddMore = {}, onPickVideos = {}, onNext = {}
                 )
             }
         }
         capture("create-post-gallery-staging.png")
+        rule.onNodeWithTag("blink_gallery_photo_0").performClick()
+        rule.onNodeWithTag("blink_gallery_edit_preview").performClick()
+        rule.runOnIdle { check(edited == resource) { "Preview edit must keep the selected original photo" } }
     }
 
     @Test fun postDetailsAreScrollableOnMobileFixture() {

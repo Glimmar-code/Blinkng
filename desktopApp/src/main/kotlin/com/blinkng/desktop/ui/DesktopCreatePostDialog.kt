@@ -294,8 +294,8 @@ internal fun DesktopCreatePostDialog(state: DesktopAppState, onDismiss: () -> Un
                                                 val index = row * 3 + column
                                                 Column(Modifier.weight(1f)) {
                                                     AsyncImage(File(path), "Selected photo ${index + 1}", Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Text("${index + 1}${if (index == 0) " · Cover" else ""}", fontSize = 11.sp)
+                                                    Text("${index + 1}${if (index == 0) " · Cover" else ""}", fontSize = 11.sp)
+                                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                                         IconButton(onClick = { editingPhoto = path }, enabled = !locked) { Icon(Icons.Rounded.Edit, "Edit photo ${index + 1}") }
                                                         IconButton(onClick = { draft = draft.copy(photos = draft.photos.filterIndexed { i, _ -> i != index }) }, enabled = !locked) { Icon(Icons.Rounded.Close, "Remove photo ${index + 1}") }
                                                         if (index > 0) IconButton(onClick = {

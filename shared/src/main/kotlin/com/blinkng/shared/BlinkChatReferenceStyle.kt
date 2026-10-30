@@ -23,6 +23,9 @@ object BlinkChatReferenceStyle {
     const val Subtle: Long = 0xFFB5B8C0
     const val Muted: Long = 0xFF8D929A
     const val Border: Long = 0xFF32383E
+    const val LightCanvas: Long = 0xFFF4F6F8
+    const val LightIncoming: Long = 0xFFE7EAEE
+    const val LightOutgoing: Long = 0xFFE3EEFF
     const val VideoTileAspect: Float = 16f / 9f
     const val TrioPhotoAspect: Float = 1.1f
 }

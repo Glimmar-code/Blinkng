@@ -78,7 +78,8 @@ class BlinkCreatePostReferenceTest {
         }
         composeRule.onNodeWithTag("blink_media_review").assertExists()
         composeRule.onNodeWithText("2 / 10").assertExists()
-        composeRule.onNodeWithTag("blink_gallery_edit_0").performClick()
+        composeRule.onNodeWithTag("blink_gallery_photo_0").performClick()
+        composeRule.onNodeWithTag("blink_gallery_edit_preview").performClick()
         composeRule.onNodeWithText("Add more photos").performClick()
         composeRule.onNodeWithTag("blink_media_tab_videos").performClick()
         composeRule.onNodeWithText("Next (2)").performClick()

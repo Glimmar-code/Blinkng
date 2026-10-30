@@ -76,6 +76,7 @@ jobs:
             adb shell settings put global window_animation_scale 1.0
             adb shell settings put global transition_animation_scale 1.0
             adb shell settings put global animator_duration_scale 1.0
+            adb shell settings put secure show_ime_with_hard_keyboard 1
             echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
             mkdir -p app/build
             gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > app/build/runtime-gradle.log 2>&1 || { tail -n 80 app/build/runtime-gradle.log; exit 1; }
@@ -98,6 +99,7 @@ jobs:
             for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
             # These captures use the actual full CreatePostSheet, not isolated toolbar fixtures.
             for view in full-text full-mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            for view in keyboard-mentions video-preview video-timeline gallery-library; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
             # Capture native dark conversation chrome for the reference audit.
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-staging-dark.png app/build/visual-audit/chat-reference-staging-dark.png
             test -s app/build/visual-audit/chat-reference-staging-dark.png
