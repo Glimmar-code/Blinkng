@@ -320,7 +320,22 @@
     MODALS.querySelector('input,textarea,select,button')?.focus({preventScroll:true});
   }
 
-  async function logout(){ try{ if(token())await api('/auth/v1/logout',{method:'POST'}); }catch{} clearSession(); toast('Signed out'); navigate('/'); }
+  async function signOutTo(destination) {
+    // Clear the live SPA session as well as browser storage before showing Login.
+    // Moving to /login without signing out redirects back to Feed.
+    try { if(token()) await api('/auth/v1/logout',{method:'POST'}); } catch {}
+    clearSession();
+    state.feed = [];
+    state.feedAsOf = null;
+    state.searchRequestId++;
+    closeModal();
+    toast('Signed out');
+    navigate(destination);
+  }
+  async function logout() { await signOutTo('/'); }
+  window.BlinkWebAccount = Object.freeze({
+    switchToLogin: () => signOutTo('/login'),
+  });
 
   async function login(identifier,password){
     const input=identifier.trim().toLowerCase(); let data;
