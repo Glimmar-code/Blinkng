@@ -345,7 +345,10 @@ internal fun BlinkCreatePostPublishOptions(
     onPost: () -> Unit,
     onSaveDraft: () -> Unit,
     onPreview: () -> Unit,
-    onShareCaption: () -> Unit,
+    onShareWhatsApp: () -> Unit,
+    onShareOtherApps: () -> Unit,
+    onCopyCaption: () -> Unit,
+    canCopyCaption: Boolean,
     isSubmitting: Boolean,
     canPublish: Boolean,
     uploadProgress: Int?
@@ -412,16 +415,18 @@ internal fun BlinkCreatePostPublishOptions(
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             BlinkPostShareRow(
                 title = "WhatsApp", icon = Icons.Default.Share,
-                accent = Color(0xFF1DBF69), onClick = onShareCaption
+                accent = Color(0xFF1DBF69), enabled = !isSubmitting,
+                onClick = onShareWhatsApp
             )
             BlinkPostShareRow(
-                title = "Copy link", icon = Icons.Default.Link,
-                accent = Color(0xFF5B616D), enabled = false,
-                onClick = {}
+                title = "Copy caption", icon = Icons.Default.Link,
+                accent = Color(0xFF5B616D), enabled = !isSubmitting && canCopyCaption,
+                onClick = onCopyCaption
             )
             BlinkPostShareRow(
                 title = "Other apps", icon = Icons.Default.Share,
-                accent = Color(0xFF5B616D), onClick = onShareCaption
+                accent = Color(0xFF5B616D), enabled = !isSubmitting,
+                onClick = onShareOtherApps
             )
         }
         Text(
