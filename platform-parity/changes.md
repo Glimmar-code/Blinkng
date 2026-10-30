@@ -1,3 +1,9 @@
+## 2026-10-30 — Create Post recent gallery: Android-specific local MediaStore discovery
+
+- **PARITY-EXCEPTION: android-recent-mediastore-thumbnails-20261030** — Android may display a limited, newest-first row of real camera-roll thumbnails **only if the user has already granted media permission**. Without that permission, the app displays explicitly saved-draft images and offers the Android Photo Picker. Windows does not have Android's MediaStore or runtime permission API, so attempting to duplicate this code on desktop would be incorrect.
+- **Windows equivalent:** `DesktopCreatePostDialog.kt` already uses a native `JFileChooser` for selecting multiple photos, previews the selected images, and supports reorder, removal, editor and publishing. This user-facing selection pathway remains unchanged; unlike Android's permission-scoped recent row, Windows does not automatically enumerate local photos.
+- This exception is only for the **operating-system-specific recent thumbnail affordance**. It does not exempt missing posting functionality, content security or visual verification. Android Compose tests, emulator captures and actual reference-image comparisons are still release blockers; no merge or deployment is authorized by this entry.
+
 ## 2026-10-29 — Combined Contest, Create Post and Chat repair
 
 - Preserves PR #638, #639 and #644 histories on `Testlab/contest-create-post-chat-20261029`.
