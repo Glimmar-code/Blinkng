@@ -1316,8 +1316,8 @@
           publicPremium=cosmetics.sort((a,b)=>b.priority-a.priority)[0]||null;
         }catch{}
       }
-      if(p.username&&currentPath()!==`/@${p.username}`)history.replaceState({},'',routeHref(`/@${p.username}`));
       if(!live())return;
+      if(p.username&&currentPath()!==`/@${p.username}`)history.replaceState({},'',routeHref(`/@${p.username}`));
       const actions=isAuthed()
         ? `<button type="button" class="btn primary" id="follow-profile">${state.following.has(p.id)?'Following':'Follow'}</button><button type="button" class="btn" id="message-profile">Message</button>`
         : `<button type="button" class="btn primary" data-nav="/login">Log in to follow</button><button type="button" class="btn" data-open-app-profile>Open app</button>`;
