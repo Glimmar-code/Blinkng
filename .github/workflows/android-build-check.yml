@@ -53,6 +53,9 @@ jobs:
       - name: Verify chat notification privacy across FCM and legacy paths
         run: node scripts/test_chat_notification_privacy.mjs
 
+      - name: Verify every Create Post APK action is wired and safe
+        run: node scripts/test_android_create_post_actions.mjs
+
       - name: Compute actual checked-out Android input digest
         id: input_digest
         if: steps.scope.outputs.android == 'true'
