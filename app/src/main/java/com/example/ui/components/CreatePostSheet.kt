@@ -1260,18 +1260,23 @@ fun CreatePostSheet(
                     onPhoto = {
                         pickerOpenedFromLanding = true
                         showCreateLanding = false
-                        if (selectedVideo != null || showPoll || videoClips.isNotEmpty()) {
-                            pendingMediaSwitch = "gallery"
-                        } else if (selectedImages.isNotEmpty()) {
-                            pickerOpenedFromLanding = false
-                            mode = "post"
-                            showMediaReview = true
-                        } else {
-                            // Start with Android's permission-free picker, not an
-                            // empty review whose Next action is disabled.
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                        when (BlinkPhotoEntryPolicy.decide(
+                            hasVideo = selectedVideo != null,
+                            hasPoll = showPoll,
+                            hasVideoClips = videoClips.isNotEmpty(),
+                            hasPhotos = selectedImages.isNotEmpty()
+                        )) {
+                            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT ->
+                                pendingMediaSwitch = "gallery"
+                            BlinkPhotoEntryAction.REVIEW_EXISTING -> {
+                                pickerOpenedFromLanding = false
+                                mode = "post"
+                                showMediaReview = true
+                            }
+                            BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER ->
+                                imagePicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
                         }
                     },
                     onVideo = {
