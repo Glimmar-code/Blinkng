@@ -375,7 +375,8 @@ internal fun BlinkCreatePostPublishOptions(
     canCopyCaption: Boolean,
     isSubmitting: Boolean,
     canPublish: Boolean,
-    uploadProgress: Int?
+    uploadProgress: Int?,
+    canSaveDraft: Boolean = true
 ) {
     Column(
         Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas))
@@ -392,6 +393,17 @@ internal fun BlinkCreatePostPublishOptions(
             Text("Post Options", color = Color.White,
                 fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center))
+            // Keep Preview accessible without adding a full-height extra card
+            // that pushes the reference's sharing group below the fold.
+            TextButton(
+                onClick = onPreview,
+                enabled = !isSubmitting,
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .testTag("blink_post_options_preview")
+            ) {
+                Text("Preview", color = if (isSubmitting) Color(0xFF8D929A)
+                    else Color(0xFFB9B6FF), fontSize = 12.sp)
+            }
         }
         Button(
             onClick = onPost,
@@ -417,7 +429,7 @@ internal fun BlinkCreatePostPublishOptions(
             Text("Review your post details before publishing.", color = Color(0xFFFFC7C7), fontSize = 12.sp)
         }
         OutlinedButton(
-            onClick = onSaveDraft, enabled = !isSubmitting,
+            onClick = onSaveDraft, enabled = !isSubmitting && canSaveDraft,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(13.dp),
             border = BorderStroke(1.dp, Color(0xFF30333A)),
@@ -429,12 +441,7 @@ internal fun BlinkCreatePostPublishOptions(
             Spacer(Modifier.width(8.dp))
             Text("Save as Draft")
         }
-        OutlinedButton(
-            onClick = onPreview, enabled = !isSubmitting,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(13.dp)
-        ) { Text("Preview Post") }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
         // The reference design presents these actions as one continuous
         // grouped card, rather than three disconnected floating surfaces.
