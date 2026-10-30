@@ -33,6 +33,8 @@ for(const target of [
   'enabled = !isSubmitting && canCopyCaption'
 ]) assert.ok(options.includes(target),'Unwired Create Post action: '+target);
 assert.ok(!options.includes('title = "Copy link"'), 'Never offer an unpublished post link');
+assert.ok(options.includes('// grouped card, rather than three disconnected floating surfaces.'), 'Share rows must be grouped like the screenshot reference');
+assert.ok((options.match(/HorizontalDivider\(color = Color\(0xFF343944\), thickness = 0.5.dp\)/g) || []).length === 2, 'Share actions must have both reference-style dividers');
 for(const target of [
   'com.whatsapp','com.whatsapp.w4b',
   'Intent.ACTION_SEND_MULTIPLE','Intent.EXTRA_STREAM',
