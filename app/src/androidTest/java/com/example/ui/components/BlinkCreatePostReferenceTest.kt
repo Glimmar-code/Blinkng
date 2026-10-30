@@ -211,6 +211,37 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun postOptionsKeepPreviewAccessibleAndDisableEmptyDrafts() {
+        var previewCount = 0
+        var savedCount = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkCreatePostPublishOptions(
+                    onBack = {},
+                    onPost = {},
+                    onSaveDraft = { savedCount++ },
+                    onPreview = { previewCount++ },
+                    onShareWhatsApp = {},
+                    onShareOtherApps = {},
+                    onCopyCaption = {},
+                    canCopyCaption = false,
+                    isSubmitting = false,
+                    canPublish = false,
+                    canSaveDraft = false,
+                    uploadProgress = null
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_post_options_preview").performClick()
+        composeRule.onNodeWithText("Save as Draft").assertExists()
+        composeRule.onNodeWithText("Save as Draft").assertIsNotEnabled()
+        composeRule.runOnIdle {
+            assertEquals(1, previewCount)
+            assertEquals(0, savedCount)
+        }
+    }
+
+    @Test
     fun finalOptionsAreSeparateActionsAndNeverAutoPublish() {
         val selected = mutableListOf<String>()
         composeRule.setContent {
@@ -231,7 +262,7 @@ class BlinkCreatePostReferenceTest {
             }
         }
         composeRule.onNodeWithTag("blink_create_post_publish_options").assertExists()
-        composeRule.onNodeWithText("Preview Post").performClick()
+        composeRule.onNodeWithTag("blink_post_options_preview").performClick()
         composeRule.onNodeWithText("Save as Draft").performClick()
         composeRule.onNodeWithText("WhatsApp").performScrollTo().performClick()
         composeRule.onNodeWithText("Copy caption").performScrollTo().performClick()
