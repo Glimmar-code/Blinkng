@@ -22,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -260,8 +262,9 @@ abstract class ChatReferenceVisualAuditFixture {
         // Lazy list collapses album rows; these indexes select three distinct
         // real Compose slices instead of pretending all media fits in one view.
         list.performScrollToIndex(1)
-        rule.onNodeWithTag("chat_reference_text_tail_incoming").assertExists()
-        rule.onNodeWithTag("chat_reference_text_tail_outgoing").assertExists()
+        // Several messages can carry tails; inspect a visible first match.
+        rule.onAllNodesWithTag("chat_reference_text_tail_incoming").onFirst().assertExists()
+        rule.onAllNodesWithTag("chat_reference_text_tail_outgoing").onFirst().assertExists()
         saveFrame("chat-reference-full-top.png")
         list.performScrollToIndex(6)
         rule.onNodeWithTag("chat_reference_voice_waveform").assertExists()
