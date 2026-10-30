@@ -117,6 +117,7 @@ for(const [from,to] of [
   ['  async function renderConversation(', '  async function renderMarket('],
   ['  async function renderGames(', '  async function renderScheduled('],
   ['  async function renderScheduled(', '  async function renderSettings('],
+  ['  async function renderSettings(', '  async function renderAI('],
   ['  async function renderSiteAnalytics(', '  async function render(path=']
 ]) {
   const code=cut(from,to);
@@ -125,6 +126,25 @@ for(const [from,to] of [
 }
 assert.match(loadMore,/if\(!live\(\)\)return/,'Feed pagination must reject stale responses');
 assert.ok(source.includes('Keep tap-to-play available on older browsers'),'Preserve browser video fallback');
+const profileLoad=cut('  async function loadMyProfile(){','  async function loadFollowing(){');
+assert.match(profileLoad,/owner=uid\(\)/,'Capture account before loading the profile');
+assert.match(profileLoad,/if\(owner!==uid\(\)\)return null/,'Old profile results must never overwrite the new account');
+let profileOwner='user-A';
+const profileState={profile:{username:'original'}};
+const requested=[];
+const loader=new Function('state','uid','encodeQ','table',
+  profileLoad+'return loadMyProfile;')(profileState,()=>profileOwner,encodeURIComponent,
+  ()=>new Promise(resolve=>requested.push(resolve)));
+const oldProfile=loader();
+profileOwner='user-B';
+requested.shift()([{username:'wrong-account'}]);
+assert.equal(await oldProfile,null);
+assert.equal(profileState.profile.username,'original');
+const newProfile=loader();
+requested.shift()([{username:'correct-account'}]);
+assert.equal((await newProfile).username,'correct-account');
+assert.equal(profileState.profile.username,'correct-account');
+
 const profile=cut('  async function renderPublicProfile(', '  async function renderPublicContent(');
 assert.ok(profile.indexOf('if(!live())return;')<profile.indexOf('history.replaceState('),
   'Do not canonicalize a stale public profile URL');
