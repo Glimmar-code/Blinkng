@@ -108,6 +108,22 @@ class DesktopAppState(
         showNewStudentSuggestions = false
     }
 
+    // Retry after a restored session's profile request fails, without trapping
+    // the user in the loading state or discarding their saved sign-in.
+    suspend fun retryProfileLoad() {
+        if (session == null || busy) return
+        busy = true
+        errorMessage = null
+        try {
+            loadAuthenticatedState()
+        } catch (t: Throwable) {
+            profile = null
+            errorMessage = t.message ?: "Could not load your profile. Please retry."
+        } finally {
+            busy = false
+        }
+    }
+
     suspend fun refreshProfile() {
         profile = client.refreshProfile()
     }
