@@ -156,50 +156,49 @@ internal fun BlinkChatVoicePlayer(
                 modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            val progress = if (duration > 0) {
-                (elapsed.toFloat() / duration).coerceIn(0f, 1f)
-            } else 0f
-            // Reference waveform styling; highlight follows the real player position.
-            Row(
-                Modifier.fillMaxWidth().height(26.dp)
-                    .testTag("chat_reference_voice_waveform"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                val heights = measuredHeights ?: List(32) { index ->
-                    // Stable placeholder geometry, not fabricated audio analytics.
-                    listOf(8, 13, 18, 10, 20, 13, 7, 16, 23, 12, 17, 9)[index % 12]
-                }
-                heights.forEachIndexed { index, height ->
-                    Box(
-                        Modifier.weight(1f)
-                            .height(height.dp)
-                            .background(
-                                if (index.toFloat() / heights.size <= progress)
-                                    Color(0xFF1685FF) else Color(0xFF6B747E),
-                                RoundedCornerShape(2.dp)
-                            )
-                    )
-                }
+        Spacer(Modifier.width(7.dp))
+        val progress = if (duration > 0) {
+            (elapsed.toFloat() / duration).coerceIn(0f, 1f)
+        } else 0f
+        // Waveform, duration, and playback speed share one slim reference row.
+        // Real measured samples replace stable placeholders when available.
+        Row(
+            Modifier.weight(1f).height(24.dp)
+                .testTag("chat_reference_voice_waveform"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            val heights = measuredHeights ?: List(32) { index ->
+                listOf(8, 13, 18, 10, 20, 13, 7, 16, 23, 12, 17, 9)[index % 12]
             }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                when {
-                    failed -> "Unable to play · refresh chat"
-                    preparing -> "Loading voice note…"
-                    url.isNullOrBlank() -> "Voice note unavailable"
-                    duration > 0 -> "${elapsed / 1000}s / ${duration / 1000}s"
-                    else -> durationLabel.ifBlank { "Voice note" }
-                },
-                color = tint.copy(alpha = .85f),
-                fontSize = 10.sp,
-                maxLines = 1
-            )
+            heights.forEachIndexed { index, height ->
+                Box(
+                    Modifier.weight(1f)
+                        .height(height.coerceIn(4, 21).dp)
+                        .background(
+                            if (index.toFloat() / heights.size <= progress)
+                                Color(0xFF1685FF) else Color(0xFF6B747E),
+                            RoundedCornerShape(2.dp)
+                        )
+                )
+            }
         }
-        BlinkChatDownloadAction(url = url, kind = "voice", extension = "m4a",
-            compact = true)
+        Spacer(Modifier.width(5.dp))
+        Text(
+            when {
+                failed -> "Error"
+                preparing -> "Loading"
+                url.isNullOrBlank() -> "—"
+                duration > 0 && elapsed > 0 -> formatBlinkVoiceDuration(elapsed)
+                duration > 0 -> formatBlinkVoiceDuration(duration)
+                else -> durationLabel.ifBlank { "0:00" }
+            },
+            color = tint.copy(alpha = .82f),
+            fontSize = 10.sp,
+            maxLines = 1,
+            modifier = Modifier.testTag("chat_reference_voice_duration")
+        )
+        Spacer(Modifier.width(5.dp))
         TextButton(
             enabled = ready,
             onClick = {
@@ -210,7 +209,8 @@ internal fun BlinkChatVoicePlayer(
                     }
                 }
             },
-            modifier = Modifier.widthIn(min = 38.dp)
+            contentPadding = PaddingValues(0.dp),
+            modifier = Modifier.width(38.dp).height(36.dp)
                 .testTag("chat_reference_voice_speed")
         ) {
             Text(
@@ -224,4 +224,11 @@ internal fun BlinkChatVoicePlayer(
             )
         }
     }
+}
+
+
+/** Human-readable voice position and total length for the compact player. */
+internal fun formatBlinkVoiceDuration(milliseconds: Int): String {
+    val seconds = milliseconds.coerceAtLeast(0) / 1000
+    return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 }
