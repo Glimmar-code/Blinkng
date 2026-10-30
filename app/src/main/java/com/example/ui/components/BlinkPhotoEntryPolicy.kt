@@ -1,14 +1,15 @@
 package com.example.ui.components
 
 /**
- * Determines what the Create Post Photo tile should do before altering media.
- * Opening a blank review on the first tap strands users with a disabled Next
- * button. A type change must be confirmed before opening the picker.
+ * Select Media is the first Photo screen in the reference design.
+ * Its permission-aware empty state offers a working Android Photo Picker,
+ * so an empty gallery never traps users behind a disabled Next button.
+ * Changing from an existing Reel or poll still requires confirmation.
  */
 internal enum class BlinkPhotoEntryAction {
     CONFIRM_REPLACEMENT,
     REVIEW_EXISTING,
-    OPEN_SYSTEM_PICKER
+    OPEN_MEDIA_REVIEW
 }
 
 internal object BlinkPhotoEntryPolicy {
@@ -20,7 +21,7 @@ internal object BlinkPhotoEntryPolicy {
     ): BlinkPhotoEntryAction = when {
         hasVideo || hasPoll || hasVideoClips -> BlinkPhotoEntryAction.CONFIRM_REPLACEMENT
         hasPhotos -> BlinkPhotoEntryAction.REVIEW_EXISTING
-        else -> BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER
+        else -> BlinkPhotoEntryAction.OPEN_MEDIA_REVIEW
     }
 
     fun returnToLandingAfterPicker(initialPicker: Boolean, chosenCount: Int): Boolean =
