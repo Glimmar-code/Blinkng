@@ -4076,12 +4076,14 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun saveDraft(draft: PostDraft) {
+    fun saveDraft(draft: PostDraft): Boolean {
         val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }
-        if (saveDraftsToPrefs(updated)) {
+        val saved = saveDraftsToPrefs(updated)
+        if (saved) {
             _uiState.value = _uiState.value.copy(savedDrafts = updated)
             showToast("Draft saved to this account on your phone.")
         } else showToast("Couldn't save the draft. Sign in and try again.")
+        return saved
     }
 
     fun deleteDraft(draftId: String) {
