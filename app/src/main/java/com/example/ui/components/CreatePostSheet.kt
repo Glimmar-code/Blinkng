@@ -3066,6 +3066,15 @@ internal fun PollComposer(
     onDurationChanged: (Int) -> Unit,
     enabled: Boolean
 ) {
+    var durationChoicesExpanded by rememberSaveable { mutableStateOf(false) }
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Color(0xFF20242D),
+        unfocusedContainerColor = Color(0xFF20242D),
+        focusedBorderColor = Color(0xFF6456F5),
+        unfocusedBorderColor = Color(0xFF30343E),
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White
+    )
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Color(0xFF6456F5),
         surface = Color(0xFF15181F),
@@ -3075,9 +3084,9 @@ internal fun PollComposer(
     )) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B0D12), contentColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFF252831))
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF15181F), contentColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFF30333C))
         ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3099,7 +3108,8 @@ internal fun PollComposer(
                     .padding(top = 8.dp),
                 placeholder = { Text("Ask a question") },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp)
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp)
             )
 
             options.forEachIndexed { index, value ->
@@ -3122,7 +3132,8 @@ internal fun PollComposer(
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Option ${index + 1}") },
                         singleLine = true,
-                        shape = RoundedCornerShape(14.dp)
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(12.dp)
                     )
 
                     if (options.size > 2) {
@@ -3137,8 +3148,9 @@ internal fun PollComposer(
                             enabled = enabled
                         ) {
                             Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Remove option"
+                                Icons.Default.Close,
+                                contentDescription = "Remove option",
+                                tint = Color(0xFFB4BBC8)
                             )
                         }
                     }
@@ -3165,24 +3177,38 @@ internal fun PollComposer(
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(top = 8.dp)
             )
-            Text(
-                "Poll duration",
-                modifier = Modifier.padding(top = 12.dp),
-                fontWeight = FontWeight.SemiBold
-            )
+            val durations = listOf(1 to "1 hour", 24 to "1 day", 72 to "3 days", 168 to "7 days")
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF20242D))
+                    .clickable(enabled = enabled) { durationChoicesExpanded = !durationChoicesExpanded }
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                listOf(1 to "1 hour", 24 to "1 day", 72 to "3 days", 168 to "7 days")
-                    .forEach { (hours, label) ->
+                Text("Poll duration", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(durations.firstOrNull { it.first == durationHours }?.second ?: "1 day",
+                    color = Color(0xFFBCC3D0), style = MaterialTheme.typography.bodySmall)
+                Icon(Icons.Default.KeyboardArrowRight,
+                    contentDescription = if (durationChoicesExpanded) "Collapse durations" else "Choose poll duration",
+                    tint = Color(0xFFBCC3D0))
+            }
+            if (durationChoicesExpanded) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(top = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    durations.forEach { (hours, label) ->
                         FilterChip(
                             selected = durationHours == hours,
-                            onClick = { onDurationChanged(hours) },
+                            onClick = { onDurationChanged(hours); durationChoicesExpanded = false },
                             enabled = enabled,
                             label = { Text(label) }
                         )
                     }
+                }
             }
             val meaningfulOptions = options.map(String::trim).filter(String::isNotBlank)
             val duplicateOptions = meaningfulOptions.size !=
