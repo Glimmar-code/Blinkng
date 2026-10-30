@@ -87,6 +87,26 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun emptyGalleryOffersWorkingPhotoPickerAndOptionalGalleryAccess() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkMediaEmptyGallery(
+                    canBrowse = false,
+                    onPick = { actions += "picker" },
+                    onRequestLibrary = { actions += "permission" }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_gallery_empty_state").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_browse_photos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_allow_access").performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf("picker", "permission"), actions)
+        }
+    }
+
+    @Test
     fun mediaReviewSupportsRemovalAndNextWithoutAutoPosting() {
         val actions = mutableListOf<String>()
         composeRule.setContent {
