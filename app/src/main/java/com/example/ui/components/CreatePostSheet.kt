@@ -1415,6 +1415,7 @@ fun CreatePostSheet(
                     canCopyCaption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "").isNotBlank(),
                     isSubmitting = isSubmitting,
                     canPublish = canSubmit,
+                    canSaveDraft = hasComposerInput,
                     uploadProgress = uploadProgress
                 )
             } else {
