@@ -24,6 +24,13 @@ class ChatNotificationPreviewPolicyTest {
         assertTrue(ChatNotificationPreviewPolicy.allowHistory("full"))
     }
 
+    @Test fun privacyModesHaveStrictDisclosureOrdering() {
+        assertEquals(0, ChatNotificationPreviewPolicy.disclosureRank("hidden"))
+        assertEquals(1, ChatNotificationPreviewPolicy.disclosureRank("sender_only"))
+        assertEquals(2, ChatNotificationPreviewPolicy.disclosureRank("full"))
+        assertEquals(0, ChatNotificationPreviewPolicy.disclosureRank(null))
+    }
+
     @Test fun unknownAndMissingModesFailClosed() {
         for (mode in listOf<String?>(null, "", "unexpected")) {
             assertEquals("hidden", ChatNotificationPreviewPolicy.normalized(mode))
