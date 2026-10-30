@@ -50,6 +50,9 @@ jobs:
       - name: Guard shared Auth-inspired dark palette
         run: python3 scripts/check_premium_dark_tokens.py
 
+      - name: Ensure Windows startup failures have retry and sign-out recovery
+        run: node scripts/test_desktop_startup_recovery.mjs
+
   windows-build:
     needs: scope
     if: needs.scope.result == 'success' && needs.scope.outputs.windows == 'true'
