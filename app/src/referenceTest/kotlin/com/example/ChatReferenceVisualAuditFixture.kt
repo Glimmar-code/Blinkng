@@ -260,6 +260,8 @@ abstract class ChatReferenceVisualAuditFixture {
         // Lazy list collapses album rows; these indexes select three distinct
         // real Compose slices instead of pretending all media fits in one view.
         list.performScrollToIndex(1)
+        rule.onNodeWithTag("chat_reference_text_tail_incoming").assertExists()
+        rule.onNodeWithTag("chat_reference_text_tail_outgoing").assertExists()
         saveFrame("chat-reference-full-top.png")
         list.performScrollToIndex(6)
         rule.onNodeWithTag("chat_reference_voice_waveform").assertExists()
