@@ -5551,12 +5551,15 @@ suspend fun uploadPostMedia(
         }.getOrNull()
     }
 
-    suspend fun fetchMyMarketOffers(): JSONArray? = withContext(Dispatchers.IO) {
+    /** Fetch offers in bounded pages; the UI must not lose older actionable offers. */
+    suspend fun fetchMyMarketOffers(offset: Int = 0, limit: Int = 25): JSONArray? = withContext(Dispatchers.IO) {
         runCatching {
             val userId = getCurrentUserId() ?: return@runCatching JSONArray()
+            val safeOffset = offset.coerceAtLeast(0)
+            val safeLimit = limit.coerceIn(1, 100)
             executeRequest(
                 newRequestBuilder(
-                    "/rest/v1/market_offers?select=id,item_id,buyer_id,seller_id,asking_price,proposed_price,status,message,created_at&or=(buyer_id.eq.$userId,seller_id.eq.$userId)&order=created_at.desc&limit=100",
+                    "/rest/v1/market_offers?select=id,item_id,buyer_id,seller_id,asking_price,proposed_price,status,message,created_at&or=(buyer_id.eq.$userId,seller_id.eq.$userId)&order=created_at.desc,id.desc&limit=$safeLimit&offset=$safeOffset",
                     true
                 ).get().build()
             ).use { response ->

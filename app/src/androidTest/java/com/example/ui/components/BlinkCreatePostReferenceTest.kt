@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -125,6 +126,28 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun pollDurationMatchesCollapsedReferenceAndStillSavesUserSelection() {
+        val duration = mutableIntStateOf(24)
+        composeRule.setContent {
+            MaterialTheme {
+                PollComposer(
+                    question = "Which campus event?",
+                    onQuestionChanged = {},
+                    options = listOf("Sports", "Tech"),
+                    onOptionsChanged = {},
+                    durationHours = duration.intValue,
+                    onDurationChanged = { duration.intValue = it },
+                    enabled = true
+                )
+            }
+        }
+        composeRule.onNodeWithText("Poll duration").assertExists().performClick()
+        composeRule.onNodeWithText("3 days").performClick()
+        composeRule.runOnIdle { assertEquals(72, duration.intValue) }
+        composeRule.onNodeWithText("3 days").assertExists()
+    }
+
+    @Test
     fun finalOptionsAreSeparateActionsAndNeverAutoPublish() {
         val selected = mutableListOf<String>()
         composeRule.setContent {
@@ -134,7 +157,10 @@ class BlinkCreatePostReferenceTest {
                     onPost = { selected += "post" },
                     onSaveDraft = { selected += "draft" },
                     onPreview = { selected += "preview" },
-                    onShareCaption = { selected += "share" },
+                    onShareWhatsApp = { selected += "whatsapp" },
+                    onShareOtherApps = { selected += "other" },
+                    onCopyCaption = { selected += "copy" },
+                    canCopyCaption = true,
                     isSubmitting = false,
                     canPublish = true,
                     uploadProgress = null
@@ -145,9 +171,14 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("Preview Post").performClick()
         composeRule.onNodeWithText("Save as Draft").performClick()
         composeRule.onNodeWithText("WhatsApp").performScrollTo().performClick()
+        composeRule.onNodeWithText("Copy caption").performScrollTo().performClick()
         composeRule.onNodeWithText("Other apps").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "share"), selected) }
+        composeRule.runOnIdle {
+            assertEquals(listOf("preview", "draft", "whatsapp", "copy", "other"), selected)
+        }
         composeRule.onNodeWithText("Post Now").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "share", "post"), selected) }
+        composeRule.runOnIdle {
+            assertEquals(listOf("preview", "draft", "whatsapp", "copy", "other", "post"), selected)
+        }
     }
 }

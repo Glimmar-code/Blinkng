@@ -49,6 +49,7 @@ import com.example.notification.BlinkInAppNotificationCenter
 import com.example.notification.BlinkInAppNotificationDestination
 import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
+import com.example.notification.ChatNotificationPreviewPolicy
 import com.example.notification.ConversationMuteExpiryWorker
 import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
@@ -321,6 +322,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val networkMonitor = NetworkMonitor(appContext)
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
+    private val chatPrivacySaveMutex = Mutex()
     // CHAT_CACHE_RECONCILIATION_V1: stale async snapshots must never write after newer ones.
     private val conversationCacheRevision = java.util.concurrent.atomic.AtomicLong(0L)
     private val messageOutboxMutex = Mutex()
@@ -2215,8 +2217,15 @@ private suspend fun restoreSupabaseSession() {
                         summaries = conversationSummaries,
                         local = _uiState.value.conversations
                     )
-                    val chatPrivacySettings = chatPrivacyRequest.await()
-                        .getOrDefault(before.chatPrivacySettings)
+                    val chatPrivacyResult = chatPrivacyRequest.await()
+                    val chatPrivacySettings = chatPrivacyResult.getOrDefault(before.chatPrivacySettings)
+                    if (chatPrivacyResult.isSuccess && inboxOwner != null &&
+                        supabaseService.getCurrentUserId() == inboxOwner
+                    ) {
+                        NotificationPreferenceStore.rememberChatPreviewMode(
+                            appContext, inboxOwner, chatPrivacySettings.notificationPreview
+                        )
+                    }
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
@@ -4067,12 +4076,14 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun saveDraft(draft: PostDraft) {
+    fun saveDraft(draft: PostDraft): Boolean {
         val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }
-        if (saveDraftsToPrefs(updated)) {
+        val saved = saveDraftsToPrefs(updated)
+        if (saved) {
             _uiState.value = _uiState.value.copy(savedDrafts = updated)
             showToast("Draft saved to this account on your phone.")
         } else showToast("Couldn't save the draft. Sign in and try again.")
+        return saved
     }
 
     fun deleteDraft(draftId: String) {
@@ -5292,11 +5303,38 @@ private suspend fun restoreSupabaseSession() {
 
     fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
         val before = _uiState.value.chatPrivacySettings
+        val ownerId = supabaseService.getCurrentUserId().orEmpty()
+        val previousPreview = NotificationPreferenceStore.chatPreviewMode(appContext)
         _uiState.value = _uiState.value.copy(chatPrivacySettings = settings)
+        // Restrictive choices take effect immediately. A less private choice is
+        // not used by notifications until the server confirms its successful save.
+        if (ownerId.isNotBlank() &&
+            ChatNotificationPreviewPolicy.disclosureRank(settings.notificationPreview) <=
+            ChatNotificationPreviewPolicy.disclosureRank(previousPreview)
+        ) {
+            NotificationPreferenceStore.rememberChatPreviewMode(
+                appContext, ownerId, settings.notificationPreview
+            )
+        }
         viewModelScope.launch {
-            if (!chatRepository.updateChatPrivacySettings(settings)) {
-                _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
-                showToast("Couldn't update message privacy.")
+            chatPrivacySaveMutex.withLock {
+                val saved = runCatching { chatRepository.updateChatPrivacySettings(settings) }
+                    .getOrDefault(false)
+                if (supabaseService.getCurrentUserId() != ownerId) return@withLock
+                // Rapid privacy edits must not reapply an older choice over the
+                // user's newest selected setting.
+                if (_uiState.value.chatPrivacySettings != settings) return@withLock
+                if (saved) {
+                    NotificationPreferenceStore.rememberChatPreviewMode(
+                        appContext, ownerId, settings.notificationPreview
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
+                    NotificationPreferenceStore.rememberChatPreviewMode(
+                        appContext, ownerId, previousPreview
+                    )
+                    showToast("Couldn't update message privacy.")
+                }
             }
         }
     }

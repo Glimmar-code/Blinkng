@@ -210,7 +210,7 @@ fun CreatePostSheet(
         String?,
         String
     ) -> Unit,
-    onSaveDraft: (PostDraft) -> Unit = {},
+    onSaveDraft: (PostDraft) -> Boolean = { false },
     onDeleteDraft: (String) -> Unit = {},
     onSchedulePost: (FeedPost, Long, String) -> Unit = { _, _, _ -> },
     onPublishScheduledPostNow: (String) -> Unit = {},
@@ -396,7 +396,7 @@ fun CreatePostSheet(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
         val initialPicker = pickerOpenedFromLanding
-        if (uris.isEmpty() && initialPicker) showCreateLanding = true
+        if (BlinkPhotoEntryPolicy.returnToLandingAfterPicker(initialPicker, uris.size)) showCreateLanding = true
         pickerOpenedFromLanding = false
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
@@ -975,22 +975,34 @@ fun CreatePostSheet(
         )
     }
 
-    fun saveDraft() {
+    fun shareComposerDraft(whatsAppOnly: Boolean) {
+        val caption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "")
+        val images = if (selectedVideo == null) selectedImages else emptyList()
+        val shared = BlinkPostShareActions.share(
+            context = context, caption = caption, images = images,
+            video = selectedVideo, whatsAppOnly = whatsAppOnly
+        )
+        if (!shared) {
+            Toast.makeText(context, "No compatible sharing app or media is available.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun saveDraft(): Boolean {
         if (videoClips.isNotEmpty() || combiningClips) {
             Toast.makeText(context, "Combine your video clips before saving this Reel.", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
             Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         if (!hasComposerInput) {
             Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
 
         val draftId = activeDraftId ?: "draft_${UUID.randomUUID()}"
-        onSaveDraft(
+        val saved = onSaveDraft(
             PostDraft(
                 id = draftId,
                 text = text,
@@ -1021,7 +1033,9 @@ fun CreatePostSheet(
                 }
             )
         )
+        if (!saved) return false
         activeDraftId = draftId
+        return true
     }
 
     val currentHasContent by rememberUpdatedState(hasComposerInput)
@@ -1246,12 +1260,23 @@ fun CreatePostSheet(
                     onPhoto = {
                         pickerOpenedFromLanding = true
                         showCreateLanding = false
-                        if (selectedVideo != null || showPoll || videoClips.isNotEmpty()) {
-                            pendingMediaSwitch = "gallery"
-                        } else {
-                            pickerOpenedFromLanding = false
-                            mode = "post"
-                            showMediaReview = true
+                        when (BlinkPhotoEntryPolicy.decide(
+                            hasVideo = selectedVideo != null,
+                            hasPoll = showPoll,
+                            hasVideoClips = videoClips.isNotEmpty(),
+                            hasPhotos = selectedImages.isNotEmpty()
+                        )) {
+                            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT ->
+                                pendingMediaSwitch = "gallery"
+                            BlinkPhotoEntryAction.REVIEW_EXISTING -> {
+                                pickerOpenedFromLanding = false
+                                mode = "post"
+                                showMediaReview = true
+                            }
+                            BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER ->
+                                imagePicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
                         }
                     },
                     onVideo = {
@@ -1321,39 +1346,23 @@ fun CreatePostSheet(
                     onBack = { showPublishOptions = false; showReferenceDetails = true },
                     onPost = ::submit,
                     onSaveDraft = {
-                        saveDraft()
-                        showPublishOptions = false
+                        if (saveDraft()) showPublishOptions = false
                     },
                     onPreview = { showPreviewDialog = true },
-                    onShareCaption = {
-                        val caption = text.ifBlank { pollQuestion }
-                        val outgoing = when {
-                            selectedVideo != null -> Intent(Intent.ACTION_SEND).apply {
-                                type = "video/*"
-                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedVideo))
-                            }
-                            selectedImages.size > 1 -> Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                                type = "image/*"
-                                putParcelableArrayListExtra(
-                                    Intent.EXTRA_STREAM,
-                                    ArrayList(selectedImages.map(Uri::parse))
-                                )
-                            }
-                            selectedImages.size == 1 -> Intent(Intent.ACTION_SEND).apply {
-                                type = "image/*"
-                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedImages.first()))
-                            }
-                            else -> Intent(Intent.ACTION_SEND).apply { type = "text/plain" }
-                        }.apply {
-                            if (caption.isNotBlank()) putExtra(Intent.EXTRA_TEXT, caption)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        runCatching {
-                            context.startActivity(Intent.createChooser(outgoing, "Share to another app"))
-                        }.onFailure {
-                            Toast.makeText(context, "No sharing app available.", Toast.LENGTH_SHORT).show()
-                        }
+                    onShareWhatsApp = { shareComposerDraft(true) },
+                    onShareOtherApps = { shareComposerDraft(false) },
+                    onCopyCaption = {
+                        val caption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "")
+                        val copied = runCatching {
+                            BlinkPostShareActions.copyCaption(context, caption)
+                        }.getOrDefault(false)
+                        Toast.makeText(
+                            context,
+                            if (copied) "Caption copied" else "Add a caption before copying.",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     },
+                    canCopyCaption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "").isNotBlank(),
                     isSubmitting = isSubmitting,
                     canPublish = canSubmit,
                     uploadProgress = uploadProgress
@@ -2225,7 +2234,7 @@ fun CreatePostSheet(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedButton(
-                        onClick = ::saveDraft,
+                        onClick = { saveDraft() },
                         enabled = hasComposerInput && !isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
@@ -3057,6 +3066,15 @@ internal fun PollComposer(
     onDurationChanged: (Int) -> Unit,
     enabled: Boolean
 ) {
+    var durationChoicesExpanded by rememberSaveable { mutableStateOf(false) }
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Color(0xFF20242D),
+        unfocusedContainerColor = Color(0xFF20242D),
+        focusedBorderColor = Color(0xFF6456F5),
+        unfocusedBorderColor = Color(0xFF30343E),
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White
+    )
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Color(0xFF6456F5),
         surface = Color(0xFF15181F),
@@ -3066,9 +3084,9 @@ internal fun PollComposer(
     )) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B0D12), contentColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFF252831))
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF15181F), contentColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFF30333C))
         ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3090,7 +3108,8 @@ internal fun PollComposer(
                     .padding(top = 8.dp),
                 placeholder = { Text("Ask a question") },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp)
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp)
             )
 
             options.forEachIndexed { index, value ->
@@ -3113,7 +3132,8 @@ internal fun PollComposer(
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Option ${index + 1}") },
                         singleLine = true,
-                        shape = RoundedCornerShape(14.dp)
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(12.dp)
                     )
 
                     if (options.size > 2) {
@@ -3128,8 +3148,9 @@ internal fun PollComposer(
                             enabled = enabled
                         ) {
                             Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Remove option"
+                                Icons.Default.Close,
+                                contentDescription = "Remove option",
+                                tint = Color(0xFFB4BBC8)
                             )
                         }
                     }
@@ -3150,38 +3171,44 @@ internal fun PollComposer(
                     Text("Add option")
                 }
             }
+            Text(
+                "One answer per voter",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            val durations = listOf(1 to "1 hour", 24 to "1 day", 72 to "3 days", 168 to "7 days")
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF20242D))
+                    .clickable(enabled = enabled) { durationChoicesExpanded = !durationChoicesExpanded }
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Multiple answers", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Each person can choose one answer.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                Switch(checked = false, onCheckedChange = {}, enabled = false)
+                Text("Poll duration", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(durations.firstOrNull { it.first == durationHours }?.second ?: "1 day",
+                    color = Color(0xFFBCC3D0), style = MaterialTheme.typography.bodySmall)
+                Icon(Icons.Default.KeyboardArrowRight,
+                    contentDescription = if (durationChoicesExpanded) "Collapse durations" else "Choose poll duration",
+                    tint = Color(0xFFBCC3D0))
             }
-            Text(
-                "Poll duration",
-                modifier = Modifier.padding(top = 12.dp),
-                fontWeight = FontWeight.SemiBold
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(1 to "1 hour", 24 to "1 day", 72 to "3 days", 168 to "7 days")
-                    .forEach { (hours, label) ->
+            if (durationChoicesExpanded) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(top = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    durations.forEach { (hours, label) ->
                         FilterChip(
                             selected = durationHours == hours,
-                            onClick = { onDurationChanged(hours) },
+                            onClick = { onDurationChanged(hours); durationChoicesExpanded = false },
                             enabled = enabled,
                             label = { Text(label) }
                         )
                     }
+                }
             }
             val meaningfulOptions = options.map(String::trim).filter(String::isNotBlank)
             val duplicateOptions = meaningfulOptions.size !=

@@ -35,6 +35,7 @@
     viewObserver: null,
     mediaObserver: null,
     searchRequestId: 0,
+    pageSerial: 0,
     authError: null,
   };
 
@@ -186,8 +187,6 @@
     const hash=new URLSearchParams(location.hash.replace(/^#/,''));
     const oauthError=hash.get('error_description')||hash.get('error')||'';
     if(oauthError&&!hash.get('access_token')){
-      // OAuth providers may put attacker-controlled strings in the callback.
-      // Do not echo a long or potentially sensitive fragment into the UI.
       state.authError='Google sign-in could not be completed. Please try again.';
       storageRemove(OAUTH_NEXT_KEY);
       history.replaceState({},'',routeHref('/login'));
@@ -198,7 +197,6 @@
       const refresh_token=hash.get('refresh_token');
       const expires_in=Number(hash.get('expires_in')||3600);
       const type=hash.get('type');
-      // Reject incomplete callbacks before persisting a broken web session.
       if(!refresh_token || !Number.isFinite(expires_in) || expires_in<=0){
         state.authError='This sign-in link is incomplete or expired. Please try again.';
         storageRemove(OAUTH_NEXT_KEY);
@@ -224,13 +222,11 @@
       void wakeReferralPush();
     }catch(e){
       console.warn('session bootstrap',e);
-      // Keep a refreshable session through offline/timeout/5xx/profile failures.
-      // Confirmed invalid refresh tokens are cleared inside refreshSession().
       if(!state.session?.refresh_token)clearSession();
     }
   }
 
-  async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,profile_theme,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
+  async function loadMyProfile(){ if(!uid())return null;const owner=uid(); const rows=await table('profiles',`id=eq.${encodeQ(owner)}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,profile_theme,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`);if(owner!==uid())return null; state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
   async function loadFollowing(){ if(!isAuthed())return; try{ const rows=await rpc('get_my_following_ids',{}); state.following=new Set((rows||[]).map(String)); }catch{ state.following=new Set(); } }
   async function refreshUnreadCount(){ if(!uid())return; try{ const rows=await table('notifications',`user_id=eq.${encodeQ(uid())}&is_read=eq.false&select=id&limit=99`); state.notificationsUnread=rows?.length||0; }catch{state.notificationsUnread=0;} }
 
@@ -245,6 +241,7 @@
     if(PREVIEW_BASE&&path.startsWith(PREVIEW_BASE))path=path.slice(PREVIEW_BASE.length)||'/';
     return safeDecodeUri(path||'/');
   }
+  const still=()=>{const n=++state.pageSerial,url=location.href,owner=uid();return()=>n===state.pageSerial&&url===location.href&&owner===uid();};
   function navigate(path,replace=false){
     const next=typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')?path:'/';
     const href=routeHref(next);
@@ -320,7 +317,11 @@
     MODALS.querySelector('input,textarea,select,button')?.focus({preventScroll:true});
   }
 
-  async function logout(){ try{ if(token())await api('/auth/v1/logout',{method:'POST'}); }catch{} clearSession(); toast('Signed out'); navigate('/'); }
+  async function signOutTo(p){try{if(token())await api('/auth/v1/logout',{method:'POST'})}catch{}
+    clearSession();state.feed=[];state.feedAsOf=null;state.searchRequestId++;closeModal();toast('Signed out');navigate(p)
+  }
+  async function logout(){return signOutTo('/')}
+  window.BlinkWebAccount={switchToLogin:()=>signOutTo('/login')};
 
   async function login(identifier,password){
     const input=identifier.trim().toLowerCase(); let data;
@@ -589,7 +590,6 @@
         campus.textContent=String(match.university);
         person?.append(campus);
       }
-      // Estimate browser opens only. Anonymous visitors cannot mint rewards.
       if(!signedIn){
         let visitor=storageGet(INVITE_VISITOR_KEY,'');
         if(!/^[0-9a-f-]{36}$/i.test(visitor)){
@@ -649,7 +649,6 @@
             const button=document.createElement('button');
             button.type='button';
             button.className='btn';
-            // Show the real profile photo and verification mark without trusting raw HTML.
             const photoUrl=safeUrl(person.avatar_url);
             const photo=document.createElement(photoUrl?'img':'span');
             photo.className='avatar-sm';
@@ -916,7 +915,6 @@
             if(active==='Sticker')renderTools();
           }catch(err){status.textContent=err.message;}
         }));
-        // Saved images are private to the authenticated account and this browser.
         blinkStickerOperation('list').then(records=>{
           if(active!=='Sticker'||finished)return;
           const gallery=document.createElement('div');
@@ -1042,7 +1040,6 @@
         const text=String(f.get('text')||'').trim();
         const restricted=marketOnlyFeedWarning(f.get('category'),text);
         if(restricted)throw new Error(restricted);
-        // Reject disallowed Market advertisements before uploading media.
         let mediaUrl='',videoUrl='',images=[];
         if(media){
           const kind=validateMediaFile(media);
@@ -1139,6 +1136,7 @@
     const vids=[...document.querySelectorAll('video[data-autopause]')];
     state.mediaObserver?.disconnect();
     state.mediaObserver=null;
+    // Keep tap-to-play available on older browsers.
     if(!('IntersectionObserver'in window))return;
     state.mediaObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.intersectionRatio<.35)entry.target.pause();}),{threshold:[0,.35,.7]});
     vids.forEach(v=>state.mediaObserver.observe(v));
@@ -1225,15 +1223,15 @@
   function openStory(s){if(!s)return;const media=safeUrl(s.video_url||s.image_url||s.media_url);modal(`@${s.author?.username||'Blink'}`,`${s.media_type==='video'||s.video_url?`<video src="${esc(media)}" controls autoplay playsinline style="width:100%;max-height:70vh"></video>`:`<img src="${esc(media)}" alt="Story" style="width:100%;max-height:70vh;object-fit:contain">`}<p>${esc(s.caption||s.text||'')}</p>${richLinkCard(s.caption||s.text||'')}<div class="muted small">${fmt(s.views_count)} views · ${fmt(s.likes_count)} likes</div>`);hydrateLinkCards();}
 
   async function renderFeed(path='/feed'){
-    if(!requireAuth())return; state.loading=true; ROOT.innerHTML=shell('<div class="feed-skeleton" role="status" aria-label="Loading BLINK feed"><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div><div class="feed-skeleton-line"></div></div><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div></div><span class="sr-only">Loading your BLINK feed</span></div>','Home');bindCommon();
-    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'posts';state.feedMode=['posts','reels','all'].includes(mode)?mode:'posts';const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:state.feedMode});state.feedOffset=rows?.[0]?.next_offset||rows?.length||0;state.feedAsOf=rows?.[0]?.as_of||null;const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`<div class="tabs"><button class="tab ${state.feedMode==='posts'?'active':''}" data-feed-mode="posts">For you</button><button class="tab" data-following>Following</button></div><section class="card composer" style="display:none"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
-    finally{state.loading=false;}
+    if(!requireAuth())return;const live=still(); state.loading=true; ROOT.innerHTML=shell('<div class="feed-skeleton" role="status" aria-label="Loading BLINK feed"><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div><div class="feed-skeleton-line"></div></div><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div></div><span class="sr-only">Loading your BLINK feed</span></div>','Home');bindCommon();
+    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'posts';state.feedMode=['posts','reels','all'].includes(mode)?mode:'posts';const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:state.feedMode});state.feedOffset=rows?.[0]?.next_offset||rows?.length||0;state.feedAsOf=rows?.[0]?.as_of||null;const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));if(!live())return;state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`<div class="tabs"><button class="tab ${state.feedMode==='posts'?'active':''}" data-feed-mode="posts">For you</button><button class="tab" data-following>Following</button></div><section class="card composer" style="display:none"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
+    finally{if(live())state.loading=false;}
   }
-  async function loadMoreFeed(){if(state.loading)return;state.loading=true;const btn=document.getElementById('load-more-feed');if(btn)btn.textContent='Loading…';try{const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:state.feedOffset,p_as_of:state.feedAsOf,p_feed_type:state.feedMode});if(!rows?.length){toast('You’re caught up');return;}state.feedOffset=rows[0]?.next_offset||state.feedOffset+rows.length;const profiles=await fetchProfiles(rows.map(r=>(r.item||r).user_id));const items=rows.map(r=>normalizeFeedItem(r,profiles));const list=document.getElementById('feed-list');if(!list)return;const existing=new Set([...list.querySelectorAll('[data-post-id]')].map(el=>el.dataset.postId));const fresh=items.filter(item=>!existing.has(String(item.id)));if(fresh.length){list.insertAdjacentHTML('beforeend',fresh.map(postCard).join(''));bindPostCards();}else toast('No new posts on this page');}catch(e){toast(e.message);}finally{state.loading=false;if(btn)btn.textContent='Load more';}}
+  async function loadMoreFeed(){if(state.loading)return;state.loading=true;const live=still();const btn=document.getElementById('load-more-feed');if(btn)btn.textContent='Loading…';try{const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:state.feedOffset,p_as_of:state.feedAsOf,p_feed_type:state.feedMode});if(!live())return;if(!rows?.length){toast('You’re caught up');return;}state.feedOffset=rows[0]?.next_offset||state.feedOffset+rows.length;const profiles=await fetchProfiles(rows.map(r=>(r.item||r).user_id));const items=rows.map(r=>normalizeFeedItem(r,profiles));if(!live())return;const list=document.getElementById('feed-list');if(!list)return;const existing=new Set([...list.querySelectorAll('[data-post-id]')].map(el=>el.dataset.postId));const fresh=items.filter(item=>!existing.has(String(item.id)));if(fresh.length){list.insertAdjacentHTML('beforeend',fresh.map(postCard).join(''));bindPostCards();}else toast('No new posts on this page');}catch(e){toast(e.message);}finally{if(live()){state.loading=false;if(btn?.isConnected)btn.textContent='Load more';}}}
   async function renderFollowing(){
-    try{
+    const live=still();try{
       const rows=await rpc('get_following_feed',{p_limit:40,p_cursor:null});
-      const profiles=await fetchProfiles((rows||[]).map(x=>x.user_id));
+      const profiles=await fetchProfiles((rows||[]).map(x=>x.user_id));if(!live())return;
       state.feedMode='following';
       state.feed=(rows||[]).map(x=>normalizeFeedItem(x,profiles));
       const followingList=document.getElementById('feed-list');if(!followingList)return;followingList.innerHTML=state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>Your Following feed is quiet</h2><p>Follow more people to see their posts here.</p></div>';
@@ -1242,15 +1240,15 @@
       const loadMore=document.getElementById('load-more-feed');
       if(loadMore)loadMore.hidden=true;
       bindPostCards();
-    }catch(e){toast(e.message);}
+    }catch(e){if(live())toast(e.message);}
   }
 
   async function renderReels(){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<div class="boot" style="min-height:55vh"><div class="spinner"></div></div>','Reels');bindCommon();
     try{
       const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});
-      const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));
+      const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));if(!live())return;
       const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
       const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p>${richLinkCard([r.text||r.caption||'',r.link_url||''].join(' '))}</div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
       ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();
@@ -1277,7 +1275,6 @@
           &&!matchMedia('(prefers-reduced-motion: reduce)').matches;
         state.mediaObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{
           const video=entry.target.querySelector('video');if(!video)return;
-          // Loading URLs only when close to the viewport prevents all 30 reels downloading.
           if(entry.isIntersecting && video.dataset.src && !video.getAttribute('src')){
             video.setAttribute('src',video.dataset.src);
             video.addEventListener('canplay',()=>{
@@ -1291,21 +1288,18 @@
         }),{threshold:[0,.7],rootMargin:'300px 0px'});
         reelCards.forEach(card=>state.mediaObserver.observe(card));
       }else{
-        // Keep tap-to-play available on older browsers without IntersectionObserver.
         reelCards.forEach(card=>{
           const video=card.querySelector('video');
           if(video?.dataset.src)video.setAttribute('src',video.dataset.src);
         });
       }
-    }catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
   }
 
 
-  // Same stable IDs and six palettes as shared/BlinkProfileThemes.kt.
-  // Never echo untrusted profile values into CSS: all values come from this allowlist.
   const {themeId,ownerThemeCss,ownerThemePicker}=window.BlinkProfileTheme;
 
-  async function renderPublicProfile(identifier){
+  async function renderPublicProfile(identifier){const live=still();
     ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';
     try{
       const cleanIdentifier=String(identifier||'').trim().replace(/^@/,'');
@@ -1323,6 +1317,7 @@
           publicPremium=cosmetics.sort((a,b)=>b.priority-a.priority)[0]||null;
         }catch{}
       }
+      if(!live())return;
       if(p.username&&currentPath()!==`/@${p.username}`)history.replaceState({},'',routeHref(`/@${p.username}`));
       const actions=isAuthed()
         ? `<button type="button" class="btn primary" id="follow-profile">${state.following.has(p.id)?'Following':'Follow'}</button><button type="button" class="btn" id="message-profile">Message</button>`
@@ -1350,11 +1345,11 @@
       });
       document.getElementById('message-profile')?.addEventListener('click',()=>navigate(`/messages/new?user=${encodeURIComponent(p.username)}`));
     }catch(e){
-      ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Profile unavailable</h2><p>This account may be private, removed or the username may be incorrect.</p><button type="button" class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();
+      if(!live())return;ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Profile unavailable</h2><p>This account may be private, removed or the username may be incorrect.</p><button type="button" class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();
     }
   }
 
-  async function renderPublicContent(type,id){ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';try{const data=await anonRpc('get_public_web_content',{p_content_id:id,p_content_type:type});if(!data?.available)throw new Error('Unavailable');const c=data.content,a=c.author||{};const normalized={id:c.id,user_id:a.id,text:c.text||c.caption,caption:c.caption,images:c.imageUrls||[],video_url:c.videoUrl,created_at:c.createdAt,like_count:c.likeCount,comment_count:c.commentCount,share_count:c.shareCount,repost_count:c.repostCount,view_count:c.viewCount,is_reel:type==='reel',allow_comments:c.allowComments,hide_likes:c.hideLikes,author:{id:a.id,username:a.username,full_name:a.fullName,avatar_url:a.avatarUrl,is_verified:a.isVerified,verification_badge:a.verificationBadge}};const extra=`<div class="card" style="padding:13px;margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between"><span class="muted small">${isAuthed()?'Interact with this content using your Blink account.':'Log in to like, comment, follow and message.'}</span><button class="btn primary small-btn" id="open-content-app">Open in Blink</button></div>`;ROOT.innerHTML=isAuthed()?shell(postCard(normalized)+extra,type==='reel'?'Reel':'Post'):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button class="brand nav-btn" data-nav="/"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</button><button class="btn primary" data-nav="/login">Log in</button></header>${postCard(normalized)}${extra}</div>`;bindCommon();bindPostCards();document.getElementById('open-content-app').onclick=()=>openAndroid(type,id);}catch{ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Content unavailable</h2><p>This ${esc(type)} may be private or removed.</p><button class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();}}
+  async function renderPublicContent(type,id){const live=still();ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';try{const data=await anonRpc('get_public_web_content',{p_content_id:id,p_content_type:type});if(!live())return;if(!data?.available)throw new Error('Unavailable');const c=data.content,a=c.author||{};const normalized={id:c.id,user_id:a.id,text:c.text||c.caption,caption:c.caption,images:c.imageUrls||[],video_url:c.videoUrl,created_at:c.createdAt,like_count:c.likeCount,comment_count:c.commentCount,share_count:c.shareCount,repost_count:c.repostCount,view_count:c.viewCount,is_reel:type==='reel',allow_comments:c.allowComments,hide_likes:c.hideLikes,author:{id:a.id,username:a.username,full_name:a.fullName,avatar_url:a.avatarUrl,is_verified:a.isVerified,verification_badge:a.verificationBadge}};const extra=`<div class="card" style="padding:13px;margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between"><span class="muted small">${isAuthed()?'Interact with this content using your Blink account.':'Log in to like, comment, follow and message.'}</span><button class="btn primary small-btn" id="open-content-app">Open in Blink</button></div>`;ROOT.innerHTML=isAuthed()?shell(postCard(normalized)+extra,type==='reel'?'Reel':'Post'):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button class="brand nav-btn" data-nav="/"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</button><button class="btn primary" data-nav="/login">Log in</button></header>${postCard(normalized)}${extra}</div>`;bindCommon();bindPostCards();document.getElementById('open-content-app').onclick=()=>openAndroid(type,id);}catch{if(!live())return;ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Content unavailable</h2><p>This ${esc(type)} may be private or removed.</p><button class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();}}
 
   async function openComments(postId){
     if(!requireAuth())return;
@@ -1504,8 +1499,6 @@
     const requestId=++state.searchRequestId;
     out.innerHTML='<div class="spinner"></div>';
     try{
-      // For signed-in people, use the same relevance-first referral-aware ranker
-      // as Android and Windows. Do not let a visibility boost beat an exact match.
       const profileResults=isAuthed()
         ? rpc('blink_referral_profile_search',{p_query:q,p_limit:20})
             .catch(()=>rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}))
@@ -1519,8 +1512,6 @@
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
       out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
       bindPostCards();
-      // Count an actual visible profile card only after a sustained on-screen view.
-      // Counting DOM creation alone would artificially inflate impressions below the fold.
       if(typeof IntersectionObserver==='function'){
         const timers=new Map(),tracked=new Set();
         const observer=new IntersectionObserver(entries=>{
@@ -1557,7 +1548,7 @@
   }
 
   async function renderActivity(){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<div class="spinner"></div>','Activity');bindCommon();
     try{
       const [notifications,activities]=await Promise.all([
@@ -1565,7 +1556,7 @@
         table('activities',`recipient_id=eq.${encodeQ(uid())}&select=id,actor_id,activity_type,entity_type,entity_id,message,is_read,created_at&order=created_at.desc&limit=80`)
       ]);
       const rows=[...(notifications||[]).map(x=>({...x,kind:'notification'})),...(activities||[]).map(x=>({...x,text:x.message,kind:'activity'}))].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-      const profiles=await fetchProfiles(rows.map(x=>x.actor_id));
+      const profiles=await fetchProfiles(rows.map(x=>x.actor_id));if(!live())return;
       const list=rows.map(n=>{
         const p=profiles.get(n.actor_id)||{};
         const entity=String(n.entity_type||'').toLowerCase();
@@ -1587,11 +1578,11 @@
         try{await Promise.all([patch('notifications',`user_id=eq.${encodeQ(uid())}`,{is_read:true}),patch('activities',`recipient_id=eq.${encodeQ(uid())}`,{is_read:true})]);state.notificationsUnread=0;toast('Marked as read');renderActivity();}
         catch(e){toast(e.message);}
       };
-    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Activity');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Activity');bindCommon();}
   }
 
   async function renderMessages(path){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     const parts=path.split('/').filter(Boolean),convId=parts[1],target=new URLSearchParams(location.search).get('user')||'';
     if(convId==='new'){renderNewMessage(target);return;}
     if(convId==='groups'){renderGroupInvitations();return;}
@@ -1620,7 +1611,7 @@
           meta=new Map((list||[]).map(x=>[String(x.id),x]));
         }catch{}
       }
-      const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button><button type="button" class="btn" id="group-invites">Groups &amp; invitations</button></div><div class="list">${rows.map(m=>{
+      if(!live())return;const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button><button type="button" class="btn" id="group-invites">Groups &amp; invitations</button></div><div class="list">${rows.map(m=>{
         const group=meta.get(String(m.conversation_id));
         const isGroup=!!group?.is_group;
         const title=isGroup?(group.title||'Group chat'):(m.partner_name||m.partner_username||'Blink user');
@@ -1630,7 +1621,7 @@
         return `<button type="button" class="card list-item ${unread?'notification unread':''}" data-nav="/messages/${esc(m.conversation_id)}${targetQuery}">${avatar(picture,title)}<span class="grow"><span class="title">${esc(title)}${m.partner_online&&!isGroup?' <span class="online-dot" title="Online"></span>':''}</span><span class="sub">${esc(m.last_message||'No messages yet')} · ${ago(m.last_message_at)}</span></span>${unread?`<span class="badge">${fmt(unread)}</span>`:''}</button>`;
       }).join('')||'<div class="card empty"><h2>No conversations yet</h2><p>Start a conversation with a Blink user.</p></div>'}</div>`;
       ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');document.getElementById('group-invites').onclick=()=>navigate('/messages/groups');
-    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Messages');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Messages');bindCommon();}
   }
   async function renderGroupInvitations(){
     if(!requireAuth())return;
@@ -1705,7 +1696,7 @@
       }catch(err){status.innerHTML=`<div class="error">${esc(err.message)}</div>`;submit.disabled=false;}
     };
   }
-  async function renderConversation(id,target=''){
+  async function renderConversation(id,target=''){const live=still();
     ROOT.innerHTML=shell('<div class="spinner"></div>','Chat');bindCommon();
     try{
       let partner=String(target||'').trim().replace(/^@/,'');
@@ -1719,7 +1710,7 @@
       else if(isGroup){patch('conversation_participants',`conversation_id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{last_read_at:new Date().toISOString()}).catch(()=>{});}
       const rows=await rpc('get_conversation_messages_page',{p_conversation_id:id,p_limit:100,p_before:null,p_before_id:null});
       const profiles=await fetchProfiles((rows||[]).map(x=>x.sender_id));
-      const chatPreviewPrivacy = await readChatPreviewPrivacy();
+      const chatPreviewPrivacy = await readChatPreviewPrivacy();if(!live())return;
       const title=isGroup?(conversationMeta?.title||'Group chat'):(partner?`@${partner}`:'Conversation');
       const messages=(rows||[]).slice().reverse().map(m=>{
         const mine=m.sender_id===uid(),p=profiles.get(m.sender_id)||{},viewOnce=!!(m.image_view_once||m.view_once),attachment=viewOnce?'':safeUrl(m.media_url);
@@ -1751,16 +1742,16 @@
           form.reset();renderConversation(id,partner);
         }catch(err){toast(err.message);submit.disabled=false;}
       };
-    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Chat');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Chat');bindCommon();}
   }
 
   async function renderMarket(){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<div class="spinner"></div>','Marketplace');bindCommon();
     try{
       const q=new URLSearchParams(location.search).get('q')||'';
       const rows=await rpc('get_ranked_market_page',{p_query:q||null,p_category:null,p_min_price:null,p_max_price:null,p_limit:40,p_cursor_score:null,p_cursor_created_at:null,p_cursor_id:null,p_as_of:null});
-      const items=(rows||[]).map(r=>r.item||r);
+      if(!live())return;const items=(rows||[]).map(r=>r.item||r);
       const cards=items.map(i=>{
         const image=safeUrl((i.image_urls||[])[0]||i.image_url);
         const seller=String(i.seller_username||'').trim().replace(/^@/,'');
@@ -1771,18 +1762,18 @@
       bindCommon();
       document.getElementById('market-search').onsubmit=e=>{e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);renderMarket();};
       document.querySelectorAll('[data-message-seller]').forEach(x=>x.onclick=()=>navigate(`/messages/new?user=${encodeURIComponent(x.dataset.messageSeller)}`));
-    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}
   }
 
   async function renderConnect(){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<div class="spinner"></div>','Connect');bindCommon();
     try{
       const allowed=new Set(['all','roommate','mentor','reading_mate','housing']);
       const requested=new URLSearchParams(location.search).get('mode')||'all';
       const mode=allowed.has(requested)?requested:'all';
       const rows=await rpc('get_ranked_connect_opportunities',{p_mode:mode,p_limit:40,p_cursor_score:null,p_cursor_kind:null,p_cursor_id:null,p_as_of:null});
-      const cards=(rows||[]).map(r=>{
+      if(!live())return;const cards=(rows||[]).map(r=>{
         const p=r.payload||{},profile=p.profile||{};
         const receiverId=String(profile.id||'');
         const title=p.title||p.headline||profile.full_name||profile.username||p.name||'Connect opportunity';
@@ -1799,24 +1790,24 @@
         try{await rpc('send_connection_request',{p_receiver_id:button.dataset.connectReceiver});button.textContent='Request sent';toast('Connection request sent');}
         catch(e){toast(e.message);button.disabled=false;}
       });
-    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Connect');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Connect');bindCommon();}
   }
 
   async function renderGames(){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<div class="spinner"></div>','Games');bindCommon();
     try{
       const [dash,board]=await Promise.all([rpc('get_game_dashboard',{}),rpc('get_game_leaderboard',{p_period:'all_time',p_scope:'global',p_limit:50})]);
-      const leaderboard=Array.isArray(board)?board:(board?.rows||board?.leaderboard||[]);
+      if(!live())return;const leaderboard=Array.isArray(board)?board:(board?.rows||board?.leaderboard||[]);
       ROOT.innerHTML=shell(`<div class="game-grid"><div class="card game-card"><h3>Your game profile</h3><p class="price">${fmt(dash?.score||dash?.profile?.score||0)} points</p><p class="muted">Coins ${fmt(dash?.coins||dash?.profile?.coins||0)} · Streak ${fmt(dash?.streak||dash?.profile?.streak||0)}</p></div><div class="card game-card"><h3>Play on Android</h3><p class="muted">Your scores and rewards remain synced to the same Blink backend.</p><a class="btn primary download-app" href="${APK_URL}">Download latest BLINK app</a></div></div><h3>Leaderboard</h3><div class="list">${leaderboard.map((u,i)=>`<div class="card list-item"><strong>#${i+1}</strong>${avatar(u.avatar_url,u.full_name||u.username)}<span class="grow"><span class="title">${esc(u.full_name||u.username||'Player')}</span><span class="sub">${fmt(u.score||u.points)} points</span></span></div>`).join('')||'<div class="card empty">Leaderboard is empty.</div>'}</div>`,'Games');
       bindCommon();
-    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Games');bindCommon();}
+    }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Games');bindCommon();}
   }
 
-  async function renderScheduled(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Scheduled posts');bindCommon();try{const rows=await table('scheduled_feed_posts','select=id,payload,scheduled_for,status,error_message,published_post_id,created_at&order=scheduled_for.desc&limit=100');ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Schedule a post</h3><form id="schedule-form" class="form-stack"><textarea class="field" name="text" placeholder="Post text" required></textarea><input class="field" name="when" type="datetime-local" required><input class="field" name="tags" placeholder="Tags, comma separated"><label class="checkbox"><input type="checkbox" name="reel"> Reel</label><button class="btn primary">Schedule</button><div id="schedule-msg"></div></form></div><div class="list">${(rows||[]).map(s=>`<div class="card schedule-row"><div><strong>${esc((s.payload?.text||'Scheduled post').slice(0,160))}</strong><div class="muted small">${new Date(s.scheduled_for).toLocaleString()} · ${esc(s.status)}</div>${s.error_message?`<div class="error">${esc(s.error_message)}</div>`:''}</div><div class="schedule-actions">${s.status==='pending'||s.status==='failed'?`<button class="btn small-btn" data-publish-scheduled="${esc(s.id)}">Publish now</button><button class="btn danger small-btn" data-cancel-scheduled="${esc(s.id)}">Cancel</button>`:''}</div></div>`).join('')||'<div class="card empty"><h2>No scheduled posts</h2></div>'}</div>`,'Scheduled posts');bindCommon();document.getElementById('schedule-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),when=new Date(f.get('when'));if(Number.isNaN(when.valueOf())||when<=new Date()){toast('Choose a future time.');return;}const payload={text:String(f.get('text')).trim(),faculty:state.profile?.faculty||'',video_url:null,images:[],tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),is_reel:f.get('reel')==='on',audience:'Everyone',category:'Campus Life',location:null,link_url:null,allow_comments:true,hide_likes:false,is_pinned:false,is_disappearing:false,audio_title:null,alt_text:null};try{await rpc('schedule_feed_post',{p_payload:payload,p_scheduled_for:when.toISOString()});toast('Post scheduled');renderScheduled();}catch(err){document.getElementById('schedule-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};document.querySelectorAll('[data-cancel-scheduled]').forEach(x=>x.onclick=async()=>{try{await rpc('cancel_scheduled_feed_post',{p_schedule_id:x.dataset.cancelScheduled});toast('Schedule cancelled');renderScheduled();}catch(e){toast(e.message);}});document.querySelectorAll('[data-publish-scheduled]').forEach(x=>x.onclick=async()=>{try{const id=await rpc('publish_scheduled_feed_post_now',{p_schedule_id:x.dataset.publishScheduled});toast('Published now');if(id)navigate(`/post/${String(id).replace(/"/g,'')}`);else renderScheduled();}catch(e){toast(e.message);}});}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Scheduled posts');bindCommon();}}
+  async function renderScheduled(){if(!requireAuth())return;const live=still();ROOT.innerHTML=shell('<div class="spinner"></div>','Scheduled posts');bindCommon();try{const rows=await table('scheduled_feed_posts','select=id,payload,scheduled_for,status,error_message,published_post_id,created_at&order=scheduled_for.desc&limit=100');if(!live())return;ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Schedule a post</h3><form id="schedule-form" class="form-stack"><textarea class="field" name="text" placeholder="Post text" required></textarea><input class="field" name="when" type="datetime-local" required><input class="field" name="tags" placeholder="Tags, comma separated"><label class="checkbox"><input type="checkbox" name="reel"> Reel</label><button class="btn primary">Schedule</button><div id="schedule-msg"></div></form></div><div class="list">${(rows||[]).map(s=>`<div class="card schedule-row"><div><strong>${esc((s.payload?.text||'Scheduled post').slice(0,160))}</strong><div class="muted small">${new Date(s.scheduled_for).toLocaleString()} · ${esc(s.status)}</div>${s.error_message?`<div class="error">${esc(s.error_message)}</div>`:''}</div><div class="schedule-actions">${s.status==='pending'||s.status==='failed'?`<button class="btn small-btn" data-publish-scheduled="${esc(s.id)}">Publish now</button><button class="btn danger small-btn" data-cancel-scheduled="${esc(s.id)}">Cancel</button>`:''}</div></div>`).join('')||'<div class="card empty"><h2>No scheduled posts</h2></div>'}</div>`,'Scheduled posts');bindCommon();document.getElementById('schedule-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),when=new Date(f.get('when'));if(Number.isNaN(when.valueOf())||when<=new Date()){toast('Choose a future time.');return;}const payload={text:String(f.get('text')).trim(),faculty:state.profile?.faculty||'',video_url:null,images:[],tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),is_reel:f.get('reel')==='on',audience:'Everyone',category:'Campus Life',location:null,link_url:null,allow_comments:true,hide_likes:false,is_pinned:false,is_disappearing:false,audio_title:null,alt_text:null};try{await rpc('schedule_feed_post',{p_payload:payload,p_scheduled_for:when.toISOString()});toast('Post scheduled');renderScheduled();}catch(err){document.getElementById('schedule-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};document.querySelectorAll('[data-cancel-scheduled]').forEach(x=>x.onclick=async()=>{try{await rpc('cancel_scheduled_feed_post',{p_schedule_id:x.dataset.cancelScheduled});toast('Schedule cancelled');renderScheduled();}catch(e){toast(e.message);}});document.querySelectorAll('[data-publish-scheduled]').forEach(x=>x.onclick=async()=>{try{const id=await rpc('publish_scheduled_feed_post_now',{p_schedule_id:x.dataset.publishScheduled});toast('Published now');if(id)navigate(`/post/${String(id).replace(/"/g,'')}`);else renderScheduled();}catch(e){toast(e.message);}});}catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Scheduled posts');bindCommon();}}
 
   async function renderSettings(path){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     if(path==='/settings/password'){
       ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Change password</h3><form id="password-form" class="form-stack"><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" placeholder="New password" required><input class="field" type="password" name="confirm" minlength="8" autocomplete="new-password" placeholder="Confirm password" required><button type="submit" class="btn primary">Update password</button><div id="password-msg"></div></form></div>`,'Security');
       bindCommon();
@@ -1831,11 +1822,11 @@
       };
       return;
     }
-    await loadMyProfile();const p=state.profile||{};
-    const chatPreviewPrivacy = await readChatPreviewPrivacy();
+    await loadMyProfile();if(!live())return;const p=state.profile||{};
+    const chatPreviewPrivacy = await readChatPreviewPrivacy();if(!live())return;
     let missionPayload={missions:[]};
     try{missionPayload=await rpc('get_my_daily_missions',{})||missionPayload;}catch(err){console.warn('daily missions',err);}
-    const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
+    if(!live())return;const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
     const missionHtml=missions.map(m=>{
       const progress=Math.max(0,Number(m.progress)||0),target=Math.max(1,Number(m.target)||1),pct=Math.min(100,Math.round(progress*100/target));
       const status=m.claimed?'Claimed':m.claimable?'Claim':'In progress';
@@ -1915,8 +1906,6 @@
   }
 
   function updateRoutePrivacy(path){
-    // Public marketing pages have their own crawlable HTML. Private web
-    // app, auth and one-off share routes should never be indexed from the SPA.
     const publicHome=path==='/'||path==='';
     const robots=document.querySelector('meta[name="robots"]');
     if(robots)robots.setAttribute('content',publicHome?'index,follow,max-image-preview:large':'noindex,nofollow');
@@ -1925,11 +1914,10 @@
   }
 
   async function renderSiteAnalytics(){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<section class="card"><h2>Website analytics</h2><p class="muted">Loading aggregate public website counts…</p></section>','Website analytics');
     bindCommon();
     try{
-      // This RPC validates admin permission in the database, not in JavaScript.
       const result=await rpc('get_blink_site_metrics',{p_days:30});
       const entries=Array.isArray(result?.records)?result.records:[];
       const views=entries.filter(x=>x.kind==='view').reduce((n,x)=>n+Number(x.count||0),0);
@@ -1948,10 +1936,10 @@
         ${entries.length?'':'<p class="muted">No events recorded. Collection remains disabled until privacy and production deployment are approved.</p>'}
         <p class="muted">Private accounts, messages, searches and selected campuses are not included. No visitor IDs or cookies are used for these aggregate counters.</p>
       </section>`;
-      ROOT.innerHTML=shell(html,'Website analytics');
+      if(!live())return;ROOT.innerHTML=shell(html,'Website analytics');
       bindCommon();
     }catch{
-      ROOT.innerHTML=shell('<div class="card empty"><h2>Admin access required</h2><p>Website analytics are available only to authorized BLINK administrators after the database migration is deployed.</p></div>','Website analytics');
+      if(!live())return;ROOT.innerHTML=shell('<div class="card empty"><h2>Admin access required</h2><p>Website analytics are available only to authorized BLINK administrators after the database migration is deployed.</p></div>','Website analytics');
       bindCommon();
     }
   }
@@ -1988,7 +1976,6 @@
     ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Page not found</h2><p>That Blink link does not exist.</p><button type="button" class="btn" data-nav="/">Go home</button></div></div>`;bindCommon();
   }
 
-  // Avoid competing with first paint and authentication calls on slow mobile networks.
   function scheduleServiceWorkerRegistration(){
     if(!('serviceWorker' in navigator) || location.protocol!=='https:')return;
     const register=()=>navigator.serviceWorker.register(routeHref('/sw.js')).catch(()=>{});

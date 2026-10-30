@@ -53,6 +53,7 @@ object NotificationPreferenceStore {
     }
     private const val PENDING_SYNC = "pending_sync"
     private const val MASTER = "master"
+    private const val CHAT_PREVIEW_MODE = "chat_preview_mode"
     private const val QUIET_ENABLED = "quiet_enabled"
     private const val QUIET_START = "quiet_start_minute"
     private const val QUIET_END = "quiet_end_minute"
@@ -81,6 +82,50 @@ object NotificationPreferenceStore {
             val current = SupabaseService().getCurrentUserId().orEmpty().trim()
             current.isNotBlank() && current == target
         }.getOrDefault(false)
+    }
+
+    /**
+     * A short-lived FCM callback cannot fetch chat settings from the server.
+     * Mirror the last server-confirmed choice in an account-specific preference.
+     * Until chat settings have been loaded, use hidden rather than leak a preview.
+     */
+    fun chatPreviewMode(context: Context): String {
+        val accountId = runCatching {
+            SupabaseService.initialize(context.applicationContext)
+            SupabaseService().getCurrentUserId().orEmpty()
+        }.getOrDefault("")
+        if (accountId.isBlank()) return "hidden"
+        return ChatNotificationPreviewPolicy.normalized(
+            accountPrefs(context, accountId).safeString(CHAT_PREVIEW_MODE, "hidden")
+        )
+    }
+
+    fun rememberChatPreviewMode(context: Context, accountId: String, mode: String): Boolean {
+        if (accountId.isBlank()) return false
+        val currentId = runCatching {
+            SupabaseService.initialize(context.applicationContext)
+            SupabaseService().getCurrentUserId().orEmpty()
+        }.getOrDefault("")
+        if (accountId != currentId) return false
+        val nextMode = ChatNotificationPreviewPolicy.normalized(mode)
+        accountPrefs(context, accountId).edit()
+            .putString(CHAT_PREVIEW_MODE, nextMode)
+            .apply()
+        if (nextMode != "full") {
+            // Existing unlocked notifications may still contain older message text.
+            NotificationMessageHistory.clear()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                runCatching {
+                    val manager = context.getSystemService(android.app.NotificationManager::class.java)
+                    manager?.activeNotifications?.forEach { shown ->
+                        if (shown.notification.channelId == BlinkNotificationHelper.CHANNEL_MESSAGES) {
+                            manager.cancel(shown.tag, shown.id)
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "Unable to clear stale chat previews", it) }
+            }
+        }
+        return true
     }
 
     fun setMasterEnabled(context: Context, enabled: Boolean) {

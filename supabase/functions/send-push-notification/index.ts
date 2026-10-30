@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { verifiedNotificationActor, pushPreferenceDecision } from "../_shared/push-gates.mjs";
+import { chatPushPreview } from "../_shared/chat-preview.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -229,6 +230,19 @@ Deno.serve(async (req) => {
   if (preference === "retry") return json({ error: "notification_preferences_unavailable", retryable: true }, 503);
   if (preference === "skip") return json({ ok: true, skipped: "recipient_preferences" });
 
+  // Device settings can be stale after a change on another device. The server
+  // decides what private text is allowed in each push BEFORE constructing FCM
+  // data. A privacy lookup outage must not fall back to a full message preview.
+  const { data: chatPrivacy, error: chatPrivacyError } = await admin
+    .from("user_chat_privacy")
+    .select("notification_preview")
+    .eq("user_id", recipientId)
+    .maybeSingle();
+  if (chatPrivacyError) {
+    return json({ error: "chat_preview_preferences_unavailable", retryable: true }, 503);
+  }
+  const previewMode = String(chatPrivacy?.notification_preview ?? "hidden");
+
   const [{ data: sender }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
     admin.from("profiles")
       .select("username,full_name,avatar_url")
@@ -278,20 +292,19 @@ Deno.serve(async (req) => {
   const senderUsername = String(sender?.username ?? "");
   const senderName = String(sender?.full_name ?? (senderUsername || "Blink user"));
   const senderAvatar = String(sender?.avatar_url ?? "");
-  const fullContent = String(message.content ?? "");
-  const notificationBody = fullContent.length > 1200
-    ? `${fullContent.slice(0, 1197)}...`
-    : fullContent;
+  const preview = chatPushPreview(
+    previewMode, senderName, message.content, senderAvatar, senderUsername, senderId
+  );
 
   const data = {
     type: "message",
-    title: senderName,
-    body: notificationBody,
+    title: preview.title,
+    body: preview.body,
     recipient_id: recipientId,
-    sender_id: senderId,
-    sender_username: senderUsername,
-    sender_name: senderName,
-    sender_avatar: senderAvatar,
+    sender_id: preview.senderId,
+    sender_username: preview.senderUsername,
+    sender_name: preview.senderName,
+    sender_avatar: preview.senderAvatar,
     conversation_id: String(message.conversation_id),
     message_id: String(message.id),
   };

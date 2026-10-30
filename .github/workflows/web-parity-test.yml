@@ -13,6 +13,11 @@ on:
       - 'scripts/test_contest_invitation.mjs'
       - 'scripts/test_web_referral_invitation.mjs'
       - 'scripts/test_feed_market_posting_contract.mjs'
+      - 'scripts/test_web_draft_ownership.mjs'
+      - 'scripts/test_web_honest_menu.mjs'
+      - 'scripts/test_web_account_switch.mjs'
+      - 'scripts/test_web_privacy_settings.mjs'
+      - 'scripts/test_web_route_staleness.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -36,6 +41,11 @@ on:
       - 'scripts/test_contest_invitation.mjs'
       - 'scripts/test_web_referral_invitation.mjs'
       - 'scripts/test_feed_market_posting_contract.mjs'
+      - 'scripts/test_web_draft_ownership.mjs'
+      - 'scripts/test_web_honest_menu.mjs'
+      - 'scripts/test_web_account_switch.mjs'
+      - 'scripts/test_web_privacy_settings.mjs'
+      - 'scripts/test_web_route_staleness.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -114,6 +124,21 @@ jobs:
           node --check web/parity.js
           node --check web/sw.js
           node --check web/config.js
+
+      - name: Browser drafts cross-account access regression
+        run: node scripts/test_web_draft_ownership.mjs
+
+      - name: Ensure public feature menu only lists actual web pages
+        run: node scripts/test_web_honest_menu.mjs
+
+      - name: Verify account switch clears session before Login
+        run: node scripts/test_web_account_switch.mjs
+
+      - name: Verify canonical web privacy writes and read receipts
+        run: node scripts/test_web_privacy_settings.mjs
+
+      - name: Reject stale page responses after web navigation or account changes
+        run: node scripts/test_web_route_staleness.mjs
 
       - name: JSON manifests
         run: |

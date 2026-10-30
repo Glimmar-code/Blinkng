@@ -743,49 +743,15 @@ object BlinkNotificationHelper {
         senderAvatar: String = "",
         messageId: String = ""
     ) {
-        if (!hasNotificationPermission(context)) return
-        if (!MessageNotificationLedger.claim(context, messageId)) return
-        createNotificationChannels(context)
-
-        val avatarBitmap = loadAvatarBitmap(senderAvatar)
-        val personBuilder = Person.Builder()
-            .setName(senderName)
-            .setKey(senderUsername)
-        avatarBitmap?.let { personBuilder.setIcon(IconCompat.createWithBitmap(it)) }
-        val person = personBuilder.build()
-
-        val messagingStyle = NotificationCompat.MessagingStyle(
-            Person.Builder().setName("You").setKey("blink_self").build()
-        )
-            .addMessage(messageText, System.currentTimeMillis(), person)
-            .setConversationTitle(senderName)
-            .setGroupConversation(false)
-
-        val chatIntent = buildChatPendingIntent(context, senderUsername, senderName, senderAvatar)
-        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
-            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
-            .setContentTitle(senderName)
-            .setContentText(messageText)
-            .setStyle(messagingStyle)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setColor(PINK_COLOR)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(true)
-            .setWhen(System.currentTimeMillis())
-            .setContentIntent(chatIntent)
-            .addAction(android.R.drawable.ic_menu_send, "Reply", chatIntent)
-            .setGroup(GROUP_KEY_MESSAGES)
-            .setGroupSummary(false)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-
-        avatarBitmap?.let { builder.setLargeIcon(it) }
-
-        notifySafely(
+        // Legacy notification entry point must follow the same privacy, mute
+        // and account rules as FCM; never construct an unfiltered alert here.
+        InstantChatNotification.show(
             context = context,
-            id = positiveHash("blink_message_$senderUsername"),
-            notification = builder.build()
+            senderUsername = senderUsername,
+            senderName = senderName,
+            messageText = messageText,
+            senderAvatar = senderAvatar,
+            messageId = messageId
         )
     }
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { pushPreferenceDecision, verifiedNotificationActor } from "../functions/send-activity-notification/push-gates.mjs";
+import { chatPushPreview } from "../functions/_shared/chat-preview.mjs";
 
 assert.equal(pushPreferenceDecision(true, null), "send", "explicit consent permits delivery");
 assert.equal(pushPreferenceDecision(false, null), "skip", "opt-out suppresses delivery");
@@ -63,3 +64,37 @@ assert.ok(!turnSource.includes("jwtSubject("),
 assert.ok(turnSource.includes('if (!userId) return json({ error: "Unauthorized" }, 401)'),
   "TURN relay must deny unauthenticated callers");
 console.log("PASS TURN relay credential JWT verification contract");
+
+// Recipient privacy must be enforced in the server payload, even when a
+// different device has a stale "full" preview preference in its local cache.
+const hidden=chatPushPreview(
+  "hidden", "Alice", "A private message",
+  "https://example.com/avatar.png", "alice-secret", "alice-uuid"
+);
+assert.deepEqual(hidden, {
+  title: "BLINK Messages", body: "New message",
+  senderName: "", senderAvatar: "", senderUsername: "", senderId: "",
+});
+const senderOnly=chatPushPreview("sender_only", "Alice", "A private message", "avatar");
+assert.equal(senderOnly.title, "Alice");
+assert.equal(senderOnly.body, "New message");
+const senderOnlyWithId=chatPushPreview("sender_only", "Alice", "Secret", "avatar", "alice", "uuid");
+assert.equal(senderOnlyWithId.senderUsername, "alice");
+assert.equal(senderOnlyWithId.senderId, "uuid");
+const full=chatPushPreview("full", "Alice", "A private message", "avatar");
+assert.equal(full.body, "A private message");
+assert.equal(full.senderAvatar, "avatar");
+assert.equal(chatPushPreview(undefined, "Alice", "Secret").body, "New message");
+assert.equal(chatPushPreview("unsupported", "Alice", "Secret").senderName, "");
+assert.equal(chatPushPreview("full", "Alice", "x".repeat(1500)).body.length, 1200);
+console.log("Recipient-side chat preview privacy: hidden, sender-only, full, unknown and truncation passed.");
+
+assert.ok(directMessage.includes('.from("user_chat_privacy")'),"Push must load authoritative recipient preview setting");
+assert.ok(directMessage.includes('error: "chat_preview_preferences_unavailable"'),"Unknown server preview preferences must not disclose content");
+assert.ok(directMessage.includes("message.content, senderAvatar, senderUsername, senderId"),
+  "Firebase push must sanitize sender identifiers along with message content");
+assert.ok(directMessage.includes("sender_id: preview.senderId,"),
+  "Hidden-preview FCM data must not contain the raw sender ID");
+assert.ok(directMessage.includes("sender_username: preview.senderUsername,"),
+  "Hidden-preview FCM data must not expose the raw username");
+assert.ok(!directMessage.includes('body: notificationBody'),'Firebase must not send an unchecked raw message body');

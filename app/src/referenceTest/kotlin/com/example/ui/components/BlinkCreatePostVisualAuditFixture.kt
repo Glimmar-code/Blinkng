@@ -208,7 +208,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
             AuditSurface {
                 BlinkCreatePostPublishOptions(
                     onBack = {}, onPost = {}, onSaveDraft = {},
-                    onPreview = {}, onShareCaption = {},
+                    onPreview = {}, onShareWhatsApp = {},
+                    onShareOtherApps = {}, onCopyCaption = {}, canCopyCaption = true,
                     isSubmitting = false, canPublish = true, uploadProgress = null
                 )
             }
