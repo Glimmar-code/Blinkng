@@ -210,7 +210,7 @@ fun CreatePostSheet(
         String?,
         String
     ) -> Unit,
-    onSaveDraft: (PostDraft) -> Unit = {},
+    onSaveDraft: (PostDraft) -> Boolean = { false },
     onDeleteDraft: (String) -> Unit = {},
     onSchedulePost: (FeedPost, Long, String) -> Unit = { _, _, _ -> },
     onPublishScheduledPostNow: (String) -> Unit = {},
@@ -1002,7 +1002,7 @@ fun CreatePostSheet(
         }
 
         val draftId = activeDraftId ?: "draft_${UUID.randomUUID()}"
-        onSaveDraft(
+        val saved = onSaveDraft(
             PostDraft(
                 id = draftId,
                 text = text,
@@ -1033,6 +1033,7 @@ fun CreatePostSheet(
                 }
             )
         )
+        if (!saved) return false
         activeDraftId = draftId
         return true
     }
