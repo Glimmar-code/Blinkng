@@ -146,6 +146,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.font.FontWeight
@@ -225,6 +228,9 @@ fun CreatePostSheet(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     val composerCoroutineScope = rememberCoroutineScope()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val textEntryFocusRequester = remember { FocusRequester() }
+    var focusTextOnEntry by remember { mutableStateOf(false) }
     val composerScope = profile.id.ifBlank { profile.username }
 
     var text by rememberPersistentTextState(
@@ -1254,6 +1260,7 @@ fun CreatePostSheet(
                         } else {
                             mode = "post"
                             showPoll = false
+                            focusTextOnEntry = true
                             showCreateLanding = false
                         }
                     },
@@ -1562,6 +1569,17 @@ fun CreatePostSheet(
 
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
                 if (textOnlyComposer) {
+                    // The Text tile should open a ready-to-type composer, as in
+                    // the reference. Request focus only after the editor field is
+                    // actually composed; never open the keyboard for media or polls.
+                    if (!useClassicComposer && focusTextOnEntry) {
+                        LaunchedEffect(focusTextOnEntry) {
+                            androidx.compose.runtime.withFrameNanos { }
+                            textEntryFocusRequester.requestFocus()
+                            keyboardController?.show()
+                            focusTextOnEntry = false
+                        }
+                    }
                     if (useClassicComposer) {
                     Row(
                         modifier = Modifier
@@ -1602,6 +1620,7 @@ fun CreatePostSheet(
                             enabled = !isSubmitting,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .focusRequester(textEntryFocusRequester)
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             minLines = if (useClassicComposer) 7 else 4,
                             maxLines = 14,
