@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // Exercise the real web functions in a deliberately minimal browser sandbox.
 const source=fs.readFileSync(new URL('../web/parity.js',import.meta.url),'utf8');
 const start=source.indexOf('  // Only known, explicitly account-scoped draft namespaces');
-const end=source.indexOf('  async function getUserSettings()',start);
+const end=source.indexOf('  async function getUserSettings(',start);
 assert.ok(start>=0 && end>start,'Draft access functions must be present');
 const code=source.slice(start,end);
 const alice='11111111-1111-4111-8111-111111111111';
