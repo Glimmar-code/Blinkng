@@ -442,6 +442,7 @@ fun CreatePostSheet(
             val clips = (videoClips + picked.map(Uri::toString)).distinct()
                 .take(BlinkReelClipPolicy.MAX_CLIPS)
             selectedImages = emptyList()
+            showMediaReview = false
             showPoll = false
             mode = "reel"
             if (clips.size == 1) {
@@ -1246,9 +1247,18 @@ fun CreatePostSheet(
                         )
                     },
                     onPickVideos = {
-                        // Confirm a media-type change before replacing selected photos.
                         pickerOpenedFromLanding = false
-                        pendingMediaSwitch = "reel"
+                        if (selectedImages.isEmpty()) {
+                            // No content is being replaced. Opening Videos must
+                            // not display a misleading destructive confirmation.
+                            multiVideoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            )
+                        } else {
+                            // Keep the selected photo album until the user
+                            // confirms switching to a video post.
+                            pendingMediaSwitch = "reel"
+                        }
                     },
                     onNext = { showMediaReview = false }
                 )
@@ -2455,7 +2465,7 @@ fun CreatePostSheet(
                         "gallery" -> imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
-                        "reel" -> if (pickerOpenedFromLanding) multiVideoPicker.launch(
+                        "reel" -> if (pickerOpenedFromLanding || showMediaReview) multiVideoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         ) else videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
