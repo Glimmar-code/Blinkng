@@ -7,6 +7,7 @@ const share=load('app/src/main/java/com/example/ui/components/BlinkPostShareActi
 const native=load('app/src/androidTest/java/com/example/ui/components/BlinkCreatePostReferenceTest.kt');
 const robolectric=load('app/src/test/java/com/example/ui/components/BlinkPostShareActionsTest.kt');
 const main=load('app/src/main/java/com/example/MainActivity.kt');
+assert.ok(share.includes('import android.content.ActivityNotFoundException'),'Use the real Android exception class for missing share targets');
 
 for(const target of [
   'onShareWhatsApp = { shareComposerDraft(true) }',
