@@ -396,7 +396,7 @@ fun CreatePostSheet(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
         val initialPicker = pickerOpenedFromLanding
-        if (uris.isEmpty() && initialPicker) showCreateLanding = true
+        if (BlinkPhotoEntryPolicy.returnToLandingAfterPicker(initialPicker, uris.size)) showCreateLanding = true
         pickerOpenedFromLanding = false
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
