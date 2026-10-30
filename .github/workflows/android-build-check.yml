@@ -50,6 +50,9 @@ jobs:
       - name: Ensure Marketplace offers have complete paginated history
         run: node scripts/test_market_offer_paging.mjs
 
+      - name: Verify chat notification privacy across FCM and legacy paths
+        run: node scripts/test_chat_notification_privacy.mjs
+
       - name: Compute actual checked-out Android input digest
         id: input_digest
         if: steps.scope.outputs.android == 'true'
