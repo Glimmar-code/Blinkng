@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.Environment
 import android.provider.MediaStore
 import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.inspector.WindowInspector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -88,13 +89,23 @@ class BlinkComposerNativeCaptureTest {
             }
         }
         rule.onNodeWithTag("blink_create_choice_text").performClick()
-        rule.onAllNodes(hasSetTextAction()).onFirst().performClick().performTextReplacement("@a")
+        rule.waitForIdle()
         try {
-            rule.waitUntil(15_000) { rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty() }
-        } catch (error: AssertionError) {
+            rule.waitUntil(15_000) {
+                var focused = false
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    focused = WindowInspector.getGlobalWindowViews().any {
+                        it.hasWindowFocus() && (it.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_APPLICATION
+                    }
+                }
+                focused
+            }
+        } catch (error: ComposeTimeoutException) {
             runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
-            throw AssertionError("Mention results were not loaded", error)
+            throw AssertionError("Composer dialog did not receive native window focus", error)
         }
+        val field = rule.onAllNodes(hasSetTextAction()).onFirst()
+        field.performClick()
         try {
             rule.waitUntil(15_000) {
                 var visible = false
@@ -105,11 +116,23 @@ class BlinkComposerNativeCaptureTest {
                 }
                 visible
             }
-        } catch (error: AssertionError) {
+        } catch (error: ComposeTimeoutException) {
             runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
             throw AssertionError("Actual app window does not report a visible IME", error)
         }
+        field.performTextInput("@a")
+        try {
+            rule.waitUntil(15_000) { rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty() }
+        } catch (error: ComposeTimeoutException) {
+            runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
+            throw AssertionError("Mention results were not loaded", error)
+        }
         captureDisplay("create-post-keyboard-mentions-staging.png")
+        rule.runOnIdle {
+            check(WindowInspector.getGlobalWindowViews().any { it.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true }) {
+                "Keyboard was hidden after typing the mention"
+            }
+        }
         rule.onNodeWithText("Ayo").assertIsDisplayed()
     }
 

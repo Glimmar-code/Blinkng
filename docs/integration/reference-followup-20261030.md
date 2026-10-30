@@ -61,3 +61,12 @@ application window IME insets instead of accessibility-window enumeration, and
 requires the mention result to be displayed. Failed display captures are retained
 before the test exits. The updated native source compiled successfully locally
 (36 seconds); an emulator rerun is still required to establish its result.
+
+On `be6ade3d`, native PR run 41023387177 passed instrumentation and required
+capture export. Its simultaneous push run 41023381821 failed specifically waiting
+for actual IME visibility after the mention had loaded. This is an unresolved
+inconsistency, not an overall pass. The next test-only follow-up waits for native
+composer-dialog focus before tapping, requires the IME before typing, then
+asserts that the IME remains visible and the suggestion is displayed. It also
+catches ComposeTimeoutException correctly so timeout screenshots are retained.
+The new sequence still requires fresh native execution; assertions are not waived.
