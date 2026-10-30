@@ -168,6 +168,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -3782,6 +3783,15 @@ private fun MessageBubble(
     onLegacyPollChoice: (Int) -> Unit
 ) {
     val isMine = message.isFromMe
+    val showReferenceTail = palette.mode == MessageThemeMode.DARK &&
+        message.messageType == "text" &&
+        message.text.isNotBlank() && !message.deletedForEveryone &&
+        !message.isPinned && !message.isStarred && !message.isForwarded &&
+        message.replyToMessageId == null && message.reactionCounts.isEmpty() &&
+        message.attachedImageUrl.isNullOrBlank() &&
+        message.attachedVideoUrl.isNullOrBlank() &&
+        message.attachedAudioUrl.isNullOrBlank() &&
+        message.attachedDocumentUrl.isNullOrBlank()
     val density = LocalDensity.current
     val threshold = with(density) { BlinkReplySwipePhysics.activationDp.dp.toPx() }
     val haptic = LocalHapticFeedback.current
@@ -3856,6 +3866,9 @@ private fun MessageBubble(
             if (!isMine && palette.mode != MessageThemeMode.DARK) {
                 RingAvatar(url = partnerAvatar, name = partnerName, palette = palette, size = 31.dp)
                 Spacer(Modifier.width(8.dp))
+            }
+            if (showReferenceTail && !isMine) {
+                BlinkReferenceTextBubbleTail(isMine = false, color = palette.incomingBubble)
             }
 
             Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
@@ -4113,9 +4126,35 @@ private fun MessageBubble(
                     }
                 }
 
-
+            }
+            if (showReferenceTail && isMine) {
+                BlinkReferenceTextBubbleTail(isMine = true, color = palette.outgoingBubble)
             }
         }
+    }
+}
+
+/** Tiny outward-pointing tails on plain charcoal-reference chat bubbles only. */
+@Composable
+private fun BlinkReferenceTextBubbleTail(isMine: Boolean, color: Color) {
+    Canvas(
+        Modifier.size(width = 7.dp, height = 10.dp)
+            .testTag(if (isMine) "chat_reference_text_tail_outgoing"
+                else "chat_reference_text_tail_incoming")
+    ) {
+        val tail = Path().apply {
+            if (isMine) {
+                moveTo(0f, 0f)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+            } else {
+                moveTo(size.width, 0f)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+            }
+            close()
+        }
+        drawPath(path = tail, color = color)
     }
 }
 
