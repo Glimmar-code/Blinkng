@@ -35,12 +35,10 @@ class BlinkPhotoEntryPolicyTest {
         }
     }
 
-    @Test fun photoPickerCancellationKeepsCurrentMedia() {
-        // The picker only clears other media after non-empty results.
-        // Empty results are handled by CreatePostSheet, which returns to landing.
-        assertEquals(
-            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT,
-            BlinkPhotoEntryPolicy.decide(true, false, false, false)
-        )
+    @Test fun cancellingFirstPhotoPickerRestoresLandingButAddingMoreDoesNot() {
+        assertEquals(true, BlinkPhotoEntryPolicy.returnToLandingAfterPicker(true, 0))
+        assertEquals(false, BlinkPhotoEntryPolicy.returnToLandingAfterPicker(false, 0))
+        assertEquals(false, BlinkPhotoEntryPolicy.returnToLandingAfterPicker(true, 1))
+        assertEquals(false, BlinkPhotoEntryPolicy.returnToLandingAfterPicker(true, 10))
     }
 }
