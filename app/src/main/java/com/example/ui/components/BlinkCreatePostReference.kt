@@ -505,6 +505,35 @@ private fun BlinkPostShareRow(
     }
 }
 
+/** Compact hashtag card for the dark reference composer; counts are never fabricated. */
+@Composable
+internal fun BlinkReferenceTagCard(
+    tag: String,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        color = if (selected) Color(0xFF29234C) else Color(0xFF191C24),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) Color(0xFF766EFF) else Color(0xFF30343D)
+        )
+    ) {
+        Text(
+            text = "#" + tag,
+            color = if (enabled) Color.White else Color(0xFF999EAD),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
+    }
+}
+
 /**
  * Horizontal icon row from the reference composer. The existing Add to post
  * controls remain separately available, including link and location actions.
