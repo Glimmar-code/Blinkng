@@ -12,6 +12,12 @@ internal object ChatNotificationPreviewPolicy {
         else -> "hidden"
     }
 
+    fun disclosureRank(mode: String?): Int = when (normalized(mode)) {
+        "hidden" -> 0
+        "sender_only" -> 1
+        else -> 2
+    }
+
     fun title(mode: String?, sender: String): String =
         if (normalized(mode) == "hidden") "BLINK Messages"
         else sender.ifBlank { "BLINK Messages" }
