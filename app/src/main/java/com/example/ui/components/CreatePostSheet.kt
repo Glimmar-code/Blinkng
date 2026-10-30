@@ -1269,25 +1269,27 @@ fun CreatePostSheet(
                         }
                     },
                     onPhoto = {
-                        pickerOpenedFromLanding = true
-                        showCreateLanding = false
-                        when (BlinkPhotoEntryPolicy.decide(
+                        val entryAction = BlinkPhotoEntryPolicy.decide(
                             hasVideo = selectedVideo != null,
                             hasPoll = showPoll,
                             hasVideoClips = videoClips.isNotEmpty(),
                             hasPhotos = selectedImages.isNotEmpty()
-                        )) {
-                            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT ->
+                        )
+                        when (entryAction) {
+                            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT -> {
+                                // A cancelled type switch must preserve the previous draft.
+                                pickerOpenedFromLanding = true
                                 pendingMediaSwitch = "gallery"
-                            BlinkPhotoEntryAction.REVIEW_EXISTING -> {
+                            }
+                            BlinkPhotoEntryAction.REVIEW_EXISTING,
+                            BlinkPhotoEntryAction.OPEN_MEDIA_REVIEW -> {
+                                // Open the in-app gallery first. Its empty state has
+                                // a permission-free photo picker action.
                                 pickerOpenedFromLanding = false
                                 mode = "post"
+                                showCreateLanding = false
                                 showMediaReview = true
                             }
-                            BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER ->
-                                imagePicker.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
                         }
                     },
                     onVideo = {
