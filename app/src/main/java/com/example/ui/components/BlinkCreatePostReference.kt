@@ -905,43 +905,84 @@ internal fun BlinkReferenceMediaReview(
             )
             Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
         }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            itemsIndexed(visiblePhotos, key = { _, uri -> uri }) { _, uri ->
-                val index = images.indexOf(uri)
-                Box(
-                    Modifier.fillMaxWidth().aspectRatio(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF20242B))
-                ) {
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = if (index >= 0) "Selected photo " + (index + 1) else "Available device photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().testTag(if (index >= 0) "blink_gallery_photo_" + index else "blink_gallery_available_" + uri)
-                            .clickable {
-                                if (index >= 0) previewIndex = index
-                                else if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) onSelectPhoto(uri)
-                            }
-                    )
-                    if (index >= 0) Surface(
-                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
-                        color = Color(0xFF5448F5), shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text(
-                            (index + 1).toString(), color = Color.White,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                            fontSize = 12.sp
-                        )
-                    }
-
+        if (visiblePhotos.isEmpty()) {
+            // An empty device library is not a dead-end. Android's Photo Picker
+            // can select photos without broad storage/media permission.
+            Column(
+                modifier = Modifier.fillMaxWidth().weight(1f)
+                    .testTag("blink_gallery_empty_state"),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.PhotoLibrary, contentDescription = null,
+                    tint = Color(0xFF9299AD), modifier = Modifier.size(36.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    if (canBrowse) "No photos found" else "Choose photos from your device",
+                    color = Color.White, fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    if (canBrowse) "Choose photos with Android's photo picker."
+                    else "You can select photos without allowing access to your whole gallery.",
+                    color = Color(0xFFAFB5C4), fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onAddMore,
+                    modifier = Modifier.testTag("blink_gallery_browse_photos"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
+                ) { Text("Choose photos", color = Color.White) }
+                if (!canBrowse) {
+                    TextButton(
+                        onClick = ::requestLibrary,
+                        modifier = Modifier.testTag("blink_gallery_allow_access")
+                    ) { Text("Show recent gallery photos", color = Color(0xFFABAAFF)) }
                 }
             }
-        }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                itemsIndexed(visiblePhotos, key = { _, uri -> uri }) { _, uri ->
+                    val index = images.indexOf(uri)
+                    Box(
+                        Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF20242B))
+                    ) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = if (index >= 0) "Selected photo " + (index + 1) else "Available device photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().testTag(if (index >= 0) "blink_gallery_photo_" + index else "blink_gallery_available_" + uri)
+                                .clickable {
+                                    if (index >= 0) previewIndex = index
+                                    else if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) onSelectPhoto(uri)
+                                }
+                        )
+                        if (index >= 0) Surface(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
+                            color = Color(0xFF5448F5), shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(
+                                (index + 1).toString(), color = Color.White,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                    }
+                }
+            }
+            }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             LazyRow(
                 modifier = Modifier.weight(1f).height(56.dp),
