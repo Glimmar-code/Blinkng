@@ -1638,7 +1638,7 @@ fun CreatePostSheet(
                                 .fillMaxWidth()
                                 .focusRequester(textEntryFocusRequester)
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
-                            minLines = if (useClassicComposer) 7 else 4,
+                            minLines = if (useClassicComposer) 7 else 2,
                             maxLines = 14,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = if (useClassicComposer) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -1899,11 +1899,6 @@ fun CreatePostSheet(
                     onMention = { if (text.length < 4999) text += if (text.isBlank()) "@" else " @" },
                     onLocation = { showAdvancedSettings = true }
                 )
-                TextButton(
-                    onClick = { showLegacyPostActions = !showLegacyPostActions },
-                    enabled = !isSubmitting,
-                    modifier = Modifier.padding(start = 8.dp)
-                ) { Text(if (showLegacyPostActions) "Hide more tools" else "More tools") }
                 }
                 if (useClassicComposer || showLegacyPostActions) {
                 AddToPostCard(
@@ -2044,23 +2039,61 @@ fun CreatePostSheet(
                 }
 
                 } else {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Trending tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        if (trendingTags.isEmpty()) Text("Add #topics to your caption", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                        else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(trendingTags.take(7), key = { it }) { tag ->
-                                AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                    // Reference composition uses compact, filled tag cards,
+                    // not Material outlined chips. View totals are intentionally
+                    // omitted because the loader supplies only real tag names.
+                    Column(
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Text("Trending tags", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        if (trendingTags.isEmpty()) {
+                            Text("Add #topics to your caption", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        } else {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(trendingTags.take(7), key = { it }) { tag ->
+                                    BlinkReferenceTagCard(
+                                        tag = tag,
+                                        selected = tag in effectiveTags,
+                                        enabled = !isSubmitting,
+                                        modifier = Modifier.testTag("blink_ref_trending_" + tag),
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            else addSelectedTag(tag)
+                                        }
+                                    )
+                                }
                             }
                         }
                         if (recentUsedTags.isNotEmpty()) {
-                            Text("Recent tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Recent tags", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 items(recentUsedTags, key = { it }) { tag ->
-                                    AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                                    BlinkReferenceTagCard(
+                                        tag = tag,
+                                        selected = tag in effectiveTags,
+                                        enabled = !isSubmitting,
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            else addSelectedTag(tag)
+                                        }
+                                    )
                                 }
                             }
                         }
                         tagWarning?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                }
+                if (!useClassicComposer) {
+                    TextButton(
+                        onClick = { showLegacyPostActions = !showLegacyPostActions },
+                        enabled = !isSubmitting,
+                        modifier = Modifier.padding(start = 8.dp)
+                            .testTag("blink_create_post_more_tools")
+                    ) {
+                        Text(if (showLegacyPostActions) "Hide more tools" else "More tools", fontSize = 12.sp)
                     }
                 }
 
