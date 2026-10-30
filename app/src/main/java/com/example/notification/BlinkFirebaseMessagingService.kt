@@ -272,6 +272,17 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val senderAvatar = data["sender_avatar"].orEmpty()
         val conversationId = data["conversation_id"].orEmpty()
         val messageId = data["message_id"].orEmpty()
+        // Use the same account-scoped preview policy for foreground banners and
+        // for the system notification. Never copy a hidden body to a second UI.
+        val chatPreviewMode = if (type == BlinkNotificationType.MESSAGE) {
+            NotificationPreferenceStore.chatPreviewMode(this)
+        } else "full"
+        val visibleTitle = if (type == BlinkNotificationType.MESSAGE) {
+            ChatNotificationPreviewPolicy.title(chatPreviewMode, senderName)
+        } else title
+        val visibleBody = if (type == BlinkNotificationType.MESSAGE) {
+            ChatNotificationPreviewPolicy.body(chatPreviewMode, body)
+        } else body
 
         // Delivery acknowledgement describes transport delivery, not whether the user elected
         // to show the alert. A muted DM should still become "delivered" to the sender.
@@ -388,13 +399,14 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 BlinkInAppNotification(
                     key = inAppKey,
                     notificationId = notificationId,
-                    title = title,
-                    body = body,
+                    title = visibleTitle,
+                    body = visibleBody,
                     destination = inAppDestination,
                     senderId = senderId,
                     senderUsername = sender,
-                    senderName = senderName,
-                    senderAvatar = senderAvatar,
+                    senderName = if (type == BlinkNotificationType.MESSAGE) visibleTitle else senderName,
+                    senderAvatar = if (type == BlinkNotificationType.MESSAGE &&
+                        chatPreviewMode == "hidden") "" else senderAvatar,
                     postId = postTarget.ifBlank { null },
                     marketId = marketTarget.ifBlank { null },
                     targetType = targetType.ifBlank { null },
