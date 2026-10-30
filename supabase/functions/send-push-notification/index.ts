@@ -292,15 +292,17 @@ Deno.serve(async (req) => {
   const senderUsername = String(sender?.username ?? "");
   const senderName = String(sender?.full_name ?? (senderUsername || "Blink user"));
   const senderAvatar = String(sender?.avatar_url ?? "");
-  const preview = chatPushPreview(previewMode, senderName, message.content, senderAvatar);
+  const preview = chatPushPreview(
+    previewMode, senderName, message.content, senderAvatar, senderUsername, senderId
+  );
 
   const data = {
     type: "message",
     title: preview.title,
     body: preview.body,
     recipient_id: recipientId,
-    sender_id: senderId,
-    sender_username: senderUsername,
+    sender_id: preview.senderId,
+    sender_username: preview.senderUsername,
     sender_name: preview.senderName,
     sender_avatar: preview.senderAvatar,
     conversation_id: String(message.conversation_id),
