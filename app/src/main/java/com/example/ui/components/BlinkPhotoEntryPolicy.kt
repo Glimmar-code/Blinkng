@@ -22,4 +22,7 @@ internal object BlinkPhotoEntryPolicy {
         hasPhotos -> BlinkPhotoEntryAction.REVIEW_EXISTING
         else -> BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER
     }
+
+    fun returnToLandingAfterPicker(initialPicker: Boolean, chosenCount: Int): Boolean =
+        initialPicker && chosenCount == 0
 }
