@@ -47,6 +47,9 @@ jobs:
       - name: Test trustworthy expensive-suite reuse policy
         run: python3 -m unittest discover -s scripts -p 'test_ci_verified_reuse.py' -v
 
+      - name: Ensure Marketplace offers have complete paginated history
+        run: node scripts/test_market_offer_paging.mjs
+
       - name: Compute actual checked-out Android input digest
         id: input_digest
         if: steps.scope.outputs.android == 'true'
