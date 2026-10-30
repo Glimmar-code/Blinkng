@@ -119,6 +119,9 @@ abstract class ChatReferenceVisualAuditFixture {
         rule.onNodeWithTag("chat_reference_attachment_plus").assertExists()
         rule.onNodeWithTag("chat_reference_emoji").assertExists()
         rule.onNodeWithTag("chat_reference_send").assertExists()
+        // The reference has an outward-pointing pale tail on outgoing text,
+        // while attachment and album containers retain their own shapes.
+        rule.onNodeWithTag("chat_reference_text_tail_outgoing").assertExists()
 
         capture("chat-reference-staging-dark.png")
 
