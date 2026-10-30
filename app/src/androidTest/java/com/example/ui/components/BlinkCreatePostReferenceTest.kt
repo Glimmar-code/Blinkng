@@ -134,7 +134,10 @@ class BlinkCreatePostReferenceTest {
                     onPost = { selected += "post" },
                     onSaveDraft = { selected += "draft" },
                     onPreview = { selected += "preview" },
-                    onShareCaption = { selected += "share" },
+                    onShareWhatsApp = { selected += "whatsapp" },
+                    onShareOtherApps = { selected += "other" },
+                    onCopyCaption = { selected += "copy" },
+                    canCopyCaption = true,
                     isSubmitting = false,
                     canPublish = true,
                     uploadProgress = null
@@ -145,9 +148,14 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("Preview Post").performClick()
         composeRule.onNodeWithText("Save as Draft").performClick()
         composeRule.onNodeWithText("WhatsApp").performScrollTo().performClick()
+        composeRule.onNodeWithText("Copy caption").performScrollTo().performClick()
         composeRule.onNodeWithText("Other apps").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "share"), selected) }
+        composeRule.runOnIdle {
+            assertEquals(listOf("preview", "draft", "whatsapp", "copy", "other"), selected)
+        }
         composeRule.onNodeWithText("Post Now").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals(listOf("preview", "draft", "share", "share", "post"), selected) }
+        composeRule.runOnIdle {
+            assertEquals(listOf("preview", "draft", "whatsapp", "copy", "other", "post"), selected)
+        }
     }
 }
