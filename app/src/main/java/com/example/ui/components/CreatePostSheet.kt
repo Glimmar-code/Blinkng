@@ -1262,7 +1262,9 @@ fun CreatePostSheet(
                         } else {
                             mode = "post"
                             showPoll = false
-                            focusTextOnEntry = true
+                            // An existing media draft is not a blank text entry.
+                            // Do not pop the keyboard over photo/video editing.
+                            focusTextOnEntry = selectedImages.isEmpty() && selectedVideo == null
                             showCreateLanding = false
                         }
                     },
