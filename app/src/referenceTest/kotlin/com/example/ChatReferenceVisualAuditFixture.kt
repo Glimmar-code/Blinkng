@@ -276,6 +276,8 @@ abstract class ChatReferenceVisualAuditFixture {
         saveFrame("chat-reference-full-top.png")
         list.performScrollToIndex(6)
         rule.onNodeWithTag("chat_reference_voice_waveform").assertExists()
+        rule.onNodeWithTag("chat_reference_voice_duration").assertExists()
+        rule.onNodeWithTag("chat_reference_voice_speed").assertExists()
         saveFrame("chat-reference-full-media.png")
         list.performScrollToIndex(9)
         rule.onNodeWithTag("chat_reference_document_card").assertExists()
