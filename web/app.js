@@ -226,7 +226,7 @@
     }
   }
 
-  async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,profile_theme,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
+  async function loadMyProfile(){ if(!uid())return null;const owner=uid(); const rows=await table('profiles',`id=eq.${encodeQ(owner)}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,profile_theme,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`);if(owner!==uid())return null; state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
   async function loadFollowing(){ if(!isAuthed())return; try{ const rows=await rpc('get_my_following_ids',{}); state.following=new Set((rows||[]).map(String)); }catch{ state.following=new Set(); } }
   async function refreshUnreadCount(){ if(!uid())return; try{ const rows=await table('notifications',`user_id=eq.${encodeQ(uid())}&is_read=eq.false&select=id&limit=99`); state.notificationsUnread=rows?.length||0; }catch{state.notificationsUnread=0;} }
 
@@ -1807,7 +1807,7 @@
   async function renderScheduled(){if(!requireAuth())return;const live=still();ROOT.innerHTML=shell('<div class="spinner"></div>','Scheduled posts');bindCommon();try{const rows=await table('scheduled_feed_posts','select=id,payload,scheduled_for,status,error_message,published_post_id,created_at&order=scheduled_for.desc&limit=100');if(!live())return;ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Schedule a post</h3><form id="schedule-form" class="form-stack"><textarea class="field" name="text" placeholder="Post text" required></textarea><input class="field" name="when" type="datetime-local" required><input class="field" name="tags" placeholder="Tags, comma separated"><label class="checkbox"><input type="checkbox" name="reel"> Reel</label><button class="btn primary">Schedule</button><div id="schedule-msg"></div></form></div><div class="list">${(rows||[]).map(s=>`<div class="card schedule-row"><div><strong>${esc((s.payload?.text||'Scheduled post').slice(0,160))}</strong><div class="muted small">${new Date(s.scheduled_for).toLocaleString()} · ${esc(s.status)}</div>${s.error_message?`<div class="error">${esc(s.error_message)}</div>`:''}</div><div class="schedule-actions">${s.status==='pending'||s.status==='failed'?`<button class="btn small-btn" data-publish-scheduled="${esc(s.id)}">Publish now</button><button class="btn danger small-btn" data-cancel-scheduled="${esc(s.id)}">Cancel</button>`:''}</div></div>`).join('')||'<div class="card empty"><h2>No scheduled posts</h2></div>'}</div>`,'Scheduled posts');bindCommon();document.getElementById('schedule-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),when=new Date(f.get('when'));if(Number.isNaN(when.valueOf())||when<=new Date()){toast('Choose a future time.');return;}const payload={text:String(f.get('text')).trim(),faculty:state.profile?.faculty||'',video_url:null,images:[],tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),is_reel:f.get('reel')==='on',audience:'Everyone',category:'Campus Life',location:null,link_url:null,allow_comments:true,hide_likes:false,is_pinned:false,is_disappearing:false,audio_title:null,alt_text:null};try{await rpc('schedule_feed_post',{p_payload:payload,p_scheduled_for:when.toISOString()});toast('Post scheduled');renderScheduled();}catch(err){document.getElementById('schedule-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};document.querySelectorAll('[data-cancel-scheduled]').forEach(x=>x.onclick=async()=>{try{await rpc('cancel_scheduled_feed_post',{p_schedule_id:x.dataset.cancelScheduled});toast('Schedule cancelled');renderScheduled();}catch(e){toast(e.message);}});document.querySelectorAll('[data-publish-scheduled]').forEach(x=>x.onclick=async()=>{try{const id=await rpc('publish_scheduled_feed_post_now',{p_schedule_id:x.dataset.publishScheduled});toast('Published now');if(id)navigate(`/post/${String(id).replace(/"/g,'')}`);else renderScheduled();}catch(e){toast(e.message);}});}catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Scheduled posts');bindCommon();}}
 
   async function renderSettings(path){
-    if(!requireAuth())return;
+    if(!requireAuth())return;const live=still();
     if(path==='/settings/password'){
       ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Change password</h3><form id="password-form" class="form-stack"><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" placeholder="New password" required><input class="field" type="password" name="confirm" minlength="8" autocomplete="new-password" placeholder="Confirm password" required><button type="submit" class="btn primary">Update password</button><div id="password-msg"></div></form></div>`,'Security');
       bindCommon();
@@ -1822,11 +1822,11 @@
       };
       return;
     }
-    await loadMyProfile();const p=state.profile||{};
-    const chatPreviewPrivacy = await readChatPreviewPrivacy();
+    await loadMyProfile();if(!live())return;const p=state.profile||{};
+    const chatPreviewPrivacy = await readChatPreviewPrivacy();if(!live())return;
     let missionPayload={missions:[]};
     try{missionPayload=await rpc('get_my_daily_missions',{})||missionPayload;}catch(err){console.warn('daily missions',err);}
-    const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
+    if(!live())return;const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
     const missionHtml=missions.map(m=>{
       const progress=Math.max(0,Number(m.progress)||0),target=Math.max(1,Number(m.target)||1),pct=Math.min(100,Math.round(progress*100/target));
       const status=m.claimed?'Claimed':m.claimable?'Claim':'In progress';
