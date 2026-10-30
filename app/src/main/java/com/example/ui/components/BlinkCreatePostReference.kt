@@ -121,8 +121,8 @@ internal fun BlinkCreatePostLanding(
     onClassic: () -> Unit,
     onCamera: () -> Unit,
     onDraft: (PostDraft) -> Unit,
-    onRecentPhoto: (String) -> Unit,
-    onRecentSeeAll: () -> Unit
+    onRecentPhoto: (String) -> Unit = {},
+    onRecentSeeAll: () -> Unit = onPhoto
 ) {
     val white = Color.White
     val context = LocalContext.current
