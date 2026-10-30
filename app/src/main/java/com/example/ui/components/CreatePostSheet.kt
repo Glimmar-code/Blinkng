@@ -975,6 +975,18 @@ fun CreatePostSheet(
         )
     }
 
+    fun shareComposerDraft(whatsAppOnly: Boolean) {
+        val caption = BlinkPostShareActions.caption(text, pollQuestion)
+        val images = if (selectedVideo == null) selectedImages else emptyList()
+        val shared = BlinkPostShareActions.share(
+            context = context, caption = caption, images = images,
+            video = selectedVideo, whatsAppOnly = whatsAppOnly
+        )
+        if (!shared) {
+            Toast.makeText(context, "No compatible sharing app or media is available.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun saveDraft() {
         if (videoClips.isNotEmpty() || combiningClips) {
             Toast.makeText(context, "Combine your video clips before saving this Reel.", Toast.LENGTH_SHORT).show()
@@ -1325,35 +1337,20 @@ fun CreatePostSheet(
                         showPublishOptions = false
                     },
                     onPreview = { showPreviewDialog = true },
-                    onShareCaption = {
-                        val caption = text.ifBlank { pollQuestion }
-                        val outgoing = when {
-                            selectedVideo != null -> Intent(Intent.ACTION_SEND).apply {
-                                type = "video/*"
-                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedVideo))
-                            }
-                            selectedImages.size > 1 -> Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                                type = "image/*"
-                                putParcelableArrayListExtra(
-                                    Intent.EXTRA_STREAM,
-                                    ArrayList(selectedImages.map(Uri::parse))
-                                )
-                            }
-                            selectedImages.size == 1 -> Intent(Intent.ACTION_SEND).apply {
-                                type = "image/*"
-                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedImages.first()))
-                            }
-                            else -> Intent(Intent.ACTION_SEND).apply { type = "text/plain" }
-                        }.apply {
-                            if (caption.isNotBlank()) putExtra(Intent.EXTRA_TEXT, caption)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        runCatching {
-                            context.startActivity(Intent.createChooser(outgoing, "Share to another app"))
-                        }.onFailure {
-                            Toast.makeText(context, "No sharing app available.", Toast.LENGTH_SHORT).show()
-                        }
+                    onShareWhatsApp = { shareComposerDraft(true) },
+                    onShareOtherApps = { shareComposerDraft(false) },
+                    onCopyCaption = {
+                        val caption = BlinkPostShareActions.caption(text, pollQuestion)
+                        val copied = runCatching {
+                            BlinkPostShareActions.copyCaption(context, caption)
+                        }.getOrDefault(false)
+                        Toast.makeText(
+                            context,
+                            if (copied) "Caption copied" else "Add a caption before copying.",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     },
+                    canCopyCaption = BlinkPostShareActions.caption(text, pollQuestion).isNotBlank(),
                     isSubmitting = isSubmitting,
                     canPublish = canSubmit,
                     uploadProgress = uploadProgress
@@ -3150,20 +3147,12 @@ internal fun PollComposer(
                     Text("Add option")
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Multiple answers", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Each person can choose one answer.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                Switch(checked = false, onCheckedChange = {}, enabled = false)
-            }
+            Text(
+                "One answer per voter",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
             Text(
                 "Poll duration",
                 modifier = Modifier.padding(top = 12.dp),
