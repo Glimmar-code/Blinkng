@@ -4567,6 +4567,19 @@ private fun MessageActionsPopover(
                         }
                     }
 
+                    if (!message.attachedAudioUrl.isNullOrBlank()) {
+                        // The compact waveform matches the reference. Downloads
+                        // remain available from message actions on deliberate tap.
+                        BlinkChatDownloadAction(
+                            url = message.attachedAudioUrl,
+                            kind = "voice",
+                            extension = "m4a",
+                            compact = true,
+                            menuLabel = "Download voice note",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                    }
+
                     MessageActionRow("⇧", "Share", palette, onClick = onShare)
 
                     if (!message.isFromMe) {
