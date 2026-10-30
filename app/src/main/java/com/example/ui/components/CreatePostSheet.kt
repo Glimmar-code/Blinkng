@@ -1311,7 +1311,34 @@ fun CreatePostSheet(
                             pendingMediaSwitch = "camera"
                         } else openCameraActions()
                     },
-                    onDraft = { restoreDraft(it) }
+                    onDraft = { restoreDraft(it) },
+                    onRecentPhoto = { photoUri ->
+                        // Preserve existing content instead of silently replacing a Reel or poll.
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                            pickerOpenedFromLanding = true
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            if (photoUri !in selectedImages &&
+                                selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                                selectedImages = selectedImages + photoUri
+                            }
+                            pickerOpenedFromLanding = false
+                            mode = "post"
+                            showCreateLanding = false
+                            showMediaReview = true
+                        }
+                    },
+                    onRecentSeeAll = {
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                            pickerOpenedFromLanding = true
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            pickerOpenedFromLanding = false
+                            mode = "post"
+                            showCreateLanding = false
+                            showMediaReview = true
+                        }
+                    }
                 )
             } else if (visibleStage == "details") {
                 BlinkReferencePostDetails(
