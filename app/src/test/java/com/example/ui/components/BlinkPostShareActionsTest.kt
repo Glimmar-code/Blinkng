@@ -67,6 +67,20 @@ class BlinkPostShareActionsTest {
         assertTrue(BlinkPostShareActions.hasShareableContent("Text", emptyList(), null))
     }
 
+    @Test fun staleUnshareableMediaDoesNotSilentlyBecomeTextOnly() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertFalse(
+            BlinkPostShareActions.share(
+                context, "Photo post", listOf("file:///private/stale.jpg"), null, false
+            )
+        )
+        assertFalse(
+            BlinkPostShareActions.share(
+                context, "Video post", emptyList(), "https://example.com/video.mp4", true
+            )
+        )
+    }
+
     @Test fun copyCaptionWritesExactlyTheSelectedText() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         assertFalse(BlinkPostShareActions.copyCaption(context, ""))
