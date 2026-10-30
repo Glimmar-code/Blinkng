@@ -2215,8 +2215,15 @@ private suspend fun restoreSupabaseSession() {
                         summaries = conversationSummaries,
                         local = _uiState.value.conversations
                     )
-                    val chatPrivacySettings = chatPrivacyRequest.await()
-                        .getOrDefault(before.chatPrivacySettings)
+                    val chatPrivacyResult = chatPrivacyRequest.await()
+                    val chatPrivacySettings = chatPrivacyResult.getOrDefault(before.chatPrivacySettings)
+                    if (chatPrivacyResult.isSuccess && inboxOwner != null &&
+                        supabaseService.getCurrentUserId() == inboxOwner
+                    ) {
+                        NotificationPreferenceStore.rememberChatPreviewMode(
+                            appContext, inboxOwner, chatPrivacySettings.notificationPreview
+                        )
+                    }
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
@@ -5292,10 +5299,25 @@ private suspend fun restoreSupabaseSession() {
 
     fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
         val before = _uiState.value.chatPrivacySettings
+        val ownerId = supabaseService.getCurrentUserId().orEmpty()
         _uiState.value = _uiState.value.copy(chatPrivacySettings = settings)
+        // Make more restrictive choices effective immediately while the server
+        // saves them, then restore the previous choice if the write is rejected.
+        if (ownerId.isNotBlank()) {
+            NotificationPreferenceStore.rememberChatPreviewMode(
+                appContext, ownerId, settings.notificationPreview
+            )
+        }
         viewModelScope.launch {
-            if (!chatRepository.updateChatPrivacySettings(settings)) {
-                _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
+            val saved = runCatching { chatRepository.updateChatPrivacySettings(settings) }
+                .getOrDefault(false)
+            if (!saved && supabaseService.getCurrentUserId() == ownerId) {
+                if (_uiState.value.chatPrivacySettings == settings) {
+                    _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
+                    NotificationPreferenceStore.rememberChatPreviewMode(
+                        appContext, ownerId, before.notificationPreview
+                    )
+                }
                 showToast("Couldn't update message privacy.")
             }
         }
