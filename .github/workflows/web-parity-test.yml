@@ -17,6 +17,7 @@ on:
       - 'scripts/test_web_honest_menu.mjs'
       - 'scripts/test_web_account_switch.mjs'
       - 'scripts/test_web_privacy_settings.mjs'
+      - 'scripts/test_web_route_staleness.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -44,6 +45,7 @@ on:
       - 'scripts/test_web_honest_menu.mjs'
       - 'scripts/test_web_account_switch.mjs'
       - 'scripts/test_web_privacy_settings.mjs'
+      - 'scripts/test_web_route_staleness.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -134,6 +136,9 @@ jobs:
 
       - name: Verify canonical web privacy writes and read receipts
         run: node scripts/test_web_privacy_settings.mjs
+
+      - name: Reject stale page responses after web navigation or account changes
+        run: node scripts/test_web_route_staleness.mjs
 
       - name: JSON manifests
         run: |
