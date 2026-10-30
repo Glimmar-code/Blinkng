@@ -104,24 +104,37 @@ object InstantChatNotification {
         messageId: String = ""
     ) {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
+        if (!NotificationPreferenceStore.isAllowed(context, BlinkNotificationType.MESSAGE)) return
+        if (conversationId.isNotBlank() &&
+            ConversationNotificationMuteStore.isMuted(context, conversationId)
+        ) return
+        val accountId = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        if (accountId.isBlank()) return
+        val previewMode = NotificationPreferenceStore.chatPreviewMode(context)
+        val displayTitle = ChatNotificationPreviewPolicy.title(previewMode, senderName)
+        val displayText = ChatNotificationPreviewPolicy.body(previewMode, messageText)
         if (!MessageNotificationLedger.claim(context, messageId)) return
         BlinkNotificationHelper.createNotificationChannels(context)
 
         val stableConversationKey = conversationId.ifBlank { senderUsername }
         val notificationId = NotificationIdentity.conversationId(stableConversationKey)
         val sender = Person.Builder()
-            .setName(senderName.ifBlank { senderUsername.ifBlank { "Blink user" } })
+            .setName(displayTitle)
             .setKey(senderUsername.ifBlank { stableConversationKey })
             .build()
         val me = Person.Builder().setName("You").setKey("blink_self").build()
-        val accountId = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
         val groupKey = scopedMessageGroup(accountId)
-        val previews = NotificationMessageHistory.append(
-            userId = accountId,
-            conversationKey = stableConversationKey,
-            messageId = messageId,
-            text = messageText
-        )
+        val previews = if (ChatNotificationPreviewPolicy.allowHistory(previewMode)) {
+            NotificationMessageHistory.append(
+                userId = accountId,
+                conversationKey = stableConversationKey,
+                messageId = messageId,
+                text = displayText
+            )
+        } else {
+            NotificationMessageHistory.clear()
+            listOf(NotificationMessageHistory.Preview(messageId, displayText, System.currentTimeMillis()))
+        }
 
         // Show a short conversation history without disk-caching private previews or
         // blocking FCM's time-limited handler with a network/avatar request.
@@ -150,8 +163,8 @@ object InstantChatNotification {
 
         val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
             .setSmallIcon(com.example.R.drawable.ic_stat_blink)
-            .setContentTitle(sender.name)
-            .setContentText(messageText)
+            .setContentTitle(displayTitle)
+            .setContentText(displayText)
             .setStyle(messagingStyle)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
