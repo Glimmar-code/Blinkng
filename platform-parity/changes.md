@@ -1,3 +1,28 @@
+## 2026-10-29 — Combined Contest, Create Post and Chat repair
+
+- Preserves PR #638, #639 and #644 histories on `Testlab/contest-create-post-chat-20261029`.
+- Shared Contest voting handles JSON-null votes correctly and fails closed for existing votes, self-votes, invalid candidates and closed contests. Completed/cancelled history, Windows load retry and explicit native media upload use matching limits on Android/Windows. Invitation outages preserve the explicit app-opening action without automatic votes.
+- Combined APK/lint/instrumentation compilation, 26 focused Android tests, 25 Windows tests, full isolated SQL suite and invitation regressions passed. Native Android checks took 27m 10s; CI has a 60-minute budget for the larger full suite without dropping checks.
+- Remote CI/review, hosted deployment/storage and device/Windows installer verification remain outstanding. GitHub API is blocked by the current proxy allowlist. No merge to main or production SQL deployment is claimed.
+
+## 2026-10-29 — Combined Chat and Create Post reference implementation
+
+- Integrated PR #639 at `96f0f2d05c83698a0db3ade66fc1fc5fc723c87f` and PR #644 at `0300879e20a4897b3a086013607d59e15ecdf82a` on local `Testlab/chat-create-post-reference-20261029`. Both original histories and screenshot-export checks are preserved. Main, original PRs and Contest work were not modified remotely.
+- Android retains the charcoal conversation, real media/poll/voice components and reference Create Post flow. Removed invalid Compose test imports and corrected the Gradle distribution to the minimum required by AGP 9.1.1, with its official SHA256. Reference posting colors, text backgrounds and poll validation now share Kotlin contracts with Windows.
+- Windows now has a separate reference composer alongside the retained Classic composer: text, ordered photo albums/cover selection, an exported video published as a Reel, timed single-answer polls, mentions, real trending tags, audience/location/comments, preview, encrypted account-scoped drafts and publication confirmation. Feed poll results/voting use authenticated server data; private posting stays disabled. Streamed photo/video uploads use the existing `users/<account>/posts/` storage policy. Retry preserves request/object IDs and completes partially created polls before reporting success.
+- Windows conversation native poll cards now share the charcoal palette. Desktop adaptations use resizable desktop layouts/file dialogs and native video playback rather than phone hardware frames or Android permission dialogs.
+- **Remaining parity limitations:** Windows does not implement Android Media3 montage/export, in-app photo crop/markup, or the full native video effects editor. It accepts already edited files. These are outstanding capabilities, not a claim that editing parity is complete. Desktop polls, storage authorization and DPAPI persistence still need authenticated Windows/backend integration evidence.
+- **Verification:** See `docs/integration/reference-design-20261029.md` for executed checks and explicit device/visual/release limitations. No production migration, merge, deployment, PR publication or environment publication was performed.
+
+## 2026-10-29 — BLINK conversation charcoal reference (Testlab, verification pending)
+
+- **Source:** Owner-supplied screenshot (black/charcoal chat, pale outgoing bubbles, blue controls and read ticks), replacing the navy/blue outgoing style introduced in PR #640. This is a new visual reference; do not misreport PR #640 as a pixel match.
+- **Shared:** Added `BlinkChatReferenceStyle` tokens so both platforms consume the same values for canvas, incoming/outgoing bubbles, text, and blue accents.
+- **Android:** Updated conversation-only palette, plain header/call actions, presence, slim pinned row, incoming avatar handling, outgoing receipt contrast, reply surface, compact poll, and separated + / emoji / message+camera+microphone / blue send composer. Existing Supabase RPCs, permissions, attachment flows, voice note recording, media, and delivery states are unchanged.
+- **Windows:** Conversation background, header, bubbles, receipt contrast and attachment affordance use the same shared colour values. Desktop layout and platform-specific file/media actions remain desktop-native.
+- **Verification gate:** The Android screenshot must be captured on a device/emulator with the *same fixture*, matched/cropped to the reference display and compared using `scripts/testing/compare_chat_reference.py`. The script writes cropped images, an overlay, a difference heatmap and machine-readable metrics. The existence of a screenshot test is **not** evidence of a pixel match; UI/device results must be recorded before promotion.
+- **Status:** Staged in Testlab. Do not merge to production on static edits alone. Run relevant Android build, instrumentation screenshot comparison and Windows build/parity before promoting. No backend migrations or credentials are included.
+
 ## 2026-10-28 — BLINK Chat reference screenshots (Testlab PR #640)
 
 - **Android:** The dark conversation uses the supplied black/navy/cobalt palette rather than the former green reference, the pinned-message banner jumps to the original message, and the plus composer opens a 3×3 attachment menu. Existing voice recording, media permissions, outbox, privacy, sent/delivered/read receipts, photo editor, polls, replies and forwarding remain connected.
@@ -5,6 +30,39 @@
 - **Windows:** Conversation bubbles and header use the same reference color values; the attachment action now opens a functional Windows attachment dialog (gallery, stickers, view-once and existing text-poll composer).
 - **PARITY-EXCEPTION: chat-native-android-media-capture** — Android's CameraX/system photo/video picker, microphone recording, OS contact/location intents and player operate through native Android APIs. Windows uses a desktop file picker, the existing desktop picture viewer and Windows-supported chat actions instead of unimplemented Android intents.
 - **Limit:** The supplied mockups are generated design references with mutually inconsistent phone sizes, dummy photos and variants. No sample conversation or generated people are included in the production APK. Visual parity must be checked on an Android test device at multiple sizes before any merge.
+
+## 2026-10-28 — BLINK Contest free entry, contestant sharing and deep vote links (Testlab PR #638)
+
+- **Shared/backend:** Authenticated free-entry and one-vote-per-account, self-vote rejection, scheduled windows, top-20 and full approved-candidate public lookup (including users outside the top 20). Admin approval and contest management remain server-authoritative; prizes are informational, not automatic payouts.
+- **Android:** Fourth primary page is Contest; original Connect is available from inside it. Each contestant has Share; a generated portrait PNG flyer features the public profile photo, contest, current rank/votes and a shareable candidate-specific vote URL. Verified links route into BLINK, resume through login/signup and open the chosen contestant; the user must tap Vote manually.
+- **Windows:** Contest shares the same ranking/entry backend and shows the personalized preview, with copy voting message and save PNG export; People discovery remains separately reachable.
+- **Web/Cloudflare:** /contest/{contest_uuid}/{entry_uuid} serves an approved-contestant invitation with Open BLINK to vote, APK download and copyable URL. Installation via APK cannot reliably reopen an app automatically; the page retains the link and provides an explicit post-install Open action.
+- **Release hold:** No production migration, live voting, link-verification guarantee, deployed website or merged PR is claimed. Backend fixture, Android+Windows compilation, security/permissions, route and device testing must pass before main.
+## 2026-10-28 — Create Post reference design and interaction polish (PR #639)
+
+- **Android reference flow:** Repaired missing `@Composable` on poll renderer; all Create Post stages now use a short 210ms Crossfade, preserving the existing validated publish path. System Back from final Post Options returns to Post Details, then to the editor; media selection Back returns to entry without erasing the draft.
+- **Gallery:** Uses the Android system media picker for permission-respecting device selection, then a real in-app selected-photo grid with counts, fullscreen image preview, ordered cover, remove/reorder controls and add-more. A fully custom preselection device-wide gallery cannot be claimed without access/consent to local photos. The original native editors and image upload pipeline remain intact.
+- **Editor visual polish:** Added a clearer Reel editor header while retaining real Media3 filmstrip/timeline/effects; fullscreen photo editor now has consistent BLINK purple accent controls. Poll editor now shows option count, duplicates inline and clear expiry wording. Mention suggestions show loading and no-match states without synthetic profiles.
+- **Preview:** Expanded the white post preview to full-screen, with actual author avatar/name, large horizontally scrolling real images, and an explicit unpublished-draft status. Do not fabricate likes, followers or successful post URLs.
+- **Visual QA:** The Android runtime smoke workflow now archives seven genuine emulator-rendered screenshots: landing, selected gallery, text actions, poll, video-clip review, post details and final options. These are useful comparison fixtures, **not proof of a pixel-perfect match**; no original reference screenshots were checked into the repo for automated pixel-diff comparison. Editors need their own authenticated screenshots and two-theme regression checks.
+- **Accessibility/performance:** Media reorder actions expose content descriptions and use bounded 10-image selection; 210ms fade avoids long blocking transitions. Test on compact/large font and with IME raised before accepting exact reference parity.
+- **Scope limit:** Current Android Photo Picker appearance is OS-owned; Windows media composition and poll design parity remain outstanding. `Only me` stays disabled until owner-restricted feed and media authorization is proven.
+
+## 2026-10-28 — Advanced Create Post: clip montage, timed polls, private-audience hold (PR #639)
+
+- **Android video flow:** Pick up to four real video clips, reorder/remove them, and render a single playable MP4 using Media3 Transformer. Retain the one-Reel `video_url` contract and export progress/error state; enforce a 180-second combined duration and preserve originals on failed exports. Multi-clip selection is not a backend array pretending to play as one movie.
+- **Android polls:** Existing `polls.expires_at` receives the selected 1-hour, 1-day, 3-day or 7-day duration; created and scheduled poll timestamps are stored consistently. `PostPoll` reads the expiry and the existing authenticated client checks for expiry before attempting a vote. Account-scoped drafts retain the duration. **Server expiry enforcement is now deployed:** migration `20261028200903_blink_poll_vote_expiration_guard_20261028.sql` installed an enabled security-invoker trigger on `poll_votes`; an isolated PostgreSQL regression tests accepted and rejected votes. Real-account end-to-end checks remain outstanding.
+- **Private visibility:** Read-only production inspection showed `feed_posts_select_active` permits every active post regardless of audience. Therefore `Only me` is **disabled**, with an explicit UI explanation. RLS, media storage, definer RPCs, Search, profile, push and cross-device verification remain a release-blocking backend requirement; see `docs/integration/blink-only-me-audience-security-staging-20261028.md`. Never represent the disabled option as private published posting.
+- **PARITY-EXCEPTION: android-media3-clip-montage-20261028** — Media3's Android-only Transformer and Android Photo Picker are OS-specific native adapters. Windows can use its existing wide-screen composer and desktop file pickers, but Windows video montage, poll duration authoring, and the security-tested private audience are **not** implemented; desktop product-feature parity is outstanding and must be addressed before declaring this scope fully complete.
+- **QA / promotion:** Check exact current-head Android unit/build/emulator MP4 export and poll persistence, Windows quality and authenticated backend role tests. No paid hosted staging is authorized. PR remains draft; do not merge or deploy privacy/poll SQL to live Supabase on CI green alone.
+
+## 2026-10-28 — Reference Create Post screens (Testlab PR #639; release hold)
+
+- **Android visual flow:** New full-screen black Create Post chooser, genuine saved-draft thumbnails, custom review grid of selected real images, screenshot-style seven-icon text/media/tag/mention toolbar, vertical backend-ranked @mentions, persisted recent tags, centered purple Next, dedicated Post Details with real visibility/comment settings, white post preview, and final Post Options view. The previous composer is preserved through Classic composer and More tools; photos, polls, Reels, editing, scheduling, drafts, upload, and existing submission logic remain authoritative. Cancelling native media selection or declining a destructive media switch preserves prior selections.
+- **Shared data and privacy contract:** Unchanged. No new post types, Supabase writes, visibility policy, or public URL behavior are fabricated. Android native Photo Picker is used instead of an app-owned screenshot gallery, followed by an app-owned selected-photo review grid; the existing Reel editor handles selected video. WhatsApp/other-app share before posting sends selected media plus caption where available (or text-only), never an unpublished post URL.
+- **PARITY-EXCEPTION: android-create-post-reference-chooser-20261028** — The supplied reference is a 10-panel portrait phone layout using Android's system Photo Picker, touch-sized modal screens, insets and device media editors. Windows has no Android Photo Picker or phone status/navigation insets; its nearest equivalent is the existing wide-window Home feed composer with text/hashtags/mentions/audience, category and native posting. This exception covers **visual/navigation presentation only**, not missing media publishing capabilities or a claim of desktop feature completion.
+- **Windows desktop:** The existing native desktop text composer, hashtag discovery and @mention search are retained without regression. **Open parity gap:** Desktop currently does not implement Android's photo/video/poll upload composer or these phone-sized multi-step visuals. Media editing is Android-specific, but user-facing media-post capability parity is not met and requires a separate verified Windows implementation before this can be called product-complete.
+- **Release hold and exactness:** PR is draft and confined to a Testlab-prefixed branch. Do not merge to main until the latest SHA passes Android unit/build/runtime screenshot and UI interaction tests, Windows quality/parity assessment, safe publish/draft/preview checks, and an actual side-by-side pixel review against the ten-panel image. This PR does **not** claim that all ten panels are pixel-identical: Android's system gallery and existing media editors differ from the generated illustration.
 
 ## 2026-10-28 — Contact sync opt-in, no-SMS profile numbers (Testlab)
 
@@ -1720,3 +1778,49 @@ Windows Connect displays matches saved to the same Supabase account, supports op
 
 ### Profile repair merge reconciliation — 27 October 2026
 - Integrated main after Feed PR #626 without clobbering its Windows Photos/Polls metadata handling, DesktopFeedPost.hasPoll, Android feed changes or feed parity notes. The profile-security migration and all Testlab profile changes remain isolated until latest-head Android, Windows and PostgreSQL gates pass.
+
+## 2026-10-29 — Create Post desktop native media adapters (Testlab #646)
+
+- Retains shared publishing permissions, media limits, draft and server contracts; Android's existing photo/Media3 adapters remain unchanged.
+- Windows now edits local photos (EXIF, crop/rotation, filters, adjustments, text/symbol/doodle, undo/redo, PNG/JPEG) and exports ordered/trimmed multi-clip H.264/AAC video with aspect padding, speed, filters, text, volume/music and cancellation cleanup. Native FFmpeg dependencies are pinned and included in packaging.
+- Uses desktop mouse/file dialogs and OS playback of actual exported files. Mobile timeline, draggable overlays and advanced animated effects remain differences requiring further work/visual verification.
+- Local desktop suite passed 36 tests; synthetic media CLI smoke passed. New packaged Windows CI, device screenshot comparison and isolated Supabase Auth/Storage/Realtime checks remain release gates. No production backend changes or main merge. See `docs/integration/verification-20261029.md`.
+
+## 2026-10-29 — Reference comparison and isolated service verification (#646)
+
+- Android and Windows share reference choice gradients and Reel clip/duration constants. Both show the reference Aa/photo/video/bar-chart affordances with the yellow poll icon's dark foreground.
+- Device and local Robolectric Create Post captures now use the same shared test fixtures, covering the complete existing 12-case visual matrix without shipping test profiles/media in the app.
+- Added a disposable Supabase HTTP suite for actual password sessions, Contest RPC/concurrent votes, Storage ACL/public preview, Realtime notification delivery, Chat polls/block privacy and posting guards. The administrative/prerequisite schema remains synthetic; this cannot establish deployed-schema compatibility or two-device E2E.
+- Local desktop 36 tests and Android visual fixture 15 tests/instrumentation compilation passed. Explicit screenshot recording and the new service integration CI still require inspection/results before merge. Full local Supabase startup exceeded disk capacity; no production resource was contacted or changed.
+
+## 2026-10-29 — Verified Storage deletion and reference layout repairs (#646)
+
+- Actual isolated Supabase run 40958927594 passed real Auth/PostgREST/Storage/Realtime feature assertions. Added owner-only Storage SELECT policy after the service test proved that INSERT/DELETE policies alone silently retained owner files. No production database changes.
+- Android reference editor now lays out header/body sequentially instead of overlapping AnimatedContent siblings, uses compact swatches/tags, preserves advanced tools behind More tools, renders readable standalone poll controls, and keeps all six photo tools visible. Windows keeps its desktop column/layout and identical single-choice semantics.
+- Shared native device/Robolectric Chat fixtures capture the actual album, voice, video, document, poll, reply and reaction components at three scroll positions. Shared aspect constants keep photo/video previews landscape; Windows retains its desktop message layout and OS media playback.
+- Windows photo export now supports crop framing and movable text/stickers with verified pixel placement; the packaged diagnostic additionally checks actual Windows DPAPI encrypted draft persistence/isolation. Local desktop 37 tests and Linux media CLI passed; new Windows native verification must run on the final candidate.
+- All 18 local Android reference fixture tests and device-test compilation passed on the final UI source; dark/light outgoing-file captures and compact media metadata were inspected. Android lint passed on the preceding layout repair. Repeat applicable checks on the final candidate. Captures use synthetic media; full two-client/device acceptance and deployed-schema compatibility remain distinct release gates.
+
+## 2026-10-29 — Outgoing timestamp contrast across surfaces (#646)
+
+- Android light appearance uses its outgoing foreground for metadata rather than an unrelated surface color. Windows now uses onPrimaryContainer for outgoing light-bubble text/metadata, keeping the same readable result with its native palette; dark reference colors remain governed by the shared contract.
+- Native Android runtime failures are exposed as check annotations and retained reports so a real failing device case can be diagnosed even when the environment blocks artifact downloads. This does not waive the failing check or permit promotion.
+### Packaged Windows editor visual diagnostic (2026-10-29)
+
+`--reference-ui-smoke <empty-directory>` captures real desktop photo/video editor
+windows with explicitly synthetic media. It does not construct app state, load
+accounts or call Supabase. This Windows/runtime adapter complements Android's
+existing instrumentation visual fixtures; it changes no feature contracts.
+Local packaged Linux captures were inspected. Windows CI captures require their
+own run and manual artifact review; capture completion alone is not visual approval.
+
+## 2026-10-30 — Reaffirmed gallery and conversation references (#646)
+
+- Android's in-app photo grid now uses the same permission-scoped MediaStore adapter as Chat, with selected-photo preview actions outside the thumbnails. Windows uses its native file dialog for library access and keeps selected-photo actions below the cover label so they fit their columns. Both use the existing shared selection cap and unchanged publishing contract; browsing does not upload anything.
+- Shared light conversation colors remove unexpected pink from Android Light appearance and supply the same pale blue outgoing background/dark foreground on Windows. Charcoal default and optional Pink personalization are preserved.
+- Native Android compositor capture coverage now includes the actual keyboard/mentions, real permissioned MediaStore selection, video preview and trim timeline. Windows' existing packaged GUI captures complement those platform-specific checks. New capture tests and fresh CI require execution and manual review before any visual approval.
+- See `docs/integration/reference-followup-20261030.md` for exact scope and remaining differences. No backend migration or production operation is part of this follow-up.
+
+### PARITY-EXCEPTION: android-reference-loader-isolation
+
+The Android composer accepts an optional trending-tag loader so native and Robolectric fixtures can supply test-only tags without the default repository request. Production continues to use its existing loader. This changes no user feature, permission, payload or backend contract. The Windows equivalent is its existing injected HTTP tests and explicit account-free packaged GUI diagnostic; Android's native IME/Media3 capture assertions are platform-specific. Mention visibility is now asserted on screen in addition to loading results.

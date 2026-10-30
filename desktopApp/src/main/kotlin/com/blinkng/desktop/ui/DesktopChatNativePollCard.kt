@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.data.DesktopSupabaseClient
+import com.blinkng.shared.BlinkChatReferenceStyle
 import com.blinkng.shared.BlinkChatPollDraft
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -53,21 +54,21 @@ internal fun DesktopChatNativePollCard(
     val total = p.optInt("total_votes").coerceAtLeast(0)
     val mine = if (p.isNull("my_vote")) -1 else p.optInt("my_vote", -1)
     val closed = p.optBoolean("closed")
-    Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFF16283A),
-        border = BorderStroke(1.dp, Color(0xFF2A496B)),
+    Surface(shape = RoundedCornerShape(14.dp), color = Color(BlinkChatReferenceStyle.Incoming),
+        border = BorderStroke(1.dp, Color(BlinkChatReferenceStyle.Border)),
         modifier = Modifier.widthIn(max = 340.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("▥  " + p.optString("question"),
                 fontWeight = FontWeight.Bold, color = Color.White)
             Text(total.toString() + " votes" + if (closed) " · Closed" else " · Select choice",
-                fontSize = 11.sp, color = Color(0xFFBBCEE3))
+                fontSize = 11.sp, color = Color(BlinkChatReferenceStyle.Subtle))
             for (index in 0 until (options?.length() ?: 0)) {
                 val item = options?.optJSONObject(index) ?: continue
                 val count = item.optInt("votes").coerceAtLeast(0)
                 Surface(
-                    shape = RoundedCornerShape(9.dp), color = Color(0xFF20344C),
+                    shape = RoundedCornerShape(9.dp), color = Color(BlinkChatReferenceStyle.Elevated),
                     border = BorderStroke(1.dp,
-                        if (mine == index) Color(0xFF1685FF) else Color(0xFF34506B)),
+                        if (mine == index) Color(BlinkChatReferenceStyle.Blue) else Color(BlinkChatReferenceStyle.Border)),
                     modifier = Modifier.clickable(enabled = !closed && !waiting) {
                         waiting = true
                         scope.launch {
@@ -84,12 +85,12 @@ internal fun DesktopChatNativePollCard(
                                 color = Color.White, modifier = Modifier.weight(1f),
                                 fontSize = 12.sp)
                             Text(if (total > 0) (count * 100 / total).toString() + "%" else "0%",
-                                color = Color(0xFF76BEFF), fontSize = 11.sp)
+                                color = Color(BlinkChatReferenceStyle.BlueBright), fontSize = 11.sp)
                         }
                         LinearProgressIndicator(
                             progress = { if (total == 0) 0f else count.toFloat() / total },
                             modifier = Modifier.fillMaxWidth().height(3.dp),
-                            color = Color(0xFF1685FF), trackColor = Color(0xFF34506B))
+                            color = Color(BlinkChatReferenceStyle.Blue), trackColor = Color(BlinkChatReferenceStyle.Border))
                     }
                 }
             }

@@ -70,6 +70,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -148,6 +149,8 @@ fun HomeScreen(
 ) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var composer by remember { mutableStateOf("") }
+    var referenceComposerOpen by remember { mutableStateOf(false) }
+    var classicComposerOpen by remember { mutableStateOf(false) }
     var selectedTags by remember { mutableStateOf<List<String>>(emptyList()) }
     var tagInput by remember { mutableStateOf("") }
     var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -335,7 +338,16 @@ fun HomeScreen(
                 }
             }
         }
-        item {
+        item(key = "reference_create_post") {
+            Surface(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("What's on your mind?", Modifier.weight(1f))
+                    TextButton(onClick = { classicComposerOpen = !classicComposerOpen }) { Text("Classic composer") }
+                    Button(onClick = { referenceComposerOpen = true }) { Text("Create Post") }
+                }
+            }
+        }
+        if (classicComposerOpen) item {
             Surface(
                 modifier = Modifier.padding(bottom = 20.dp),
                 shape = RoundedCornerShape(20.dp),
@@ -818,6 +830,11 @@ fun HomeScreen(
                 )
             }
         }
+    }
+    if (referenceComposerOpen) key(state.session?.userId) {
+        DesktopCreatePostDialog(state,
+            onDismiss = { referenceComposerOpen = false },
+            onPublished = { scope.launch { reload() } })
     }
     posts.firstOrNull { it.id == postDetailsId }?.let { selected ->
         DesktopPostDetailsDialog(
@@ -4484,7 +4501,9 @@ internal fun DesktopFeedPostCard(
             }
 
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
-            if (body.isNotBlank()) {
+            if (body.isNotBlank() && post.textStyle != null) {
+                DesktopPostText(body, post.textStyle)
+            } else if (body.isNotBlank()) {
                 Text(
                     text = body,
                     modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
@@ -4513,6 +4532,8 @@ internal fun DesktopFeedPostCard(
                 text = listOfNotNull(body.takeIf(String::isNotBlank), post.linkUrl).joinToString(" "),
                 modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
             )
+
+            if (post.hasPoll && viewClient != null) DesktopFeedPollCard(post.id, viewClient)
 
             if (mediaUrls.isNotEmpty()) {
                 Row(

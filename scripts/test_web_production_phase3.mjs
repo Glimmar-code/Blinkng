@@ -23,13 +23,13 @@ function reply(status=200){
 const offline=reply(200);
 const stored=new Map([['./index.html',offline],['https://blink.com.ng/blink-logo-v2.png',reply(200)]]);
 const cache={
-  addAll:async paths=>{ assert.ok(paths.includes('./discovery.js') && paths.includes('./campuses.json')); },
+  addAll:async paths=>{ assert.ok(paths.includes('./discovery.js') && paths.includes('./campuses.json') && paths.includes('./contest-invitation.js') && paths.includes('./contest-share.css') && paths.includes('./landing-relaunch.js')); },
   match:async key=>stored.get(typeof key==='string'?key:key.url),
   put:async(key,value)=>{putCalls.push(typeof key==='string'?key:key.url);stored.set(typeof key==='string'?key:key.url,value);}
 };
-const cacheNames=['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','other-website-assets','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews'];
+const cacheNames=['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','other-website-assets','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews','blink-web-v29-download-landing'];
 const caches={
-  open:async name=>{assert.ok(name==='blink-web-v29-download-landing');return cache;},
+  open:async name=>{assert.ok(name==='blink-web-v30-landing-contest');return cache;},
   keys:async()=>cacheNames,
   delete:async name=>{deleted.push(name);return true;}
 };
@@ -61,7 +61,7 @@ await Promise.all(installTasks);
 const activation=[];
 handlers.activate({waitUntil:p=>activation.push(Promise.resolve(p))});
 await Promise.all(activation);
-assert.deepEqual(deleted,['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews'],'Only old BLINK caches may be removed; other apps are untouched');
+assert.deepEqual(deleted,['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews','blink-web-v29-download-landing'],'Only old BLINK caches may be removed; other apps are untouched');
 
 networkCalls=[];putCalls.length=0;
 const profile=dispatch('https://blink.com.ng/@person',{mode:'navigate'});
@@ -102,4 +102,8 @@ assert.equal(networkCalls.length,1,'Cached logo should refresh in background');
 assert.ok(!source.includes('caches.match(request)'), 'Never store or retrieve arbitrary request URLs from global caches');
 assert.ok(!source.includes('cache.put(request,copy)'), 'No unrestricted dynamic response caching');
 assert.ok(page.includes('<meta name="referrer" content="strict-origin-when-cross-origin"'), 'Do not share private page paths in third-party referral headers');
+assert.match(readFileSync('web/_worker.js','utf8'), /contest/, 'Cloudflare handles contest routes');
+assert.ok(page.includes('contest-invitation.js'),'Contest invitation JS is loaded');
+assert.match(readFileSync('web/contest-invitation.js','utf8'), /get_blink_contest_candidate/,
+    'Contest invite resolves approved candidate only');
 console.log('PASS: phase 3 private-route caching, offline fallback, scoped cache cleanup and fresh static assets');

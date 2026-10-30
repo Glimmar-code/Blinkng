@@ -1963,6 +1963,8 @@
     state.viewObserver?.disconnect();state.viewObserver=null;
     state.mediaObserver?.disconnect();state.mediaObserver=null;
     state.searchRequestId++;
+    const contestInvite = path.match(/^\/contest\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/?$/i);
+    if (contestInvite && window.BlinkContestInvite?.render?.(ROOT, contestInvite[1], contestInvite[2])) return;
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
     const invited=path.match(/^\/invite\/([a-z0-9._-]{2,30})\/?$/i);

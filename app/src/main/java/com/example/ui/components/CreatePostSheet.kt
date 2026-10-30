@@ -1,6 +1,11 @@
 package com.example.ui.components
+import com.blinkng.shared.BlinkPostComposerPolicy
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
@@ -12,7 +17,9 @@ import com.blinkng.shared.BlinkPostGrowthTips
 import com.example.data.repository.SearchDiscoveryRepository
 import com.example.ui.screens.BlinkUniversalPhotoEditor
 import com.example.media.BlinkReelPoster
+import com.example.performance.rememberBlinkReduceMotion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 import com.example.data.local.PersistentTextDraftStore
@@ -24,10 +31,15 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -51,6 +63,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -84,6 +103,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -98,10 +118,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -113,6 +135,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -196,10 +219,12 @@ fun CreatePostSheet(
     startInReelMode: Boolean = false,
     isSubmitting: Boolean = false,
     uploadProgress: Int? = null,
-    searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
+    searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null,
+    trendingTagsLoader: (suspend (String?, Int) -> List<String>)? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val composerCoroutineScope = rememberCoroutineScope()
     val composerScope = profile.id.ifBlank { profile.username }
 
     var text by rememberPersistentTextState(
@@ -207,15 +232,23 @@ fun CreatePostSheet(
         scope = composerScope
     )
     var selectedTags by rememberPersistentStringListState("create_post_tags", emptyList(), composerScope)
+    var recentUsedTags by rememberPersistentStringListState("create_post_recent_tags", emptyList(), composerScope)
     var tagInput by rememberSaveable { mutableStateOf("") }
     var tagWarning by rememberSaveable { mutableStateOf<String?>(null) }
     var showMoreTrendingTags by rememberSaveable { mutableStateOf(false) }
     var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
     val tagsRepository = remember { SearchDiscoveryRepository() }
-    LaunchedEffect(profile.university) { trendingTags = tagsRepository.trendingTags(profile.university, 40) }
+    LaunchedEffect(profile.university, trendingTagsLoader) {
+        trendingTags = trendingTagsLoader?.invoke(profile.university, 40)
+            ?: tagsRepository.trendingTags(profile.university, 40)
+    }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
+    var videoClips by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var combiningClips by remember { mutableStateOf(false) }
+    var combinePercent by remember { mutableStateOf(0) }
+    var combineError by remember { mutableStateOf<String?>(null) }
     var selectedCoverUri by rememberSaveable { mutableStateOf<String?>(null) }
     var coverFrameIndex by rememberSaveable { mutableStateOf(-1) }
     var coverRendering by remember { mutableStateOf(false) }
@@ -232,6 +265,7 @@ fun CreatePostSheet(
         initialValue = listOf("", ""),
         scope = composerScope
     )
+    var pollDurationHours by rememberSaveable { mutableStateOf(24) }
     var audience by rememberSaveable { mutableStateOf("Everyone") }
     var category by rememberSaveable { mutableStateOf("Campus Life") }
     var allowComments by rememberSaveable { mutableStateOf(true) }
@@ -257,6 +291,15 @@ fun CreatePostSheet(
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var activeDraftId by rememberSaveable { mutableStateOf<String?>(null) }
     var reelEditorStage by rememberSaveable { mutableStateOf(startInReelMode) }
+    var showCreateLanding by rememberSaveable { mutableStateOf(!startInReelMode) }
+    var showPublishOptions by rememberSaveable { mutableStateOf(false) }
+    var showReferenceDetails by rememberSaveable { mutableStateOf(false) }
+    var showMediaReview by rememberSaveable { mutableStateOf(false) }
+    var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
+    var pickerOpenedFromLanding by rememberSaveable { mutableStateOf(false) }
+    var showCameraActions by rememberSaveable { mutableStateOf(false) }
+    var pendingCameraCaptureUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var useClassicComposer by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -273,9 +316,88 @@ fun CreatePostSheet(
         )
     }
 
+
+    fun cameraCaptureUri(extension: String): Uri {
+        val folder = java.io.File(context.cacheDir, "blink-camera").apply { mkdirs() }
+        val output = java.io.File(folder, "blink_${UUID.randomUUID()}.$extension")
+        return FileProvider.getUriForFile(
+            context, "${context.packageName}.chatfiles", output
+        )
+    }
+    fun discardPendingCameraFile() {
+        val filename = pendingCameraCaptureUri
+            ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
+        if (!filename.isNullOrBlank() && Regex("blink_[0-9a-fA-F-]{36}\\.(jpg|mp4)").matches(filename)) {
+            runCatching {
+                java.io.File(context.cacheDir, "blink-camera/$filename").delete()
+            }
+        }
+    }
+
+    val cameraPhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        val photo = pendingCameraCaptureUri
+        if (success && photo != null) {
+            selectedImages = listOf(photo)
+            selectedVideo = null
+            videoClips = emptyList()
+            showPoll = false
+            mode = "post"
+            reelEditorStage = false
+            showCreateLanding = false
+            showMediaReview = true
+        } else {
+            discardPendingCameraFile()
+            showCreateLanding = true
+        }
+        pendingCameraCaptureUri = null
+    }
+
+    val cameraVideoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CaptureVideo()
+    ) { success ->
+        val video = pendingCameraCaptureUri
+        if (success && video != null) {
+            selectedVideo = video
+            selectedImages = emptyList()
+            videoClips = emptyList()
+            showPoll = false
+            mode = "reel"
+            selectedCoverUri = null
+            coverFrameIndex = -1
+            reelEditorStage = true
+            showCreateLanding = false
+        } else {
+            discardPendingCameraFile()
+            showCreateLanding = true
+        }
+        pendingCameraCaptureUri = null
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { allowed ->
+        if (allowed) showCameraActions = true
+        else Toast.makeText(context, "Camera permission is required to capture media.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun openCameraActions() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            showCameraActions = true
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
+        val initialPicker = pickerOpenedFromLanding
+        if (uris.isEmpty() && initialPicker) showCreateLanding = true
+        pickerOpenedFromLanding = false
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
                 runCatching {
@@ -289,15 +411,54 @@ fun CreatePostSheet(
                 .distinct()
                 .take(10)
             selectedVideo = null
+            videoClips = emptyList()
             showPoll = false
             reelEditorStage = false
             mode = "post"
+            if (initialPicker) showMediaReview = true
+        }
+    }
+
+    val multiVideoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(BlinkReelClipPolicy.MAX_CLIPS)
+    ) { picked ->
+        val initialPicker = pickerOpenedFromLanding
+        pickerOpenedFromLanding = false
+        if (picked.isEmpty()) {
+            if (initialPicker) showCreateLanding = true
+        } else {
+            picked.forEach { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+            val clips = (videoClips + picked.map(Uri::toString)).distinct()
+                .take(BlinkReelClipPolicy.MAX_CLIPS)
+            selectedImages = emptyList()
+            showPoll = false
+            mode = "reel"
+            if (clips.size == 1) {
+                videoClips = emptyList()
+                selectedVideo = clips.first()
+                selectedCoverUri = null
+                coverFrameIndex = -1
+                reelEditorStage = true
+            } else {
+                videoClips = clips
+                selectedVideo = null
+                combineError = null
+                reelEditorStage = false
+            }
         }
     }
 
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
+        if (uri == null && pickerOpenedFromLanding) showCreateLanding = true
+        pickerOpenedFromLanding = false
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
@@ -305,10 +466,12 @@ fun CreatePostSheet(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             }
+            videoClips = emptyList()
             selectedVideo = uri.toString()
             selectedCoverUri = null
             coverFrameIndex = -1
             selectedImages = emptyList()
+            showMediaReview = false
             reelEditorStage = true
             mode = "reel"
             showPoll = false
@@ -317,7 +480,7 @@ fun CreatePostSheet(
 
     LaunchedEffect(startInReelMode, autosaveRestored) {
         if (!autosaveRestored) return@LaunchedEffect
-        if (startInReelMode && selectedVideo == null) {
+        if (startInReelMode && selectedVideo == null && videoClips.isEmpty()) {
             mode = "reel"
             videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
         }
@@ -360,14 +523,54 @@ fun CreatePostSheet(
         }.getOrDefault(emptyList())
     }
 
+    fun restoreDraft(draft: PostDraft) {
+        activeDraftId = draft.id
+        videoClips = emptyList()
+        text = draft.text
+        selectedTags = draft.tags
+        selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
+        selectedCoverUri = if (draft.videoUri.isNullOrBlank()) null else draft.imageUri
+        coverFrameIndex = -1
+        selectedVideo = draft.videoUri
+        reelEditorStage = !draft.videoUri.isNullOrBlank()
+        mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
+        audience = draft.audience
+        category = draft.category
+        location = draft.location.orEmpty()
+        linkUrl = draft.linkUrl.orEmpty()
+        allowComments = draft.allowComments
+        hideLikes = draft.hideLikes
+        isDisappearing = draft.isDisappearing
+        altText = draft.altText.orEmpty()
+        audioTitle = draft.audioTrack.orEmpty()
+        pollQuestion = draft.pollQuestion
+        pollOptions = draft.pollOptions.takeIf { it.size >= 2 } ?: listOf("", "")
+        pollDurationHours = draft.pollDurationHours.takeIf { it in listOf(1, 24, 72, 168) } ?: 24
+        showPoll = draft.pollQuestion.isNotBlank() && draft.pollOptions.count { it.isNotBlank() } >= 2
+        textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
+        selectedTextStyle = draft.textStyle ?: "aurora"
+        clientRequestId = UUID.randomUUID().toString()
+        showCreateLanding = false
+        showPublishOptions = false
+        showReferenceDetails = false
+    }
+
+    fun addSelectedTag(tag: String) {
+        val normalized = BlinkSmartTags.normalize(tag) ?: return
+        selectedTags = BlinkSmartTags.add(selectedTags, normalized)
+        recentUsedTags = (listOf(normalized) + recentUsedTags.filterNot { it == normalized }).take(8)
+    }
+
     fun clearComposerPersistence() {
         text = ""
         selectedTags = emptyList()
         pollQuestion = ""
         pollOptions = listOf("", "")
+        pollDurationHours = 24
         selectedCoverUri = null
         coverFrameIndex = -1
         activeDraftId = null
+        videoClips = emptyList()
         PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_options", composerScope)
@@ -397,6 +600,11 @@ fun CreatePostSheet(
                 coverFrameIndex = value.optInt("cover_frame_index", -1)
                 selectedVideo = value.optString("video_uri")
                     .takeIf { it.isNotBlank() && it != "null" }
+                value.optJSONArray("video_clips")?.let { rows ->
+                    videoClips = (0 until rows.length()).mapNotNull { index ->
+                        rows.optString(index).takeIf { it.isNotBlank() }
+                    }.take(BlinkReelClipPolicy.MAX_CLIPS)
+                }
                 if (!startInReelMode) mode = value.optString(
                     "mode",
                     if (selectedVideo == null) "post" else "reel"
@@ -405,6 +613,8 @@ fun CreatePostSheet(
                 category = value.optString("category", "Campus Life")
                 allowComments = value.optBoolean("allow_comments", true)
                 showPoll = value.optBoolean("show_poll", false)
+                pollDurationHours = value.optInt("poll_duration_hours", 24)
+                    .takeIf { it in listOf(1, 24, 72, 168) } ?: 24
                 selectedTextStyle = value.optString("text_style", "aurora")
                 textPresentation = value.optString("text_presentation", "plain")
                 location = value.optString("location")
@@ -424,6 +634,7 @@ fun CreatePostSheet(
                 activeDraftId = value.optString("active_draft_id")
                     .takeIf { it.isNotBlank() && it != "null" }
                 reelEditorStage = value.optBoolean("reel_editor_stage", selectedVideo != null)
+                showCreateLanding = false
             }
         }
         autosaveRestored = true
@@ -434,11 +645,13 @@ fun CreatePostSheet(
         text,
         selectedImages,
         selectedVideo,
+        videoClips,
         selectedCoverUri,
         coverFrameIndex,
         mode,
         pollQuestion,
         pollOptions,
+        pollDurationHours,
         selectedTags,
         audience,
         category,
@@ -460,6 +673,7 @@ fun CreatePostSheet(
         val hasAnything = text.isNotBlank() ||
             selectedImages.isNotEmpty() ||
             selectedVideo != null ||
+            videoClips.isNotEmpty() ||
             pollQuestion.isNotBlank() ||
             pollOptions.any { it.isNotBlank() } ||
             location.isNotBlank() ||
@@ -477,6 +691,7 @@ fun CreatePostSheet(
             val snapshot = JSONObject().apply {
                 put("image_uri", imagePayload(selectedImages) ?: JSONObject.NULL)
                 put("video_uri", selectedVideo ?: JSONObject.NULL)
+                put("video_clips", JSONArray(videoClips))
                 put("cover_uri", selectedCoverUri ?: JSONObject.NULL)
                 put("cover_frame_index", coverFrameIndex)
                 put("mode", mode)
@@ -484,6 +699,7 @@ fun CreatePostSheet(
                 put("category", category)
                 put("allow_comments", allowComments)
                 put("show_poll", showPoll)
+                put("poll_duration_hours", pollDurationHours)
                 put("text_style", selectedTextStyle)
                 put("text_presentation", textPresentation)
                 put("location", location)
@@ -554,6 +770,7 @@ fun CreatePostSheet(
         selectedVideo != null ||
         pollValid
     val hasComposerInput = cleanText.isNotBlank() ||
+        videoClips.isNotEmpty() ||
         selectedImages.isNotEmpty() ||
         selectedVideo != null ||
         pollQuestion.isNotBlank() ||
@@ -576,15 +793,16 @@ fun CreatePostSheet(
         pollSelected = showPoll,
         pollValid = pollValid,
         allowedInFeed = marketOnlyWarning == null,
-        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits || coverRendering,
+        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits || coverRendering || combiningClips || videoClips.isNotEmpty(),
         isSubmitting = isSubmitting
     )
 
-    fun scheduledPreviewPost(): FeedPost {
+    fun scheduledPreviewPost(publishAtMillis: Long = System.currentTimeMillis()): FeedPost {
         val poll = if (pollValid) {
             PostPoll(
                 question = pollQuestion.trim(),
-                options = validPollOptions.map { PollOption(UUID.randomUUID().toString(), it) }
+                options = validPollOptions.map { PollOption(UUID.randomUUID().toString(), it) },
+                expiresAtMillis = publishAtMillis + pollDurationHours * 3_600_000L
             )
         } else null
         val style = selectedTextStyle.takeIf {
@@ -641,7 +859,7 @@ fun CreatePostSheet(
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a"))
         showScheduleDialog = false
-        onSchedulePost(scheduledPreviewPost(), timeMillis, formatted)
+        onSchedulePost(scheduledPreviewPost(timeMillis), timeMillis, formatted)
     }
 
     fun scheduleAfter(delayMillis: Long) {
@@ -722,7 +940,8 @@ fun CreatePostSheet(
                 question = pollQuestion.trim(),
                 options = validPollOptions.map {
                     PollOption(UUID.randomUUID().toString(), it)
-                }
+                },
+                expiresAtMillis = System.currentTimeMillis() + pollDurationHours * 3_600_000L
             )
         } else null
 
@@ -757,6 +976,10 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
+        if (videoClips.isNotEmpty() || combiningClips) {
+            Toast.makeText(context, "Combine your video clips before saving this Reel.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
             Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
             return
@@ -786,6 +1009,7 @@ fun CreatePostSheet(
                 isDisappearing = isDisappearing,
                 pollQuestion = if (showPoll) pollQuestion else "",
                 pollOptions = if (showPoll) pollOptions else emptyList(),
+                pollDurationHours = pollDurationHours,
                 audioTrack = audioTitle.trim().takeIf { it.isNotBlank() },
                 altText = altText.trim().takeIf { it.isNotBlank() },
                 textStyle = selectedTextStyle.takeIf {
@@ -826,16 +1050,41 @@ fun CreatePostSheet(
         }
     }
 
+    fun navigateBack() {
+        if (isSubmitting) return
+        when {
+            showPublishOptions && !useClassicComposer -> {
+                showPublishOptions = false
+                showReferenceDetails = true
+            }
+            showReferenceDetails && !useClassicComposer -> showReferenceDetails = false
+            showMediaReview && !useClassicComposer -> {
+                showMediaReview = false
+                showCreateLanding = true
+            }
+            videoClips.isNotEmpty() && !showCreateLanding && !useClassicComposer ->
+                showCreateLanding = true
+            else -> requestDismiss()
+        }
+    }
+
+    val reduceReferenceMotion = rememberBlinkReduceMotion()
+
     Dialog(
-        onDismissRequest = ::requestDismiss,
+        onDismissRequest = ::navigateBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
-            colorScheme = if (selectedVideo != null || mode == "reel") {
-                darkColorScheme(
-                    primary = Color.White,
-                    onPrimary = Color.Black,
+            colorScheme = if (useClassicComposer && selectedVideo == null && mode != "reel") {
+                outerScheme
+            } else darkColorScheme(
+                    primary = Color(0xFF5245F2),
+                    onPrimary = Color.White,
+                    secondaryContainer = Color(0xFF202328),
+                    onSecondaryContainer = Color.White,
+                    outline = Color(0xFF30343E),
+                    outlineVariant = Color(0xFF30343E),
                     background = Color.Black,
                     onBackground = Color.White,
                     surface = Color(0xFF141414),
@@ -843,11 +1092,11 @@ fun CreatePostSheet(
                     surfaceVariant = Color(0xFF232323),
                     onSurfaceVariant = Color.White.copy(alpha = .77f),
                 )
-            } else outerScheme
         ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = if (selectedVideo != null || mode == "reel") Color.Black else outerScheme.background
+            modifier = Modifier.fillMaxSize().testTag("blink_create_post_full_screen"),
+            color = if (useClassicComposer && selectedVideo == null && mode != "reel")
+                outerScheme.background else Color.Black
         ) {
         Column(
             modifier = Modifier
@@ -856,6 +1105,261 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
+            val referenceStage = when {
+                videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
+                showMediaReview -> "gallery"
+                showCreateLanding -> "landing"
+                showReferenceDetails -> "details"
+                showPublishOptions -> "publish"
+                else -> "editor"
+            }
+            AnimatedContent(
+                targetState = referenceStage,
+                transitionSpec = {
+                    val order = listOf("landing", "gallery", "clips", "editor", "details", "publish")
+                    val direction = if (order.indexOf(targetState) >= order.indexOf(initialState)) 1 else -1
+                    if (reduceReferenceMotion) {
+                        fadeIn(animationSpec = tween(0)) togetherWith
+                            fadeOut(animationSpec = tween(0))
+                    } else {
+                        (
+                            slideInHorizontally(animationSpec = tween(230)) { width -> direction * (width / 7) } +
+                                fadeIn(animationSpec = tween(180))
+                            ) togetherWith (
+                            slideOutHorizontally(animationSpec = tween(230)) { width -> -direction * (width / 7) } +
+                                fadeOut(animationSpec = tween(180))
+                            )
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                label = "blinkCreatePostStage"
+            ) { visibleStage ->
+            if (visibleStage == "clips") {
+                BlinkReelClipReview(
+                    clips = videoClips,
+                    exporting = combiningClips,
+                    progress = combinePercent,
+                    error = combineError,
+                    onMove = { from, to ->
+                        if (!combiningClips && from in videoClips.indices && to in videoClips.indices) {
+                            videoClips = videoClips.toMutableList().also { list ->
+                                val clip = list.removeAt(from)
+                                list.add(to, clip)
+                            }
+                        }
+                    },
+                    onRemove = { index ->
+                        if (!combiningClips) {
+                            videoClips = videoClips.filterIndexed { i, _ -> i != index }
+                            if (videoClips.size == 1) {
+                                selectedVideo = videoClips.first()
+                                videoClips = emptyList()
+                                reelEditorStage = true
+                            } else if (videoClips.isEmpty()) {
+                                showCreateLanding = true
+                            }
+                        }
+                    },
+                    onAdd = {
+                        multiVideoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    onBack = { if (!combiningClips) showCreateLanding = true },
+                    onExport = {
+                        if (!combiningClips) {
+                            combiningClips = true
+                            combineError = null
+                            combinePercent = 0
+                            composerCoroutineScope.launch {
+                                try {
+                                    val exported = exportReelClipSequence(context, videoClips) {
+                                        combinePercent = it
+                                    }
+                                    selectedVideo = exported
+                                    videoClips = emptyList()
+                                    mode = "reel"
+                                    reelEditorStage = true
+                                    selectedCoverUri = null
+                                    coverFrameIndex = -1
+                                } catch (problem: Exception) {
+                                    combineError = problem.message ?: "Couldn't combine these clips. Try shorter videos."
+                                } finally {
+                                    combiningClips = false
+                                }
+                            }
+                        }
+                    }
+                )
+            } else if (visibleStage == "gallery") {
+                BlinkReferenceMediaReview(
+                    images = selectedImages,
+                    onSelectPhoto = { uri ->
+                        if (!isSubmitting && uri !in selectedImages && selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                            selectedImages = selectedImages + uri
+                        }
+                    },
+                    onBack = {
+                        showMediaReview = false
+                        showCreateLanding = true
+                    },
+                    onRemove = { index ->
+                        selectedImages = selectedImages.filterIndexed { i, _ -> i != index }
+                    },
+                    onMove = { from, to ->
+                        if (from in selectedImages.indices && to in selectedImages.indices) {
+                            selectedImages = selectedImages.toMutableList().also { photos ->
+                                photos.add(to, photos.removeAt(from))
+                            }
+                        }
+                    },
+                    onEdit = { selectedUri ->
+                        if (!isSubmitting && selectedUri in selectedImages) {
+                            imageToEdit = selectedUri
+                        }
+                    },
+                    onAddMore = {
+                        imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onPickVideos = {
+                        // Confirm a media-type change before replacing selected photos.
+                        pickerOpenedFromLanding = false
+                        pendingMediaSwitch = "reel"
+                    },
+                    onNext = { showMediaReview = false }
+                )
+            } else if (visibleStage == "landing") {
+                BlinkCreatePostLanding(
+                    drafts = savedDrafts,
+                    onClose = ::requestDismiss,
+                    onText = {
+                        if (videoClips.isNotEmpty()) {
+                            pendingMediaSwitch = "post"
+                        } else {
+                            mode = "post"
+                            showPoll = false
+                            showCreateLanding = false
+                        }
+                    },
+                    onPhoto = {
+                        pickerOpenedFromLanding = true
+                        showCreateLanding = false
+                        if (selectedVideo != null || showPoll || videoClips.isNotEmpty()) {
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            pickerOpenedFromLanding = false
+                            mode = "post"
+                            showMediaReview = true
+                        }
+                    },
+                    onVideo = {
+                        pickerOpenedFromLanding = true
+                        showCreateLanding = false
+                        if (selectedImages.isNotEmpty() || showPoll) {
+                            pendingMediaSwitch = "reel"
+                        } else {
+                            multiVideoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            )
+                        }
+                    },
+                    onPoll = {
+                        showCreateLanding = false
+                        if (selectedVideo != null || selectedImages.isNotEmpty() || videoClips.isNotEmpty()) {
+                            pickerOpenedFromLanding = true
+                            pendingMediaSwitch = "poll"
+                        } else {
+                            showPoll = true
+                            mode = "post"
+                        }
+                    },
+                    onClassic = {
+                        useClassicComposer = true
+                        showCreateLanding = false
+                    },
+                    onCamera = {
+                        if (selectedImages.isNotEmpty() || selectedVideo != null ||
+                            videoClips.isNotEmpty() || showPoll
+                        ) {
+                            pendingMediaSwitch = "camera"
+                        } else openCameraActions()
+                    },
+                    onDraft = { restoreDraft(it) }
+                )
+            } else if (visibleStage == "details") {
+                BlinkReferencePostDetails(
+                    text = text.ifBlank { if (showPoll) pollQuestion else "" },
+                    mediaUri = selectedImages.firstOrNull() ?: selectedCoverUri ?: selectedVideo,
+                    tags = effectiveTags,
+                    audience = audience,
+                    location = location,
+                    category = category,
+                    allowComments = allowComments,
+                    hideLikes = hideLikes,
+                    temporary = isDisappearing,
+                    onBack = { showReferenceDetails = false },
+                    onEditCaption = { showReferenceDetails = false },
+                    onAudienceChange = { audience = it },
+                    onLocationChange = { location = it },
+                    onCategoryChange = { category = it },
+                    onCommentsChange = { allowComments = it },
+                    onHideLikesChange = { hideLikes = it },
+                    onTemporaryChange = { isDisappearing = it },
+                    onNext = {
+                        if (canSubmit) {
+                            showReferenceDetails = false
+                            showPublishOptions = true
+                        } else {
+                            Toast.makeText(context, "Fix invalid post details before continuing.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            } else if (visibleStage == "publish") {
+                BlinkCreatePostPublishOptions(
+                    onBack = { showPublishOptions = false; showReferenceDetails = true },
+                    onPost = ::submit,
+                    onSaveDraft = {
+                        saveDraft()
+                        showPublishOptions = false
+                    },
+                    onPreview = { showPreviewDialog = true },
+                    onShareCaption = {
+                        val caption = text.ifBlank { pollQuestion }
+                        val outgoing = when {
+                            selectedVideo != null -> Intent(Intent.ACTION_SEND).apply {
+                                type = "video/*"
+                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedVideo))
+                            }
+                            selectedImages.size > 1 -> Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                type = "image/*"
+                                putParcelableArrayListExtra(
+                                    Intent.EXTRA_STREAM,
+                                    ArrayList(selectedImages.map(Uri::parse))
+                                )
+                            }
+                            selectedImages.size == 1 -> Intent(Intent.ACTION_SEND).apply {
+                                type = "image/*"
+                                putExtra(Intent.EXTRA_STREAM, Uri.parse(selectedImages.first()))
+                            }
+                            else -> Intent(Intent.ACTION_SEND).apply { type = "text/plain" }
+                        }.apply {
+                            if (caption.isNotBlank()) putExtra(Intent.EXTRA_TEXT, caption)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        runCatching {
+                            context.startActivity(Intent.createChooser(outgoing, "Share to another app"))
+                        }.onFailure {
+                            Toast.makeText(context, "No sharing app available.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    isSubmitting = isSubmitting,
+                    canPublish = canSubmit,
+                    uploadProgress = uploadProgress
+                )
+            } else {
+            Column(Modifier.fillMaxSize()) {
             val isEditingReel = selectedVideo != null && reelEditorStage
             ComposerTopBar(
                 isSubmitting = isSubmitting,
@@ -865,9 +1369,12 @@ fun CreatePostSheet(
                 else canSubmit,
                 isReel = selectedVideo != null || mode == "reel",
                 isEditingReel = isEditingReel,
+                referenceFlow = !useClassicComposer,
                 onDismiss = ::requestDismiss,
                 onSubmit = {
-                    if (isEditingReel) reelEditorStage = false else submit()
+                    if (isEditingReel) reelEditorStage = false
+                    else if (useClassicComposer) submit()
+                    else showReferenceDetails = true
                 }
             )
 
@@ -926,6 +1433,7 @@ fun CreatePostSheet(
                     }
                 )
 
+                if (useClassicComposer || showLegacyPostActions) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -972,6 +1480,8 @@ fun CreatePostSheet(
                     )
                 }
 
+                }
+
                 if (marketOnlyWarning != null) {
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -986,7 +1496,7 @@ fun CreatePostSheet(
                             }
                         }
                     }
-                } else {
+                } else if (useClassicComposer || showLegacyPostActions) {
                     TextButton(
                         onClick = { showPublishingTips = !showPublishingTips },
                         modifier = Modifier.padding(start = 8.dp),
@@ -1016,6 +1526,7 @@ fun CreatePostSheet(
 
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
                 if (textOnlyComposer) {
+                    if (useClassicComposer) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1036,11 +1547,14 @@ fun CreatePostSheet(
                         )
                     }
 
+                    }
+
                     if (textPresentation == "color") {
                         ColoredTextComposer(
                             text = text,
                             onTextChanged = { if (it.length <= 5000) text = it },
                             selectedStyleKey = selectedTextStyle,
+                            showStylePicker = useClassicComposer,
                             onStyleSelected = { selectedTextStyle = it },
                             enabled = !isSubmitting
                         )
@@ -1053,16 +1567,21 @@ fun CreatePostSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
-                            minLines = 7,
+                            minLines = if (useClassicComposer) 7 else 4,
                             maxLines = 14,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = if (useClassicComposer) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                unfocusedBorderColor = if (useClassicComposer) MaterialTheme.colorScheme.outline else Color.Transparent,
+                            ),
                             placeholder = { Text("What's on your mind?") },
                             supportingText = {
                                 Row(Modifier.fillMaxWidth()) {
-                                    Text(
+                                    if (useClassicComposer) Text(
                                         "Plain text post",
                                         modifier = Modifier.weight(1f),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    else Spacer(Modifier.weight(1f))
                                     Text("${text.length}/5000")
                                 }
                             },
@@ -1098,6 +1617,22 @@ fun CreatePostSheet(
                         },
                         shape = RoundedCornerShape(20.dp)
                     )
+                }
+
+                if (textOnlyComposer && !useClassicComposer) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        item {
+                            Surface(Modifier.size(34.dp, 24.dp).clickable(enabled = !isSubmitting) { textPresentation = "plain" },
+                                shape = RoundedCornerShape(5.dp), color = Color.Black,
+                                border = BorderStroke(1.dp, if (textPresentation == "plain") Color.White else Color(0xFF30343E))) {
+                                Box(contentAlignment = Alignment.Center) { Text("Aa", color = Color.White, fontSize = 11.sp) }
+                            }
+                        }
+                        items(TextPostStyles, key = { it.key }) { option ->
+                            Box(Modifier.size(34.dp, 24.dp).clip(RoundedCornerShape(5.dp)).background(option.brush())
+                                .clickable(enabled = !isSubmitting) { selectedTextStyle = option.key; textPresentation = "color" })
+                        }
+                    }
                 }
 
                 BlinkPostMentionSuggestions(
@@ -1260,10 +1795,46 @@ fun CreatePostSheet(
                         onQuestionChanged = { pollQuestion = it.take(240) },
                         options = pollOptions,
                         onOptionsChanged = { pollOptions = it },
+                        durationHours = pollDurationHours,
+                        onDurationChanged = { pollDurationHours = it },
                         enabled = !isSubmitting
                     )
                 }
 
+                if (!useClassicComposer) {
+                BlinkReferenceComposerToolbar(
+                    enabled = !isSubmitting,
+                    onPhoto = {
+                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
+                        else imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onVideo = {
+                        if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
+                        else videoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    onPoll = {
+                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        else {
+                            showPoll = !showPoll
+                            if (showPoll) mode = "post"
+                        }
+                    },
+                    onEmoji = { if (text.length < 4998) text += " 😊" },
+                    onTag = { if (text.length < 4999) text += if (text.isBlank()) "#" else " #" },
+                    onMention = { if (text.length < 4999) text += if (text.isBlank()) "@" else " @" },
+                    onLocation = { showAdvancedSettings = true }
+                )
+                TextButton(
+                    onClick = { showLegacyPostActions = !showLegacyPostActions },
+                    enabled = !isSubmitting,
+                    modifier = Modifier.padding(start = 8.dp)
+                ) { Text(if (showLegacyPostActions) "Hide more tools" else "More tools") }
+                }
+                if (useClassicComposer || showLegacyPostActions) {
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
@@ -1293,7 +1864,9 @@ fun CreatePostSheet(
                     onLink = { showAdvancedSettings = true },
                     onLocation = { showAdvancedSettings = true }
                 )
+                }
 
+                if (useClassicComposer || showLegacyPostActions) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     shape = RoundedCornerShape(18.dp),
@@ -1307,6 +1880,22 @@ fun CreatePostSheet(
                             }
                         }
                         Text("Optional: use up to 5 relevant tags to help discovery.", style = MaterialTheme.typography.bodySmall)
+                        if (recentUsedTags.isNotEmpty()) {
+                            Text("Recent tags", style = MaterialTheme.typography.labelMedium)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(recentUsedTags, key = { "recent:" + it }) { tag ->
+                                    AssistChip(
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS) {
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            } else addSelectedTag(tag)
+                                        },
+                                        label = { Text("#" + tag) },
+                                        enabled = !isSubmitting
+                                    )
+                                }
+                            }
+                        }
                         if (suggestedTags.isNotEmpty()) {
                             Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1316,7 +1905,7 @@ fun CreatePostSheet(
                                             if (allTags.size >= BlinkSmartTags.MAX_TAGS) {
                                                 tagWarning = "Maximum 5 hashtags per post."
                                             } else {
-                                                selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                                addSelectedTag(tag)
                                             }
                                         },
                                         label = { Text("#$tag +") },
@@ -1333,7 +1922,7 @@ fun CreatePostSheet(
                                         onClick = {
                                             if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
                                                 tagWarning = "Maximum 5 hashtags per post."
-                                            else selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                            else addSelectedTag(tag)
                                         },
                                         label = { Text("#$tag") },
                                         enabled = !isSubmitting
@@ -1357,7 +1946,7 @@ fun CreatePostSheet(
                                 when {
                                     tag == null -> tagWarning = "Use 2–32 letters, numbers or underscores."
                                     tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS -> tagWarning = "Maximum 5 hashtags per post."
-                                    else -> { selectedTags = BlinkSmartTags.add(selectedTags, tag); tagInput = "" }
+                                    else -> { addSelectedTag(tag); tagInput = "" }
                                 }
                             }, enabled = !isSubmitting) { Text("Add") }
                         }
@@ -1383,6 +1972,28 @@ fun CreatePostSheet(
                     }
                 }
 
+                } else {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Trending tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        if (trendingTags.isEmpty()) Text("Add #topics to your caption", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(trendingTags.take(7), key = { it }) { tag ->
+                                AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                            }
+                        }
+                        if (recentUsedTags.isNotEmpty()) {
+                            Text("Recent tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(recentUsedTags, key = { it }) { tag ->
+                                    AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                                }
+                            }
+                        }
+                        tagWarning?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                }
+
+                if (useClassicComposer || showLegacyPostActions || showAdvancedSettings) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1571,6 +2182,8 @@ fun CreatePostSheet(
                     }
                 }
 
+                } // legacy/detail settings are available through More tools and Details
+                if (useClassicComposer || showLegacyPostActions) {
                 if (savedDrafts.isNotEmpty()) {
                     Text(
                         "Recent drafts",
@@ -1586,35 +2199,7 @@ fun CreatePostSheet(
                         items(savedDrafts.take(4), key = { it.id }) { draft ->
                             DraftCard(
                                 draft = draft,
-                                onLoad = {
-                                    activeDraftId = draft.id
-                                    text = draft.text
-                                    selectedTags = draft.tags
-                                    selectedImages = if (draft.videoUri.isNullOrBlank()) parseDraftImages(draft.imageUri) else emptyList()
-                                    selectedCoverUri = if (draft.videoUri.isNullOrBlank()) null else draft.imageUri
-                                    coverFrameIndex = -1
-                                    selectedVideo = draft.videoUri
-                                    reelEditorStage = !draft.videoUri.isNullOrBlank()
-                                    mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
-                                    audience = draft.audience
-                                    category = draft.category
-                                    location = draft.location.orEmpty()
-                                    linkUrl = draft.linkUrl.orEmpty()
-                                    allowComments = draft.allowComments
-                                    hideLikes = draft.hideLikes
-                                    isDisappearing = draft.isDisappearing
-                                    altText = draft.altText.orEmpty()
-                                    audioTitle = draft.audioTrack.orEmpty()
-                                    pollQuestion = draft.pollQuestion
-                                    pollOptions = draft.pollOptions
-                                        .takeIf { it.size >= 2 }
-                                        ?: listOf("", "")
-                                    showPoll = draft.pollQuestion.isNotBlank() &&
-                                        draft.pollOptions.count { it.isNotBlank() } >= 2
-                                    textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
-                                    selectedTextStyle = draft.textStyle ?: "aurora"
-                                    clientRequestId = UUID.randomUUID().toString()
-                                },
+                                onLoad = { restoreDraft(draft) },
                                 onDelete = { onDeleteDraft(draft.id) }
                             )
                         }
@@ -1718,30 +2303,77 @@ fun CreatePostSheet(
                         )
                     }
                 }
+                } // optional legacy draft/scheduling controls
             }
             }
+            } // editor header and scrollable body must be sequential, not AnimatedContent siblings
+            } // reference landing / editor / publishing options
+            } // crossfade between Create Post reference stages
         }
         }
         }
     }
 
+
+    if (showCameraActions) {
+        AlertDialog(
+            onDismissRequest = { showCameraActions = false },
+            title = { Text("Camera") },
+            text = { Text("Create original media for BLINK. Photos go to Feed; videos are Reels.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCameraActions = false
+                    val uri = cameraCaptureUri("jpg")
+                    pendingCameraCaptureUri = uri.toString()
+                    cameraPhotoLauncher.launch(uri)
+                }) { Text("Take photo") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        showCameraActions = false
+                        val uri = cameraCaptureUri("mp4")
+                        pendingCameraCaptureUri = uri.toString()
+                        cameraVideoLauncher.launch(uri)
+                    }) { Text("Record Reel") }
+                    TextButton(onClick = { showCameraActions = false }) { Text("Cancel") }
+                }
+            }
+        )
+    }
+
     pendingMediaSwitch?.let { target ->
         AlertDialog(
-            onDismissRequest = { pendingMediaSwitch = null },
+            onDismissRequest = {
+                pendingMediaSwitch = null
+                if (pickerOpenedFromLanding) {
+                    pickerOpenedFromLanding = false
+                    showCreateLanding = true
+                }
+            },
             title = { Text("Change post type?") },
             text = { Text(
                 when (target) {
                     "post" -> "Switching to a regular post removes the selected Reel video."
                     "poll" -> "Choosing a poll replaces the selected photos or Reel video."
+                    "camera" -> "Capturing new media replaces your current photos, video or poll after capture."
                     else -> "Selecting new media will replace the current media or poll. Cancelling the picker keeps it."
                 }
             ) },
-            dismissButton = { TextButton(onClick = { pendingMediaSwitch = null }) { Text("Keep editing") } },
+            dismissButton = { TextButton(onClick = {
+                pendingMediaSwitch = null
+                if (pickerOpenedFromLanding) {
+                    pickerOpenedFromLanding = false
+                    showCreateLanding = true
+                }
+            }) { Text("Keep editing") } },
             confirmButton = {
                 TextButton(onClick = {
                     pendingMediaSwitch = null
                     when (target) {
                         "post" -> {
+                            videoClips = emptyList()
+                            showCreateLanding = false
                             selectedVideo = null
                             reelHasPendingEdits = false
                             reelEditorStage = false
@@ -1749,6 +2381,8 @@ fun CreatePostSheet(
                             showPoll = false
                         }
                         "poll" -> {
+                            pickerOpenedFromLanding = false
+                            videoClips = emptyList()
                             selectedVideo = null
                             selectedImages = emptyList()
                             reelHasPendingEdits = false
@@ -1756,10 +2390,13 @@ fun CreatePostSheet(
                             mode = "post"
                             showPoll = true
                         }
+                        "camera" -> openCameraActions()
                         "gallery" -> imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
-                        "reel" -> videoPicker.launch(
+                        "reel" -> if (pickerOpenedFromLanding) multiVideoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        ) else videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         )
                     }
@@ -1817,6 +2454,7 @@ fun CreatePostSheet(
     if (showPreviewDialog) {
         PostPreviewDialog(
             post = scheduledPreviewPost(),
+            profile = profile,
             onDismiss = { showPreviewDialog = false }
         )
     }
@@ -1850,139 +2488,223 @@ fun CreatePostSheet(
 
 
 @Composable
-private fun PostPreviewDialog(
+internal fun PostPreviewDialog(
     post: FeedPost,
+    profile: UserProfile,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
-            shadowElevation = 10.dp
-        ) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        MaterialTheme(colorScheme = lightColorScheme()) {
             Column(
-                modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                Modifier.fillMaxSize().background(Color.Black)
+                    .statusBarsPadding().navigationBarsPadding()
+                    .testTag("blink_post_preview_stage")
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Post preview",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 19.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = onDismiss) { Text("Done") }
-                }
-
-                if (post.audience.isNotBlank()) {
-                    Text(
-                        "${post.audience} • ${post.category}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                if (post.text.isNotBlank()) {
-                    Text(
-                        post.text,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-
-                if (post.images.isNotEmpty()) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(post.images) { uri ->
-                            AsyncImage(
-                                model = uri,
-                                contentDescription = post.altText ?: "Post image",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .size(156.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
+                Row(
+                    Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.KeyboardArrowLeft, "Back to editor", tint = Color.White)
                     }
-                }
-
-                post.videoUrl?.takeIf { it.isNotBlank() }?.let { videoUri ->
-                    val context = LocalContext.current
-                    val previewPlayer = remember(videoUri) {
-                        ExoPlayer.Builder(context).build().apply {
-                            setMediaItem(MediaItem.fromUri(videoUri))
-                            prepare()
-                            playWhenReady = false
-                        }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Post Preview", color = Color.White,
+                            fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     }
-                    DisposableEffect(previewPlayer) {
-                        onDispose { previewPlayer.release() }
-                    }
-                    AndroidView(
-                        factory = { ctx -> PlayerView(ctx).apply {
-                            useController = true
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            player = previewPlayer
-                        } },
-                        update = { it.player = previewPlayer },
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp).aspectRatio(9f / 16f)
-                    )
-                    post.audioTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Spacer(Modifier.width(48.dp))
                 }
-
-                post.poll?.let { poll ->
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f)
-                        )
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(horizontal = 13.dp, vertical = 8.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.White,
+                        shadowElevation = 4.dp
                     ) {
                         Column(
-                            Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            Text(poll.question, fontWeight = FontWeight.Bold)
-                            poll.options.forEach { option ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    )
-                                ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = profile.avatarUrl,
+                                    contentDescription = "Your profile photo",
+                                    modifier = Modifier.size(40.dp).clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
                                     Text(
-                                        option.text,
-                                        modifier = Modifier.padding(
-                                            horizontal = 12.dp,
-                                            vertical = 8.dp
-                                        )
+                                        profile.fullName.ifBlank { profile.username },
+                                        color = Color.Black, fontWeight = FontWeight.Bold,
+                                        maxLines = 1, fontSize = 13.sp
                                     )
+                                    Text(
+                                        "Just now · " + (if (post.audience == "Everyone") "Public" else post.audience),
+                                        color = Color(0xFF7C8591), fontSize = 11.sp
+                                    )
+                                }
+                                Icon(Icons.Default.MoreHoriz, "Preview actions unavailable", tint = Color.DarkGray)
+                            }
+                            if (post.text.isNotBlank()) {
+                                Text(post.text, color = Color.Black, fontSize = 14.sp)
+                            }
+                            if (post.tags.isNotEmpty()) {
+                                Text(
+                                    post.tags.joinToString(" ") { "#" + it.removePrefix("#") },
+                                    color = Color(0xFF4C62D9), fontSize = 12.sp
+                                )
+                            }
+                            if (post.images.isNotEmpty()) {
+                                val carouselState = rememberLazyListState()
+                                LazyRow(
+                                    state = carouselState,
+                                    flingBehavior = rememberSnapFlingBehavior(carouselState),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(post.images) { uri ->
+                                        AsyncImage(
+                                            model = uri,
+                                            contentDescription = post.altText ?: "Post photo",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillParentMaxWidth()
+                                                .height(254.dp)
+                                                .clip(RoundedCornerShape(11.dp))
+                                                .background(Color(0xFFE7E9EF))
+                                        )
+                                    }
+                                }
+                                if (post.images.size > 1) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        repeat(post.images.size) { index ->
+                                            Box(
+                                                Modifier.padding(horizontal = 3.dp).size(
+                                                    if (carouselState.firstVisibleItemIndex == index) 7.dp else 5.dp
+                                                ).background(
+                                                    if (carouselState.firstVisibleItemIndex == index)
+                                                        Color(0xFF5550EE)
+                                                    else Color(0xFFCED1DC),
+                                                    CircleShape
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            post.videoUrl?.takeIf { it.isNotBlank() }?.let { videoUri ->
+                                val context = LocalContext.current
+                                val previewPlayer = remember(videoUri) {
+                                    ExoPlayer.Builder(context).build().apply {
+                                        setMediaItem(MediaItem.fromUri(videoUri))
+                                        prepare()
+                                        playWhenReady = false
+                                    }
+                                }
+                                DisposableEffect(previewPlayer) {
+                                    onDispose { previewPlayer.release() }
+                                }
+                                AndroidView(
+                                    factory = { ctx ->
+                                        PlayerView(ctx).apply {
+                                            useController = true
+                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            player = previewPlayer
+                                        }
+                                    },
+                                    update = { it.player = previewPlayer },
+                                    modifier = Modifier.fillMaxWidth()
+                                        .heightIn(max = 380.dp)
+                                        .aspectRatio(9f / 16f)
+                                )
+                                post.audioTitle?.let {
+                                    Text(it, color = Color(0xFF737B89), fontSize = 11.sp)
+                                }
+                            }
+                            post.poll?.let { poll ->
+                                Surface(
+                                    color = Color(0xFFF6F7FB),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(poll.question, fontWeight = FontWeight.Bold, color = Color.Black)
+                                        poll.options.forEach { option ->
+                                            Surface(
+                                                color = Color.White,
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFDBDEE8))
+                                            ) {
+                                                Text(
+                                                    option.text, color = Color.Black,
+                                                    modifier = Modifier.fillMaxWidth().padding(12.dp)
+                                                )
+                                            }
+                                        }
+                                        val expiresAt = poll.expiresAtMillis
+                                        if (expiresAt != null) {
+                                            Text(
+                                                "Poll closes after its selected duration",
+                                                color = Color(0xFF737B89), fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            post.location?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, color = Color(0xFF737B89), fontSize = 11.sp)
+                            }
+                            post.linkUrl?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, color = Color(0xFF4C62D9), fontSize = 11.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            HorizontalDivider(color = Color(0xFFEAECF1))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(
+                                    Icons.Default.FavoriteBorder to "Like",
+                                    Icons.Default.ChatBubbleOutline to "Comment",
+                                    Icons.Default.BookmarkBorder to "Save",
+                                    Icons.Default.Share to "Share"
+                                ).forEach { (icon, label) ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(icon, null, tint = Color(0xFF606977),
+                                            modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text(label, color = Color(0xFF606977), fontSize = 10.sp)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-
-                post.location?.let {
                     Text(
-                        "Location: $it",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "Preview only · Your post has not been published",
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                        textAlign = TextAlign.Center,
+                        color = Color(0xFFBFC2D2), fontSize = 11.sp
                     )
-                }
-                post.linkUrl?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .55f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) { Text("Back to editor") }
                 }
             }
         }
@@ -1994,6 +2716,7 @@ private fun ColoredTextComposer(
     text: String,
     onTextChanged: (String) -> Unit,
     selectedStyleKey: String,
+    showStylePicker: Boolean = true,
     onStyleSelected: (String) -> Unit,
     enabled: Boolean
 ) {
@@ -2047,7 +2770,7 @@ private fun ColoredTextComposer(
         )
     }
 
-    Column(
+    if (showStylePicker) Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp, bottom = 4.dp)
@@ -2101,12 +2824,14 @@ private fun ComposerTopBar(
     canSubmit: Boolean,
     isReel: Boolean,
     isEditingReel: Boolean,
+    referenceFlow: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("blink_create_post_editor_header")
             .heightIn(min = 60.dp)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -2116,17 +2841,22 @@ private fun ComposerTopBar(
         }
 
         Text(
-            text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create post",
+            text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create Post",
             fontWeight = FontWeight.Black,
             fontSize = 20.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 6.dp)
+            modifier = Modifier.weight(1f).padding(start = 6.dp),
+            textAlign = if (referenceFlow) TextAlign.Center else TextAlign.Start
         )
 
         Button(
             onClick = onSubmit,
-            enabled = canSubmit
+            enabled = canSubmit,
+            colors = if (referenceFlow) ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF5245F2),
+                contentColor = Color.White
+            ) else ButtonDefaults.buttonColors()
         ) {
             if (isSubmitting) {
                 if (uploadProgress != null) {
@@ -2140,7 +2870,10 @@ private fun ComposerTopBar(
                     )
                 }
             } else {
-                Text(if (isEditingReel) "Next" else if (isReel) "Publish Reel" else "Post")
+                Text(
+                    if (referenceFlow || isEditingReel) "Next"
+                    else if (isReel) "Publish Reel" else "Post"
+                )
             }
         }
     }
@@ -2315,32 +3048,41 @@ private fun SelectedImagePreview(
 }
 
 @Composable
-private fun PollComposer(
+internal fun PollComposer(
     question: String,
     onQuestionChanged: (String) -> Unit,
     options: List<String>,
     onOptionsChanged: (List<String>) -> Unit,
+    durationHours: Int,
+    onDurationChanged: (Int) -> Unit,
     enabled: Boolean
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
-        )
-    ) {
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = Color(0xFF6456F5),
+        surface = Color(0xFF15181F),
+        surfaceVariant = Color(0xFF23262E),
+        onSurface = Color.White,
+        onSurfaceVariant = Color(0xFFADB4C2)
+    )) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B0D12), contentColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFF252831))
+        ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Poll, contentDescription = null)
                 Spacer(Modifier.width(7.dp))
-                Text("Poll", fontWeight = FontWeight.Bold)
+                Text("Poll", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(options.size.toString() + " / 4 options",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             OutlinedTextField(
                 value = question,
-                onValueChange = onQuestionChanged,
+                onValueChange = { onQuestionChanged(it.take(240)) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 enabled = enabled,
                 modifier = Modifier
@@ -2408,6 +3150,57 @@ private fun PollComposer(
                     Text("Add option")
                 }
             }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Multiple answers", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Each person can choose one answer.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+                Switch(checked = false, onCheckedChange = {}, enabled = false)
+            }
+            Text(
+                "Poll duration",
+                modifier = Modifier.padding(top = 12.dp),
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(1 to "1 hour", 24 to "1 day", 72 to "3 days", 168 to "7 days")
+                    .forEach { (hours, label) ->
+                        FilterChip(
+                            selected = durationHours == hours,
+                            onClick = { onDurationChanged(hours) },
+                            enabled = enabled,
+                            label = { Text(label) }
+                        )
+                    }
+            }
+            val meaningfulOptions = options.map(String::trim).filter(String::isNotBlank)
+            val duplicateOptions = meaningfulOptions.size !=
+                meaningfulOptions.map { it.lowercase() }.distinct().size
+            if (duplicateOptions) {
+                Text(
+                    "Poll answers must be different.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            Text(
+                "Voting closes after the selected duration. Results stay visible when the poll closes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+        }
         }
     }
 }

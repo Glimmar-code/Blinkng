@@ -33,7 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
@@ -73,7 +73,7 @@ private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.HOME, Icons.Filled.Home, Icons.Outlined.Home, "Home"),
     FeedBottomItem(FeedBottomDestination.REELS, Icons.Outlined.SmartDisplay, Icons.Outlined.SmartDisplay, "Reels"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
-    FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
+    FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.EmojiEvents, Icons.Filled.EmojiEvents, "Contest"),
     FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
 )
 

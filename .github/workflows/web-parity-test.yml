@@ -10,6 +10,7 @@ on:
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_contest_invitation.mjs'
       - 'scripts/test_web_referral_invitation.mjs'
       - 'scripts/test_feed_market_posting_contract.mjs'
       - 'scripts/test_blink_indexnow.mjs'
@@ -32,6 +33,7 @@ on:
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_contest_invitation.mjs'
       - 'scripts/test_web_referral_invitation.mjs'
       - 'scripts/test_feed_market_posting_contract.mjs'
       - 'scripts/test_blink_indexnow.mjs'
@@ -59,6 +61,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Contest invitation recovery and explicit voting
+        run: node scripts/test_contest_invitation.mjs
 
       - name: BLINK official domain, SEO, routes and APK alias
         run: python3 scripts/check_github_pages_site.py

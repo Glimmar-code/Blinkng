@@ -9,6 +9,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkChatReferenceStyle
 
 /** Independent appearance modes for the messaging experience. */
 enum class MessageThemeMode(val storageValue: String, val displayName: String) {
@@ -52,7 +53,8 @@ data class MessagePalette(
     )
 
     fun outgoingBrush(): Brush = Brush.horizontalGradient(
-        colors = listOf(outgoingBubble, accentSecondary)
+        colors = if (mode != MessageThemeMode.PINK) listOf(outgoingBubble, outgoingBubble)
+        else listOf(outgoingBubble, accentSecondary)
     )
 }
 
@@ -98,54 +100,54 @@ private val DarkMessagePalette = MessagePalette(
  * These values follow the supplied generated Chat / Attachments / Viewers boards.
  */
 object BlinkChatReferenceColors {
-    val Canvas = Color(0xFF060D16)
-    val Header = Color(0xFF09131E)
-    val Elevated = Color(0xFF17283A)
-    val Incoming = Color(0xFF1C2A3B)
-    val Outgoing = Color(0xFF0879F8)
-    val Blue = Color(0xFF1685FF)
-    val Text = Color(0xFFF5F8FE)
-    val Subtle = Color(0xFFB7C7DA)
-    val Muted = Color(0xFF8599AD)
-    val Border = Color(0xFF25384D)
+    val Canvas = Color(BlinkChatReferenceStyle.Canvas)
+    val Header = Color(BlinkChatReferenceStyle.Header)
+    val Elevated = Color(BlinkChatReferenceStyle.Elevated)
+    val Incoming = Color(BlinkChatReferenceStyle.Incoming)
+    val Outgoing = Color(BlinkChatReferenceStyle.Outgoing)
+    val Blue = Color(BlinkChatReferenceStyle.Blue)
+    val Text = Color(BlinkChatReferenceStyle.Text)
+    val Subtle = Color(BlinkChatReferenceStyle.Subtle)
+    val Muted = Color(BlinkChatReferenceStyle.Muted)
+    val Border = Color(BlinkChatReferenceStyle.Border)
 }
 
-/** One consistent reference-inspired palette for every dark conversation surface. */
+/** Keep the three appearance modes; only dark conversations use the supplied reference. */
 fun referenceChatPalette(base: MessagePalette): MessagePalette =
     if (base.mode != MessageThemeMode.DARK) base else base.copy(
-        backgroundTop = BlinkChatReferenceColors.Canvas,
+        backgroundTop = Color(BlinkChatReferenceStyle.CanvasTop),
         backgroundMiddle = BlinkChatReferenceColors.Canvas,
-        backgroundBottom = BlinkChatReferenceColors.Canvas,
-        glass = BlinkChatReferenceColors.Header,
+        backgroundBottom = Color(BlinkChatReferenceStyle.CanvasBottom),
+        glass = Color(BlinkChatReferenceStyle.Input),
         glassElevated = BlinkChatReferenceColors.Elevated,
         border = BlinkChatReferenceColors.Border,
         accent = BlinkChatReferenceColors.Blue,
-        accentSecondary = BlinkChatReferenceColors.Outgoing,
+        accentSecondary = Color(BlinkChatReferenceStyle.BlueBright),
         incomingBubble = BlinkChatReferenceColors.Incoming,
         outgoingBubble = BlinkChatReferenceColors.Outgoing,
         textPrimary = BlinkChatReferenceColors.Text,
         textSecondary = BlinkChatReferenceColors.Subtle,
         textMuted = BlinkChatReferenceColors.Muted,
-        outgoingText = Color.White,
+        outgoingText = Color(BlinkChatReferenceStyle.OutgoingText),
         online = BlinkChatReferenceColors.Blue
     )
 
 private val LightMessagePalette = MessagePalette(
     mode = MessageThemeMode.LIGHT,
-    backgroundTop = Color(0xFFFFFBFD),
-    backgroundMiddle = Color(0xFFF8F2F6),
-    backgroundBottom = Color(0xFFF3EAF0),
+    backgroundTop = Color(BlinkChatReferenceStyle.LightCanvas),
+    backgroundMiddle = Color(BlinkChatReferenceStyle.LightCanvas),
+    backgroundBottom = Color(BlinkChatReferenceStyle.LightCanvas),
     glass = Color(0xFFFFFFFF),
-    glassElevated = Color(0xFFFFF7FB),
-    border = Color(0xFFE4D6DF),
-    accent = Color(0xFFC02678),
-    accentSecondary = Color(0xFFD9468D),
-    textPrimary = Color(0xFF24131F),
-    textSecondary = Color(0xFF6F5A68),
-    textMuted = Color(0xFF9A8291),
-    incomingBubble = Color(0xFFF0E3EB),
-    outgoingBubble = Color(0xFFC02678),
-    outgoingText = Color.White,
+    glassElevated = Color.White,
+    border = Color(0xFFD1D6DE),
+    accent = Color(BlinkChatReferenceStyle.Blue),
+    accentSecondary = Color(BlinkChatReferenceStyle.BlueBright),
+    textPrimary = Color(BlinkChatReferenceStyle.OutgoingText),
+    textSecondary = Color(0xFF55606E),
+    textMuted = Color(0xFF687484),
+    incomingBubble = Color(BlinkChatReferenceStyle.LightIncoming),
+    outgoingBubble = Color(BlinkChatReferenceStyle.LightOutgoing),
+    outgoingText = Color(BlinkChatReferenceStyle.OutgoingText),
     isLight = true
 )
 
@@ -178,7 +180,7 @@ private fun messageColorScheme(palette: MessagePalette): ColorScheme {
             primary = palette.accent,
             onPrimary = Color.White,
             primaryContainer = palette.outgoingBubble,
-            onPrimaryContainer = Color.White,
+            onPrimaryContainer = palette.outgoingText,
             background = palette.backgroundMiddle,
             onBackground = palette.textPrimary,
             surface = palette.glass,

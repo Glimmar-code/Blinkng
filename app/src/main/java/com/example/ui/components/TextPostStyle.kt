@@ -17,10 +17,10 @@ internal data class TextPostStyleSpec(
 }
 
 internal val TextPostStyles = listOf(
-    TextPostStyleSpec("aurora", "Aurora", listOf(Color(0xFF6A7CFF), Color(0xFF8B5CF6), Color(0xFF52C7EA))),
-    TextPostStyleSpec("ocean", "Ocean", listOf(Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF26C6DA))),
+    TextPostStyleSpec("aurora", "Aurora", com.blinkng.shared.BlinkPostReferenceStyle.textBackgrounds.getValue("aurora").map { Color(it) }),
+    TextPostStyleSpec("ocean", "Ocean", com.blinkng.shared.BlinkPostReferenceStyle.textBackgrounds.getValue("ocean").map { Color(it) }),
     TextPostStyleSpec("violet", "Violet", listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(0xFFB65CFF))),
-    TextPostStyleSpec("sunset", "Sunset", listOf(Color(0xFFFF6B6B), Color(0xFFF97316), Color(0xFFFACC15))),
+    TextPostStyleSpec("sunset", "Sunset", com.blinkng.shared.BlinkPostReferenceStyle.textBackgrounds.getValue("sunset").map { Color(it) }),
     TextPostStyleSpec("rose", "Rose", listOf(Color(0xFF9F1239), Color(0xFFE11D48), Color(0xFFFB7185))),
     TextPostStyleSpec("midnight", "Midnight", listOf(Color(0xFF060B1A), Color(0xFF172554), Color(0xFF312E81))),
     TextPostStyleSpec("mint", "Mint", listOf(Color(0xFF0F766E), Color(0xFF14B8A6), Color(0xFF5EEAD4))),

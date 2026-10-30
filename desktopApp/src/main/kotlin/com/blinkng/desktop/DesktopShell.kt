@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material.icons.rounded.Notifications
@@ -114,6 +115,8 @@ import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.ConnectScreen
+import com.blinkng.desktop.ui.BlinkDesktopContestScreen
+import com.blinkng.desktop.ui.BlinkDesktopContestAdminScreen
 import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -140,7 +143,8 @@ private val desktopDestinations = listOf(
     DesktopDestination("home", "Home", Icons.Rounded.Home),
     DesktopDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
     DesktopDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
-    DesktopDestination("connect", "Connect", Icons.Rounded.Groups),
+    DesktopDestination("connect", "Contest", Icons.Rounded.EmojiEvents),
+    DesktopDestination("people", "People discovery", Icons.Rounded.Groups),
     DesktopDestination("communities", "Channels", Icons.Rounded.Groups),
     DesktopDestination("messages", "Messages", Icons.Rounded.Chat),
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
@@ -150,6 +154,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
+    DesktopDestination("contest-admin", "Contest admin", Icons.Rounded.EmojiEvents, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
     DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
     DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
@@ -560,7 +565,8 @@ private fun AuthenticatedShell(
                     when (activeRoute) {
                         "home" -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                         "reels" -> ReelsScreen(state)
-                        "connect" -> ConnectScreen(state)
+                        "connect" -> BlinkDesktopContestScreen(state)
+                        "people" -> ConnectScreen(state)
                         "communities" -> com.blinkng.desktop.ui.DesktopCommunitiesScreen(state)
                         "messages" -> MessagesScreen(state)
                         "marketplace" -> MarketplaceScreen(state)
@@ -571,6 +577,7 @@ private fun AuthenticatedShell(
                         "leaderboard" -> LeaderboardScreen(state)
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
+                        "contest-admin" -> BlinkDesktopContestAdminScreen(state)
                         "settings" -> SettingsScreen(state)
                         "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
                         "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })

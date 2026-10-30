@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -85,6 +86,67 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_status", status)
             .put("p_reward_coins", rewardCoins)
             .put("p_note", note.take(600)))
+    }
+
+    // Free-entry BLINK Contest. All writes enforce authenticated server-side rules.
+    suspend fun contestList(): JSONArray =
+        rpcAny("list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
+    suspend fun contestDetail(id: String): JSONObject =
+        rpc("get_blink_contest", JSONObject().put("p_contest_id", id))
+    suspend fun contestCandidate(contestId: String, entryId: String): JSONObject =
+        rpc("get_blink_contest_candidate", JSONObject().put("p_contest_id", contestId)
+            .put("p_entry_id", entryId))
+    suspend fun contestApply(id: String, statement: String, mediaUrl: String): JSONObject =
+        rpc("apply_blink_contest", JSONObject().put("p_contest_id", id)
+            .put("p_statement", statement.trim())
+            .put("p_media_url", mediaUrl.trim().takeIf { it.isNotEmpty() } ?: JSONObject.NULL))
+    suspend fun contestVote(id: String, entry: String): JSONObject =
+        rpc("vote_blink_contest", JSONObject().put("p_contest_id", id).put("p_entry_id", entry))
+    suspend fun adminContestList(): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestEntries(id: String): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_contest_entries",
+            JSONObject().put("p_contest_id", id)) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestSave(data: JSONObject): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_contest",
+            JSONObject().put("p_id", JSONObject.NULL).put("p_data", data))
+    }
+    suspend fun adminContestAction(id: String, action: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_transition_blink_contest",
+            JSONObject().put("p_contest_id", id).put("p_action", action))
+    }
+    suspend fun contestRecordShare(contestId: String, entryId: String, channel: String): JSONObject =
+        rpc("record_blink_contest_share", JSONObject().put("p_contest_id", contestId)
+            .put("p_entry_id", entryId).put("p_channel", channel))
+    suspend fun adminContestInsights(id: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_blink_contest_insights", JSONObject().put("p_contest_id", id))
+    }
+    suspend fun adminContestVoteReview(id: String, action: String, reason: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_review_blink_contest_vote", JSONObject().put("p_vote_id", id)
+            .put("p_action", action).put("p_reason", reason))
+    }
+    suspend fun adminContestFinalize(id: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_finalize_blink_contest", JSONObject().put("p_contest_id", id))
+    }
+    suspend fun adminContestPrize(id: String, status: String, reference: String, note: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_record_blink_contest_prize", JSONObject().put("p_prize_id", id)
+            .put("p_status", status).put("p_reference", if (reference.isBlank()) JSONObject.NULL else reference.trim())
+            .put("p_note", note))
+    }
+    suspend fun adminContestReview(id: String, action: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_review_blink_contest_entry",
+            JSONObject().put("p_entry_id", id).put("p_action", action))
     }
 
     suspend fun getStoreState(): JSONObject = rpc("get_blink_store_state", JSONObject())
@@ -424,6 +486,25 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .post(image.bytes.toRequestBody(image.mime.toMediaType()))
             .build())
         "$baseUrl/storage/v1/object/public/$bucket/$path"
+    }
+
+    suspend fun uploadContestMedia(file: java.io.File): String = withContext(Dispatchers.IO) {
+        require(file.isFile) { "Choose an existing media file." }
+        val extension = file.extension.lowercase()
+        val mime = when (extension) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "mp4" -> "video/mp4"
+            else -> throw IllegalArgumentException("Choose a JPG, PNG, WebP or MP4 file.")
+        }
+        com.blinkng.shared.BlinkContestMediaPolicy.validate(mime, file.length())
+        val owner = requireSessionUserId()
+        val path = "$owner/${UUID.randomUUID()}.$extension"
+        execute(requestBuilder("/storage/v1/object/blink-contest-media/$path")
+            .header("x-upsert", "false")
+            .post(file.asRequestBody(mime.toMediaType())).build())
+        "$baseUrl/storage/v1/object/public/blink-contest-media/$path"
     }
 
     suspend fun adminGlobalSearch(query: String): JSONObject {

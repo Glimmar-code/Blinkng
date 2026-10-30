@@ -4010,6 +4010,7 @@ private suspend fun restoreSupabaseSession() {
         put("is_disappearing", draft.isDisappearing)
         put("poll_question", draft.pollQuestion)
         put("poll_options", JSONArray(draft.pollOptions))
+        put("poll_duration_hours", draft.pollDurationHours)
         put("saved_at", draft.savedAtTimestamp)
         put("audio_track", draft.audioTrack ?: JSONObject.NULL)
         put("alt_text", draft.altText ?: JSONObject.NULL)
@@ -4035,6 +4036,8 @@ private suspend fun restoreSupabaseSession() {
         isDisappearing = value.optBoolean("is_disappearing", false),
         pollQuestion = value.optString("poll_question"),
         pollOptions = value.optJSONArray("poll_options").toStringList(),
+        pollDurationHours = value.optInt("poll_duration_hours", 24)
+            .takeIf { it in listOf(1, 24, 72, 168) } ?: 24,
         savedAtTimestamp = value.optLong("saved_at", System.currentTimeMillis()),
         audioTrack = value.optString("audio_track").takeIf { it.isNotBlank() && it != "null" },
         altText = value.optString("alt_text").takeIf { it.isNotBlank() && it != "null" },

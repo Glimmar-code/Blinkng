@@ -3,7 +3,7 @@ name: Windows desktop quality gate
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'Testlab/**']
   workflow_dispatch:
 
 permissions:
@@ -119,11 +119,105 @@ jobs:
 
       - name: Compile and test desktop app
         if: steps.reuse.outputs.reuse != 'true'
-        run: gradle -p desktopApp build --stacktrace --no-daemon
+        shell: pwsh
+        run: |
+          gradle -p desktopApp build --stacktrace --no-daemon 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/blink-desktop-build.log"
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) {
+            # Keep the actual failure available through check annotations even
+            # when a reviewer's environment cannot download Actions artifacts.
+            Get-ChildItem 'desktopApp/build/test-results' -Recurse -Filter 'TEST-*.xml' -ErrorAction SilentlyContinue | ForEach-Object {
+              [xml]$results = Get-Content $_.FullName -Raw
+              foreach ($case in $results.testsuite.testcase) {
+                foreach ($failure in @($case.failure) + @($case.error)) {
+                  if ($null -ne $failure) {
+                    $message = "$($case.classname).$($case.name): $($failure.message) $($failure.InnerText)"
+                    $message = $message.Substring(0, [Math]::Min(6000, $message.Length)).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                    Write-Output "::error title=Desktop test failure::$message"
+                  }
+                }
+              }
+            }
+            $tail = ((Get-Content "$env:RUNNER_TEMP/blink-desktop-build.log" -Tail 70) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Desktop build log tail::$tail"
+            exit $buildExit
+          }
 
       - name: Build Windows EXE and MSI
         if: steps.reuse.outputs.reuse != 'true'
-        run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
+        # Installer tasks do not guarantee a standalone launcher image remains.
+        # Build that image explicitly for the packaged-runtime diagnostic below.
+        run: gradle -p desktopApp createDistributable packageExe packageMsi --stacktrace --no-daemon
+
+      - name: Exercise the packaged Windows video processor
+        if: steps.reuse.outputs.reuse != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $app = Get-ChildItem 'desktopApp/build/compose/binaries/main/app' -Recurse -Filter 'Blinkng.exe' | Select-Object -First 1
+            if (-not $app) { throw 'Packaged Blinkng launcher is missing' }
+            $diagnostic = Join-Path $env:RUNNER_TEMP 'blink-media-smoke'
+            New-Item -ItemType Directory -Force -Path $diagnostic | Out-Null
+            $task = Start-Process -FilePath $app.FullName -RedirectStandardOutput (Join-Path $diagnostic 'launcher-stdout.log') -RedirectStandardError (Join-Path $diagnostic 'launcher-stderr.log') -ArgumentList @('--media-export-smoke', ('"' + $diagnostic + '"')) -PassThru
+            if (-not $task.WaitForExit(120000)) { $task.Kill(); throw 'Packaged media diagnostic timed out' }
+            $reportPath = Join-Path $diagnostic 'media-smoke.json'
+            if (Test-Path $reportPath) { Get-Content $reportPath -Raw | Write-Host }
+            if ($task.ExitCode -ne 0) { throw "Packaged media diagnostic failed with exit $($task.ExitCode)" }
+            $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+            if ($report.status -ne 'passed') { throw 'Packaged media diagnostic did not pass' }
+            if ($report.windows_dpapi -ne 'passed') { throw 'Packaged Windows DPAPI draft verification did not pass' }
+            $report | ConvertTo-Json
+          } catch {
+            $detail = $_.Exception.Message
+            foreach ($name in @('media-smoke.json', 'launcher-stdout.log', 'launcher-stderr.log', 'fixture.log')) {
+              $path = Join-Path $env:RUNNER_TEMP ('blink-media-smoke/' + $name)
+              if (Test-Path $path) { $detail += "`n${name}: " + ((Get-Content $path -Tail 40) -join "`n") }
+            }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Packaged native media failure::$detail"
+            throw
+          }
+
+      - name: Capture actual packaged Windows editor windows
+        if: steps.reuse.outputs.reuse != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Get-ChildItem 'desktopApp/build/compose/binaries/main/app' -Recurse -Filter 'Blinkng.exe' | Select-Object -First 1
+          if (-not $app) { throw 'Packaged Blinkng launcher is missing' }
+          $capture = Join-Path $env:RUNNER_TEMP 'blink-reference-ui'
+          $task = Start-Process -FilePath $app.FullName -RedirectStandardOutput "$env:RUNNER_TEMP/blink-reference-stdout.log" -RedirectStandardError "$env:RUNNER_TEMP/blink-reference-stderr.log" -ArgumentList @('--reference-ui-smoke', ('"' + $capture + '"')) -PassThru
+          if (-not $task.WaitForExit(120000)) { $task.Kill(); throw 'Windows GUI capture timed out' }
+          $reportPath = Join-Path $capture 'reference-ui.json'
+          if (Test-Path $reportPath) { Get-Content $reportPath -Raw | Write-Host }
+          if ($task.ExitCode -ne 0) {
+            $detail = "Native GUI capture failed with exit $($task.ExitCode)"
+            foreach ($path in @($reportPath, "$env:RUNNER_TEMP/blink-reference-stderr.log")) {
+              if (Test-Path $path) { $detail += "`n" + ((Get-Content $path -Tail 30) -join "`n") }
+            }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows GUI capture failure::$detail"
+            throw 'Actual Windows editor capture did not complete'
+          }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          if ($report.status -ne 'captured-awaiting-review') { throw 'Missing native GUI evidence' }
+          foreach ($name in @('photo-editor.png', 'video-editor-top.png', 'video-editor-bottom.png')) {
+            if ((Get-Item (Join-Path $capture $name)).Length -lt 1000) { throw "Missing Windows capture: $name" }
+          }
+
+      - name: Upload Windows visual evidence
+        if: always() && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-reference-ui-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/blink-reference-ui/*.png
+            ${{ runner.temp }}/blink-reference-ui/reference-ui.json
+            ${{ runner.temp }}/blink-reference-stdout.log
+            ${{ runner.temp }}/blink-reference-stderr.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify native Godot assets in Windows installer build
         if: steps.reuse.outputs.reuse != 'true'

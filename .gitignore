@@ -10,6 +10,9 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 /build
+/desktopApp/build/
+/blinkLifeFeature/build/
+/app/schemas/
 /captures
 .externalNativeBuild
 .cxx

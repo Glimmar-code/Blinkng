@@ -243,6 +243,8 @@ android {
     testBuildType = "rtcSmoke"
   }
   sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
+  sourceSets.getByName("test").kotlin.srcDir("src/referenceTest/kotlin")
+  sourceSets.getByName("androidTest").kotlin.srcDir("src/referenceTest/kotlin")
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }

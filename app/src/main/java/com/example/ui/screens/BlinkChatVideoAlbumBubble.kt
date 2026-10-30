@@ -4,7 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,10 +25,13 @@ import coil.request.ImageRequest
 import coil.request.videoFrameMillis
 import androidx.compose.ui.platform.LocalContext
 import com.example.data.models.ChatMessage
+import com.example.data.models.MessageStatus
+import com.blinkng.shared.BlinkChatReferenceStyle
+import com.example.ui.theme.MessagePalette
 
 /** An album includes only confirmed videos with the same server-recorded ID. */
 @Composable
-internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
+internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: MessagePalette) {
     val videos = remember(messages) {
         messages.sortedBy { it.imageAlbumPosition }
             .filter { !it.attachedVideoUrl.isNullOrBlank() && !it.deletedForEveryone }
@@ -32,23 +40,29 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
     if (videos.isEmpty()) return
     var selected by remember(videos) { mutableIntStateOf(-1) }
     val context = LocalContext.current
+    val isMine = videos.first().isFromMe
+    val latest = videos.last()
+    val read = videos.all { it.status == MessageStatus.READ }
+    val delivered = videos.all { it.status in setOf(MessageStatus.READ, MessageStatus.DELIVERED) }
     val groups = when (videos.size) {
         1 -> listOf(videos)
         2 -> listOf(videos)
         3 -> listOf(videos.take(1), videos.drop(1))
         else -> videos.take(4).chunked(2)
     }
-    Column(Modifier.widthIn(max = 276.dp).clip(RoundedCornerShape(14.dp))
-        .background(Color(0xFF17283A)).padding(4.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement =
+        if (isMine) Arrangement.End else Arrangement.Start) {
+      Column(Modifier.widthIn(max = 276.dp).clip(RoundedCornerShape(14.dp))
+        .padding(4.dp)) {
         groups.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 row.forEach { message ->
                     val index = videos.indexOfFirst { it.id == message.id }
                     Box(
                         Modifier.weight(1f)
-                            .height(if (videos.size <= 2) 162.dp else 120.dp)
+                            .aspectRatio(BlinkChatReferenceStyle.VideoTileAspect)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF101C2C))
+                            .background(Color(BlinkChatReferenceStyle.Canvas))
                             .clickable { selected = index },
                         contentAlignment = Alignment.Center
                     ) {
@@ -61,11 +75,14 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
                             contentDescription = "Video " + (index + 1),
                             contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                         )
-                        Text("▶", color = Color.White, fontSize = 26.sp,
-                            modifier = Modifier.align(Alignment.Center))
+                        Box(Modifier.size(38.dp).background(Color.Black.copy(alpha = .55f), CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null,
+                                tint = Color.White, modifier = Modifier.size(27.dp))
+                        }
                         if (index == 3 && videos.size > 4) {
                             Box(Modifier.fillMaxSize()
-                                .background(Color(0x99060D16)),
+                                .background(Color(0x99090D10)),
                                 contentAlignment = Alignment.Center) {
                                 Text("+" + (videos.size - 4),
                                     color = Color.White, fontSize = 24.sp)
@@ -76,14 +93,28 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>) {
             }
             Spacer(Modifier.height(3.dp))
         }
-        Text(videos.size.toString() + " videos",
-            modifier = Modifier.padding(8.dp),
-            color = Color(0xFFB7C7DA), fontSize = 11.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 6.dp, bottom = 3.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(latest.timestamp, color = palette.textSecondary,
+                fontSize = 10.sp)
+            if (isMine && latest.status !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
+                Spacer(Modifier.width(3.dp))
+                Icon(if (delivered) Icons.Default.DoneAll else Icons.Default.Check,
+                    contentDescription = if (read) "Read" else if (delivered) "Delivered" else "Sent",
+                    tint = if (read) Color(BlinkChatReferenceStyle.BlueBright)
+                        else palette.textSecondary,
+                    modifier = Modifier.size(14.dp))
+            }
+        }
+      }
     }
     if (selected in videos.indices) {
         Dialog(onDismissRequest = { selected = -1 },
             properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Column(Modifier.fillMaxSize().background(Color(0xFF060D16))) {
+            Column(Modifier.fillMaxSize().background(Color(BlinkChatReferenceStyle.Canvas))) {
                 Row(Modifier.fillMaxWidth().padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { selected = -1 }) {

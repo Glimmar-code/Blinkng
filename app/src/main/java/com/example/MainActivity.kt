@@ -60,6 +60,8 @@ import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkInAppNotification
 import com.example.notification.BlinkInAppNotificationDestination
 import com.example.sharing.DeepLinkRouter
+import com.example.sharing.ContestVoteRoute
+import com.example.sharing.ContestVoteTarget
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
@@ -280,6 +282,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val coinPurchaseDeepLinkRequests = kotlinx.coroutines.flow.MutableStateFlow(0)
+    private val contestVoteRequests = kotlinx.coroutines.flow.MutableStateFlow<ContestVoteTarget?>(null)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -298,6 +301,13 @@ class MainActivity : ComponentActivity() {
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
         }
         handleNotificationIntent(intent)
+        ContestVoteRoute.parse(intent?.data)?.let { target ->
+            // Never vote automatically. Open the intended contestant after sign-in.
+            ContestVoteRoute.store(this, target)
+            contestVoteRequests.value = target
+            intent?.data = null
+            return
+        }
         // Public BLINK channel links are routed to the same native channel page
         // as the inbox. Only exact first-party hosts and UUIDs are trusted.
         val incomingUri = intent?.data
@@ -659,6 +669,13 @@ class MainActivity : ComponentActivity() {
         composeView.setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val coinPurchaseRequest by coinPurchaseDeepLinkRequests.collectAsStateWithLifecycle()
+            val incomingContestTarget by contestVoteRequests.collectAsStateWithLifecycle()
+            val pendingContestTarget = incomingContestTarget ?: ContestVoteRoute.pending(this@MainActivity)
+            LaunchedEffect(pendingContestTarget, uiState.destination) {
+                if (pendingContestTarget != null && uiState.destination == AppDestination.ONBOARDING) {
+                    viewModel.setDestination(AppDestination.SIGN_IN)
+                }
+            }
             var lastCoinPurchaseRequest by remember { mutableIntStateOf(0) }
             LaunchedEffect(coinPurchaseRequest, uiState.destination, uiState.myProfile.id) {
                 if (coinPurchaseRequest > lastCoinPurchaseRequest &&
@@ -1047,6 +1064,11 @@ class MainActivity : ComponentActivity() {
                                     MainAppContent(
                                         uiState = uiState,
                                         viewModel = viewModel,
+                                        contestTarget = pendingContestTarget,
+                                        onContestTargetOpened = {
+                                            ContestVoteRoute.clear(this@MainActivity)
+                                            contestVoteRequests.value = null
+                                        },
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
                                         itemsOpenSignal = itemsOpenSignal,
                                         boostOpenSignal = boostOpenSignal,
@@ -1230,6 +1252,8 @@ class MainActivity : ComponentActivity() {
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel,
+    contestTarget: ContestVoteTarget? = null,
+    onContestTargetOpened: () -> Unit = {},
     onWatchAdForCoins: () -> Unit,
     itemsOpenSignal: Int,
     boostOpenSignal: Int,
@@ -1243,6 +1267,13 @@ fun MainAppContent(
     onCheckForWebsiteUpdate: () -> Unit = {},
     onOpenWebsiteUpdate: () -> Unit = {}
 ) {
+    LaunchedEffect(contestTarget, uiState.destination, uiState.myProfile.id) {
+        if (contestTarget != null && uiState.destination == AppDestination.MAIN &&
+            uiState.myProfile.id.isNotBlank()) {
+            viewModel.setTab(MainTab.HOME)
+            viewModel.setFeedSubTab(2)
+        }
+    }
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     // A full-screen Reel owns horizontal gestures; the five-tab pager must not
@@ -1741,6 +1772,8 @@ fun MainAppContent(
             when (tab) {
                 MainTab.HOME -> {
                     PremiumFeedScreen(
+                        contestTarget = contestTarget,
+                        onContestTargetOpened = onContestTargetOpened,
                         posts = uiState.posts,
                         followingPosts = uiState.followingPosts,
                         hiddenFeedPostIds = uiState.hiddenFeedPostIds,

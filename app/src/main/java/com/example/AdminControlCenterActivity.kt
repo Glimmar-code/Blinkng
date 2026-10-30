@@ -36,6 +36,7 @@ import com.example.ui.components.BlinkAdminBugInbox
 import com.example.ui.components.MarketAdminReviewPanel
 import com.example.ui.components.BlinkMark
 import com.example.ui.screens.BlinkAdminAnnouncementManagerScreen
+import com.example.ui.screens.BlinkContestAdminScreen
 import com.example.ui.screens.BlinkAdminLiveContentManagerScreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
@@ -131,11 +132,13 @@ private fun AdminDashboardV3(
     var showBugReports by remember { mutableStateOf(false) }
     var showAnnouncementManager by remember { mutableStateOf(false) }
     var showLiveContent by remember { mutableStateOf(false) }
+    var showContestManager by remember { mutableStateOf(false) }
     var showMoreActions by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
 
     BackHandler {
         when {
+            showContestManager -> showContestManager = false
             showLiveContent -> showLiveContent = false
             showAnnouncementManager -> showAnnouncementManager = false
             else -> onExit()
@@ -185,6 +188,10 @@ private fun AdminDashboardV3(
                                 onClick = { showMoreActions = false; showAnnouncementManager = false; showLiveContent = true }
                             )
                             DropdownMenuItem(
+                                text = { Text("Contests") },
+                                onClick = { showMoreActions = false; showContestManager = true }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Announcements") },
                                 onClick = { showMoreActions = false; showAnnouncementManager = true }
                             )
@@ -228,7 +235,9 @@ private fun AdminDashboardV3(
                 }
             }
 
-            if (showLiveContent) {
+            if (showContestManager) {
+                BlinkContestAdminScreen(onBack = { showContestManager = false })
+            } else if (showLiveContent) {
                 BlinkAdminLiveContentManagerScreen(
                     service = service, isOwner = capability.isOwner,
                     onBack = { showLiveContent = false }

@@ -40,6 +40,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -231,11 +232,12 @@ fun BlinkUniversalPhotoEditor(
         }
     }
     val photoControls = listOf(
-        "ADJUST" to Icons.Default.Tune,
         "CROP" to Icons.Default.Crop,
-        "DRAW" to Icons.Default.Brush,
+        "FILTER" to Icons.Default.AutoAwesome,
+        "ADJUST" to Icons.Default.Tune,
+        "TEXT" to Icons.Default.TextFields,
         "STICKER" to Icons.Default.EmojiEmotions,
-        "TEXT" to Icons.Default.TextFields
+        "DRAW" to Icons.Default.Brush
     )
 
     Dialog(onDismissRequest = { close() },
@@ -245,6 +247,7 @@ fun BlinkUniversalPhotoEditor(
     ) {
         Column(
             Modifier.fillMaxSize()
+                .testTag("blink_photo_editor_stage")
                 .blinkElasticSwipeAction(
                     direction = BlinkElasticSwipeDirection.DOWN,
                     onAction = { if (!busy) close() },
@@ -258,7 +261,7 @@ fun BlinkUniversalPhotoEditor(
             ) {
                 TextButton(onClick={close()},enabled=!busy) {
                     Icon(Icons.Default.Close,"Cancel edits",tint=Color.White)
-                    Text("CANCEL",color=Color.White,fontSize=12.sp)
+                    Text("BACK",color=Color.White,fontSize=12.sp)
                 }
                 IconButton(onClick = { undo() }, enabled = !busy && undoHistory.isNotEmpty()) {
                     Icon(Icons.Default.Undo, "Undo edit", tint = Color.White)
@@ -267,10 +270,10 @@ fun BlinkUniversalPhotoEditor(
                     Icon(Icons.Default.Redo, "Redo edit", tint = Color.White)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("BLINK PHOTO",color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
+                Text("Edit Photo",color=Color.White,fontWeight=FontWeight.Bold,fontSize=16.sp)
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick={commit()},enabled=!busy) {
-                    Text(if(busy) "SAVING" else "DONE",color=Color(0xFF38ADFF),
+                    Text(if(busy) "SAVING" else "NEXT",color=Color(0xFF8D85FF),
                         fontSize=13.sp,fontWeight=FontWeight.Bold)
                 }
             }
@@ -380,17 +383,21 @@ fun BlinkUniversalPhotoEditor(
                 }
             }
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                Modifier.fillMaxWidth()
                     .background(Color(0xFF151515)).padding(vertical=5.dp,horizontal=8.dp),
-                horizontalArrangement=Arrangement.spacedBy(8.dp)
+                horizontalArrangement=Arrangement.spacedBy(2.dp)
             ) {
                 photoControls.forEach { (name,icon) ->
                     TextButton(onClick={tool=name},enabled=!busy,
+                        modifier=Modifier.weight(1f).heightIn(min=56.dp),
+                        contentPadding=PaddingValues(horizontal=1.dp,vertical=4.dp),
                         colors=ButtonDefaults.textButtonColors(
-                            contentColor=if(tool==name) Color(0xFF46B7FF) else Color.LightGray)) {
-                        Icon(icon,contentDescription=null,modifier=Modifier.size(18.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text(name,fontSize=11.sp)
+                            contentColor=if(tool==name) Color(0xFF8D85FF) else Color.LightGray)) {
+                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                            Icon(icon,contentDescription=null,modifier=Modifier.size(20.dp))
+                            Spacer(Modifier.height(4.dp))
+                            Text(when(name) { "DRAW" -> "Doodle"; "STICKER" -> "Stickers"; else -> name.lowercase().replaceFirstChar { it.uppercase() } },fontSize=10.sp,maxLines=1)
+                        }
                     }
                 }
             }
@@ -399,21 +406,34 @@ fun BlinkUniversalPhotoEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal=16.dp,vertical=8.dp)) {
                 when(tool) {
-                    "ADJUST" -> {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    "FILTER" -> {
+                        Text("FILTERS", color=Color.White, fontSize=12.sp)
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement=Arrangement.spacedBy(6.dp)
+                        ) {
                             listOf(
                                 listOf(0f,1f,1f) to "Original",
                                 listOf(.22f,1.08f,1.12f) to "Bright",
                                 listOf(0f,1.3f,1.12f) to "Vivid",
-                                listOf(.02f,1.12f,0f) to "B&W"
+                                listOf(.02f,1.12f,0f) to "B&W",
+                                listOf(.08f,1.13f,.72f) to "Warm"
                             ).forEach { (values, title) ->
-                                OutlinedButton(onClick={
-                                    saveUndo()
-                                    exposure=values[0]; contrast=values[1]; saturation=values[2]
-                                },enabled=!busy) { Text(title,fontSize=10.sp) }
+                                OutlinedButton(
+                                    onClick = {
+                                        saveUndo()
+                                        exposure=values[0]
+                                        contrast=values[1]
+                                        saturation=values[2]
+                                    },
+                                    enabled=!busy
+                                ) { Text(title,fontSize=11.sp) }
                             }
                         }
+                        Text("Filters are applied to your actual photo when you tap Done.",
+                            color=Color.LightGray, fontSize=11.sp)
+                    }
+                    "ADJUST" -> {
                         listOf("Enhance / Exposure","Contrast","Saturation").forEachIndexed { index,label ->
                             Row(verticalAlignment=Alignment.CenterVertically) {
                                 Text(label,color=Color.White,fontSize=11.sp,
