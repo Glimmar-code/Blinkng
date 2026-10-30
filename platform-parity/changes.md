@@ -1,3 +1,9 @@
+## 2026-10-30 — Compact native Android Chat voice player (reference fidelity)
+
+- **PARITY-EXCEPTION: android-native-compact-voice-player-20261030** — The small-screen Android `BlinkChatVoicePlayer` renders the selected reference's compact single-row waveform, duration and playback-speed control using Android MediaPlayer. Android native DownloadManager remains available from the message action menu, not an extra button consuming inline waveform space.
+- **Desktop equivalent and gap:** The Windows conversation is a desktop-native surface with a different layout and file actions. This Testlab change does not implement or certify Windows voice playback/download parity. Existing desktop conversations remain unchanged; any missing desktop voice feature still requires a separately validated implementation before claiming full cross-platform feature parity.
+- **Validation hold:** The Android emulator fixture must show waveform, time and 1× control together; Android playback/download functionality and keyboard tests, Windows quality and full device visual comparison must pass before merge into `main`. Do not treat a source-only visual edit as exact reference screenshot evidence.
+
 ## 2026-10-30 — Create Post recent gallery: Android-specific local MediaStore discovery
 
 - **PARITY-EXCEPTION: android-recent-mediastore-thumbnails-20261030** — Android may display a limited, newest-first row of real camera-roll thumbnails **only if the user has already granted media permission**. Without that permission, the app displays explicitly saved-draft images and offers the Android Photo Picker. Windows does not have Android's MediaStore or runtime permission API, so attempting to duplicate this code on desktop would be incorrect.
