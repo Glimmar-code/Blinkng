@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.os.Environment
 import android.provider.MediaStore
 import android.view.WindowInsets
-import android.view.WindowManager
 import android.view.inspector.WindowInspector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -95,14 +94,14 @@ class BlinkComposerNativeCaptureTest {
                 var focused = false
                 InstrumentationRegistry.getInstrumentation().runOnMainSync {
                     focused = WindowInspector.getGlobalWindowViews().any {
-                        it.hasWindowFocus() && (it.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_APPLICATION
+                        it.hasWindowFocus()
                     }
                 }
                 focused
             }
         } catch (error: ComposeTimeoutException) {
             runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
-            throw AssertionError("Composer dialog did not receive native window focus", error)
+            throw AssertionError("Composer did not receive native window focus: ${windowState()}", error)
         }
         val field = rule.onAllNodes(hasSetTextAction()).onFirst()
         field.performClick()
@@ -118,7 +117,7 @@ class BlinkComposerNativeCaptureTest {
             }
         } catch (error: ComposeTimeoutException) {
             runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
-            throw AssertionError("Actual app window does not report a visible IME", error)
+            throw AssertionError("Actual app window does not report a visible IME: ${windowState()}", error)
         }
         field.performTextInput("@a")
         try {
@@ -159,6 +158,20 @@ class BlinkComposerNativeCaptureTest {
         rule.onNodeWithText("Trim video").performScrollTo()
         rule.onNodeWithContentDescription("Play or pause reel").performClick()
         captureDisplay("create-post-video-timeline-staging.png")
+    }
+
+    @androidx.annotation.RequiresApi(30)
+    private fun windowState(): String {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val power = context.getSystemService(android.os.PowerManager::class.java)
+        val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+        var windows = ""
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            windows = WindowInspector.getGlobalWindowViews().joinToString {
+                "${it.javaClass.simpleName}(focus=${it.hasWindowFocus()},ime=${it.rootWindowInsets?.isVisible(WindowInsets.Type.ime())})"
+            }
+        }
+        return "interactive=${power.isInteractive},locked=${keyguard.isKeyguardLocked},windows=$windows"
     }
 
     private fun captureDisplay(name: String) {

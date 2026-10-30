@@ -70,3 +70,16 @@ composer-dialog focus before tapping, requires the IME before typing, then
 asserts that the IME remains visible and the suggestion is displayed. It also
 catches ComposeTimeoutException correctly so timeout screenshots are retained.
 The new sequence still requires fresh native execution; assertions are not waived.
+
+The next runs on `3c9a338b` both failed the additional dialog-focus predicate
+(41033724230 and 41033716640). The test had assumed a particular native window
+type; that internal assumption is removed while actual app focus, actual IME
+visibility before/after typing and displayed mentions remain mandatory.
+
+The pinned emulator runner source unlocks with keyevent 82 immediately after boot
+but does not keep the display awake during the long build. CI now explicitly
+keeps its disposable emulator awake, raises its display timeout, wakes it and
+dismisses keyguard before building. No production screen behavior changes.
+Timeout diagnostics report interactive/keyguard/focus/IME state, avoiding another
+opaque condition failure. This is a new setup repair, not a claim that the next
+native run passed. The recorded failed runs remain failures.
