@@ -79,6 +79,28 @@ abstract class BlinkCreatePostVisualAuditFixture {
         capture("create-post-landing-light-host-staging.png")
     }
 
+    @Test fun firstPhotoTapOpensInAppMediaReviewFixture() {
+        rule.setContent {
+            AuditSurface {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-photo-entry",
+                        fullName = "BLINK Test Student",
+                        username = "blink_photo_test",
+                        university = "FUTA"
+                    ),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true,
+                    trendingTagsLoader = { _, _ -> listOf("FUTA", "Campus") }
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_create_choice_photo").performClick()
+        rule.onNodeWithTag("blink_media_review").assertExists()
+        capture("create-post-photo-first-entry-staging.png", "blink_create_post_full_screen")
+    }
+
     @Test fun emptyGalleryShowsUsableDevicePickerFixture() {
         rule.setContent {
             AuditSurface {
