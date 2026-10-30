@@ -44,7 +44,7 @@ internal object BlinkPostShareActions {
                 }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            targetPackage?.let(::setPackage)
+            if (targetPackage != null) setPackage(targetPackage)
         }
     }
 
@@ -69,6 +69,10 @@ internal object BlinkPostShareActions {
     ): Boolean {
         if (!hasShareableContent(caption, images, video)) return false
         val general = createIntent(caption, images, video)
+        // Do not silently omit a selected image or Reel when its URI is no
+        // longer readable by a receiving app (for example, an old file:// draft).
+        if ((images.isNotEmpty() || !video.isNullOrBlank()) &&
+            !general.hasExtra(Intent.EXTRA_STREAM)) return false
         if (whatsAppOnly) {
             for (packageName in listOf("com.whatsapp", "com.whatsapp.w4b")) {
                 try {
