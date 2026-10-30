@@ -45,6 +45,32 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun recentSeeAllRoutesToMediaReviewWithoutPublishing() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkCreatePostLanding(
+                    drafts = emptyList(),
+                    onClose = {},
+                    onText = {},
+                    onPhoto = { actions += "picker" },
+                    onVideo = {},
+                    onPoll = {},
+                    onClassic = {},
+                    onCamera = {},
+                    onDraft = {},
+                    onRecentPhoto = { actions += "photo:" + it },
+                    onRecentSeeAll = { actions += "gallery" }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_recent_see_all").performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf("gallery"), actions)
+        }
+    }
+
+    @Test
     fun savedDraftIsRealAndSelectableWithoutFakeGalleryRows() {
         var openedId = ""
         composeRule.setContent {
