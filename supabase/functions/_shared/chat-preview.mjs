@@ -2,7 +2,9 @@
  * Enforce the recipient's authoritative chat preview preference BEFORE sending
  * Firebase data. A missing/unrecognized setting is treated as hidden.
  */
-export function chatPushPreview(mode, senderName, messageContent, senderAvatar = "") {
+export function chatPushPreview(
+  mode, senderName, messageContent, senderAvatar = "", senderUsername = "", senderId = ""
+) {
   const setting = mode === "full" || mode === "sender_only" ? mode : "hidden";
   const sender = String(senderName ?? "").trim() || "Blink user";
   const content = String(messageContent ?? "");
@@ -12,5 +14,9 @@ export function chatPushPreview(mode, senderName, messageContent, senderAvatar =
     body: setting === "full" ? (fullBody || "New message") : "New message",
     senderName: setting === "hidden" ? "" : sender,
     senderAvatar: setting === "hidden" ? "" : String(senderAvatar ?? ""),
+    // A hidden preview must not leak identity via the raw FCM data map,
+    // even when a notification UI chooses not to display these metadata keys.
+    senderUsername: setting === "hidden" ? "" : String(senderUsername ?? ""),
+    senderId: setting === "hidden" ? "" : String(senderId ?? ""),
   };
 }
