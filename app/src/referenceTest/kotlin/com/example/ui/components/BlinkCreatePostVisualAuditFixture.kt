@@ -79,6 +79,22 @@ abstract class BlinkCreatePostVisualAuditFixture {
         capture("create-post-landing-light-host-staging.png")
     }
 
+    @Test fun emptyGalleryShowsUsableDevicePickerFixture() {
+        rule.setContent {
+            AuditSurface {
+                BlinkMediaEmptyGallery(
+                    canBrowse = false,
+                    onPick = {},
+                    onRequestLibrary = {},
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_gallery_browse_photos").assertExists()
+        rule.onNodeWithTag("blink_gallery_allow_access").assertExists()
+        capture("create-post-gallery-empty-staging.png")
+    }
+
     @Test fun selectedPhotosUseNativeAlbumReviewFixture() {
         var edited: String? = null
         val context = InstrumentationRegistry.getInstrumentation().targetContext
