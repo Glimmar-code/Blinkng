@@ -81,4 +81,11 @@ assert.equal(deleted,1);
 assert.equal(storage.has(`blink_web_post_draft_v2:${alice}`),false);
 
 assert.ok(source.includes('const draftKeys=authed()?ownedDraftKeys(uid()):[];'),'Offline draft count must also be account scoped');
+const dataStart=source.indexOf('  async function renderDataSettings()');
+const dataEnd=source.indexOf('  async function renderAccounts()',dataStart);
+assert.ok(dataStart>=0 && dataEnd>dataStart);
+const dataSettings=source.slice(dataStart,dataEnd);
+assert.ok(dataSettings.includes('for(const key of [...ownedDraftKeys(uid()),PREF_KEY])storageRemove(key)'),'Clear-local-data must delete only active-account drafts');
+assert.ok(!dataSettings.includes('storageKeys().filter'),'Clear-local-data must never enumerate and delete all accounts drafts');
+
 console.log('Web drafts: account isolation, logout guard, stale UI and owner edits passed.');
