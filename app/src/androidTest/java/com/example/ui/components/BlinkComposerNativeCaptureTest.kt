@@ -89,6 +89,11 @@ class BlinkComposerNativeCaptureTest {
         }
         rule.onNodeWithTag("blink_create_choice_text").performClick()
         rule.waitForIdle()
+        // The real text input must be interacted with before validating focus.
+        // This keeps the OS-focus assertion meaningful, rather than requiring
+        // a newly created dialog to grab focus before any user interaction.
+        val field = rule.onAllNodes(hasSetTextAction()).onFirst()
+        field.performClick()
         try {
             rule.waitUntil(15_000) {
                 var focused = false
@@ -103,8 +108,6 @@ class BlinkComposerNativeCaptureTest {
             runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
             throw AssertionError("Composer did not receive native window focus: ${windowState()}", error)
         }
-        val field = rule.onAllNodes(hasSetTextAction()).onFirst()
-        field.performClick()
         try {
             rule.waitUntil(15_000) {
                 var visible = false
