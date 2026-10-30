@@ -71,7 +71,7 @@ class ChatRepository(
                     .build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@use ChatPrivacySettings()
+                if (!response.isSuccessful) throw IllegalStateException("Chat privacy could not be loaded (${response.code}).")
                 val row = org.json.JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
                     ?: return@use ChatPrivacySettings()
                 ChatPrivacySettings(
@@ -88,7 +88,7 @@ class ChatRepository(
                     notificationPreview = row.optString("notification_preview").ifBlank { "full" }
                 )
             }
-        }.getOrDefault(ChatPrivacySettings())
+        }.getOrThrow()
     }
 
     suspend fun updateChatPrivacySettings(settings: ChatPrivacySettings): Boolean =
