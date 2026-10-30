@@ -7,6 +7,7 @@ const share=load('app/src/main/java/com/example/ui/components/BlinkPostShareActi
 const native=load('app/src/androidTest/java/com/example/ui/components/BlinkCreatePostReferenceTest.kt');
 const robolectric=load('app/src/test/java/com/example/ui/components/BlinkPostShareActionsTest.kt');
 const main=load('app/src/main/java/com/example/MainActivity.kt');
+const vm=load('app/src/main/java/com/example/viewmodel/BlinkViewModel.kt');
 assert.ok(share.includes('import android.content.ActivityNotFoundException'),'Use the real Android exception class for missing share targets');
 
 for(const target of [
@@ -47,6 +48,11 @@ for(const target of ['fun singlePhotoSharesContentUriWithGrantAndCaption()',
   'fun staleUnshareableMediaDoesNotSilentlyBecomeTextOnly()',
   'fun copyCaptionWritesExactlyTheSelectedText()'
 ]) assert.ok(robolectric.includes(target),'Android unit test missing: '+target);
+assert.ok(sheet.includes('onSaveDraft: (PostDraft) -> Boolean = { false }'), 'Do not trust unimplemented draft save callbacks');
+assert.ok(sheet.includes('val saved = onSaveDraft('), 'Use the host-verified draft persistence result');
+assert.ok(sheet.includes('if (!saved) return false'), 'Do not close the composer if storage failed');
+assert.ok(vm.includes('fun saveDraft(draft: PostDraft): Boolean'), 'ViewModel must return draft storage success');
+assert.ok(vm.includes('return saved'), 'ViewModel must return actual saved result');
 assert.ok(main.includes('onSaveDraft = { draft ->'), 'Main app must persist drafts');
 assert.ok(main.includes('viewModel.addPost('), 'Native Post Now must use ViewModel upload');
 console.log('PASS APK Create Post: working share buttons, real URI access, draft failure navigation, one-vote poll label, and native tests.');
