@@ -107,6 +107,23 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun referenceHashtagCardsAreClickableAndSelectable() {
+        var taps = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferenceTagCard(
+                    tag = "FUTA",
+                    selected = true,
+                    enabled = true,
+                    onClick = { taps++ }
+                )
+            }
+        }
+        composeRule.onNodeWithText("#FUTA").assertExists().performClick()
+        composeRule.runOnIdle { assertEquals(1, taps) }
+    }
+
+    @Test
     fun mediaReviewSupportsRemovalAndNextWithoutAutoPosting() {
         val actions = mutableListOf<String>()
         composeRule.setContent {
