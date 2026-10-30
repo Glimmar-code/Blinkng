@@ -31,6 +31,7 @@ internal fun MarketOffersPanel(
     var hasMore by remember(userId) { mutableStateOf(false) }
     var nextOffset by remember(userId) { mutableIntStateOf(0) }
     var error by remember(userId) { mutableStateOf("") }
+    var loadFailure by remember(userId) { mutableStateOf(false) }
     var counterText by remember(userId) { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     suspend fun loadPage(reset: Boolean) {
@@ -40,8 +41,10 @@ internal fun MarketOffersPanel(
             val offset = if (reset) 0 else nextOffset
             val rows = service.fetchMyMarketOffers(offset = offset, limit = pageSize)
             if (rows == null) {
+                loadFailure = true
                 error = "Your offers could not be loaded. Try again."
             } else {
+                loadFailure = false
                 val page = (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
                 offers = if (reset) page else {
                     val existingIds = offers.mapTo(mutableSetOf()) { it.optString("id") }
@@ -66,6 +69,7 @@ internal fun MarketOffersPanel(
                 loadPage(reset = true)
             } else {
                 // Do not immediately refresh and erase a failed-action warning.
+                loadFailure = false
                 error = failure
             }
         } finally {
@@ -87,8 +91,10 @@ internal fun MarketOffersPanel(
             )
             if (error.isNotBlank()) {
                 Text(error, color = MaterialTheme.colorScheme.error)
-                TextButton(enabled = !loading, onClick = { scope.launch { loadPage(reset = offers.isEmpty()) } }) {
-                    Text("Retry loading offers")
+                if (loadFailure) {
+                    TextButton(enabled = !loading, onClick = { scope.launch { loadPage(reset = offers.isEmpty()) } }) {
+                        Text("Retry loading offers")
+                    }
                 }
             }
             if (loaded && offers.isEmpty() && error.isBlank()) {
