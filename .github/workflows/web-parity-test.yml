@@ -15,6 +15,7 @@ on:
       - 'scripts/test_feed_market_posting_contract.mjs'
       - 'scripts/test_web_draft_ownership.mjs'
       - 'scripts/test_web_honest_menu.mjs'
+      - 'scripts/test_web_account_switch.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -40,6 +41,7 @@ on:
       - 'scripts/test_feed_market_posting_contract.mjs'
       - 'scripts/test_web_draft_ownership.mjs'
       - 'scripts/test_web_honest_menu.mjs'
+      - 'scripts/test_web_account_switch.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -124,6 +126,9 @@ jobs:
 
       - name: Ensure public feature menu only lists actual web pages
         run: node scripts/test_web_honest_menu.mjs
+
+      - name: Verify account switch clears session before Login
+        run: node scripts/test_web_account_switch.mjs
 
       - name: JSON manifests
         run: |
