@@ -120,10 +120,21 @@ internal fun BlinkCreatePostLanding(
     onPoll: () -> Unit,
     onClassic: () -> Unit,
     onCamera: () -> Unit,
-    onDraft: (PostDraft) -> Unit
+    onDraft: (PostDraft) -> Unit,
+    onRecentPhoto: (String) -> Unit,
+    onRecentSeeAll: () -> Unit
 ) {
     val white = Color.White
+    val context = LocalContext.current
     var showAllDrafts by remember { mutableStateOf(false) }
+    var recentPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Only display real device photos when gallery access has already been granted.
+    // Android Photo Picker remains the privacy-preserving fallback.
+    LaunchedEffect(context) {
+        recentPhotos = if (hasGalleryPermission(context)) {
+            readAvailableGalleryPhotos(context).take(12).map { it.uri.toString() }
+        } else emptyList()
+    }
     Column(
         Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas)).verticalScroll(rememberScrollState())
             .testTag("blink_create_post_landing")
@@ -154,20 +165,30 @@ internal fun BlinkCreatePostLanding(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Recent", color = white, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
-            if (drafts.size > 8) {
-                TextButton(onClick = { showAllDrafts = !showAllDrafts }) {
-                    Text(if (showAllDrafts) "Show less" else "See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
-                }
-            } else {
-                Text("Saved drafts", color = Color(0xFF7D83F9), fontSize = 12.sp)
+            TextButton(onClick = onRecentSeeAll, modifier = Modifier.testTag("blink_recent_see_all")) {
+                Text("See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
             }
         }
-        // Only show media the user already selected for a local draft. Android's
-        // Photo Picker controls access to any other gallery photos.
         val mediaDrafts = drafts.filter { !it.imageUri.isNullOrBlank() }
-        if (mediaDrafts.isNotEmpty()) {
+        if (recentPhotos.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.testTag("blink_recent_device_photos")) {
+                items(recentPhotos.take(8), key = { it }) { photoUri ->
+                    AsyncImage(
+                        model = photoUri,
+                        contentDescription = "Select recent gallery photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(width = 78.dp, height = 72.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onRecentPhoto(photoUri) }
+                    )
+                }
+            }
+        } else if (mediaDrafts.isNotEmpty()) {
+            // When full gallery access is unavailable, previews are restricted to
+            // photos the user explicitly selected and saved as local drafts.
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(mediaDrafts.take(if (showAllDrafts) 30 else 8), key = { it.id }) { draft ->
+                items(mediaDrafts.take(8), key = { it.id }) { draft ->
                     val raw = draft.imageUri.orEmpty()
                     val first = if (raw.startsWith("[")) {
                         runCatching { JSONArray(raw).optString(0) }.getOrDefault("")
@@ -176,14 +197,12 @@ internal fun BlinkCreatePostLanding(
                         model = first,
                         contentDescription = "Resume recent photo draft",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(width = 88.dp, height = 80.dp)
+                        modifier = Modifier.size(width = 78.dp, height = 72.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .clickable { onDraft(draft) }
                     )
                 }
             }
-            Text("Recent photos from saved drafts", color = Color(BlinkPostReferenceStyle.Muted),
-                fontSize = 11.sp)
         }
         if (drafts.isEmpty()) {
             Surface(
@@ -241,9 +260,14 @@ internal fun BlinkCreatePostLanding(
             }
         }
         BlinkPostMenuRow(
-            title = "Drafts", detail = if (drafts.isEmpty()) "No saved drafts" else "Tap a draft above to resume",
+            title = "Drafts", detail = when {
+                drafts.isEmpty() -> "No saved drafts"
+                drafts.size == 1 -> "Tap to resume your saved draft"
+                else -> "${drafts.size} saved drafts · tap to view"
+            },
             icon = Icons.Default.Save, onClick = {
-                drafts.firstOrNull()?.let(onDraft)
+                if (drafts.size > 1) showAllDrafts = !showAllDrafts
+                else drafts.firstOrNull()?.let(onDraft)
             }, enabled = drafts.isNotEmpty()
         )
         BlinkPostMenuRow(
