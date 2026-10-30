@@ -213,16 +213,15 @@
     root().innerHTML=`<div class="parity-root" data-parity-root>
       <a class="parity-skip" href="#parity-main">Skip to content</a>
       <aside class="parity-left"><button class="parity-brand" data-parity-go="/feed"><img class="parity-brand-logo" src="${LOGO_URL}" alt="" aria-hidden="true"><strong>Blink</strong></button><nav>${appNav()}</nav><div class="parity-divider"></div><nav>${parityNav()}</nav></aside>
-      <main class="parity-main" id="parity-main"><header class="parity-top"><div><span class="parity-eyebrow">Web parity</span><h1>${esc(title)}</h1></div><div class="parity-top-actions"><button data-parity-command>⌘K</button><button data-parity-go="/more">500</button></div></header><div class="parity-content">${body}</div></main>
+      <main class="parity-main" id="parity-main"><header class="parity-top"><div><span class="parity-eyebrow">BLINK Web</span><h1>${esc(title)}</h1></div><div class="parity-top-actions"><button data-parity-command>⌘K</button><button data-parity-go="/more">More</button></div></header><div class="parity-content">${body}</div></main>
       <aside class="parity-right">${aside||rightRail()}</aside>
       <nav class="parity-mobile"><button data-parity-go="/feed">⌂<span>Home</span></button><button data-parity-go="/messages">✉<span>Messages</span></button><button data-parity-go="/store">◆<span>Store</span></button><button data-parity-go="/more">•••<span>More</span></button></nav>
     </div>`;
     bindShell();
-    queueMicrotask(decorateAndroidUiParityDock);
   }
   function rightRail() {
     const p=prefs();
-    return `<section class="parity-panel"><h3>Web status</h3><div class="parity-status-row"><span class="status-dot ${navigator.onLine?'online':'offline'}"></span><strong>${navigator.onLine?'Online':'Offline'}</strong></div><p class="muted">500 Android-derived web parity capabilities across 50 source modules.</p><button class="parity-btn primary" data-parity-install hidden>Install Blink Web</button></section><section class="parity-panel"><h3>Quick controls</h3><label class="parity-toggle"><span>Reduce motion</span><input type="checkbox" data-pref="reduceMotion" ${p.reduceMotion?'checked':''}></label><label class="parity-toggle"><span>Data saver</span><input type="checkbox" data-pref="dataSaver" ${p.dataSaver?'checked':''}></label><label class="parity-toggle"><span>Autoplay</span><input type="checkbox" data-pref="autoplay" ${p.autoplay?'checked':''}></label></section>`;
+    return `<section class="parity-panel"><h3>Web status</h3><div class="parity-status-row"><span class="status-dot ${navigator.onLine?'online':'offline'}"></span><strong>${navigator.onLine?'Online':'Offline'}</strong></div><p class="muted">Web features may differ from the Android and Windows apps.</p><button class="parity-btn primary" data-parity-install hidden>Install Blink Web</button></section><section class="parity-panel"><h3>Quick controls</h3><label class="parity-toggle"><span>Reduce motion</span><input type="checkbox" data-pref="reduceMotion" ${p.reduceMotion?'checked':''}></label><label class="parity-toggle"><span>Data saver</span><input type="checkbox" data-pref="dataSaver" ${p.dataSaver?'checked':''}></label><label class="parity-toggle"><span>Autoplay</span><input type="checkbox" data-pref="autoplay" ${p.autoplay?'checked':''}></label></section>`;
   }
 
   function bindShell() {
@@ -522,18 +521,66 @@
     if (!authGuard()) return; loading('Seller tools'); try { const orders=await table('marketplace_orders',`seller_id=eq.${encodeURIComponent(uid())}&select=*&order=created_at.desc&limit=100`).catch(()=>[]); const listings=await table('market_items',`seller_id=eq.${encodeURIComponent(uid())}&select=id,title,price,currency,status,created_at&order=created_at.desc&limit=100`).catch(()=>[]); shell('Seller tools',`<div class="metrics-grid"><div class="metric"><strong>${fmt(listings.length)}</strong><span>Listings</span></div><div class="metric"><strong>${fmt(orders.length)}</strong><span>Orders</span></div><div class="metric"><strong>${fmt(orders.filter(o=>o.status==='completed').length)}</strong><span>Completed</span></div><div class="metric"><strong>${fmt(orders.filter(o=>o.status==='pending').length)}</strong><span>Pending</span></div></div><section class="parity-panel"><div class="panel-head"><h3>Your listings</h3><button class="parity-btn" data-parity-go="/market">Open Marketplace</button></div>${listings.slice(0,20).map(i=>`<div class="mini-row"><span>${esc(i.title||'Listing')}</span><strong>${i.currency==='NGN'?new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN',maximumFractionDigits:0}).format(Number(i.price||0)):fmt(i.price)}</strong></div>`).join('')||'<p>No seller listings found.</p>'}</section>`);bindShell();}catch(e){shell('Seller tools',errorCard(e));}
   }
 
+  // User-visible destinations are curated separately from the internal UI parity
+  // checklist. An engineering checkpoint does not imply a working web feature.
+  const WEB_MENU = [
+    {title:'Home Feed',route:'/feed',group:'Social'},
+    {title:'Reels',route:'/reels',group:'Social'},
+    {title:'Search',route:'/search',group:'Discovery'},
+    {title:'Messages',route:'/messages',group:'Communication'},
+    {title:'Notifications',route:'/activity',group:'Communication'},
+    {title:'Browse Marketplace',route:'/market',group:'Marketplace'},
+    {title:'Connect',route:'/connect',group:'Discovery'},
+    {title:'Games',route:'/games',group:'Games'},
+    {title:'BLINK AI',route:'/ai',group:'Tools'},
+    {title:'Scheduled posts',route:'/scheduled',group:'Creator'},
+    {title:'Account switching',route:'/accounts',group:'Account'},
+    {title:'Drafts',route:'/drafts',group:'Creator'},
+    {title:'Privacy settings',route:'/settings/privacy',group:'Account'},
+    {title:'Notification settings',route:'/settings/notifications',group:'Account'},
+    {title:'Appearance',route:'/settings/appearance',group:'Account'},
+    {title:'Verification status',route:'/verification',group:'Account'},
+    {title:'Creator analytics',route:'/analytics',group:'Creator'},
+    {title:'Seller tools',route:'/seller',group:'Marketplace'},
+    {title:'Leaderboard',route:'/leaderboard',group:'Games'},
+    {title:'Offline and data saver',route:'/offline',group:'Tools'},
+    {title:'Study Circles',route:'/study',group:'Discovery'},
+  ];
+
   function renderHub() {
-    const groups=[...new Set(MODULES.map(m=>m.group))].sort(); shell('500 app features on web',`<section class="parity-hero"><div><span class="parity-eyebrow">Android → Web</span><h2>500 parity capabilities</h2><p>50 real Blink Android modules × 10 web parity layers. Search the registry or open a module directly.</p></div><div class="hero-actions"><span class="parity-kpi"><strong>50</strong> modules</span><span class="parity-kpi"><strong>10</strong> layers</span><span class="parity-kpi"><strong>500</strong> capabilities</span></div></section><section class="parity-panel"><div class="feature-tools"><input class="parity-field" id="feature-search" placeholder="Search 500 features, modules or Android source files…"><select class="parity-field compact" id="feature-group"><option value="">All groups</option>${groups.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div class="feature-results" id="feature-results"></div></section>`); const render=()=>{const q=document.getElementById('feature-search').value.trim().toLowerCase();const g=document.getElementById('feature-group').value;const rows=FEATURES.filter(f=>(!g||f.group===g)&&(!q||`${f.title} ${f.source} ${f.group} ${f.description}`.toLowerCase().includes(q))).slice(0,120);document.getElementById('feature-results').innerHTML=`<div class="feature-count">Showing ${fmt(rows.length)} of ${fmt(FEATURES.filter(f=>(!g||f.group===g)&&(!q||`${f.title} ${f.source} ${f.group} ${f.description}`.toLowerCase().includes(q))).length)} matching capabilities</div>${rows.map(f=>`<button class="feature-row" data-feature-route="${esc(f.route)}"><span class="feature-id">${esc(f.id)}</span><span class="grow"><strong>${esc(f.title)}</strong><small>${esc(f.group)} · ${esc(f.source)}</small></span><span>→</span></button>`).join('')}`;document.querySelectorAll('[data-feature-route]').forEach(b=>b.onclick=()=>go(b.dataset.featureRoute));};document.getElementById('feature-search').oninput=render;document.getElementById('feature-group').onchange=render;render();
+    const groups=[...new Set(WEB_MENU.map(item=>item.group))].sort();
+    shell('Explore Blink Web',`<section class="parity-hero"><div><span class="parity-eyebrow">BLINK Web</span><h2>Explore available pages</h2><p>Open the web features listed below. Some Android and Windows features are not yet available on the web.</p></div></section><section class="parity-panel"><div class="feature-tools"><input class="parity-field" id="feature-search" aria-label="Search web pages" placeholder="Search web pages…"><select class="parity-field compact" id="feature-group" aria-label="Filter by category"><option value="">All categories</option>${groups.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div class="feature-results" id="feature-results"></div></section>`);
+    const render=()=>{
+      const q=document.getElementById('feature-search').value.trim().toLowerCase();
+      const group=document.getElementById('feature-group').value;
+      const matches=WEB_MENU.filter(item=>(!group||item.group===group)&&(!q||`${item.title} ${item.group}`.toLowerCase().includes(q)));
+      document.getElementById('feature-results').innerHTML=`<div class="feature-count">Showing ${fmt(matches.length)} web destinations</div>${matches.map(item=>`<button type="button" class="feature-row" data-feature-route="${esc(item.route)}"><span class="grow"><strong>${esc(item.title)}</strong><small>${esc(item.group)}</small></span><span>Open</span></button>`).join('')||'<p>No pages match your search.</p>'}`;
+      document.querySelectorAll('[data-feature-route]').forEach(button=>button.onclick=()=>go(button.dataset.featureRoute));
+    };
+    document.getElementById('feature-search').oninput=render;
+    document.getElementById('feature-group').onchange=render;
+    render();
   }
 
-  function errorCard(e){return `<section class="parity-panel error-panel"><h3>Couldn’t load this Blink feature</h3><p>${esc(e?.message||e)}</p><div class="row-actions"><button class="parity-btn" data-parity-go="${currentPath()}">Try again</button><button class="parity-btn" data-parity-go="/more">Open parity center</button></div></section>`;}
+  function errorCard(e){return `<section class="parity-panel error-panel"><h3>Couldn’t load this Blink feature</h3><p>${esc(e?.message||e)}</p><div class="row-actions"><button class="parity-btn" data-parity-go="${currentPath()}">Try again</button><button class="parity-btn" data-parity-go="/more">Browse features</button></div></section>`;}
   function iconFor(category=''){const s=String(category).toLowerCase();if(s.includes('profile'))return '◎';if(s.includes('chat'))return '✉';if(s.includes('reel'))return '▶';if(s.includes('boost'))return '↗';if(s.includes('market'))return '▣';if(s.includes('vip'))return '◆';if(s.includes('gift'))return '🎁';return '✦';}
 
   function openMiniModal(title,html){closeMiniModal();const d=document.createElement('div');d.id='parity-modal';d.className='parity-modal-backdrop';d.innerHTML=`<div class="parity-modal"><header><h2>${esc(title)}</h2><button data-close-parity-modal>×</button></header>${html}</div>`;document.body.appendChild(d);d.onclick=e=>{if(e.target===d)closeMiniModal();};d.querySelector('[data-close-parity-modal]').onclick=closeMiniModal;}
   function closeMiniModal(){document.getElementById('parity-modal')?.remove();}
 
   function openCommand() {
-    openMiniModal('Blink command palette',`<input class="parity-field" id="command-search" autofocus placeholder="Search 500 features or type a destination…"><div id="command-results" class="command-results"></div>`); const input=document.getElementById('command-search'); const draw=()=>{const q=input.value.trim().toLowerCase();const rows=FEATURES.filter(f=>!q||`${f.title} ${f.source} ${f.group}`.toLowerCase().includes(q)).slice(0,18);document.getElementById('command-results').innerHTML=rows.map(f=>`<button data-command-route="${esc(f.route)}"><span><strong>${esc(f.title)}</strong><small>${esc(f.source)}</small></span><kbd>↵</kbd></button>`).join('');document.querySelectorAll('[data-command-route]').forEach(b=>b.onclick=()=>{closeMiniModal();go(b.dataset.commandRoute);});}; input.oninput=draw; input.onkeydown=e=>{if(e.key==='Escape')closeMiniModal();if(e.key==='Enter'){document.querySelector('[data-command-route]')?.click();}};draw();setTimeout(()=>input.focus(),0);
+    openMiniModal('Go to BLINK page',`<input class="parity-field" id="command-search" autofocus aria-label="Find a web destination" placeholder="Find a BLINK web page…"><div id="command-results" class="command-results"></div>`);
+    const input=document.getElementById('command-search');
+    const draw=()=>{
+      const q=input.value.trim().toLowerCase();
+      const matches=WEB_MENU.filter(item=>!q||`${item.title} ${item.group}`.toLowerCase().includes(q)).slice(0,18);
+      document.getElementById('command-results').innerHTML=matches.map(item=>`<button data-command-route="${esc(item.route)}"><span><strong>${esc(item.title)}</strong><small>${esc(item.group)}</small></span><kbd>↵</kbd></button>`).join('')||'<p>No matching pages.</p>';
+      document.querySelectorAll('[data-command-route]').forEach(button=>button.onclick=()=>{closeMiniModal();go(button.dataset.commandRoute);});
+    };
+    input.oninput=draw;
+    input.onkeydown=event=>{if(event.key==='Escape')closeMiniModal();if(event.key==='Enter')document.querySelector('[data-command-route]')?.click();};
+    draw();
+    setTimeout(()=>input.focus(),0);
   }
 
   let installPrompt=null;
@@ -649,10 +696,9 @@
 
   function decorateExistingShell() {
     if (isParityRoute()) return;
-    const sidebar=document.querySelector('.sidebar'); if(sidebar&&!sidebar.querySelector('[data-parity-launcher]')){const b=document.createElement('button');b.className='nav-btn';b.dataset.parityLauncher='1';b.innerHTML='<span class="icon">•••</span><span>More app features</span><span class="badge">500</span>';b.onclick=()=>go('/more');const spacer=sidebar.querySelector('.sidebar-spacer');sidebar.insertBefore(b,spacer||null);}
+    const sidebar=document.querySelector('.sidebar'); if(sidebar&&!sidebar.querySelector('[data-parity-launcher]')){const b=document.createElement('button');b.className='nav-btn';b.dataset.parityLauncher='1';b.innerHTML='<span class="icon">•••</span><span>More app features</span>';b.onclick=()=>go('/more');const spacer=sidebar.querySelector('.sidebar-spacer');sidebar.insertBefore(b,spacer||null);}
     const top=document.querySelector('.top-actions'); if(top&&!top.querySelector('[data-parity-command]')){const b=document.createElement('button');b.className='btn small-btn ghost parity-command-small';b.dataset.parityCommand='1';b.textContent='⌘K';b.onclick=openCommand;top.prepend(b);}
     if(!document.getElementById('parity-network-pill')){const pill=document.createElement('button');pill.id='parity-network-pill';pill.className=`parity-network-pill ${navigator.onLine?'online':'offline'}`;pill.textContent=navigator.onLine?'Online':'Offline';pill.onclick=()=>go('/offline');document.body.appendChild(pill);}
-    decorateAndroidUiParityDock();
   }
 
   function renderParity(path=currentPath()) {
