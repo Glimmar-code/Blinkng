@@ -442,16 +442,29 @@
   }
 
   async function renderOffline() {
-    const estimate=navigator.storage?.estimate?await navigator.storage.estimate().catch(()=>null):null; const regs='serviceWorker' in navigator?await navigator.serviceWorker.getRegistrations().catch(()=>[]):[]; const draftKeys=storageKeys().filter(k=>/draft/i.test(k));
+    const estimate=navigator.storage?.estimate?await navigator.storage.estimate().catch(()=>null):null; const regs='serviceWorker' in navigator?await navigator.serviceWorker.getRegistrations().catch(()=>[]):[]; const draftKeys=authed()?ownedDraftKeys(uid()):[];
     shell('Offline & data saver',`<section class="parity-hero"><div><span class="parity-eyebrow">Offline parity</span><h2>${navigator.onLine?'Connected':'Working offline'}</h2><p>Web shell caching, local drafts, data saver, recovery controls and network awareness mirror the app’s offline-first behavior where browser capabilities allow.</p></div></section><div class="metrics-grid"><div class="metric"><strong>${regs.length?'Active':'Off'}</strong><span>Service worker</span></div><div class="metric"><strong>${fmt(draftKeys.length)}</strong><span>Local drafts</span></div><div class="metric"><strong>${estimate?`${Math.round((estimate.usage||0)/1024/1024)} MB`:'—'}</strong><span>Browser storage</span></div><div class="metric"><strong>${prefs().dataSaver?'On':'Off'}</strong><span>Data saver</span></div></div><section class="parity-panel"><h3>Controls</h3><label class="parity-toggle"><span>Data saver</span><input type="checkbox" data-pref="dataSaver" ${prefs().dataSaver?'checked':''}></label><label class="parity-toggle"><span>Autoplay videos</span><input type="checkbox" data-pref="autoplay" ${prefs().autoplay?'checked':''}></label><button class="parity-btn" data-clear-web-cache>Refresh offline cache</button><button class="parity-btn" data-parity-go="/drafts">Open drafts</button></section>`);
     bindShell(); document.querySelector('[data-clear-web-cache]')?.addEventListener('click',async()=>{try{for(const k of await caches.keys())if(k.startsWith('blink-web'))await caches.delete(k);for(const r of await navigator.serviceWorker.getRegistrations())await r.update();toast('Offline cache refreshed.','success');}catch(e){toast(e.message,'error');}});
   }
 
+  // Only known, explicitly account-scoped draft namespaces may appear in the UI.
+  // Never enumerate arbitrary browser storage or migrate another account's drafts.
+  function ownedDraftKeys(accountId, keys=storageKeys()) {
+    const id=String(accountId||'');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return [];
+    return keys.filter(key => key === `blink_web_post_draft_v2:${id}`
+      || key.startsWith(`blink_web_parity_draft_v2:${id}:`));
+  }
+  function canEditDraft(key, ownerId) {
+    return authed() && uid()===ownerId && ownedDraftKeys(ownerId,[key]).length===1;
+  }
   function renderDrafts() {
-    const keys=storageKeys().filter(k=>/draft/i.test(k));
-    shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Draft storage is local to this browser and scoped by account where supported.</p></section><div class="parity-list">${keys.map(k=>{const v=storageGet(k,'');return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
-    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.saveDraft,input=document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`);if(!input)return;if(storageSet(k,input.value))toast('Draft saved.','success');else toast('This browser blocked local draft storage.','error');});
-    document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{storageRemove(b.dataset.deleteDraft);toast('Draft deleted.','success');renderDrafts();});
+    if (!authGuard()) return;
+    const ownerId=uid();
+    const keys=ownedDraftKeys(ownerId);
+    shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Only drafts belonging to the signed-in account are shown. Drafts remain stored locally on this browser.</p></section><div class="parity-list">${keys.map(k=>{const v=storageGet(k,'');return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
+    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.saveDraft;if(!canEditDraft(k,ownerId)){toast('Sign in to the draft owner account first.','error');return;}const input=document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`);if(!input)return;if(storageSet(k,input.value))toast('Draft saved.','success');else toast('This browser blocked local draft storage.','error');});
+    document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.deleteDraft;if(!canEditDraft(k,ownerId)){toast('Sign in to the draft owner account first.','error');return;}storageRemove(k);toast('Draft deleted.','success');renderDrafts();});
   }
 
   async function getUserSettings() {
