@@ -168,6 +168,7 @@ fun runBlinkDesktopApplication() = application {
     val trayState = rememberTrayState()
     var isWindowVisible by remember { mutableStateOf(true) }
     var showStartupIntro by remember { mutableStateOf(true) }
+    var startupRetrySerial by remember { mutableIntStateOf(0) }
     var incomingCall by remember { mutableStateOf<DesktopCall?>(null) }
     var incomingCallerName by remember { mutableStateOf("Blink user") }
     var lastNotifiedCallId by remember { mutableStateOf<String?>(null) }
@@ -191,6 +192,9 @@ fun runBlinkDesktopApplication() = application {
     }
 
     LaunchedEffect(Unit) { appState.initialize() }
+    LaunchedEffect(startupRetrySerial) {
+        if (startupRetrySerial > 0) appState.retryProfileLoad()
+    }
 
     LaunchedEffect(appState.session?.userId) {
         incomingCall = null
@@ -327,7 +331,24 @@ fun runBlinkDesktopApplication() = application {
                         when {
                             !appState.initialized -> InitializingScreen()
                             appState.session == null -> BlinkAuthScreen(appState)
-                            appState.profile == null -> InitializingScreen()
+                            appState.profile == null && appState.busy -> InitializingScreen()
+                            appState.profile == null -> Column(
+                                modifier = Modifier.fillMaxSize().padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text("Could not load your BLINK profile", style = MaterialTheme.typography.headlineSmall)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    appState.errorMessage ?: "Your profile is unavailable. Check your connection and try again.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Button(onClick = { startupRetrySerial++ }) { Text("Retry") }
+                                    OutlinedButton(onClick = { appState.signOut() }) { Text("Sign out") }
+                                }
+                            }
                             appState.profile?.onboardingCompleted == false ->
                                 BlinkDesktopOnboardingScreen(appState)
                             else -> Column(modifier = Modifier.fillMaxSize()) {
