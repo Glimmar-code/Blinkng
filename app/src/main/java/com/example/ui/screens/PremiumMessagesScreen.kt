@@ -4360,13 +4360,13 @@ private fun MessageContent(
                         .testTag("chat_reference_document_card")
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 9.dp, top = 7.dp, bottom = 7.dp, end = 2.dp),
+                        modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
                             shape = RoundedCornerShape(5.dp),
                             color = if (pdf) Color(0xFFEB404D) else palette.accent,
-                            modifier = Modifier.size(width = 35.dp, height = 43.dp)
+                            modifier = Modifier.size(width = 36.dp, height = 44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(if (pdf) "PDF" else "FILE", color = Color.White,
@@ -4383,8 +4383,9 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(if (pdf) "PDF document" else "Document",
-                                color = contentColor.copy(alpha = .55f), fontSize = 10.sp)
+                            Text(if (pdf) "PDF · Tap to view" else "Document · Tap to open",
+                                color = contentColor.copy(alpha = .60f), fontSize = 10.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         BlinkChatDownloadAction(
                             url = message.attachedDocumentUrl,
