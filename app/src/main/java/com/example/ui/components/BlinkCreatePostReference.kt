@@ -412,22 +412,33 @@ internal fun BlinkCreatePostPublishOptions(
         ) { Text("Preview Post") }
         Spacer(Modifier.height(8.dp))
         Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            BlinkPostShareRow(
-                title = "WhatsApp", icon = Icons.Default.Share,
-                accent = Color(0xFF1DBF69), enabled = !isSubmitting,
-                onClick = onShareWhatsApp
-            )
-            BlinkPostShareRow(
-                title = "Copy caption", icon = Icons.Default.Link,
-                accent = Color(0xFF5B616D), enabled = !isSubmitting && canCopyCaption,
-                onClick = onCopyCaption
-            )
-            BlinkPostShareRow(
-                title = "Other apps", icon = Icons.Default.Share,
-                accent = Color(0xFF5B616D), enabled = !isSubmitting,
-                onClick = onShareOtherApps
-            )
+        // The reference design presents these actions as one continuous
+        // grouped card, rather than three disconnected floating surfaces.
+        Surface(
+            color = Color(0xFF1A1D24),
+            shape = RoundedCornerShape(13.dp),
+            border = BorderStroke(1.dp, Color(0xFF30343E)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column {
+                BlinkPostShareRow(
+                    title = "WhatsApp", icon = Icons.Default.Share,
+                    accent = Color(0xFF1DBF69), enabled = !isSubmitting,
+                    onClick = onShareWhatsApp
+                )
+                HorizontalDivider(color = Color(0xFF343944), thickness = 0.5.dp)
+                BlinkPostShareRow(
+                    title = "Copy caption", icon = Icons.Default.Link,
+                    accent = Color(0xFF5B616D), enabled = !isSubmitting && canCopyCaption,
+                    onClick = onCopyCaption
+                )
+                HorizontalDivider(color = Color(0xFF343944), thickness = 0.5.dp)
+                BlinkPostShareRow(
+                    title = "Other apps", icon = Icons.Default.Share,
+                    accent = Color(0xFF5B616D), enabled = !isSubmitting,
+                    onClick = onShareOtherApps
+                )
+            }
         }
         Text(
             "Before publication, sharing sends only your media and caption. It does not post to BLINK.",
@@ -445,7 +456,7 @@ private fun BlinkPostShareRow(
     onClick: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF1A1D24), shape = RoundedCornerShape(11.dp),
+        color = Color(0xFF1A1D24), shape = RoundedCornerShape(0.dp),
         modifier = Modifier.fillMaxWidth().height(55.dp)
             .clickable(enabled = enabled, onClick = onClick)
     ) {
