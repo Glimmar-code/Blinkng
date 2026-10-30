@@ -49,6 +49,8 @@ assert.ok(showLegacy.includes('InstantChatNotification.show('),'Legacy notifier 
 assert.ok(!showLegacy.includes('.setContentText(messageText)'),'Legacy notifier still shows a raw body');
 
 assert.ok(viewmodel.includes('NotificationPreferenceStore.rememberChatPreviewMode('),'Chat settings must update push privacy locally');
+assert.ok(viewmodel.includes('chatPrivacySaveMutex.withLock'),'Concurrent privacy settings writes must be serialized');
+assert.ok(viewmodel.includes('ChatNotificationPreviewPolicy.disclosureRank(previousPreview)'),'More permissive notification previews must wait for server confirmation');
 assert.ok(repository.includes('if (!response.isSuccessful) throw IllegalStateException('),'Failed privacy reads must not act like confirmed defaults');
 assert.ok(repository.includes('}.getOrThrow()'),'A failed privacy fetch must propagate to retain previous settings');
 console.log('Android chat notification privacy paths are wired to one account-specific policy.');
