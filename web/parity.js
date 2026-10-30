@@ -504,7 +504,18 @@
 
   async function renderAccounts() {
     if (!authGuard()) return; const p=await getProfile().catch(()=>null); let recent=[]; try{recent=JSON.parse(storageGet(RECENT_KEY,'[]'));}catch{} if(p?.username&&!recent.some(x=>x.username===p.username)){recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);storageSet(RECENT_KEY,JSON.stringify(recent));}
-    shell('Accounts',`<section class="parity-panel"><h3>Current account</h3><div class="status-card"><div class="parity-avatar">${esc((p?.full_name||p?.username||'B')[0].toUpperCase())}</div><div class="grow"><strong>${esc(p?.full_name||p?.username||'Blink account')}</strong><p class="muted">@${esc(p?.username||'')}</p></div><button class="parity-btn" data-parity-go="/settings/profile">Edit profile</button></div></section><section class="parity-panel"><h3>Recent web accounts</h3><p class="muted">For security, the parity layer remembers account names only — not additional access tokens.</p>${recent.map(r=>`<div class="mini-row"><span>@${esc(r.username)}</span><span class="muted">${esc(r.name||'')}</span></div>`).join('')||'<p>No recent accounts.</p>'}<button class="parity-btn" data-parity-go="/login">Sign in with another account</button></section>`);
+    shell('Accounts',`<section class="parity-panel"><h3>Current account</h3><div class="status-card"><div class="parity-avatar">${esc((p?.full_name||p?.username||'B')[0].toUpperCase())}</div><div class="grow"><strong>${esc(p?.full_name||p?.username||'Blink account')}</strong><p class="muted">@${esc(p?.username||'')}</p></div><button class="parity-btn" data-parity-go="/settings/profile">Edit profile</button></div></section><section class="parity-panel"><h3>Recent web accounts</h3><p class="muted">For security, the parity layer remembers account names only — not additional access tokens.</p>${recent.map(r=>`<div class="mini-row"><span>@${esc(r.username)}</span><span class="muted">${esc(r.name||'')}</span></div>`).join('')||'<p>No recent accounts.</p>'}<button class="parity-btn" data-switch-account>Sign in with another account</button></section>`);
+    document.querySelector('[data-switch-account]')?.addEventListener('click',async event=>{
+      const button=event.currentTarget;
+      button.disabled=true;
+      try {
+        if (typeof window.BlinkWebAccount?.switchToLogin !== 'function') throw new Error('Account switch is unavailable.');
+        await window.BlinkWebAccount.switchToLogin();
+      } catch(error) {
+        toast(error.message||'Unable to switch account.','error');
+        button.disabled=false;
+      }
+    });
   }
 
   async function renderProfessional() {
