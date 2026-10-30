@@ -880,8 +880,13 @@ internal fun BlinkReferenceMediaReview(
                                 onPickVideos()
                             } else {
                                 selectedTab = tab
-                                if (!hasGalleryPermission(context)) requestLibrary()
-                                else { canBrowse = true; permissionVersion++ }
+                                // Tabs only filter or refresh permitted media.
+                                // Asking for all-gallery access is a separate,
+                                // explicit action in the empty-gallery state.
+                                if (hasGalleryPermission(context)) {
+                                    canBrowse = true
+                                    permissionVersion++
+                                }
                             }
                         }
                         .testTag("blink_media_tab_" + tab.lowercase())
