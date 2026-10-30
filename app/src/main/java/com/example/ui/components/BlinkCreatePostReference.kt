@@ -906,44 +906,12 @@ internal fun BlinkReferenceMediaReview(
             Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
         }
         if (visiblePhotos.isEmpty()) {
-            // An empty device library is not a dead-end. Android's Photo Picker
-            // can select photos without broad storage/media permission.
-            Column(
+            BlinkMediaEmptyGallery(
+                canBrowse = canBrowse,
+                onPick = onAddMore,
+                onRequestLibrary = ::requestLibrary,
                 modifier = Modifier.fillMaxWidth().weight(1f)
-                    .testTag("blink_gallery_empty_state"),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    Icons.Default.PhotoLibrary, contentDescription = null,
-                    tint = Color(0xFF9299AD), modifier = Modifier.size(36.dp)
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    if (canBrowse) "No photos found" else "Choose photos from your device",
-                    color = Color.White, fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    if (canBrowse) "Choose photos with Android's photo picker."
-                    else "You can select photos without allowing access to your whole gallery.",
-                    color = Color(0xFFAFB5C4), fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                )
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = onAddMore,
-                    modifier = Modifier.testTag("blink_gallery_browse_photos"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
-                ) { Text("Choose photos", color = Color.White) }
-                if (!canBrowse) {
-                    TextButton(
-                        onClick = ::requestLibrary,
-                        modifier = Modifier.testTag("blink_gallery_allow_access")
-                    ) { Text("Show recent gallery photos", color = Color(0xFFABAAFF)) }
-                }
-            }
+            )
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
@@ -1018,6 +986,55 @@ internal fun BlinkReferenceMediaReview(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
         ) { Text("Next (" + images.size + ")", color = Color.White) }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/**
+ * Dedicated empty-gallery surface: Android Photo Picker works without broad
+ * media permission. The second action is optional and only requests recent
+ * thumbnail access when the user chooses to grant it.
+ */
+@Composable
+internal fun BlinkMediaEmptyGallery(
+    canBrowse: Boolean,
+    onPick: () -> Unit,
+    onRequestLibrary: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.testTag("blink_gallery_empty_state"),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            Icons.Default.PhotoLibrary, contentDescription = null,
+            tint = Color(0xFF9299AD), modifier = Modifier.size(36.dp)
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            if (canBrowse) "No photos found" else "Choose photos from your device",
+            color = Color.White, fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            if (canBrowse) "Choose photos with Android's photo picker."
+            else "You can select photos without allowing access to your whole gallery.",
+            color = Color(0xFFAFB5C4), fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = onPick,
+            modifier = Modifier.testTag("blink_gallery_browse_photos"),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
+        ) { Text("Choose photos", color = Color.White) }
+        if (!canBrowse) {
+            TextButton(
+                onClick = onRequestLibrary,
+                modifier = Modifier.testTag("blink_gallery_allow_access")
+            ) { Text("Show recent gallery photos", color = Color(0xFFABAAFF)) }
+        }
     }
 }
 
