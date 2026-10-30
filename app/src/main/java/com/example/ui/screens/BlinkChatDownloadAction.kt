@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Environment
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -122,7 +124,14 @@ internal fun BlinkChatDownloadAction(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
-            modifier = if (compact) Modifier.size(30.dp) else Modifier,
+            modifier = (if (compact && kind == "document")
+                Modifier.size(32.dp)
+                    .border(1.dp, Color(0xFF87909D), CircleShape)
+            else if (compact) Modifier.size(30.dp)
+            else Modifier)
+                .testTag(if (compact && kind == "document")
+                    "chat_reference_document_download_circle"
+                    else "chat_reference_media_download_button"),
             enabled = valid && state != "Saved to Downloads",
             onClick = performDownload
         ) {
