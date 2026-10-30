@@ -466,17 +466,46 @@
     document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.deleteDraft;if(!canEditDraft(k,ownerId)){toast('Sign in to the draft owner account first.','error');return;}storageRemove(k);toast('Draft deleted.','success');renderDrafts();});
   }
 
-  async function getUserSettings() {
-    if (!uid()) return {};
-    const rows=await table('user_settings',`user_id=eq.${encodeURIComponent(uid())}&select=*&limit=1`).catch(()=>[]); return rows?.[0]||{};
+  async function getUserSettings(withReceipts=false) {
+    const owner=uid();if(!owner)return {};
+    const rows=await table('user_settings',`user_id=eq.${encodeURIComponent(owner)}&select=*&limit=1`);
+    if(uid()!==owner)throw new Error('Account changed while loading settings.');
+    const result=rows?.[0]||{};
+    if(!withReceipts)return result;
+    // Android and the chat backend use user_chat_privacy.send_read_receipts.
+    const chat=await table('user_chat_privacy',`user_id=eq.${encodeURIComponent(owner)}&select=send_read_receipts&limit=1`);
+    if(uid()!==owner)throw new Error('Account changed while loading chat settings.');
+    return {...result,read_receipts:chat?.[0]?.send_read_receipts!==false};
   }
   async function saveUserSettings(fields) {
-    return api('/rest/v1/user_settings?on_conflict=user_id',{method:'POST',body:{user_id:uid(),...fields,updated_at:new Date().toISOString()},prefer:'resolution=merge-duplicates,return=representation'});
+    const owner=uid(),settings={...fields},check=(rows,expected)=>{
+      if(uid()!==owner||!Array.isArray(rows)||rows.length!==1||rows[0]?.user_id!==owner||
+        Object.entries(expected).some(([key,value])=>rows[0][key]!==value))
+        throw new Error('Settings were not confirmed by the server. Refresh and retry.');
+    };
+    if(!owner||!authed())throw new Error('Sign in before saving settings.');
+    const hasReceipts=Object.hasOwn(settings,'read_receipts');
+    const receiptValue=!!settings.read_receipts;delete settings.read_receipts;
+    if(Object.keys(settings).length){
+      const rows=await api('/rest/v1/user_settings?on_conflict=user_id',{
+        method:'POST',body:{user_id:owner,...settings,updated_at:new Date().toISOString()},
+        prefer:'resolution=merge-duplicates,return=representation'
+      });
+      check(rows,settings);
+    }
+    if(hasReceipts){
+      const rows=await api('/rest/v1/user_chat_privacy?on_conflict=user_id',{
+        method:'POST',body:{user_id:owner,send_read_receipts:receiptValue},
+        prefer:'resolution=merge-duplicates,return=representation'
+      });
+      check(rows,{send_read_receipts:receiptValue});
+    }
+    return true;
   }
 
   async function renderNotificationSettings() {
     if (!authGuard()) return; loading('Notification settings');
-    try { const s=await getUserSettings(); const perm='Notification' in window?Notification.permission:'unsupported';
+    try { const s=await getUserSettings(true); const perm='Notification' in window?Notification.permission:'unsupported';
       shell('Notification settings',`<section class="parity-panel"><h3>Browser notification permission</h3><p class="muted">Browser permission: ${esc(perm)}</p><button class="parity-btn" data-notify-permission ${perm==='unsupported'?'disabled':''}>Request permission</button></section><section class="parity-panel"><h3>Blink preferences</h3>${toggleSetting('push_notifs_enabled','Push notifications',s.push_notifs_enabled!==false)}${toggleSetting('email_notifs_enabled','Email notifications',s.email_notifs_enabled!==false)}${toggleSetting('show_online_status','Show online status',s.show_online_status!==false)}${toggleSetting('read_receipts','Read receipts',s.read_receipts!==false)}<button class="parity-btn primary" data-save-settings>Save</button></section>`);
       document.querySelector('[data-notify-permission]')?.addEventListener('click',async()=>{try{const r=await Notification.requestPermission();toast(`Notification permission: ${r}`,'success');renderNotificationSettings();}catch(e){toast(e.message,'error');}}); document.querySelector('[data-save-settings]')?.addEventListener('click',()=>saveSettingsFromForm(['push_notifs_enabled','email_notifs_enabled','show_online_status','read_receipts'],renderNotificationSettings));
     } catch(e){ shell('Notification settings',errorCard(e)); }
@@ -491,7 +520,7 @@
   }
 
   async function renderPrivacySettings() {
-    if (!authGuard()) return; loading('Privacy'); try{const s=await getUserSettings();shell('Privacy',`<section class="parity-panel"><h3>Account privacy</h3>${toggleSetting('private_account','Private account',!!s.private_account)}${toggleSetting('show_online_status','Show online status',s.show_online_status!==false)}${toggleSetting('read_receipts','Read receipts',s.read_receipts!==false)}<label class="field-label">Who can message you<select class="parity-field" data-dm-privacy><option value="everyone" ${s.dm_privacy==='everyone'?'selected':''}>Everyone</option><option value="followers" ${s.dm_privacy==='followers'?'selected':''}>Followers</option><option value="connections" ${s.dm_privacy==='connections'?'selected':''}>Connections</option><option value="none" ${s.dm_privacy==='none'?'selected':''}>No one</option></select></label><button class="parity-btn primary" data-save-privacy>Save privacy</button></section>`);document.querySelector('[data-save-privacy]').onclick=async()=>{const fields={private_account:document.querySelector('[data-setting="private_account"]').checked,show_online_status:document.querySelector('[data-setting="show_online_status"]').checked,read_receipts:document.querySelector('[data-setting="read_receipts"]').checked,dm_privacy:document.querySelector('[data-dm-privacy]').value};try{await saveUserSettings(fields);toast('Privacy saved.','success');}catch(e){toast(e.message,'error');}};}catch(e){shell('Privacy',errorCard(e));}
+    if (!authGuard()) return; loading('Privacy'); try{const s=await getUserSettings(true);shell('Privacy',`<section class="parity-panel"><h3>Account privacy</h3>${toggleSetting('private_account','Private account',!!s.private_account)}${toggleSetting('show_online_status','Show online status',s.show_online_status!==false)}${toggleSetting('read_receipts','Read receipts',s.read_receipts!==false)}<label class="field-label">Who can message you<select class="parity-field" data-dm-privacy><option value="everyone" ${s.dm_privacy==='everyone'?'selected':''}>Everyone</option><option value="followers" ${s.dm_privacy==='followers'?'selected':''}>Followers</option><option value="connections" ${s.dm_privacy==='connections'?'selected':''}>Connections</option><option value="none" ${s.dm_privacy==='none'?'selected':''}>No one</option></select></label><button class="parity-btn primary" data-save-privacy>Save privacy</button></section>`);document.querySelector('[data-save-privacy]').onclick=async()=>{const fields={private_account:document.querySelector('[data-setting="private_account"]').checked,show_online_status:document.querySelector('[data-setting="show_online_status"]').checked,read_receipts:document.querySelector('[data-setting="read_receipts"]').checked,dm_privacy:document.querySelector('[data-dm-privacy]').value};try{await saveUserSettings(fields);toast('Privacy saved.','success');}catch(e){toast('Privacy not fully saved: '+e.message,'error');}};}catch(e){shell('Privacy',errorCard(e));}
   }
 
   function renderAccessibility() {
