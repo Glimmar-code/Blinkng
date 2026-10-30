@@ -1262,10 +1262,16 @@ fun CreatePostSheet(
                         showCreateLanding = false
                         if (selectedVideo != null || showPoll || videoClips.isNotEmpty()) {
                             pendingMediaSwitch = "gallery"
-                        } else {
+                        } else if (selectedImages.isNotEmpty()) {
                             pickerOpenedFromLanding = false
                             mode = "post"
                             showMediaReview = true
+                        } else {
+                            // Start with Android's permission-free picker, not an
+                            // empty review whose Next action is disabled.
+                            imagePicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
                         }
                     },
                     onVideo = {
