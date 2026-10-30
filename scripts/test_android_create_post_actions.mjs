@@ -8,6 +8,8 @@ const native=load('app/src/androidTest/java/com/example/ui/components/BlinkCreat
 const robolectric=load('app/src/test/java/com/example/ui/components/BlinkPostShareActionsTest.kt');
 const main=load('app/src/main/java/com/example/MainActivity.kt');
 const vm=load('app/src/main/java/com/example/viewmodel/BlinkViewModel.kt');
+const photoPolicy=load('app/src/main/java/com/example/ui/components/BlinkPhotoEntryPolicy.kt');
+const photoTests=load('app/src/test/java/com/example/ui/components/BlinkPhotoEntryPolicyTest.kt');
 assert.ok(share.includes('import android.content.ActivityNotFoundException'),'Use the real Android exception class for missing share targets');
 
 for(const target of [
@@ -54,5 +56,13 @@ assert.ok(sheet.includes('if (!saved) return false'), 'Do not close the composer
 assert.ok(vm.includes('fun saveDraft(draft: PostDraft): Boolean'), 'ViewModel must return draft storage success');
 assert.ok(vm.includes('return saved'), 'ViewModel must return actual saved result');
 assert.ok(main.includes('onSaveDraft = { draft ->'), 'Main app must persist drafts');
+assert.ok(sheet.includes('when (BlinkPhotoEntryPolicy.decide('), 'Photo tile must use tested navigation policy');
+assert.ok(sheet.includes('BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER ->'), 'First Photo tap must open picker');
+assert.ok(sheet.includes('BlinkPhotoEntryPolicy.returnToLandingAfterPicker(initialPicker, uris.size)'), 'Cancelled Photo picker must return to landing');
+assert.ok(sheet.includes('if (uris.isNotEmpty()) {'), 'Empty picker result must not destroy prior media');
+for (const choice of ['CONFIRM_REPLACEMENT','REVIEW_EXISTING','OPEN_SYSTEM_PICKER'])
+  assert.ok(photoPolicy.includes(choice), 'Missing Photo policy state: '+choice);
+assert.ok(photoTests.includes('fun firstPhotoTapOpensPickerInsteadOfEmptyReview()'));
+assert.ok(photoTests.includes('fun cancellingFirstPhotoPickerRestoresLandingButAddingMoreDoesNot()'));
 assert.ok(main.includes('viewModel.addPost('), 'Native Post Now must use ViewModel upload');
 console.log('PASS APK Create Post: working share buttons, real URI access, draft failure navigation, one-vote poll label, and native tests.');
