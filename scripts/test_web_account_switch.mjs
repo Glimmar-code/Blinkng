@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const app=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
 const parity=fs.readFileSync(new URL('../web/parity.js',import.meta.url),'utf8');
-const start=app.indexOf('  async function signOutTo(destination)');
+const start=app.indexOf('  async function signOutTo(');
 const end=app.indexOf('  async function login(',start);
 assert.ok(start>=0 && end>start,'Account switch must use the session cleanup function');
 const snippet=app.slice(start,end);
