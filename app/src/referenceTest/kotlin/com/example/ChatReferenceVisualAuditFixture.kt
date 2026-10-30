@@ -25,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.example.data.models.ChatConversation
@@ -118,6 +119,7 @@ abstract class ChatReferenceVisualAuditFixture {
         rule.onNodeWithTag("chat_conversation_root").assertExists()
         rule.onNodeWithTag("chat_reference_header").assertExists()
         rule.onNodeWithTag("chat_reference_pinned_banner").assertExists()
+        rule.onNodeWithTag("chat_reference_pinned_jump").assertExists()
         rule.onNodeWithTag("chat_reference_attachment_plus").assertExists()
         rule.onNodeWithTag("chat_reference_emoji").assertExists()
         rule.onNodeWithTag("chat_reference_send").assertExists()
@@ -127,6 +129,13 @@ abstract class ChatReferenceVisualAuditFixture {
 
         capture("chat-reference-staging-dark.png")
 
+        // Keep the real pinned-message jump action, then verify dismiss is local
+        // to the banner rather than deleting or unpinning the message.
+        rule.onNodeWithTag("chat_reference_pinned_jump").performClick()
+        rule.onNodeWithText("Pinned: See project files below").assertExists()
+        rule.onNodeWithTag("chat_reference_pinned_banner").assertExists()
+        rule.onNodeWithContentDescription("Hide pinned banner").performClick()
+        rule.onNodeWithTag("chat_reference_pinned_banner").assertDoesNotExist()
         rule.onNodeWithTag("chat_reference_attachment_plus").performClick()
         rule.onNodeWithText("Share with this chat").assertExists()
         rule.onNodeWithText("Gallery").assertExists()
