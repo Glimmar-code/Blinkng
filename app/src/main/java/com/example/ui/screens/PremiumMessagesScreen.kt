@@ -125,6 +125,8 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Search
@@ -2123,24 +2125,25 @@ private fun PremiumChatDetail(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f).clickable {
-                            pendingReplyTargetId = pinnedPreview.id
-                            lastRequestedReplyOldestId = null
-                        }.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                        modifier = Modifier.weight(1f)
+                            .testTag("chat_reference_pinned_jump")
+                            .clickable(
+                                role = Role.Button,
+                                onClickLabel = "Jump to pinned message"
+                            ) {
+                                pendingReplyTargetId = pinnedPreview.id
+                                lastRequestedReplyOldestId = null
+                            }
+                            .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Canvas(Modifier.size(17.dp)) {
-                            val c = palette.accent
-                            drawLine(c, Offset(size.width * .27f, size.height * .22f),
-                                Offset(size.width * .76f, size.height * .22f), 3.dp.toPx(), StrokeCap.Round)
-                            drawLine(c, Offset(size.width * .40f, size.height * .22f),
-                                Offset(size.width * .40f, size.height * .52f), 3.dp.toPx(), StrokeCap.Round)
-                            drawLine(c, Offset(size.width * .22f, size.height * .54f),
-                                Offset(size.width * .79f, size.height * .54f), 3.dp.toPx(), StrokeCap.Round)
-                            drawLine(c, Offset(size.width * .53f, size.height * .54f),
-                                Offset(size.width * .46f, size.height * .92f), 2.dp.toPx(), StrokeCap.Round)
-                        }
-                        Spacer(Modifier.width(12.dp))
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = null,
+                            tint = palette.accent,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
                         Text(
                             "Pinned: " + pinnedPreview.text.ifBlank { "Pinned media" }
                                 .replace(Regex("^Pinned:\\s*", RegexOption.IGNORE_CASE), ""),
@@ -2148,8 +2151,12 @@ private fun PremiumChatDetail(
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        Text("›", color = palette.textPrimary, fontSize = 23.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp))
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = palette.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                     IconButton(onClick = { showReferencePinBar = false },
                         modifier = Modifier.size(38.dp)) {
