@@ -228,7 +228,6 @@ fun CreatePostSheet(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     val composerCoroutineScope = rememberCoroutineScope()
-    val keyboardController = LocalSoftwareKeyboardController.current
     val textEntryFocusRequester = remember { FocusRequester() }
     var focusTextOnEntry by remember { mutableStateOf(false) }
     val composerScope = profile.id.ifBlank { profile.username }
@@ -1094,6 +1093,9 @@ fun CreatePostSheet(
         onDismissRequest = ::navigateBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        // Dialog has its own native window; obtain the IME controller from this
+        // composition, not the Activity behind the full-screen composer.
+        val keyboardController = LocalSoftwareKeyboardController.current
         val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
             colorScheme = if (useClassicComposer && selectedVideo == null && mode != "reel") {
