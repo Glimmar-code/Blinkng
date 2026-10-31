@@ -103,6 +103,27 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun contestCandidate(contestId: String, entryId: String): JSONObject =
         rpc("get_blink_contest_candidate", JSONObject().put("p_contest_id", contestId)
             .put("p_entry_id", entryId))
+    /** Moderators receive short-lived signed previews; private paths are never directly public. */
+    suspend fun adminContestMediaPreview(mediaUrl: String): String = withContext(Dispatchers.IO) {
+        requireAdmin()
+        val privatePrefix = baseUrl + "/functions/v1/blink-contest-private-media/"
+        if (!mediaUrl.startsWith(privatePrefix)) {
+            require(mediaUrl.startsWith("https://")) { "Invalid contest media URL." }
+            mediaUrl
+        } else {
+            requireSessionUserId()
+            val token = client.session?.accessToken
+                ?: throw IllegalStateException("Sign in to view private media.")
+            val url = mediaUrl + if ('?' in mediaUrl) "&format=json" else "?format=json"
+            val request = Request.Builder().url(url)
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer " + token)
+                .get().build()
+            val result = JSONObject(execute(request))
+            result.getString("url")
+        }
+    }
+
     suspend fun contestMyAppeal(entryId: String): JSONObject? =
         rpcAny("my_blink_contest_entry_appeal",
             JSONObject().put("p_entry_id", entryId)) as? JSONObject
