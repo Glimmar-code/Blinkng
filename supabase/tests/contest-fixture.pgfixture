@@ -46,6 +46,7 @@ create table storage.buckets(
 create table storage.objects(
   id uuid primary key default gen_random_uuid(),
   bucket_id text not null, name text not null,
+  created_at timestamptz not null default now(),
   unique(bucket_id,name)
 );
 create function storage.foldername(path text) returns text[]
