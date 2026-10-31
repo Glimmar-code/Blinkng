@@ -52,6 +52,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var appeals by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var appealReviewReason by remember { mutableStateOf("") }
+    var appealReviewError by remember { mutableStateOf<String?>(null) }
     var insights by remember { mutableStateOf<JSONObject?>(null) }
     var voteReviewNote by remember { mutableStateOf("") }
     var paymentReference by remember { mutableStateOf("") }
@@ -133,8 +136,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(selectedContest, revision) {
         entries = emptyList()
+        appeals = emptyList()
         insights = null
         selectedContest?.let { id ->
+            api.adminAppeals(id)
+                .onSuccess { appeals = it.contestObjects(); appealReviewError = null }
+                .onFailure { appealReviewError = it.message ?: "Cannot load appeals." }
             api.adminEntries(id).onSuccess { entries = it.contestObjects() }
                 .onFailure { message = it.message ?: "Cannot load applications." }
             api.adminInsights(id).onSuccess { insights = it }
@@ -317,6 +324,58 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                             TextButton(enabled = !busy, onClick = {
                                 pendingContestDecision = contest.optString("id") to "cancel"
                             }) { Text("Cancel") }
+                        }
+                    }
+                }
+            }
+        }
+        if (selectedContest != null) item {
+            HorizontalDivider()
+            Text("Contestant appeals", style = MaterialTheme.typography.titleLarge)
+            Text("A single appeal is allowed for a rejected or disqualified entry. Accepting reinstates the applicant through audited moderation; denying preserves the decision.",
+                style = MaterialTheme.typography.bodySmall)
+            appealReviewError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { revision++ }) { Text("Retry appeals") }
+            }
+            if (appeals.isEmpty() && appealReviewError == null) {
+                Text("No pending appeals.", style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(
+                value = appealReviewReason,
+                onValueChange = { appealReviewReason = it.take(300) },
+                label = { Text("Reason for appeal decision (8–300 characters)") },
+                minLines = 2, modifier = Modifier.fillMaxWidth()
+            )
+        }
+        items(appeals, key = { "appeal-" + it.optString("id") }) { appeal ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("@" + appeal.optString("username") + " · Pending appeal",
+                        fontWeight = FontWeight.SemiBold)
+                    Text(appeal.optString("statement"))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("accept", "deny").forEach { action ->
+                            TextButton(
+                                enabled = !busy && appealReviewReason.trim().length in 8..300,
+                                onClick = {
+                                    busy = true
+                                    scope.launch {
+                                        api.adminDecideAppeal(appeal.optString("id"), action,
+                                            appealReviewReason)
+                                            .onSuccess {
+                                                message = "Appeal " + it.optString("status") +
+                                                    "; contestant notified."
+                                                appealReviewReason = ""
+                                                revision++
+                                            }.onFailure {
+                                                message = it.message ?: "Appeal review failed."
+                                            }
+                                        busy = false
+                                    }
+                                }
+                            ) { Text(action.replaceFirstChar { it.uppercase() }) }
                         }
                     }
                 }
