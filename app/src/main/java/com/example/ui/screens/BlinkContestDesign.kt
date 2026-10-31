@@ -20,11 +20,26 @@ import java.time.Instant
 
 private val contestNavy = Color(0xFF0B1626)
 private val contestBlue = Color(0xFF1685FF)
-internal fun contestDeadline(contest: JSONObject): Pair<String, String> = when (contest.optString("status")) {
-    "upcoming" -> "Applications open" to contest.optString("registration_opens_at")
+internal fun contestDeadline(
+    contest: JSONObject, now: Instant = Instant.now()
+): Pair<String, String> = when (contest.optString("status")) {
+    "upcoming" -> {
+        // A contest can be "upcoming" both before applications open and in the
+        // gap after they close but before voting starts. Never show a past
+        // application-opening date as the next upcoming event.
+        val applicationClose = runCatching {
+            OffsetDateTime.parse(contest.optString("registration_closes_at")).toInstant()
+        }.getOrNull()
+        if (applicationClose != null && !now.isBefore(applicationClose))
+            "Voting opens" to contest.optString("voting_opens_at")
+        else "Applications open" to contest.optString("registration_opens_at")
+    }
     "registration" -> "Applications close" to contest.optString("registration_closes_at")
     "voting" -> "Voting closes" to contest.optString("voting_closes_at")
-    "review", "completed" -> "Results announced" to contest.optString("results_at")
+    "review" -> "Results scheduled" to contest.optString("results_at")
+    "completed" -> "Results confirmed" to ""
+    "cancelled" -> "Contest cancelled" to ""
+    "paused" -> "Contest paused" to ""
     else -> "Voting closes" to contest.optString("voting_closes_at")
 }
 @Composable
@@ -40,7 +55,8 @@ internal fun BlinkContestCountdown(iso: String, label: String = "Voting closes")
         left.toDays() > 0 -> left.toDays().toString() + "d " + (left.toHours() % 24) + "h"
         else -> left.toHours().toString() + "h " + (left.toMinutes() % 60) + "m"
     }
-    Text(label + " · " + remaining, color = Color(0xFFBDDFFF), fontSize = 12.sp)
+    Text(if (iso.isBlank()) label else label + " · " + remaining,
+        color = Color(0xFFBDDFFF), fontSize = 12.sp)
 }
 @Composable
 internal fun BlinkContestHeroCard(contest: JSONObject, onOpen: () -> Unit) {
@@ -61,10 +77,16 @@ internal fun BlinkContestHeroCard(contest: JSONObject, onOpen: () -> Unit) {
                     fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, maxLines = 2)
                 Text(contest.optString("description"), color = Color(0xFFCAD5E6),
                     maxLines = 2, fontSize = 12.sp)
-                Text("🥇 ₦" + "%,d".format(contest.optInt("prize_first")) +
-                    "   🥈 ₦" + "%,d".format(contest.optInt("prize_second")) +
-                    "   🥉 ₦" + "%,d".format(contest.optInt("prize_third")),
-                    color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                if (contest.optString("status") == "cancelled") {
+                    Text("Cancelled · No prizes will be awarded",
+                        color = Color(0xFFFFCCCB), fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold)
+                } else {
+                    Text("🥇 ₦" + "%,d".format(contest.optInt("prize_first")) +
+                        "   🥈 ₦" + "%,d".format(contest.optInt("prize_second")) +
+                        "   🥉 ₦" + "%,d".format(contest.optInt("prize_third")),
+                        color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
                 val (deadlineLabel, deadline) = contestDeadline(contest)
                 BlinkContestCountdown(deadline, deadlineLabel)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -72,8 +94,11 @@ internal fun BlinkContestHeroCard(contest: JSONObject, onOpen: () -> Unit) {
                         color = Color(0xFFCAD5E6), fontSize = 11.sp,
                         modifier = Modifier.weight(1f))
                     Surface(color = Color.White, shape = RoundedCornerShape(12.dp)) {
-                        Text(if (contest.optString("status") == "completed")
-                            "See winners →" else "Open contest →",
+                        Text(when (contest.optString("status")) {
+                            "completed" -> "See winners →"
+                            "cancelled" -> "See details →"
+                            else -> "Open contest →"
+                        },
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             color = contestNavy, fontWeight = FontWeight.Bold)
                     }
