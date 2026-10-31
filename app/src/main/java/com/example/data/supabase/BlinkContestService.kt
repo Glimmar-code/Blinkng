@@ -97,6 +97,11 @@ class BlinkContestService {
         JSONObject(call("submit_blink_contest_entry_appeal", JSONObject()
             .put("p_entry_id", entryId).put("p_statement", reason.trim())))
     }
+    suspend fun adminOrphanMedia(): Result<JSONObject> = contestResult {
+        JSONObject(call("admin_list_blink_contest_orphan_media", JSONObject()
+            .put("p_min_age_hours", 72).put("p_limit", 50)))
+    }
+
     suspend fun adminAppeals(contestId: String): Result<JSONArray> = contestResult {
         JSONArray(call("admin_list_blink_contest_entry_appeals", JSONObject()
             .put("p_contest_id", contestId).put("p_limit", 100)))
