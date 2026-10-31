@@ -34,6 +34,7 @@ for (const name of [
   '20261031080000_blink_contest_candidate_search.sql',
   '20261031090000_blink_contest_moderation_audit.sql',
   '20261031100000_blink_contest_review_history.sql',
+  '20261031110000_blink_contest_cancelled_visibility.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -81,6 +82,43 @@ const contest = await rpc('admin_save_blink_contest', admin, { p_id: null, p_dat
 } });
 await rejected('/rest/v1/rpc/admin_transition_blink_contest', creator.token, { p_contest_id: contest.id, p_action: 'publish' }, /ADMIN_REQUIRED/);
 await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p_action: 'publish' });
+const confidentialDraft = await rpc('admin_save_blink_contest', admin, { p_id:null,
+  p_data: {
+    title:'Confidential cancelled draft',description:'Not launched publicly',rules:'Private',
+    category:'General',prize_first:100,prize_second:0,prize_third:0,
+    registration_opens_at:later(-1),registration_closes_at:later(1),
+    voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
+    auto_approve:false
+  }
+});
+await rpc('admin_transition_blink_contest', admin, {
+  p_contest_id:confidentialDraft.id,p_action:'cancel'
+});
+const completedNow = await rpc('admin_save_blink_contest', admin, { p_id:null,
+  p_data: {
+    title:'Public cancelled challenge',description:'Launched then cancelled',rules:'Public',
+    category:'General',prize_first:100,prize_second:0,prize_third:0,
+    registration_opens_at:later(-1),registration_closes_at:later(1),
+    voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
+    auto_approve:false
+  }
+});
+await rpc('admin_transition_blink_contest', admin, {
+  p_contest_id:completedNow.id,p_action:'publish'
+});
+await rpc('admin_transition_blink_contest', admin, {
+  p_contest_id:completedNow.id,p_action:'cancel'
+});
+const catalogue = await rpc('list_blink_contests', outsider, {});
+assert.ok(catalogue.some(c=>c.id===completedNow.id && c.status==='cancelled'));
+assert.ok(!catalogue.some(c=>c.id===confidentialDraft.id),
+  'Cancelled unpublished draft must remain private');
+const cancelledDetails = await rpc('get_blink_contest', outsider, {
+  p_contest_id:completedNow.id
+});
+assert.equal(cancelledDetails.contest.status,'cancelled');
+await rejected('/rest/v1/rpc/get_blink_contest', outsider.token,
+  {p_contest_id:confidentialDraft.id}, /CONTEST_NOT_AVAILABLE/);
 await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
   { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null },
   /PRIVATE_CONTEST_MEDIA_REQUIRED|blink_contest_entry_media_required/);
