@@ -4611,7 +4611,7 @@ private suspend fun restoreSupabaseSession() {
                     mySavedPosts = update(latest.mySavedPosts, target.isLiked, target.likes)
                 )
                 persistCurrentFeed()
-                showToast("Failed to update like.")
+                showToast("Could not update like. A Like used to claim a Giveaway reward cannot be removed.")
             }
         }.invokeOnCompletion {
             pendingLikePostIds.remove(postId)
