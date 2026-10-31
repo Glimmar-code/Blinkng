@@ -445,6 +445,11 @@ abstract class ChatReferenceVisualAuditFixture {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithTag("chat_video_duration_0").assertExists()
+        rule.waitUntil(15_000) {
+            rule.onAllNodesWithTag("chat_video_frame_loaded_0")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("chat_video_frame_loaded_0").assertExists()
         saveFrame("chat-reference-full-videos.png")
         list.performScrollToIndex(9)
         rule.onNodeWithTag("chat_reference_document_card").assertExists()
