@@ -83,8 +83,29 @@ class BlinkCreatePostReferenceTest {
                 )
             }
         }
-        composeRule.onNodeWithText("My campus update").performClick()
+        composeRule.onNodeWithTag("blink_create_saved_drafts").assertDoesNotExist()
+        composeRule.onNodeWithText("Drafts").performClick()
+        composeRule.onNodeWithTag("blink_create_saved_drafts").assertExists()
+        composeRule.onNodeWithTag("blink_create_saved_draft_draft123").performClick()
         composeRule.runOnIdle { assertEquals("draft123", openedId) }
+    }
+
+    @Test
+    fun classicComposerRemainsAvailableWithoutExtraLandingRow() {
+        var opened = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkCreatePostLanding(
+                    drafts = emptyList(),
+                    onClose = {}, onText = {}, onPhoto = {}, onVideo = {}, onPoll = {},
+                    onClassic = { opened++ }, onCamera = {}, onDraft = {}
+                )
+            }
+        }
+        composeRule.onNodeWithText("Classic composer").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_create_post_more_menu").performClick()
+        composeRule.onNodeWithTag("blink_create_post_classic").performClick()
+        composeRule.runOnIdle { assertEquals(1, opened) }
     }
 
     @Test
