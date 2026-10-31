@@ -2892,7 +2892,7 @@ internal fun PostPreviewDialog(
                                             // preview. Match BLINK's ratio-preserving policy.
                                             contentScale = ContentScale.Fit,
                                             modifier = Modifier.fillParentMaxWidth()
-                                                .aspectRatio(1.05f)
+                                                .aspectRatio(1.65f)
                                                 .clip(RoundedCornerShape(11.dp))
                                                 .background(Color(0xFF171B23))
                                                 .testTag("blink_post_preview_photo")
