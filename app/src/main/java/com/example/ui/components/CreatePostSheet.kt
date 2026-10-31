@@ -1222,7 +1222,21 @@ fun CreatePostSheet(
                 BlinkReferenceMediaReview(
                     images = selectedImages,
                     onSelectPhoto = { uri ->
-                        if (!isSubmitting && uri !in selectedImages && selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                        if (!isSubmitting && uri !in selectedImages &&
+                            selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                            // Only commit the media-type switch after a real photo
+                            // is chosen. Back or cancelled picker keeps the prior
+                            // Reel/poll content and its unsaved draft intact.
+                            if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                                selectedVideo = null
+                                videoClips = emptyList()
+                                selectedCoverUri = null
+                                coverFrameIndex = -1
+                                reelHasPendingEdits = false
+                                reelEditorStage = false
+                                showPoll = false
+                                mode = "post"
+                            }
                             selectedImages = selectedImages + uri
                         }
                     },
@@ -2512,9 +2526,15 @@ fun CreatePostSheet(
                             showPoll = true
                         }
                         "camera" -> openCameraActions()
-                        "gallery" -> imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        "gallery" -> {
+                            // A confirmation opens BLINK's own Select Media
+                            // screen. Keep the previous poll/Reel until the
+                            // user actually picks a photo; cancelling is safe.
+                            galleryReturnToEditor = !pickerOpenedFromLanding
+                            pickerOpenedFromLanding = false
+                            showCreateLanding = false
+                            showMediaReview = true
+                        }
                         "reel" -> if (pickerOpenedFromLanding || showMediaReview) multiVideoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         ) else videoPicker.launch(
