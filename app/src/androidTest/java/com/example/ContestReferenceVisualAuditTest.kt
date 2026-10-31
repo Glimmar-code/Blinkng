@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.ui.screens.BlinkContestHeroCard
+import com.example.ui.screens.contestDeadline
 import com.example.ui.screens.BlinkContestApplicantMediaCard
 import com.example.ui.screens.BlinkContestReviewHistoryDialog
 import com.example.ui.screens.BlinkContestPodium
@@ -133,6 +134,32 @@ class ContestReferenceVisualAuditTest {
         capture("contest-review-history-staging.png", dialog = true)
         rule.onNodeWithText("Close").performClick()
         rule.runOnIdle { org.junit.Assert.assertTrue(dismissed) }
+    }
+
+    @Test fun upcomingVotingWindowAndCancelledHistoryHaveAccurateLabels() {
+        val contest = JSONObject()
+            .put("registration_opens_at", "2026-11-01T09:00:00+01:00")
+            .put("registration_closes_at", "2026-11-05T09:00:00+01:00")
+            .put("voting_opens_at", "2026-11-12T09:00:00+01:00")
+            .put("voting_closes_at", "2026-11-20T09:00:00+01:00")
+            .put("results_at", "2026-11-21T09:00:00+01:00")
+            .put("status", "upcoming")
+        val beforeApplications = java.time.Instant.parse("2026-10-31T08:00:00Z")
+        val beforeVoting = java.time.Instant.parse("2026-11-10T08:00:00Z")
+        org.junit.Assert.assertEquals(
+            "Applications open", contestDeadline(contest, beforeApplications).first
+        )
+        org.junit.Assert.assertEquals(
+            "Voting opens", contestDeadline(contest, beforeVoting).first
+        )
+        contest.put("status", "cancelled")
+        org.junit.Assert.assertEquals(
+            "Contest cancelled" to "", contestDeadline(contest, beforeVoting)
+        )
+        contest.put("status", "completed")
+        org.junit.Assert.assertEquals(
+            "Results confirmed" to "", contestDeadline(contest, beforeVoting)
+        )
     }
 
     @Test fun contestantShareDialogRendersRealPersonalizedFlyer() {
