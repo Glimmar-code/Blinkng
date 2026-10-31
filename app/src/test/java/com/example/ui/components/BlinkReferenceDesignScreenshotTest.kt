@@ -49,7 +49,12 @@ class BlinkReferenceDesignScreenshotTest {
             BlinkCreatePostLanding(listOf(PostDraft(id = "local-fixture", text = "My campus draft")),
                 {}, {}, {}, {}, {}, {}, {}, { selected = it.id })
         } }
-        rule.onNodeWithText("My campus draft").performClick()
+        // The reference shows a compact Drafts row; saved drafts become
+        // selectable only after that row is expanded.
+        rule.onNodeWithTag("blink_create_saved_drafts").assertDoesNotExist()
+        rule.onNodeWithText("Drafts").performClick()
+        rule.onNodeWithTag("blink_create_saved_drafts").assertExists()
+        rule.onNodeWithTag("blink_create_saved_draft_local-fixture").performClick()
         rule.runOnIdle { assertEquals("local-fixture", selected) }
     }
 
