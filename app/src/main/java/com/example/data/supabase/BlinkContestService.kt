@@ -41,6 +41,8 @@ class BlinkContestService {
                 if (!it.isSuccessful) {
                     val msg = contestResult { JSONObject(raw).optString("message") }
                         .getOrNull().orEmpty().ifBlank { "Contest request failed (" + it.code + ")." }
+                    if (msg.contains("blink_contest_entry_media_required"))
+                        error("A photo or video is required to apply for a contest.")
                     error(msg.replace('_', ' '))
                 }
                 raw
