@@ -129,6 +129,7 @@ fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
                     Text(if (isLive) "Selected BLINK Giveaway · LIVE" else "You missed this BLINK Giveaway",
                         fontWeight = FontWeight.Bold)
                     Text(selected.optString("target_title"), fontWeight = FontWeight.SemiBold)
+                    if (!isLive) Text(giveawayEndedLabel(selected.optString("ends_at")), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${selected.optLong("total_coins")} BLINK Coins · ${selected.optInt("reward_per_user")} each · ${selected.optInt("winner_count")} winners")
                     Text(if (isLive) "Open the active Giveaway below to complete its required action."
                         else "Follow the creator to be notified about the next Giveaway.")
