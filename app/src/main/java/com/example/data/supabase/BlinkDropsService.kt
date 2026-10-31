@@ -212,7 +212,7 @@ class BlinkDropsService {
                 message.contains("Could not find the function", ignoreCase = true) ->
                 "BLINK Giveaway is updating. Please try again shortly."
             message.isNotBlank() -> "BLINK Giveaway couldn't complete that request. Please try again."
-            else -> "BLINK Drops couldn't complete that request. Please try again."
+            else -> "BLINK Giveaway couldn't complete that request. Please try again."
         }
     }
 }
