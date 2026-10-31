@@ -64,6 +64,7 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.models.MarketItem
 import com.example.data.models.VerificationBadge
+import com.example.data.views.rememberDelayedMarketViewCount
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.components.VerifiedMark
@@ -108,6 +109,7 @@ fun ProductDetailScreen(
 ) {
     val context = LocalContext.current
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
+    val displayedMarketViews = rememberDelayedMarketViewCount(item.id, item.viewsCount)
     var selectedImageIndex by remember(item.id) { mutableIntStateOf(0) }
     var imageSwipeDrag by remember(item.id) { mutableFloatStateOf(0f) }
     var imageSwipeActive by remember(item.id) { mutableStateOf(false) }
@@ -453,7 +455,7 @@ fun ProductDetailScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Visibility, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("${item.viewsCount}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${displayedMarketViews}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (!isOwner) {
                             Text(
