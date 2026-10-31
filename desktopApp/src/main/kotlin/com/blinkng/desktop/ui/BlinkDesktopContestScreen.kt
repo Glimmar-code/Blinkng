@@ -24,6 +24,7 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.shared.BlinkContestPolicy
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -48,7 +49,57 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     var revision by remember { mutableIntStateOf(0) }
     var ownCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var sharingCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchOffset by remember { mutableIntStateOf(0) }
+    var searchResults by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var searchTotal by remember { mutableIntStateOf(0) }
+    var searchBusy by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf("") }
+    var appeal by remember { mutableStateOf<JSONObject?>(null) }
+    var appealReason by remember { mutableStateOf("") }
+    var appealError by remember { mutableStateOf("") }
+    var appealBusy by remember { mutableStateOf(false) }
 
+    LaunchedEffect(selected) {
+        searchOpen = false
+        searchQuery = ""
+        searchOffset = 0
+        searchResults = emptyList()
+        searchError = ""
+    }
+    LaunchedEffect(selected, detail?.optString("my_entry_id"), revision) {
+        appeal = null
+        appealError = ""
+        val entry = detail?.optString("my_entry_id")
+            ?.takeUnless { it == "null" }.orEmpty()
+        if (selected != null && entry.isNotBlank()) {
+            runCatching { api.contestMyAppeal(entry) }
+                .onSuccess { appeal = it }
+                .onFailure { appealError = it.message ?: "Appeal status unavailable." }
+        }
+    }
+    LaunchedEffect(selected, searchOpen, searchQuery, searchOffset, revision) {
+        val id = selected
+        if (!searchOpen || id == null || searchQuery.trim().length == 1) {
+            searchResults = emptyList()
+            searchTotal = 0
+            searchBusy = false
+        } else {
+            searchBusy = true
+            searchError = ""
+            delay(300)
+            runCatching { api.contestSearchCandidates(id, searchQuery, searchOffset) }
+                .onSuccess {
+                    searchResults = it.optJSONArray("entries")?.rows().orEmpty()
+                    searchTotal = it.optInt("total")
+                }.onFailure {
+                    searchResults = emptyList()
+                    searchError = it.message ?: "Cannot search contestants."
+                }
+            searchBusy = false
+        }
+    }
     LaunchedEffect(selected, detail?.optString("my_entry_id"), revision) {
         ownCandidate = null
         val contest = selected
@@ -139,6 +190,12 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                     item {
                         Text(c.optString("title"), style = MaterialTheme.typography.headlineSmall)
                         Text(BlinkContestPolicy.statusLabel(status))
+                        if (status == "cancelled") {
+                            Text(
+                                "This contest was cancelled after publication. Applications and voting are closed; no prizes will be awarded.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Text(c.optString("description"))
                         Text("1st " + prize(c.optInt("prize_first")) +
                             " · 2nd " + prize(c.optInt("prize_second")) +
@@ -174,7 +231,49 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                         Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
                             else "#" + d.optInt("my_rank") +
                                 DesktopContestRankMovement.label(d,"my_rank_delta"))
-                        if (own.isNotBlank()) Text("Your application: " + d.optString("my_entry_status"))
+                        if (own.isNotBlank()) {
+                            val current = d.optString("my_entry_status")
+                            Text("Your application: " + current)
+                            if (current == "rejected" || current == "disqualified") {
+                                Text("Check Notifications for the moderator's reason.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall)
+                                appeal?.let { record ->
+                                    Text("Appeal: " + record.optString("status"))
+                                    val decision = record.optString("decision_reason")
+                                        .takeUnless { it == "null" }.orEmpty()
+                                    if (decision.isNotBlank()) Text("Decision: " + decision)
+                                }
+                                if (appealError.isNotBlank()) {
+                                    Text(appealError, color = MaterialTheme.colorScheme.error)
+                                    TextButton(onClick = { revision++ }) { Text("Retry appeal status") }
+                                }
+                                if (appeal == null && status !in listOf("cancelled", "completed", "review")) {
+                                    OutlinedTextField(
+                                        value = appealReason,
+                                        onValueChange = { appealReason = it.take(1000) },
+                                        label = { Text("Explain why your application should be reconsidered") },
+                                        minLines = 3, modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Button(
+                                        enabled = !busy && !appealBusy && appealReason.trim().length in 20..1000,
+                                        onClick = {
+                                            appealBusy = true
+                                            scope.launch {
+                                                runCatching { api.contestSubmitAppeal(own, appealReason) }
+                                                    .onSuccess {
+                                                        appeal = it
+                                                        appealReason = ""
+                                                        message = "Appeal submitted for admin review."
+                                                    }.onFailure {
+                                                        appealError = it.message ?: "Appeal failed."
+                                                    }
+                                                appealBusy = false
+                                            }
+                                        }) { Text("Submit one appeal") }
+                                }
+                            }
+                        }
                         if (voted.isNotBlank()) Text("You've already used your free vote.")
                     }
                     if (status == "registration" && own.isBlank()) item {
@@ -182,10 +281,12 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             OutlinedTextField(statement, { statement = it.take(500) },
                                 label = { Text("Why should people vote for you?") },
                                 modifier = Modifier.fillMaxWidth())
-                            OutlinedTextField(mediaUrl, { mediaUrl = it },
-                                label = { Text("Optional entry photo/Reel URL") },
-                                modifier = Modifier.fillMaxWidth())
-                            Text("Uploaded media is publicly accessible before approval. Do not attach private documents.", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                if (mediaUrl.isBlank()) "No private entry media uploaded yet."
+                                else "Private photo or video uploaded and ready to submit.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text("Contestant media stays private until approved. Choose a file and upload it before applying.", style = MaterialTheme.typography.bodySmall)
                             OutlinedButton(enabled = !busy, onClick = {
                                 scope.launch {
                                     entryFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -208,7 +309,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     scope.launch {
                                         try {
                                             mediaUrl = api.uploadContestMedia(file)
-                                            message = "Public preview uploaded. Submit your application to finish."
+                                            message = "Private media uploaded. Submit your application to finish."
                                             entryFile = null
                                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                                         catch (failure: Exception) { message = failure.message ?: "Media upload failed. Try again." }
@@ -216,7 +317,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     }
                                 }) { Text("Upload public preview") }
                             }
-                            Button(enabled = !busy && BlinkContestPolicy.validStatement(statement), onClick = {
+                            Button(enabled = !busy && BlinkContestPolicy.canApply(statement, false, mediaUrl), onClick = {
                                 busy = true
                                 scope.launch {
                                     runCatching { api.contestApply(c.optString("id"), statement, mediaUrl) }
@@ -265,6 +366,97 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                             color = Color(0xFF9ACFFF), fontSize = 11.sp)
                                     }
                                 }
+                            }
+                        }
+                    }
+                    item {
+                        OutlinedButton(onClick = { searchOpen = !searchOpen },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(if (searchOpen) "Hide contestant directory"
+                                else "Find contestants beyond the Top 20")
+                        }
+                    }
+                    if (searchOpen) {
+                        item {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it.take(60); searchOffset = 0 },
+                                label = { Text("Search name or username") },
+                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                            )
+                            Text("Leave blank to browse all approved contestants.",
+                                style = MaterialTheme.typography.bodySmall)
+                            if (searchQuery.trim().length == 1) {
+                                Text("Enter at least two characters, or clear to browse.",
+                                    color = MaterialTheme.colorScheme.error)
+                            } else if (searchBusy) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            } else {
+                                Text("$searchTotal approved results")
+                            }
+                            if (searchError.isNotEmpty()) {
+                                Text(searchError, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = { revision++ }) { Text("Retry search") }
+                            }
+                        }
+                        items(searchResults, key = { "directory-" + it.optString("id") }) { candidate ->
+                            ElevatedCard {
+                                Row(Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text("#" + candidate.optInt("rank"),
+                                        fontWeight = FontWeight.Bold)
+                                    DesktopContestAvatar(candidate.optString("avatar_url"),
+                                        candidate.optString("username"), 42.dp)
+                                    Column(Modifier.weight(1f)) {
+                                        Text("@" + candidate.optString("username"),
+                                            fontWeight = FontWeight.SemiBold)
+                                        Text(candidate.optInt("votes").toString() + " votes",
+                                            style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    OutlinedButton(onClick = {
+                                        scope.launch {
+                                            runCatching { api.contestCandidate(c.optString("id"), candidate.optString("id")) }
+                                                .onSuccess { sharingCandidate = it }
+                                                .onFailure { message = it.message.orEmpty() }
+                                        }
+                                    }) { Text("Share") }
+                                    Button(enabled = !busy && BlinkContestPolicy.canVote(
+                                        status, voted, own, candidate.optString("id")),
+                                        onClick = {
+                                            busy = true
+                                            scope.launch {
+                                                runCatching { api.contestVote(c.optString("id"), candidate.optString("id")) }
+                                                    .onSuccess {
+                                                        message = if (it.optString("vote_status") == "under_review")
+                                                            "Free vote received; pending integrity review."
+                                                        else "Your free vote was counted."
+                                                        revision++
+                                                    }
+                                                    .onFailure { message = it.message.orEmpty() }
+                                                busy = false
+                                            }
+                                        }) { Text("Vote") }
+                                }
+                            }
+                        }
+                        if (!searchBusy && searchError.isEmpty() && searchResults.isEmpty() &&
+                            searchQuery.trim().length != 1) item {
+                            Text("No approved contestants found.")
+                        }
+                        if (searchTotal > 20) item {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(enabled = !searchBusy && searchOffset > 0,
+                                    onClick = { searchOffset = (searchOffset - 20).coerceAtLeast(0) }) {
+                                    Text("Previous")
+                                }
+                                Text("Page " + (searchOffset / 20 + 1),
+                                    modifier = Modifier.weight(1f))
+                                OutlinedButton(
+                                    enabled = !searchBusy && searchOffset + 20 < searchTotal &&
+                                        searchOffset < 10000,
+                                    onClick = { searchOffset += 20 }) { Text("Next") }
                             }
                         }
                     }
@@ -335,9 +527,22 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var appeals by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var cleanupPreview by remember { mutableStateOf<JSONObject?>(null) }
+    var cleanupAuditBusy by remember { mutableStateOf(false) }
+    var appealReviewReason by remember { mutableStateOf("") }
+    var appealReviewError by remember { mutableStateOf("") }
     var inspectId by remember { mutableStateOf<String?>(null) }
     var insights by remember { mutableStateOf<JSONObject?>(null) }
     var reviewNote by remember { mutableStateOf("") }
+    var applicationReviewReason by remember { mutableStateOf("") }
+    var historyEntry by remember { mutableStateOf<String?>(null) }
+    var historyUsername by remember { mutableStateOf("") }
+    var historyRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var historyTotal by remember { mutableIntStateOf(0) }
+    var historyBusy by remember { mutableStateOf(false) }
+    var historyError by remember { mutableStateOf("") }
+    var previewEntryMedia by remember { mutableStateOf<String?>(null) }
     var paymentReference by remember { mutableStateOf("") }
     var paymentNote by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
@@ -359,10 +564,31 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
         runCatching { api.adminContestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
     }
+    LaunchedEffect(inspectId) { historyEntry = null }
+    LaunchedEffect(historyEntry, revision) {
+        historyRows = emptyList()
+        historyTotal = 0
+        historyError = ""
+        val id = historyEntry
+        if (id != null) {
+            historyBusy = true
+            runCatching { api.adminContestEntryHistory(id) }
+                .onSuccess {
+                    historyRows = it.optJSONArray("history")?.rows().orEmpty()
+                    historyTotal = it.optInt("total")
+                }
+                .onFailure { historyError = it.message ?: "Review history unavailable." }
+            historyBusy = false
+        }
+    }
     LaunchedEffect(inspectId, revision) {
         entries = emptyList()
+        appeals = emptyList()
         insights = null
         inspectId?.let { id ->
+            runCatching { api.adminContestAppeals(id) }
+                .onSuccess { appeals = it.rows(); appealReviewError = "" }
+                .onFailure { appealReviewError = it.message ?: "Could not load appeals." }
             runCatching { api.adminContestEntries(id) }.onSuccess { entries = it.rows() }
                 .onFailure { message = it.message.orEmpty() }
             runCatching { api.adminContestInsights(id) }.onSuccess { insights = it }
@@ -415,6 +641,30 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
             }
         }) { Text("Save draft") }
         HorizontalDivider()
+        HorizontalDivider()
+        Text("Private media maintenance", style = MaterialTheme.typography.titleLarge)
+        Text("Read-only audit of unreferenced uploads older than 72 hours. Nothing is deleted.",
+            style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(enabled = !cleanupAuditBusy, onClick = {
+            cleanupAuditBusy = true
+            scope.launch {
+                runCatching { api.adminContestOrphanMedia() }
+                    .onSuccess { cleanupPreview = it }
+                    .onFailure { message = it.message ?: "Media audit failed." }
+                cleanupAuditBusy = false
+            }
+        }) { Text(if (cleanupAuditBusy) "Checking…" else "Inspect unreferenced media") }
+        cleanupPreview?.let { report ->
+            val candidates = report.optJSONArray("objects")?.rows().orEmpty()
+            Text(candidates.size.toString() + " candidate upload(s) in first 50 examined")
+            candidates.forEach { candidate ->
+                Text(candidate.optString("path") + " · " +
+                    candidate.optString("created_at").take(10),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Deletion is disabled until verified storage cleanup is available.",
+                style = MaterialTheme.typography.bodySmall)
+        }
         Text("Manage contests", style = MaterialTheme.typography.titleLarge)
         contests.forEach { contest ->
             ElevatedCard(Modifier.fillMaxWidth()) {
@@ -521,26 +771,171 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                     }
                 }
             }
+            Text("Contestant appeals", style = MaterialTheme.typography.titleLarge)
+            Text("One appeal per entry. Accepting reinstates through the audited review process.",
+                style = MaterialTheme.typography.bodySmall)
+            if (appealReviewError.isNotBlank()) {
+                Text(appealReviewError, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { revision++ }) { Text("Retry appeals") }
+            }
+            if (appeals.isEmpty() && appealReviewError.isBlank()) {
+                Text("No pending appeals.", style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(
+                value = appealReviewReason,
+                onValueChange = { appealReviewReason = it.take(300) },
+                label = { Text("Appeal decision reason (8–300 characters)") },
+                minLines = 2, modifier = Modifier.fillMaxWidth()
+            )
+            appeals.forEach { appeal ->
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("@" + appeal.optString("username") + " · Pending appeal",
+                            fontWeight = FontWeight.SemiBold)
+                        Text(appeal.optString("statement"))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            listOf("accept","deny").forEach { action ->
+                                TextButton(enabled = !busy &&
+                                    appealReviewReason.trim().length in 8..300,
+                                    onClick = {
+                                        busy = true
+                                        scope.launch {
+                                            runCatching { api.adminContestAppealDecision(
+                                                appeal.optString("id"),action,appealReviewReason) }
+                                                .onSuccess {
+                                                    message = "Appeal " + it.optString("status") +
+                                                        "; applicant notified."
+                                                    appealReviewReason = ""
+                                                    revision++
+                                                }.onFailure { message = it.message.orEmpty() }
+                                            busy = false
+                                        }
+                                    }) { Text(action.replaceFirstChar { it.uppercase() }) }
+                            }
+                        }
+                    }
+                }
+            }
             Text("Contest applications", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(
+                value = applicationReviewReason,
+                onValueChange = { applicationReviewReason = it.take(300) },
+                label = { Text("Reason for rejection/disqualification (8–300 characters)") },
+                modifier = Modifier.fillMaxWidth(), minLines = 2
+            )
+            Text("The applicant receives this reason in a notification; every moderation decision is audited.",
+                style = MaterialTheme.typography.bodySmall)
             entries.forEach { entry ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("@" + entry.optString("username") + " · " + entry.optString("status"),
                         modifier = Modifier.weight(1f))
-                    listOf("approve", "reject", "disqualify").forEach { action ->
-                        TextButton(enabled = !busy, onClick = {
-                            busy = true
-                            scope.launch {
-                                runCatching { api.adminContestReview(entry.optString("id"), action) }
-                                    .onSuccess { message = "Entry reviewed."; revision++ }
-                                    .onFailure { message = it.message.orEmpty() }
-                                busy = false
+                    listOf("approve", "reject", "disqualify")
+                        .filter { action ->
+                            val targetStatus = when (action) {
+                                "approve" -> "approved"
+                                "reject" -> "rejected"
+                                else -> "disqualified"
                             }
-                        }) { Text(action) }
+                            entry.optString("status") != targetStatus
+                        }.forEach { action ->
+                        TextButton(enabled = !busy &&
+                            (action == "approve" || applicationReviewReason.trim().length in 8..300),
+                            onClick = {
+                                busy = true
+                                val reason = if (action == "approve")
+                                    "Application meets contest eligibility rules"
+                                else applicationReviewReason.trim()
+                                scope.launch {
+                                    runCatching {
+                                        api.adminContestReview(entry.optString("id"), action, reason)
+                                    }.onSuccess {
+                                        message = "Entry reviewed; applicant notified."
+                                        applicationReviewReason = ""
+                                        revision++
+                                    }.onFailure { message = it.message.orEmpty() }
+                                    busy = false
+                                }
+                            }) { Text(action.replaceFirstChar { it.uppercase() }) }
                     }
                 }
                 Text(entry.optString("statement"))
+                val media = entry.optString("media_url")
+                if (media.startsWith("https://")) {
+                    TextButton(enabled = !busy, onClick = {
+                        scope.launch {
+                            runCatching { api.adminContestMediaPreview(media) }
+                                .onSuccess { previewEntryMedia = it }
+                                .onFailure { message = it.message ?: "Unable to preview application media." }
+                        }
+                    }) { Text("Preview application photo/video") }
+                }
+                TextButton(enabled = !busy, onClick = {
+                    historyUsername = entry.optString("username")
+                    historyEntry = entry.optString("id")
+                }) { Text("Review history") }
             }
         }
+    }
+    previewEntryMedia?.let { media ->
+        AlertDialog(
+            onDismissRequest = { previewEntryMedia = null },
+            title = { Text("Contest application media") },
+            text = {
+                val mediaPath = media.substringBefore('?').lowercase()
+                if (mediaPath.endsWith(".mp4")) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Video preview opens in your default browser.")
+                        Button(onClick = {
+                            runCatching {
+                                java.awt.Desktop.getDesktop().browse(java.net.URI(media))
+                            }.onFailure {
+                                message = it.message ?: "Unable to open video."
+                            }
+                        }) { Text("Open video") }
+                    }
+                } else {
+                    AsyncImage(
+                        model = media, contentDescription = "Contest application photo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(340.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { previewEntryMedia = null }) { Text("Close") }
+            }
+        )
+    }
+    historyEntry?.let {
+        AlertDialog(
+            onDismissRequest = { historyEntry = null },
+            title = { Text("Review history · @" + historyUsername) },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (historyBusy) CircularProgressIndicator()
+                    if (historyError.isNotEmpty()) Text(historyError,
+                        color = MaterialTheme.colorScheme.error)
+                    if (!historyBusy && historyError.isEmpty()) {
+                        Text("$historyTotal recorded decisions · newest 30 shown",
+                            style = MaterialTheme.typography.bodySmall)
+                        if (historyRows.isEmpty()) Text("No moderation decisions recorded.")
+                        historyRows.forEach { audit ->
+                            HorizontalDivider()
+                            Text(audit.optString("previous_status").replaceFirstChar { it.uppercase() } +
+                                " → " + audit.optString("next_status").replaceFirstChar { it.uppercase() },
+                                fontWeight = FontWeight.SemiBold)
+                            Text(audit.optString("reason"))
+                            Text("By @" + audit.optString("actor_username") + " · " +
+                                audit.optString("created_at").replace('T',' ').take(19) + " UTC",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { historyEntry = null }) { Text("Close") } }
+        )
     }
 }
 

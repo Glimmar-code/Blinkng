@@ -29,6 +29,14 @@ for (const name of [
   '20261028200938_blink_block_unprotected_private_audiences_20261028.sql',
   '20261028212000_blink_contest_media_bucket.sql',
   '20261029190000_blink_contest_media_owner_select.sql',
+  '20261031060000_blink_contest_require_entry_media.sql',
+  '20261031070000_blink_contest_private_submissions.sql',
+  '20261031080000_blink_contest_candidate_search.sql',
+  '20261031090000_blink_contest_moderation_audit.sql',
+  '20261031100000_blink_contest_review_history.sql',
+  '20261031110000_blink_contest_cancelled_visibility.sql',
+  '20261031120000_blink_contest_entry_appeals.sql',
+  '20261031130000_blink_contest_orphan_media_audit.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -76,8 +84,190 @@ const contest = await rpc('admin_save_blink_contest', admin, { p_id: null, p_dat
 } });
 await rejected('/rest/v1/rpc/admin_transition_blink_contest', creator.token, { p_contest_id: contest.id, p_action: 'publish' }, /ADMIN_REQUIRED/);
 await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p_action: 'publish' });
-const entry = await rpc('apply_blink_contest', creator, { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null });
-await rpc('admin_review_blink_contest_entry', admin, { p_entry_id: entry.entry_id, p_action: 'approve' });
+const confidentialDraft = await rpc('admin_save_blink_contest', admin, { p_id:null,
+  p_data: {
+    title:'Confidential cancelled draft',description:'Not launched publicly',rules:'Private',
+    category:'General',prize_first:100,prize_second:0,prize_third:0,
+    registration_opens_at:later(-1),registration_closes_at:later(1),
+    voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
+    auto_approve:false
+  }
+});
+await rpc('admin_transition_blink_contest', admin, {
+  p_contest_id:confidentialDraft.id,p_action:'cancel'
+});
+const completedNow = await rpc('admin_save_blink_contest', admin, { p_id:null,
+  p_data: {
+    title:'Public cancelled challenge',description:'Launched then cancelled',rules:'Public',
+    category:'General',prize_first:100,prize_second:0,prize_third:0,
+    registration_opens_at:later(-1),registration_closes_at:later(1),
+    voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
+    auto_approve:false
+  }
+});
+await rpc('admin_transition_blink_contest', admin, {
+  p_contest_id:completedNow.id,p_action:'publish'
+});
+await rpc('admin_transition_blink_contest', admin, {
+  p_contest_id:completedNow.id,p_action:'cancel'
+});
+const catalogue = await rpc('list_blink_contests', outsider, {});
+assert.ok(catalogue.some(c=>c.id===completedNow.id && c.status==='cancelled'));
+assert.ok(!catalogue.some(c=>c.id===confidentialDraft.id),
+  'Cancelled unpublished draft must remain private');
+const cancelledDetails = await rpc('get_blink_contest', outsider, {
+  p_contest_id:completedNow.id
+});
+assert.equal(cancelledDetails.contest.status,'cancelled');
+await rejected('/rest/v1/rpc/get_blink_contest', outsider.token,
+  {p_contest_id:confidentialDraft.id}, /CONTEST_NOT_AVAILABLE/);
+await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
+  { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null },
+  /PRIVATE_CONTEST_MEDIA_REQUIRED|blink_contest_entry_media_required/);
+await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
+  { p_contest_id: contest.id, p_statement: 'Public media should be rejected',
+    p_media_url: 'https://example.com/public.jpg' }, /PRIVATE_CONTEST_MEDIA_REQUIRED/);
+
+const picture = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5r0AAAAASUVORK5CYII=', 'base64');
+const privatePath = `${creator.id}/${randomUUID()}.png`;
+const privateUpload = await request(`/storage/v1/object/blink-contest-private/${privatePath}`,
+  creator.token, picture, 'POST', { 'Content-Type': 'image/png' });
+ok(privateUpload, 'Owner private media upload');
+const privatePublic = await fetch(new URL(`/storage/v1/object/public/blink-contest-private/${privatePath}`, root));
+assert.ok(privatePublic.status >= 400, 'Pending contestant media must not be publicly downloadable');
+const outsiderRead = await request(`/storage/v1/object/authenticated/blink-contest-private/${privatePath}`,
+  outsider.token, undefined, 'GET');
+assert.ok(outsiderRead.status >= 400, 'Other users must not see pending media');
+const ownerRead = await request(`/storage/v1/object/authenticated/blink-contest-private/${privatePath}`,
+  creator.token, undefined, 'GET');
+assert.equal(ownerRead.status, 200, 'Owner can review their private submission');
+const privateMediaUrl = `https://blink-local-fixture.example/functions/v1/blink-contest-private-media/${privatePath}`;
+const entry = await rpc('apply_blink_contest', creator, {
+  p_contest_id: contest.id, p_statement: 'Real local authenticated entry',
+  p_media_url: privateMediaUrl
+});
+// A private upload older than retention is only a cleanup candidate when
+// no Contest application refers to it. Keep all cleanup actions read-only.
+const orphanCandidate = creator.id + '/' + randomUUID() + '.png';
+ok(await request('/storage/v1/object/blink-contest-private/' + orphanCandidate,
+  creator.token, picture, 'POST', { 'Content-Type': 'image/png' }),
+  'Orphan audit upload fixture');
+sql("update storage.objects set created_at=now()-interval '5 days' " +
+  "where bucket_id='blink-contest-private';");
+await rejected('/rest/v1/rpc/admin_list_blink_contest_orphan_media', creator.token,
+  { p_min_age_hours:72, p_limit:50 }, /ADMIN_REQUIRED/);
+const orphanReport = await rpc('admin_list_blink_contest_orphan_media', admin,
+  { p_min_age_hours:72, p_limit:50 });
+assert.equal(orphanReport.dry_run, true);
+assert.ok(orphanReport.objects.some(row => row.path === orphanCandidate));
+assert.ok(!orphanReport.objects.some(row => row.path === privatePath));
+await rejected('/rest/v1/rpc/admin_list_blink_contest_orphan_media', admin.token,
+  { p_min_age_hours:12, p_limit:50 }, /INVALID_MEDIA_RETENTION/);
+const beforeApproval = await rpc('search_blink_contest_candidates', voter, {
+  p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
+});
+assert.equal(beforeApproval.total, 0, 'Pending applications must never appear in search');
+await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', creator.token,
+  { p_entry_id: entry.entry_id, p_action: 'approve', p_reason: 'Self approval not permitted' },
+  /ADMIN_REQUIRED/);
+await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', admin.token,
+  { p_entry_id: entry.entry_id, p_action: 'approve', p_reason: 'bad' },
+  /CONTEST_REVIEW_REASON_REQUIRED/);
+await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', admin.token,
+  { p_entry_id: entry.entry_id, p_action: 'approve' },
+  /permission denied|Could not find|function|does not exist|schema cache|not found/i);
+await rpc('admin_review_blink_contest_entry', admin, {
+  p_entry_id: entry.entry_id, p_action: 'approve',
+  p_reason: 'Meets all the published Contest requirements'
+});
+const entryAuditCount = sql(`select count(*) from public.blink_contest_entry_review_audit
+  where entry_id='${entry.entry_id}' and next_status='approved';`);
+assert.equal(entryAuditCount,'1');
+await rejected('/rest/v1/rpc/admin_get_blink_contest_entry_review_history',
+  creator.token, { p_entry_id: entry.entry_id, p_limit: 30 }, /ADMIN_REQUIRED/);
+const auditHistory = await rpc('admin_get_blink_contest_entry_review_history', admin, {
+  p_entry_id: entry.entry_id, p_limit: 30
+});
+assert.equal(auditHistory.total,1);
+assert.equal(auditHistory.history[0].next_status,'approved');
+assert.equal(auditHistory.history[0].reason,'Meets all the published Contest requirements');
+assert.equal(auditHistory.history[0].actor_id,admin.id);
+const auditPage = await rpc('admin_get_blink_contest_entry_review_history', admin, {
+  p_entry_id: entry.entry_id, p_limit: 1
+});
+assert.equal(auditPage.history.length,1);
+assert.equal(auditPage.limit,1);
+await rejected('/rest/v1/rpc/submit_blink_contest_entry_appeal', creator.token,
+  { p_entry_id: entry.entry_id, p_statement: 'This entry is already approved and ineligible' },
+  /APPEAL_NOT_AVAILABLE/);
+await rpc('admin_review_blink_contest_entry', admin, {
+  p_entry_id: entry.entry_id, p_action:'reject',
+  p_reason:'Eligibility documents need further review'
+});
+await rejected('/rest/v1/rpc/submit_blink_contest_entry_appeal', outsider.token,
+  { p_entry_id: entry.entry_id, p_statement: 'I cannot appeal for a different entrant' },
+  /ENTRY_NOT_AVAILABLE/);
+const realAppeal = await rpc('submit_blink_contest_entry_appeal', creator, {
+  p_entry_id: entry.entry_id,
+  p_statement:'I have attached sufficient supporting eligibility information'
+});
+assert.equal(realAppeal.status,'pending');
+await rejected('/rest/v1/rpc/submit_blink_contest_entry_appeal', creator.token,
+  { p_entry_id:entry.entry_id, p_statement:'I should not be able to send duplicate appeals' },
+  /duplicate|unique/i);
+const ownAppeal = await rpc('my_blink_contest_entry_appeal', creator, {
+  p_entry_id:entry.entry_id
+});
+assert.equal(ownAppeal.status,'pending');
+await rejected('/rest/v1/rpc/my_blink_contest_entry_appeal', outsider.token,
+  { p_entry_id:entry.entry_id }, /ENTRY_NOT_AVAILABLE/);
+await rejected('/rest/v1/rpc/admin_list_blink_contest_entry_appeals', creator.token,
+  { p_contest_id:contest.id,p_limit:100 }, /ADMIN_REQUIRED/);
+const pendingAppeals = await rpc('admin_list_blink_contest_entry_appeals', admin, {
+  p_contest_id:contest.id,p_limit:100
+});
+assert.equal(pendingAppeals.length,1);
+await rejected('/rest/v1/rpc/admin_decide_blink_contest_entry_appeal', outsider.token,
+  { p_appeal_id:realAppeal.id,p_action:'accept',p_reason:'Not an administrator' },
+  /ADMIN_REQUIRED/);
+const deniedAppeal = await rpc('admin_decide_blink_contest_entry_appeal', admin, {
+  p_appeal_id:realAppeal.id,p_action:'deny',
+  p_reason:'Supporting evidence did not meet published eligibility rules'
+});
+assert.equal(deniedAppeal.status,'denied');
+await rejected('/rest/v1/rpc/admin_decide_blink_contest_entry_appeal', admin.token,
+  { p_appeal_id:realAppeal.id,p_action:'accept',p_reason:'Repeated decision forbidden' },
+  /APPEAL_NOT_PENDING/);
+const deniedStatus = await rpc('my_blink_contest_entry_appeal', creator,
+  {p_entry_id:entry.entry_id});
+assert.equal(deniedStatus.status,'denied');
+await rpc('admin_review_blink_contest_entry', admin, {
+  p_entry_id:entry.entry_id,p_action:'approve',
+  p_reason:'Manual review subsequently confirmed eligibility'
+});
+const participantNotices = ok(await request(
+  '/rest/v1/notifications?select=id,sub_text,metadata&metadata->>kind=eq.blink_contest_application_review',
+  creator.token, undefined, 'GET'), 'Owner moderation notice');
+assert.ok(participantNotices.some(n=>n.metadata?.new_status === 'approved'),
+  'Applicant receives review status and reason');
+const found = await rpc('search_blink_contest_candidates', outsider, {
+  p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
+});
+assert.equal(found.total, 1);
+assert.equal(found.entries[0].id, entry.entry_id);
+const pastEnd = await rpc('search_blink_contest_candidates', outsider, {
+  p_contest_id: contest.id, p_query: '', p_limit: 20, p_offset: 20
+});
+assert.equal(pastEnd.entries.length,0);
+// Android must receive a complete approved candidate before creating its flyer;
+// compact leaderboard rows deliberately omit contest_id.
+const flyerCandidate = await rpc('get_blink_contest_candidate', voter, {
+  p_contest_id: contest.id, p_entry_id: entry.entry_id
+});
+assert.equal(flyerCandidate.id, entry.entry_id);
+assert.equal(flyerCandidate.contest_id, contest.id);
+assert.equal(flyerCandidate.contest_title, 'Local authenticated contest');
+assert.equal(flyerCandidate.rank, 1);
 sql(`update public.blink_contests set registration_opens_at=now()-interval '3 days',registration_closes_at=now()-interval '2 days',voting_opens_at=now()-interval '1 day' where id='${contest.id}';`);
 
 let socket;
@@ -110,7 +300,6 @@ try {
   console.log('PASS local Contest: authenticated publish/apply/approve, one concurrent vote, real Realtime notification and recipient-only reads');
 } finally { socket?.close(); }
 
-const picture = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5r0AAAAASUVORK5CYII=', 'base64');
 const mediaPath = `${creator.id}/fixture.png`;
 const upload = (path, actor) => request(`/storage/v1/object/blink-contest-media/${path}`, actor.token, picture, 'POST', { 'Content-Type': 'image/png' });
 ok(await upload(mediaPath, creator), 'Owned Storage upload');
@@ -121,7 +310,7 @@ await request('/storage/v1/object/blink-contest-media', outsider.token, { prefix
 assert.equal((await fetch(new URL(`/storage/v1/object/public/blink-contest-media/${mediaPath}`, root))).status, 200);
 ok(await request('/storage/v1/object/blink-contest-media', creator.token, { prefixes: [mediaPath] }, 'DELETE'), 'Owner delete');
 assert.notEqual((await fetch(new URL(`/storage/v1/object/public/blink-contest-media/${mediaPath}`, root))).status, 200);
-console.log('PASS local Storage: public preview disclosure contract, owner path/delete and cross-account rejection');
+console.log('PASS local Storage: public admin cover, private contestant submissions, owner-only preview and cross-account denial');
 
 const conversation = randomUUID(), message = randomUUID();
 sql(`insert into public.conversations(id) values('${conversation}'); insert into public.conversation_participants(conversation_id,user_id) values('${conversation}','${creator.id}'),('${conversation}','${voter.id}'); insert into public.messages(id,conversation_id,sender_id,content) values('${message}','${conversation}','${creator.id}','Design choice?');`);
