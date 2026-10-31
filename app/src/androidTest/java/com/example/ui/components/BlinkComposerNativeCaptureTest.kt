@@ -92,8 +92,10 @@ class BlinkComposerNativeCaptureTest {
         // The real text input must be interacted with before validating focus.
         // This keeps the OS-focus assertion meaningful, rather than requiring
         // a newly created dialog to grab focus before any user interaction.
-        val field = rule.onAllNodes(hasSetTextAction()).onFirst()
+        val field = rule.onNodeWithTag("blink_create_post_caption_field")
+        field.assertExists()
         field.performClick()
+        field.assertIsFocused()
         try {
             rule.waitUntil(15_000) {
                 var focused = false
