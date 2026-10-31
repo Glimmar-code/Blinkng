@@ -147,6 +147,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextStyle
@@ -1104,6 +1105,7 @@ fun CreatePostSheet(
         // Dialog has its own native window; obtain the IME controller from this
         // composition, not the Activity behind the full-screen composer.
         val keyboardController = LocalSoftwareKeyboardController.current
+        val composerDialogView = LocalView.current
         val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
             colorScheme = if (useClassicComposer && selectedVideo == null && mode != "reel") {
@@ -1619,8 +1621,13 @@ fun CreatePostSheet(
                     // actually composed; never open the keyboard for media or polls.
                     if (!useClassicComposer && focusTextOnEntry) {
                         LaunchedEffect(focusTextOnEntry) {
+                            // Focus the Android view hosting this Dialog before
+                            // the Compose text field, avoiding a keyboard request
+                            // directed at an unfocused native window.
                             androidx.compose.runtime.withFrameNanos { }
+                            composerDialogView.requestFocus()
                             textEntryFocusRequester.requestFocus()
+                            androidx.compose.runtime.withFrameNanos { }
                             keyboardController?.show()
                             focusTextOnEntry = false
                         }
