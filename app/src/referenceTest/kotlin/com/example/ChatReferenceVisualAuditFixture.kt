@@ -215,8 +215,13 @@ abstract class ChatReferenceVisualAuditFixture {
             }
         }
         rule.onNodeWithTag("chat_reference_native_poll").assertExists()
-        rule.onNodeWithTag("chat_reference_native_poll_percent_0").assertExists()
-        rule.onNodeWithTag("chat_reference_native_poll_bar_1").assertExists()
+        // Native poll choice rows are clickable and merge descendant semantics.
+        // Inspect their unmerged children to verify the actual percentage and
+        // progress widgets without weakening the user-action assertion below.
+        rule.onNodeWithTag("chat_reference_native_poll_percent_0",
+            useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag("chat_reference_native_poll_bar_1",
+            useUnmergedTree = true).assertExists()
         capture("chat-native-poll-synthetic-fixture.png")
         rule.onNodeWithTag("chat_reference_native_poll_choice_2").performClick()
         rule.runOnIdle { check(selected == 2) }
