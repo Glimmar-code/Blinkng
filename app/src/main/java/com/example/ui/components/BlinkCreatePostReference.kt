@@ -1198,6 +1198,10 @@ internal fun BlinkReelClipReview(
         Text("Select 2–4 videos. Arrange them and combine into a single Reel (maximum 3 minutes).",
             color = Color(0xFFB3BAC6), fontSize = 12.sp)
         clips.forEachIndexed { index, clip ->
+            val context = LocalContext.current
+            val duration by produceState<Long?>(initialValue = null, key1 = clip) {
+                value = blinkSelectedClipDurationMs(context, clip)
+            }
             Surface(color = Color(0xFF1B1F28), shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1208,6 +1212,11 @@ internal fun BlinkReelClipReview(
                             fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Text(clip.substringAfterLast('/').take(24),
                             color = Color(0xFF9DA5B3), fontSize = 10.sp, maxLines = 1)
+                        blinkSelectedClipDurationLabel(duration)?.let { label ->
+                            Text(label, color = Color(0xFFD7D8E4),
+                                fontSize = 11.sp,
+                                modifier = Modifier.testTag("blink_clip_duration_" + index))
+                        }
                     }
                     IconButton(
                         onClick = { onMove(index, index - 1) },
