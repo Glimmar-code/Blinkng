@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.supabase.BlinkDropDiscovery
 import java.text.NumberFormat
+import java.time.Instant
 import java.util.Locale
 
 /**
@@ -39,6 +41,12 @@ fun BlinkDropDiscoveryCard(
 ) {
     val formatter = NumberFormat.getIntegerInstance(Locale.US)
     val active = item.status.equals("ACTIVE", ignoreCase = true)
+    val endedLabel = runCatching {
+        val endedAt = Instant.parse(item.endsAt).toEpochMilli()
+        "Ended " + DateUtils.getRelativeTimeSpanString(
+            endedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
+        ).toString()
+    }.getOrDefault("Giveaway ended")
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
@@ -65,7 +73,7 @@ fun BlinkDropDiscoveryCard(
                         fontWeight = FontWeight.Black,
                     )
                     Text(
-                        if (active) "@${item.creatorUsername} is running a Giveaway. Join before it ends." else "@${item.creatorUsername} recently ran a Giveaway.",
+                        if (active) "@${item.creatorUsername} is running a Giveaway. Join before it ends." else "@${item.creatorUsername} ran this Giveaway. $endedLabel.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
