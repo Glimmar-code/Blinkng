@@ -473,7 +473,7 @@ begin
     'giveaway',
     v_drop.id,
     'started a BLINK Giveaway',
-    p_reward_per_user::text || ' coins each · ' ||
+    p_reward_per_user::text || ' BLINK Coins each · ' ||
       initcap(lower(replace(v_action,'_',' '))) || ' · ' ||
       p_winner_count::text || ' rewards',
     false,
