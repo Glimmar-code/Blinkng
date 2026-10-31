@@ -618,7 +618,7 @@ internal fun BlinkReferencePostDetails(
     temporary: Boolean,
     onBack: () -> Unit,
     onEditCaption: () -> Unit,
-    onTagPeople: () -> Unit,
+    onTagPeople: () -> Unit = onEditCaption,
     onAudienceChange: (String) -> Unit,
     onLocationChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
