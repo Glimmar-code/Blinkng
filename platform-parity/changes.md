@@ -1845,3 +1845,12 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 
 - Android-only contrast hardening sets explicit light foreground colors inside the dark Drops empty/podium cards and Boost quote/analytics cards. This is a native Compose presentation correction; it does not change the shared data model, API, eligibility, pricing, balances, transactions or user actions.
 - Windows equivalent: the desktop Drops and Boost surfaces retain their existing native theme-aware text rendering and separate layout. The parity contract is identical data, actions and readable foreground/background contrast, not pixel-identical native card styling. The Windows parity/build gate verifies its existing desktop implementation independently.
+
+
+## Testlab — repeat-qualified content and Marketplace views (2026-10-31)
+
+- Android Feed and Profile post cards, inline Reels, and active full-screen Reels now qualify a visible exposure after 1.5 seconds at the existing 50% visibility threshold. Existing window-focus, playback-active, off-screen/pager-prefetch and continuous-session guards remain in place. Scrolling fully away and returning starts a new exposure; repeated layouts while still visible do not.
+- Windows content cards use the same 1.5-second visible-dwell rule before recording. The shared server-side record_content_view remains authoritative for 1/3/6 active verification weights, per-content viewer caps and event idempotency.
+- Marketplace listing detail opens wait two seconds before sending a view event and cancel logically when the user has already navigated away. The staged SQL records repeat visits with event IDs, a two-second per-viewer/listing rate limit, 100-event daily cap, 600 weighted-contribution cap, owner-view exclusion, and server-resolved active verification weights. The legacy daily unique-visitor table remains for analytics.
+- Promoted Market listing delivery remains separate: its existing START/QUALIFIED campaign session is preserved and still requires a sustained visible placement; opening the listing also contributes a normal listing view after the detail dwell.
+- Automated tests are added for Android/Windows dwell gates and the isolated Marketplace SQL contract. These are staged changes only; production Supabase has not been migrated and no APK/EXE has been published. Live Testlab backend integration, full Android/Windows build/runtime checks and latest-head CI remain required before promotion.
