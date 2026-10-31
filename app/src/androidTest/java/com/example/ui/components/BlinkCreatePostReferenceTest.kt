@@ -236,6 +236,38 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun postDetailsDefaultIsCompactButExistingAdvancedSettingsStillWork() {
+        val changes = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferencePostDetails(
+                    text = "FUTA update",
+                    mediaUri = null, tags = emptyList(),
+                    audience = "Everyone", location = "",
+                    category = "Campus Life",
+                    allowComments = true, hideLikes = false, temporary = false,
+                    onBack = {}, onEditCaption = {},
+                    onAudienceChange = {}, onLocationChange = {},
+                    onCategoryChange = { changes += "category:$it" },
+                    onCommentsChange = { changes += "comments:$it" },
+                    onHideLikesChange = { changes += "likes:$it" },
+                    onTemporaryChange = { changes += "temporary:$it" },
+                    onNext = {}
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_post_details_advanced_settings").assertDoesNotExist()
+        composeRule.onNodeWithText("Allow comments").assertExists()
+        composeRule.onNodeWithTag("blink_post_details_more_settings").performScrollTo().performClick()
+        composeRule.onNodeWithTag("blink_post_details_advanced_settings").assertExists()
+        composeRule.onNodeWithText("Post category").assertExists()
+        composeRule.onNodeWithText("Academic").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("category:Academic"), changes) }
+        composeRule.onNodeWithTag("blink_post_details_more_settings").performScrollTo().performClick()
+        composeRule.onNodeWithTag("blink_post_details_advanced_settings").assertDoesNotExist()
+    }
+
+    @Test
     fun pollDurationMatchesCollapsedReferenceAndStillSavesUserSelection() {
         val duration = mutableIntStateOf(24)
         composeRule.setContent {
