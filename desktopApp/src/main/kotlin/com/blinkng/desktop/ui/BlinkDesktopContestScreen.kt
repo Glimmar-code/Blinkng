@@ -183,7 +183,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                 label = { Text("Why should people vote for you?") },
                                 modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(mediaUrl, { mediaUrl = it },
-                                label = { Text("Optional entry photo/Reel URL") },
+                                label = { Text("Required entry photo/Reel HTTPS URL") },
                                 modifier = Modifier.fillMaxWidth())
                             Text("Uploaded media is publicly accessible before approval. Do not attach private documents.", style = MaterialTheme.typography.bodySmall)
                             OutlinedButton(enabled = !busy, onClick = {
