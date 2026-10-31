@@ -21,6 +21,7 @@ import com.example.ui.screens.BlinkContestApplicantMediaCard
 import com.example.ui.screens.BlinkContestReviewHistoryDialog
 import com.example.ui.screens.BlinkContestPodium
 import com.example.ui.screens.BlinkContestWinnerCard
+import com.example.ui.screens.BlinkContestShareDialog
 import com.example.ui.theme.BlinkTheme
 import org.json.JSONObject
 import org.junit.Rule
@@ -132,6 +133,33 @@ class ContestReferenceVisualAuditTest {
         capture("contest-review-history-staging.png", dialog = true)
         rule.onNodeWithText("Close").performClick()
         rule.runOnIdle { org.junit.Assert.assertTrue(dismissed) }
+    }
+
+    @Test fun contestantShareDialogRendersRealPersonalizedFlyer() {
+        val candidate = JSONObject()
+            .put("id", "55555555-5555-4555-8555-555555555555")
+            .put("contest_id", "66666666-6666-4666-8666-666666666666")
+            .put("name", "Ada Example")
+            .put("username", "adaexample")
+            .put("contest_title", "BLINK Campus Showcase")
+            .put("rank", 5)
+            .put("votes", 76)
+        var closed = false
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                BlinkContestShareDialog(candidate, onDismiss = { closed = true })
+            }
+        }
+        rule.waitUntil(20_000) {
+            rule.onAllNodesWithContentDescription(
+                "Personalized voting flyer for Ada Example"
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Share flyer and voting link").assertExists()
+        rule.onNodeWithText("Copy voting message").assertExists()
+        capture("contest-personalized-flyer-staging.png", dialog = true)
+        rule.onNodeWithText("Close").performClick()
+        rule.runOnIdle { org.junit.Assert.assertTrue(closed) }
     }
 
     private fun containsRenderedContent(bitmap: Bitmap): Boolean {
