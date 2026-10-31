@@ -302,7 +302,7 @@ begin
     'status',case when v_remaining<=0 then 'COMPLETED' else 'ACTIVE' end
   );
 end;
-$function$
+$function$;
 
 create or replace function public.cancel_blink_drop(p_drop_id uuid)
 returns jsonb
@@ -493,7 +493,7 @@ begin
     'ends_at',v_drop.ends_at
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_blink_drops_state(p_limit integer DEFAULT 20)
  RETURNS jsonb
@@ -673,7 +673,7 @@ begin
     'top_givers',coalesce(v_top,'[]'::jsonb)
   );
 end;
-$function$
+$function$;
 
 create or replace function public.get_blink_giveaway_feed_discovery(p_limit integer default 20)
 returns jsonb
@@ -828,7 +828,7 @@ begin
     'ends_in_hours',p_duration_hours
   );
 end;
-$function$
+$function$;
 
 
 revoke all on function private.blink_drop_expire_stale() from public,anon,authenticated;
