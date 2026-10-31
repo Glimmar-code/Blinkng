@@ -31,6 +31,7 @@ for (const name of [
   '20261029190000_blink_contest_media_owner_select.sql',
   '20261031060000_blink_contest_require_entry_media.sql',
   '20261031070000_blink_contest_private_submissions.sql',
+  '20261031080000_blink_contest_candidate_search.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -103,7 +104,20 @@ const entry = await rpc('apply_blink_contest', creator, {
   p_contest_id: contest.id, p_statement: 'Real local authenticated entry',
   p_media_url: privateMediaUrl
 });
+const beforeApproval = await rpc('search_blink_contest_candidates', voter, {
+  p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
+});
+assert.equal(beforeApproval.total, 0, 'Pending applications must never appear in search');
 await rpc('admin_review_blink_contest_entry', admin, { p_entry_id: entry.entry_id, p_action: 'approve' });
+const found = await rpc('search_blink_contest_candidates', outsider, {
+  p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
+});
+assert.equal(found.total, 1);
+assert.equal(found.entries[0].id, entry.entry_id);
+const pastEnd = await rpc('search_blink_contest_candidates', outsider, {
+  p_contest_id: contest.id, p_query: '', p_limit: 20, p_offset: 20
+});
+assert.equal(pastEnd.entries.length,0);
 // Android must receive a complete approved candidate before creating its flyer;
 // compact leaderboard rows deliberately omit contest_id.
 const flyerCandidate = await rpc('get_blink_contest_candidate', voter, {
