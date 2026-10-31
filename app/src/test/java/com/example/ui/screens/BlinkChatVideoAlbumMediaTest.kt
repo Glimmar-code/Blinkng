@@ -17,6 +17,14 @@ class BlinkChatVideoAlbumMediaTest {
         assertEquals("content://media/video/42", BlinkChatVideoAlbumMedia.thumbnail(pending))
     }
 
+    @Test fun localFileVideoUriInAttachedUrlIsPlayableAndSafeToPreview() {
+        val local = "file:///data/user/0/com.example/cache/pending.mp4"
+        val pending = ChatMessage(id = "pending-file-video", attachedVideoUrl = local)
+        assertTrue(BlinkChatVideoAlbumMedia.available(pending))
+        assertEquals(local, BlinkChatVideoAlbumMedia.playback(pending))
+        assertEquals(local, BlinkChatVideoAlbumMedia.thumbnail(pending))
+    }
+
     @Test fun remoteVideoRequiresRealPreviewToAvoidFullMediaFetch() {
         val uploaded = ChatMessage(
             id = "published-video",
