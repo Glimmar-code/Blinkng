@@ -704,7 +704,9 @@ private fun ReelsContent(
                             minimumDistancePx = with(density) { 28.dp.toPx() },
                             velocityThresholdPxPerSecond = with(density) { 1100.dp.toPx() }
                         )
-                        settleExpansion(!fastDownwardFlick)
+                        settleExpansion(!ReelExpansionMotion.shouldCollapseFromFullscreen(
+                            dragProgress, fastDownwardFlick
+                        ))
                         return available
                     }
                     return Velocity.Zero
@@ -741,7 +743,9 @@ private fun ReelsContent(
                                         minimumDistancePx = 28.dp.toPx(),
                                         velocityThresholdPxPerSecond = 1100.dp.toPx()
                                     )
-                                settleExpansion(fastFlick)
+                                settleExpansion(ReelExpansionMotion.shouldExpandFromPreview(
+                                    dragProgress, fastFlick
+                                ))
                             },
                             onDragCancel = { settleExpansion(false) }
                         )
