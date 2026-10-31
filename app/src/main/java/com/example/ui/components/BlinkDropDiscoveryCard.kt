@@ -35,9 +35,11 @@ fun BlinkDropDiscoveryCard(
     item: BlinkDropDiscovery,
     onFollow: () -> Unit,
     onOpenDrops: () -> Unit,
+    following: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val formatter = NumberFormat.getIntegerInstance(Locale.US)
+    val active = item.status.equals("ACTIVE", ignoreCase = true)
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
@@ -59,12 +61,12 @@ fun BlinkDropDiscoveryCard(
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "You missed a BLINK Drop",
+                        if (active) "BLINK GIVEAWAY · LIVE" else "You missed this BLINK Giveaway",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
                     )
                     Text(
-                        "@${item.creatorUsername} gave followers a chance to earn BLINK Coins.",
+                        if (active) "@${item.creatorUsername} is running a Giveaway. Join before it ends." else "@${item.creatorUsername} recently ran a Giveaway.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -72,7 +74,7 @@ fun BlinkDropDiscoveryCard(
             }
 
             Text(
-                "${formatter.format(item.totalCoins)} coins · ${formatter.format(item.rewardPerUser)} each · ${item.winnerCount} rewards",
+                "${formatter.format(item.totalCoins)} BLINK Coins · ${formatter.format(item.rewardPerUser)} each · ${item.winnerCount} rewards",
                 fontWeight = FontWeight.Bold,
             )
             Text(
@@ -81,11 +83,11 @@ fun BlinkDropDiscoveryCard(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onFollow) {
-                    Text("Follow")
+                if (!following) {
+                    Button(onClick = onFollow) { Text("Follow") }
                 }
                 OutlinedButton(onClick = onOpenDrops) {
-                    Text("View Drops")
+                    Text(if (active) "View Giveaway" else "View Giveaway details")
                 }
             }
         }
