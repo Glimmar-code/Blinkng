@@ -25,6 +25,7 @@ class DesktopAppState(
     var settings by mutableStateOf<DesktopUserSettings?>(null)
         private set
     var selectedRoute by mutableStateOf("home")
+    var selectedGiveawayId by mutableStateOf<String?>(null)
     var globalSearch by mutableStateOf("")
     var showNewStudentSuggestions by mutableStateOf(false)
     private var pendingNewMemberDiscovery = false
@@ -103,6 +104,7 @@ class DesktopAppState(
         settings = null
         adminCapability = DesktopAdminCapability(false, null, false)
         selectedRoute = "home"
+        selectedGiveawayId = null
         globalSearch = ""
         pendingNewMemberDiscovery = false
         showNewStudentSuggestions = false
