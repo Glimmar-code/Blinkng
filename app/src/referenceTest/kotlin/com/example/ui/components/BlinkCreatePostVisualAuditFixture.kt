@@ -6,6 +6,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.net.Uri
 import com.example.ui.screens.BlinkUniversalPhotoEditor
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -547,6 +548,40 @@ abstract class BlinkCreatePostVisualAuditFixture {
         capture("create-post-preview-staging.png", "blink_post_preview_stage")
         rule.onNodeWithTag("blink_post_preview_back").performClick()
         rule.runOnIdle { check(dismissed) { "Preview must allow returning to composer" } }
+    }
+
+    @Test fun videoEditorShowsTrimAndRealDedicatedTools() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val target = instrumentation.targetContext
+        val videoFile = File(target.cacheDir, "blink-visual-editor-fixture.mp4")
+        instrumentation.context.assets.open("blink-visual-synthetic.mp4").use { source ->
+            videoFile.outputStream().use { output -> source.copyTo(output) }
+        }
+        rule.setContent {
+            AuditSurface {
+                PremiumReelEditor(
+                    uri = Uri.fromFile(videoFile).toString(),
+                    draftScope = "reference-video-editor-fixture",
+                    onRemove = {},
+                    onEdited = {},
+                    onExporting = {},
+                    onPendingEdits = {}
+                )
+            }
+        }
+        rule.onNodeWithTag("premium_reel_editor").assertExists()
+        rule.onNodeWithTag("blink_video_editor_preview").assertExists()
+        rule.onNodeWithTag("blink_video_editor_timeline").assertExists()
+        rule.onNodeWithTag("blink_video_trim_handles").assertExists()
+        capture("create-post-video-editor-staging.png", "premium_reel_editor")
+        rule.onNodeWithTag("blink_video_tool_text").performClick()
+        rule.onNodeWithTag("blink_video_overlay_text").assertExists()
+        rule.onNodeWithTag("blink_video_tool_stickers").performClick()
+        rule.onNodeWithTag("blink_video_overlay_sticker").assertExists()
+        rule.onNodeWithTag("blink_video_tool_effects").performClick()
+        rule.onNodeWithText("Rotate 90°").assertExists()
+        rule.onNodeWithTag("blink_video_tool_trim").performClick()
+        rule.onNodeWithTag("blink_video_trim_handles").assertExists()
     }
 
     @Test fun photoEditorUsesActualSelectedPhotoAndNativeTools() {
