@@ -127,7 +127,7 @@ abstract class BlinkCreatePostVisualAuditFixture {
         check(
             rule.onNodeWithTag("blink_create_post_caption_field")
                 .fetchSemanticsNode().config
-                .getOrNull(SemanticsProperties.EditableText)?.text ==
+                [SemanticsProperties.EditableText].text ==
                 "Draft retained when reviewing photos"
         ) { "The actual caption editor lost its typed draft." }
         rule.onNodeWithTag("blink_compose_action_0").performScrollTo().performClick()
@@ -145,7 +145,7 @@ abstract class BlinkCreatePostVisualAuditFixture {
         check(
             rule.onNodeWithTag("blink_create_post_caption_field")
                 .fetchSemanticsNode().config
-                .getOrNull(SemanticsProperties.EditableText)?.text ==
+                [SemanticsProperties.EditableText].text ==
                 "Draft retained when reviewing photos"
         ) { "The actual caption editor lost its typed draft." }
         rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
