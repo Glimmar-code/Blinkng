@@ -831,6 +831,41 @@ end;
 $function$;
 
 
+create or replace function private.prevent_blink_giveaway_unlike()
+returns trigger
+language plpgsql
+security definer
+set search_path=''
+as $function$
+begin
+  -- A participant may not remove the Like that was used to claim a Giveaway reward.
+  -- Before claiming, an unlike simply means the required action is no longer complete.
+  if auth.uid() is not null
+     and auth.uid()=old.user_id
+     and exists (
+       select 1
+       from public.blink_drop_claims c
+       join public.blink_drops d on d.id=c.drop_id
+       where c.user_id=old.user_id
+         and c.action='LIKE'
+         and d.action='LIKE'
+         and d.target_type='POST'
+         and d.target_id=old.post_id
+     ) then
+    raise exception 'GIVEAWAY_LIKE_LOCKED'
+      using errcode='P0001',
+            message='This Like is locked because you already claimed a Giveaway reward for it.';
+  end if;
+  return old;
+end;
+$function$;
+
+drop trigger if exists trg_prevent_blink_giveaway_unlike on public.post_likes;
+create trigger trg_prevent_blink_giveaway_unlike
+before delete on public.post_likes
+for each row execute function private.prevent_blink_giveaway_unlike();
+
+revoke all on function private.prevent_blink_giveaway_unlike() from public,anon,authenticated;
 revoke all on function private.blink_drop_expire_stale() from public,anon,authenticated;
 revoke all on function private.blink_drop_safe_card(public.blink_drops) from public,anon,authenticated;
 revoke all on function public.quote_blink_drop(text,uuid,text,integer,integer,text,integer) from public,anon;
