@@ -667,15 +667,17 @@ internal fun BlinkReferencePostDetails(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.Close, contentDescription = "Back to composer", tint = Color.White)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag("blink_post_details_back")
+            ) {
+                Icon(Icons.Default.ChevronLeft,
+                    contentDescription = "Back to composer", tint = Color.White)
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text("Post Details", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
-            TextButton(onClick = onNext) {
-                Text("Next", color = Color(0xFF8B81FF), fontWeight = FontWeight.Bold)
-            }
+            Spacer(Modifier.width(48.dp))
         }
         Surface(
             color = Color(0xFF13161C), shape = RoundedCornerShape(13.dp),
