@@ -26,7 +26,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.text.NumberFormat
 import java.util.Locale
 
-/** Isolated, real Compose captures of the same growth cards used in the app. */
+/** Isolated, real Compose captures of BLINK Giveaway and growth cards used in the app. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
@@ -44,7 +44,7 @@ class BlinkGrowthVisualCaptureTest {
         }
     }
 
-    @Test fun topGiversWithVerifiedRewardTotals() {
+    @Test fun mostGiversWithCommittedGiveawayTotals() {
         scene {
             TopGiverCard(TopGiver("u1","first","First Creator",1200,3,20,false),
                 rank = 1, formatter = formatter, following = false, followBusy = false, onFollow = {})
@@ -53,12 +53,12 @@ class BlinkGrowthVisualCaptureTest {
             TopGiverCard(TopGiver("u3","third","Third Creator",300,1,8,false),
                 rank = 3, formatter = formatter, following = false, followBusy = false, onFollow = {})
         }
-        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/growth-reference-drops-podium.png")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-most-givers-podium.png")
     }
 
-    @Test fun topGiversGenuineEmptyState() {
+    @Test fun mostGiversGenuineEmptyState() {
         scene { TopGiversEmptyState(onBrowse = {}, onCreate = {}) }
-        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/growth-reference-drops-empty.png")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-most-givers-empty.png")
     }
 
     @Test fun boostQuoteAndAnalytics() {
