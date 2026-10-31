@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
@@ -121,13 +122,23 @@ abstract class BlinkCreatePostVisualAuditFixture {
             }
         }
         rule.onNodeWithTag("blink_create_choice_text").performClick()
-        rule.onAllNodes(hasSetTextAction()).onFirst()
+        rule.onNodeWithTag("blink_create_post_caption_field")
             .performTextReplacement("Draft retained when reviewing photos")
+        rule.onNodeWithTag("blink_create_post_caption_field")
+            .assertTextEquals("Draft retained when reviewing photos")
         rule.onNodeWithTag("blink_compose_action_0").performScrollTo().performClick()
-        rule.onNodeWithTag("blink_media_review").assertExists()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_media_review").fetchSemanticsNodes().isNotEmpty()
+        }
         capture("create-post-text-to-gallery-staging.png", "blink_create_post_full_screen")
         rule.onNodeWithTag("blink_media_review_back").performClick()
-        rule.onAllNodes(hasSetTextAction()).onFirst()
+        // Wait for the editor to replace the outgoing gallery in AnimatedContent.
+        // Assert the actual caption field, not the first transitioning input.
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_create_post_caption_field")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_create_post_caption_field")
             .assertTextEquals("Draft retained when reviewing photos")
         rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
     }
