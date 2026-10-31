@@ -625,6 +625,7 @@ internal fun BlinkReferencePostDetails(
     onNext: () -> Unit,
 ) {
     var showAudienceChooser by remember { mutableStateOf(false) }
+    var showAdvancedPostSettings by remember { mutableStateOf(false) }
     if (showAudienceChooser) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showAudienceChooser = false },
@@ -740,35 +741,67 @@ internal fun BlinkReferencePostDetails(
                 Icon(Icons.Default.ChevronRight, "Choose post audience", tint = Color.White)
             }
         }
-        Text("Post category", color = Color.White, fontWeight = FontWeight.SemiBold)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            com.blinkng.shared.BlinkPostGrowthTips.feedCategories.forEach { option ->
-                FilterChip(
-                    selected = category == option,
-                    onClick = { onCategoryChange(option) },
-                    label = { Text(option) }
-                )
-            }
-        }
         Surface(
             color = Color(0xFF171B22), shape = RoundedCornerShape(13.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
                 BlinkReferenceSettingRow("Allow comments", allowComments, onCommentsChange)
-                HorizontalDivider(color = Color(0xFF343944))
-                BlinkReferenceSettingRow("Hide like count", hideLikes, onHideLikesChange)
-                HorizontalDivider(color = Color(0xFF343944))
-                BlinkReferenceSettingRow("Temporary post", temporary, onTemporaryChange)
             }
         }
-        Text(
-            "Post visibility uses your existing BLINK audience rules. Other posting tools remain in the editor.",
-            color = Color(0xFFADB3BF), fontSize = 11.sp
-        )
+        // The user's reference keeps the primary settings short. Preserve
+        // supported privacy and category controls in an expandable section,
+        // rather than deleting features or displaying unsupported toggles.
+        TextButton(
+            onClick = { showAdvancedPostSettings = !showAdvancedPostSettings },
+            modifier = Modifier.testTag("blink_post_details_more_settings")
+        ) {
+            Text(
+                if (showAdvancedPostSettings) "Hide more post settings" else "More post settings",
+                color = Color(0xFFAAA6FF), fontSize = 12.sp
+            )
+            Icon(
+                if (showAdvancedPostSettings) Icons.Default.KeyboardArrowUp
+                else Icons.Default.KeyboardArrowDown,
+                contentDescription = null, tint = Color(0xFFAAA6FF)
+            )
+        }
+        if (showAdvancedPostSettings) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .testTag("blink_post_details_advanced_settings"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Post category", color = Color.White,
+                    fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    com.blinkng.shared.BlinkPostGrowthTips.feedCategories.forEach { option ->
+                        FilterChip(
+                            selected = category == option,
+                            onClick = { onCategoryChange(option) },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+                Surface(
+                    color = Color(0xFF171B22), shape = RoundedCornerShape(13.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
+                        BlinkReferenceSettingRow("Hide like count", hideLikes, onHideLikesChange)
+                        HorizontalDivider(color = Color(0xFF343944))
+                        BlinkReferenceSettingRow("Temporary post", temporary, onTemporaryChange)
+                    }
+                }
+                Text(
+                    "Post visibility follows your existing BLINK audience rules.",
+                    color = Color(0xFFADB3BF), fontSize = 11.sp
+                )
+            }
+        }
         Button(
             onClick = onNext, modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2)),
