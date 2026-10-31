@@ -32,6 +32,7 @@ for (const name of [
   '20261031060000_blink_contest_require_entry_media.sql',
   '20261031070000_blink_contest_private_submissions.sql',
   '20261031080000_blink_contest_candidate_search.sql',
+  '20261031090000_blink_contest_moderation_audit.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -108,7 +109,27 @@ const beforeApproval = await rpc('search_blink_contest_candidates', voter, {
   p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
 });
 assert.equal(beforeApproval.total, 0, 'Pending applications must never appear in search');
-await rpc('admin_review_blink_contest_entry', admin, { p_entry_id: entry.entry_id, p_action: 'approve' });
+await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', creator.token,
+  { p_entry_id: entry.entry_id, p_action: 'approve', p_reason: 'Self approval not permitted' },
+  /ADMIN_REQUIRED/);
+await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', admin.token,
+  { p_entry_id: entry.entry_id, p_action: 'approve', p_reason: 'bad' },
+  /CONTEST_REVIEW_REASON_REQUIRED/);
+await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', admin.token,
+  { p_entry_id: entry.entry_id, p_action: 'approve' },
+  /Could not find|function|does not exist|schema cache|not found/i);
+await rpc('admin_review_blink_contest_entry', admin, {
+  p_entry_id: entry.entry_id, p_action: 'approve',
+  p_reason: 'Meets all the published Contest requirements'
+});
+const entryAuditCount = sql(`select count(*) from public.blink_contest_entry_review_audit
+  where entry_id='${entry.entry_id}' and next_status='approved';`);
+assert.equal(entryAuditCount,'1');
+const participantNotices = ok(await request(
+  '/rest/v1/notifications?select=id,sub_text,metadata&metadata->>kind=eq.blink_contest_application_review',
+  creator.token, undefined, 'GET'), 'Owner moderation notice');
+assert.ok(participantNotices.some(n=>n.metadata?.new_status === 'approved'),
+  'Applicant receives review status and reason');
 const found = await rpc('search_blink_contest_candidates', outsider, {
   p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
 });
