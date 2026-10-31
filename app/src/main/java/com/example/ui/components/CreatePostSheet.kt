@@ -420,6 +420,9 @@ fun CreatePostSheet(
                 .take(10)
             selectedVideo = null
             videoClips = emptyList()
+            selectedCoverUri = null
+            coverFrameIndex = -1
+            reelHasPendingEdits = false
             showPoll = false
             reelEditorStage = false
             mode = "post"
