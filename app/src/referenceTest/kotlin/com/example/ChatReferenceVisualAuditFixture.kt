@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -32,6 +34,12 @@ import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.ui.screens.ChatConversationView
+import com.example.ui.screens.BlinkChatPollResult
+import com.example.ui.screens.BlinkChatPollResultOption
+import com.example.ui.screens.BlinkChatPollResultsCard
+import com.example.ui.theme.MessageThemeMode
+import com.example.ui.theme.messagePalette
+import com.example.ui.theme.referenceChatPalette
 import com.example.ui.theme.BlinkTheme
 import org.junit.Rule
 import org.junit.Test
@@ -82,6 +90,44 @@ abstract class ChatReferenceVisualAuditFixture {
             if (originalTheme == null) editor.remove("message_theme") else editor.putString("message_theme", originalTheme)
             check(editor.commit())
         }
+    }
+
+    @Test fun nativeResultsShowServerStylePercentagesAndClickableChoicesFixture() {
+        // Synthetic numbers are a screenshot-test fixture ONLY, never live chat
+        // results. The production card requires an authenticated, validated RPC.
+        val sample = BlinkChatPollResult(
+            question = "Which design do you prefer?",
+            options = listOf(
+                BlinkChatPollResultOption("Design 1", 7),
+                BlinkChatPollResultOption("Design 2", 15),
+                BlinkChatPollResultOption("Design 3", 3)
+            ),
+            totalVotes = 25,
+            myVote = 1,
+            closed = false
+        )
+        var selected = -1
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                Box(Modifier.fillMaxWidth().height(790.dp)
+                    .testTag("chat_conversation_root")) {
+                    BlinkChatPollResultsCard(
+                        result = sample,
+                        palette = referenceChatPalette(messagePalette(MessageThemeMode.DARK)),
+                        textColor = Color.White,
+                        sending = false,
+                        error = null,
+                        onChoice = { selected = it }
+                    )
+                }
+            }
+        }
+        rule.onNodeWithTag("chat_reference_native_poll").assertExists()
+        rule.onNodeWithTag("chat_reference_native_poll_percent_0").assertExists()
+        rule.onNodeWithTag("chat_reference_native_poll_bar_1").assertExists()
+        capture("chat-native-poll-synthetic-fixture.png")
+        rule.onNodeWithTag("chat_reference_native_poll_choice_2").performClick()
+        rule.runOnIdle { check(selected == 2) }
     }
 
     @Test fun blueChatShowsPinnedBannerAndRealAttachmentActions() {
