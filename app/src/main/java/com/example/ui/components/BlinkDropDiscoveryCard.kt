@@ -27,8 +27,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * Feed discovery module for public Giveaways. It stays a separate row and never reorders organic posts.
- * It is a separate feed row and never reorders the ranked organic posts around it.
+ * Public Giveaway discovery stays in its own feed row and never reorders organic posts.
  */
 @Composable
 fun BlinkDropDiscoveryCard(
@@ -78,7 +77,12 @@ fun BlinkDropDiscoveryCard(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                "if (active) "Anyone can discover this Giveaway. Follow the creator to be notified next time." else "Follow @${item.creatorUsername} to be among the first notified about the next Giveaway."",
+                when {
+                    active && following -> "You follow @${item.creatorUsername}. Join this Giveaway before it ends."
+                    active -> "Anyone can discover this Giveaway. Follow the creator to be notified next time."
+                    following -> "You follow @${item.creatorUsername}. Watch for the next Giveaway."
+                    else -> "Follow @${item.creatorUsername} to be among the first notified about the next Giveaway."
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
 
