@@ -350,12 +350,17 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.waitUntil(10_000) {
             rule.onAllNodesWithTag("blink_poll_fullscreen").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithTag("blink_poll_question_input")
-            .assertTextEquals("Which FUTA event should we host?")
-        rule.onNodeWithTag("blink_poll_option_0")
-            .assertTextEquals("Tech meetup")
-        rule.onNodeWithTag("blink_poll_option_1")
-            .assertTextEquals("Sports day")
+        // Material TextField merges character counters and labels into Text;
+        // assert only its real editable value after the Done → Edit roundtrip.
+        check(rule.onNodeWithTag("blink_poll_question_input")
+            .fetchSemanticsNode().config[SemanticsProperties.EditableText].text ==
+            "Which FUTA event should we host?") { "Poll question was lost after Edit." }
+        check(rule.onNodeWithTag("blink_poll_option_0")
+            .fetchSemanticsNode().config[SemanticsProperties.EditableText].text ==
+            "Tech meetup") { "First poll option was lost after Edit." }
+        check(rule.onNodeWithTag("blink_poll_option_1")
+            .fetchSemanticsNode().config[SemanticsProperties.EditableText].text ==
+            "Sports day") { "Second poll option was lost after Edit." }
         rule.onNodeWithText("3 days").assertExists()
         rule.onNodeWithTag("blink_poll_back").performClick()
         rule.onNodeWithTag("blink_poll_attached_card").assertExists()
