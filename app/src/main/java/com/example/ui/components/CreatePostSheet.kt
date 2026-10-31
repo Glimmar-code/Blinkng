@@ -40,6 +40,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -2739,6 +2741,7 @@ internal fun PostPreviewDialog(
                 Modifier.fillMaxSize().background(Color.Black)
                     .statusBarsPadding().navigationBarsPadding()
                     .testTag("blink_post_preview_stage")
+                    .semantics { contentDescription = "Post preview; not published" }
             ) {
                 Row(
                     Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
@@ -2940,15 +2943,9 @@ internal fun PostPreviewDialog(
                             }
                         }
                     }
-                    // The reference preview ends with the familiar post-card
-                    // actions. The existing top-left Back button remains the
-                    // only exit; an extra full-width footer distorted layout.
-                    Text(
-                        "Preview only · Not published",
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        textAlign = TextAlign.Center,
-                        color = Color(0xFFBFC2D2), fontSize = 11.sp
-                    )
+                    // The reference ends directly after the post-card
+                    // actions. Unpublished status remains accessible on the
+                    // preview stage itself, without a visible extra footer.
                 }
             }
         }
