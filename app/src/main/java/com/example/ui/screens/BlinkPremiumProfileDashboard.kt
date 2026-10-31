@@ -62,6 +62,7 @@ internal fun BlinkPremiumProfileDashboard(
     onEarnCoins: () -> Unit,
     onWallet: () -> Unit,
     onCampusRank: () -> Unit,
+    onHpProgress: () -> Unit = {},
     onShowBadges: () -> Unit,
     onShare: () -> Unit,
     onCopyUsername: () -> Unit,
@@ -265,16 +266,18 @@ internal fun BlinkPremiumProfileDashboard(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             PremiumProfileShortcut(
                 text = "Campus Rank", icon = Icons.Default.EmojiEvents,
+                value = profileRankLabel(profile.campusRank),
                 modifier = Modifier.weight(1f), onClick = onCampusRank
             )
             PremiumProfileShortcut(
                 text = "World Rank", icon = Icons.Default.Public,
-                modifier = Modifier.weight(1f), onClick = onCampusRank
+                value = profileRankLabel(profile.worldRank),
+                modifier = Modifier.weight(1f), onClick = { showDetails = true }
             )
             PremiumProfileShortcut(
                 text = "HP Level", icon = Icons.Default.AutoAwesome,
                 modifier = Modifier.weight(1f),
-                onClick = { if (isMe) onCreatorStudio() else showDetails = true }
+                onClick = { if (isMe) onHpProgress() else showDetails = true }
             )
         }
         if (isMe) {
@@ -351,6 +354,7 @@ private fun PremiumProfileShortcut(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier,
+    value: String? = null,
     onClick: () -> Unit
 ) {
     Surface(
@@ -366,8 +370,15 @@ private fun PremiumProfileShortcut(
         ) {
             Icon(icon, null, tint = Color.White, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(4.dp))
-            Text(text, color = Color.White, fontSize = 10.sp,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(text, color = Color.White, fontSize = 10.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                value?.let {
+                    Text(it, color = Color.White.copy(alpha = .84f),
+                        fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
     }
 }

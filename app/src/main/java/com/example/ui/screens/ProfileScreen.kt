@@ -564,6 +564,7 @@ fun ProfileScreen(
                         onEarnCoins = onOpenCoinsWallet,
                         onWallet = onOpenCoinsWallet,
                         onCampusRank = { onNavigateMainTab("leaderboard") },
+                        onHpProgress = { if (isMe) showProgressHub = true },
                         onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
                         onShare = { showShareSheet = true },
                         onCopyUsername = {
