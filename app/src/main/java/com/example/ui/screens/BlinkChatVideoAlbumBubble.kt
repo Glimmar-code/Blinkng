@@ -62,7 +62,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                     val index = videos.indexOfFirst { it.id == message.id }
                     // Signed remote media can be large. Only inspect a local
                     // recording Uri to obtain duration; never invent 0:28.
-                    val localVideo = message.localAttachmentUri
+                    val localVideo = (message.localAttachmentUri ?: message.attachedVideoUrl)
                         ?.takeIf { it.startsWith("content://") || it.startsWith("file://") }
                     val thumbnail = BlinkChatVideoAlbumMedia.thumbnail(message)
                     val duration by produceState<Long?>(
