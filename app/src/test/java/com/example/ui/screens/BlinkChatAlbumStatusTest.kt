@@ -2,7 +2,7 @@ package com.example.ui.screens
 
 import com.example.data.models.MessageStatus
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkChatAlbumStatusTest {
@@ -27,8 +27,8 @@ class BlinkChatAlbumStatusTest {
     }
 
     @Test fun emptyAlbumNeverClaimsSuccessfulDelivery() {
-        assertThrows(IllegalArgumentException::class.java) {
+        assertTrue(runCatching {
             BlinkChatAlbumStatus.aggregate(emptyList())
-        }
+        }.exceptionOrNull() is IllegalArgumentException)
     }
 }
