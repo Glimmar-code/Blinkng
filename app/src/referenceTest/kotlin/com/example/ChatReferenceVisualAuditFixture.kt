@@ -426,6 +426,7 @@ abstract class ChatReferenceVisualAuditFixture {
         // The short quoted reply must carry text, time and authoritative blue
         // receipt in one compact content row, not an oversized separate footer.
         rule.onNodeWithTag("chat_reference_reply_inline_text").assertExists()
+        rule.onNodeWithTag("chat_reference_reaction_chip").assertExists()
         saveFrame("chat-reference-full-bottom.png")
     }
 
