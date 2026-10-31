@@ -132,9 +132,10 @@ class BlinkContestService {
             .put("p_reference", if (receipt.isBlank()) JSONObject.NULL else receipt.trim())
             .put("p_note", note.trim())))
     }
-    suspend fun adminReview(entryId: String, action: String): Result<JSONObject> = contestResult {
+    suspend fun adminReview(entryId: String, action: String, reason: String): Result<JSONObject> = contestResult {
         JSONObject(call("admin_review_blink_contest_entry", JSONObject()
-            .put("p_entry_id", entryId).put("p_action", action)))
+            .put("p_entry_id", entryId).put("p_action", action)
+            .put("p_reason", reason.trim().take(300))))
     }
 }
 
