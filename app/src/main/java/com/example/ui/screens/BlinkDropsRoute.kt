@@ -94,6 +94,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -1159,15 +1160,27 @@ private fun TopGiverCard(
     followBusy: Boolean,
     onFollow: () -> Unit,
 ) {
-    Card(shape = RoundedCornerShape(18.dp)) {
+    val podium = when (rank) {
+        1 -> Color(0xFFD7AC4B)
+        2 -> Color(0xFF93A4BC)
+        3 -> Color(0xFFBA7B53)
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (rank <= 3) podium.copy(alpha = .16f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .27f)
+        )
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(42.dp),
+                modifier = Modifier.size(44.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = podium.copy(alpha = if (rank <= 3) .27f else .12f),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -1179,11 +1192,13 @@ private fun TopGiverCard(
             }
             Spacer(Modifier.width(11.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(giver.name.ifBlank { "@${giver.username}" }, fontWeight = FontWeight.Bold)
+                Text(giver.name.ifBlank { "@${giver.username}" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "${formatter.format(giver.coinsGiven)} coins given · ${giver.peopleRewarded} people · ${giver.dropsCompleted} Drops",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (following) {

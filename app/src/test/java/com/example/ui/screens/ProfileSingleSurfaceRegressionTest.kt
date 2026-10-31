@@ -81,6 +81,8 @@ class ProfileSingleSurfaceRegressionTest {
 
     @Test fun visitorInvalidOwnerTabFallsBackToPosts() {
         renderProfile(isMe = false, initialTab = 7)
+        // Profile tabs are lazy below the dashboard; reveal them before asserting.
+        rule.onNodeWithTag("profile_content_list").performScrollToIndex(1)
         rule.waitForIdle()
         rule.onNodeWithTag("premium_profile_tab_posts", useUnmergedTree = true)
             .assertIsSelected()

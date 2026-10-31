@@ -180,7 +180,12 @@ fun ProfileScreen(
     onTopAction: (String) -> Unit = {},
     initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 7)) }
+    // Prevent owner-only deep links from showing a visitor an invalid private tab,
+    // including during the first frame before LaunchedEffect runs.
+    var selectedTab by rememberSaveable(profile.id, initialTab, isMe) {
+        mutableIntStateOf(if (isMe) initialTab.coerceIn(0, 7)
+            else initialTab.takeIf { it in 0..4 } ?: 0)
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }

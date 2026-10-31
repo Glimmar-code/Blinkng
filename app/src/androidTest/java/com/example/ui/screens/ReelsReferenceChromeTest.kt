@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.data.models.Story
@@ -44,6 +45,8 @@ class ReelsReferenceChromeTest {
             }
         }
         composeRule.onNodeWithText("Top Reels · New highlights appear as videos gain views").assertExists()
+        composeRule.onNodeWithTag("blink_top_reels_empty").assertExists()
+        composeRule.onNodeWithText("Create a Reel").assertExists()
         composeRule.onNodeWithContentDescription("Refresh reels").assertExists()
         composeRule.onNodeWithContentDescription("Create reel").assertExists()
     }
@@ -115,6 +118,7 @@ class ReelsReferenceChromeTest {
             }
         }
         composeRule.onNodeWithText("BLINK").assertExists()
+        composeRule.onNodeWithTag("blink_top_reels_carousel").assertExists()
         composeRule.onNodeWithText("Reels").assertExists()
         composeRule.onNodeWithText("Following").assertExists()
         composeRule.onNodeWithText("For You").assertExists()

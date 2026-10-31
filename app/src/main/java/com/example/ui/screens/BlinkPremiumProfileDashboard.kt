@@ -276,6 +276,7 @@ internal fun BlinkPremiumProfileDashboard(
             )
             PremiumProfileShortcut(
                 text = "HP Level", icon = Icons.Default.AutoAwesome,
+                value = "Lv ${xpProgress(profile.totalXp, profile.xpLevel).level}",
                 modifier = Modifier.weight(1f),
                 onClick = { if (isMe) onHpProgress() else showDetails = true }
             )
@@ -351,6 +352,7 @@ private fun PremiumProfileStat(label: String, value: Long, modifier: Modifier = 
     }
 }
 
+/** Compact phone-safe shortcuts: icon above copy instead of squeezing three labels into a row. */
 @Composable
 private fun PremiumProfileShortcut(
     text: String,
@@ -360,26 +362,30 @@ private fun PremiumProfileShortcut(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.heightIn(min = 48.dp).clickable(onClick = onClick),
+        modifier = modifier.heightIn(min = 78.dp).clickable(onClick = onClick),
         color = Color.White.copy(alpha = .10f),
         shape = RoundedCornerShape(13.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
         ) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(15.dp))
-            Spacer(Modifier.width(4.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(text, color = Color.White, fontSize = 10.sp,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                value?.let {
-                    Text(it, color = Color.White.copy(alpha = .84f),
-                        fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
+            Text(
+                text, color = Color.White, fontSize = 10.sp,
+                lineHeight = 12.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            value?.let {
+                Text(
+                    it, color = Color.White.copy(alpha = .88f),
+                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
     }

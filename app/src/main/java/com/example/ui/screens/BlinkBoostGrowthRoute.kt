@@ -1795,7 +1795,11 @@ private fun CampaignQuoteCard(
     balance: Long?,
     formatter: NumberFormat,
 ) {
-    Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f))
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -1824,6 +1828,7 @@ private fun CampaignQuoteCard(
                     Text(
                         formatter.format(cost) + " Blink Coins",
                         style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Black,
                     )
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
@@ -1888,7 +1893,12 @@ private fun ActiveCampaignCard(
             }
             val progress = if (budget <= 0L) 0f else (spent.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
             val conversion = if (impressions <= 0L) 0.0 else opens.toDouble() * 100.0 / impressions.toDouble()
-            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = Modifier.fillMaxWidth().height(7.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f)
+            )
             Text(
                 ((progress * 100).toInt()).toString() + "% of coin budget spent • " +
                     formatter.format(impressions) + " impressions • " +
@@ -1927,18 +1937,23 @@ private fun BoostAnalyticsCard(
     val impressions = analytics.optLong("impressions", 0L)
     val opens = analytics.optLong("opens", 0L)
     val conversion = analytics.optDouble("conversion_rate", 0.0)
-    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f))
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("Boost performance", fontWeight = FontWeight.Black)
-            Text(
-                formatter.format(campaigns) + " campaigns • " +
-                    formatter.format(impressions) + " impressions • " +
-                    formatter.format(opens) + " opens",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BoostInsightMetric(formatter.format(campaigns), "Campaigns", Modifier.weight(1f))
+                BoostInsightMetric(formatter.format(impressions), "Impressions", Modifier.weight(1f))
+                BoostInsightMetric(formatter.format(opens), "Opens", Modifier.weight(1f))
+            }
             Text(
                 "Spent " + formatter.format(spent) + " • Refunded " + formatter.format(refunded) +
                     " • Open rate " + String.format(Locale.US, "%.1f%%", conversion),
@@ -1946,6 +1961,20 @@ private fun BoostAnalyticsCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun BoostInsightMetric(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text(value, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }
 

@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import com.example.notification.BlinkOfflineAnnouncementCache
 import com.example.ui.components.BlinkOfflineAnnouncementsPanel
@@ -928,6 +929,7 @@ private fun NotificationCard(
         color = highlight,
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("blink_notification_row")
             .blinkPressFeedback(rowInteraction)
             .clickable(
                 interactionSource = rowInteraction,
@@ -937,7 +939,7 @@ private fun NotificationCard(
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 86.dp)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.Top
         ) {
             Box(
@@ -1023,7 +1025,7 @@ private fun NotificationCard(
                         modifier = Modifier.padding(start = 4.dp)
                     )
                     if (isOfficial) {
-                        Spacer(Modifier.width(7.dp))
+                        Spacer(Modifier.width(5.dp))
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = accent.copy(alpha = .12f)

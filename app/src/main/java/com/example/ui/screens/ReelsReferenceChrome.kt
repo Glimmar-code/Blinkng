@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -156,6 +157,7 @@ internal fun ReelsReferenceChrome(
         if (featured.isNotEmpty()) {
         Box(
             Modifier.fillMaxWidth().height(featuredCardHeight).padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag("blink_top_reels_carousel")
                 .semantics { contentDescription = "Top Reels: up to five featured videos" }
         ) {
             if (featured.isNotEmpty()) {
@@ -168,12 +170,13 @@ internal fun ReelsReferenceChrome(
                     val caption = item.caption.ifBlank { "Featured Reel" }.replace("\\n", " ").take(84)
                     Box(
                         Modifier.fillMaxSize()
+                            .testTag("blink_featured_reel_$page")
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
                             .border(1.dp, Color.White.copy(alpha = .20f),
                                 androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
                             .background(
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF17171D), Color(0xFF111720), Color(0xFF14212A))
+                                    listOf(Color(0xFF320A21), Color(0xFF9E183C), Color(0xFFE34255))
                                 )
                             )
                             .clickable { onFeaturedReelClick(item.reel.id) }
@@ -187,8 +190,8 @@ internal fun ReelsReferenceChrome(
                         Box(
                             Modifier.fillMaxSize().background(
                                 Brush.horizontalGradient(
-                                    listOf(Color.Black.copy(alpha = .96f),
-                                        Color(0xFF141820).copy(alpha = .85f),
+                                    listOf(Color(0xFF16070F).copy(alpha = .97f),
+                                        Color(0xFF450F2B).copy(alpha = .84f),
                                         Color.Transparent)
                                 )
                             )
@@ -279,14 +282,28 @@ internal fun ReelsReferenceChrome(
             // the last-12-hours Top Reels service has eligible video views.
             Box(
                 modifier = Modifier.fillMaxWidth().height(featuredCardHeight)
+                    .testTag("blink_top_reels_empty")
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
-                    .background(Color(0xFF18202F)),
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF310D23), Color(0xFF9B2246)))),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Top Reels · New highlights appear as videos gain views",
-                    color = Color.White.copy(alpha = .8f),
-                    fontSize = 12.sp, maxLines = 2)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Text("Top Reels · New highlights appear as videos gain views",
+                        color = Color.White, fontSize = 12.sp, maxLines = 2)
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onCreateReel,
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .60f))
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Create a Reel", fontSize = 11.sp)
+                    }
+                }
             }
         }
         val tabs = listOf("Reels", "Following", "For You")
