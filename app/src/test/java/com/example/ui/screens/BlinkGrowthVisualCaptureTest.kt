@@ -14,6 +14,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.BlinkTheme
+import com.example.data.supabase.BlinkDropDiscovery
+import com.example.ui.components.BlinkDropDiscoveryCard
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.json.JSONObject
@@ -59,6 +61,50 @@ class BlinkGrowthVisualCaptureTest {
     @Test fun mostGiversGenuineEmptyState() {
         scene { TopGiversEmptyState(onBrowse = {}, onCreate = {}) }
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-most-givers-empty.png")
+    }
+
+    @Test fun giveawayFeedLiveDiscoveryCard() {
+        val item = BlinkDropDiscovery(
+            dropId = "giveaway-live",
+            creatorId = "creator-1",
+            creatorUsername = "glimmar",
+            creatorName = "Glimmar",
+            creatorAvatar = "",
+            totalCoins = 10000,
+            rewardPerUser = 500,
+            winnerCount = 20,
+            claimedCount = 5,
+            status = "ACTIVE",
+            action = "LIKE",
+            createdAt = "2026-10-31T18:00:00Z",
+            endsAt = "2026-10-31T20:00:00Z",
+        )
+        scene {
+            BlinkDropDiscoveryCard(item, onFollow = {}, onOpenDrops = {}, following = false)
+        }
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-feed-live.png")
+    }
+
+    @Test fun giveawayFeedMissedDiscoveryCard() {
+        val item = BlinkDropDiscovery(
+            dropId = "giveaway-ended",
+            creatorId = "creator-2",
+            creatorUsername = "campusstar",
+            creatorName = "Campus Star",
+            creatorAvatar = "",
+            totalCoins = 5000,
+            rewardPerUser = 500,
+            winnerCount = 10,
+            claimedCount = 10,
+            status = "COMPLETED",
+            action = "LIKE",
+            createdAt = "2026-10-30T18:00:00Z",
+            endsAt = "2026-10-30T20:00:00Z",
+        )
+        scene {
+            BlinkDropDiscoveryCard(item, onFollow = {}, onOpenDrops = {}, following = false)
+        }
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-feed-missed.png")
     }
 
     @Test fun boostQuoteAndAnalytics() {
