@@ -27,7 +27,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * Feed discovery module for creators the viewer did not follow when a Drop started.
+ * Feed discovery module for public Giveaways. It stays a separate row and never reorders organic posts.
  * It is a separate feed row and never reorders the ranked organic posts around it.
  */
 @Composable
@@ -78,7 +78,7 @@ fun BlinkDropDiscoveryCard(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                "You weren't following this creator when the Drop started. Follow now to be eligible for future Drops.",
+                "if (active) "Anyone can discover this Giveaway. Follow the creator to be notified next time." else "Follow @${item.creatorUsername} to be among the first notified about the next Giveaway."",
                 style = MaterialTheme.typography.bodySmall,
             )
 
