@@ -51,13 +51,7 @@ internal fun BlinkChatPhotoAlbumBubble(
     val caption = ordered.firstNotNullOfOrNull { photo ->
         photo.text.takeUnless { it.isBlank() || it.equals("Image", true) || it.equals("Photo", true) }
     }.orEmpty()
-    val status = when {
-        ordered.any { it.status == MessageStatus.FAILED } -> MessageStatus.FAILED
-        ordered.any { it.status == MessageStatus.SENDING } -> MessageStatus.SENDING
-        ordered.all { it.status == MessageStatus.READ } -> MessageStatus.READ
-        ordered.all { it.status in setOf(MessageStatus.READ, MessageStatus.DELIVERED) } -> MessageStatus.DELIVERED
-        else -> MessageStatus.SENT
-    }
+    val status = BlinkChatAlbumStatus.aggregate(ordered.map { it.status })
     val corner = RoundedCornerShape(16.dp)
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
