@@ -50,5 +50,7 @@ create table storage.objects(
 );
 create function storage.foldername(path text) returns text[]
 language sql immutable as $$
-  select string_to_array(left(path, length(path)-length(split_part(path,'/',array_length(string_to_array(path,'/'),1)))-1), '/');
+  select string_to_array(regexp_replace(path, '/[^/]+
+$$;
+, ''), '/');
 $$;
