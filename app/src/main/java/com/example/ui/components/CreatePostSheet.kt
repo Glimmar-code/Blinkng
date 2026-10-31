@@ -2710,10 +2710,14 @@ fun CreatePostSheet(
             onDetails = {
                 showPreviewDialog = false
                 showPublishOptions = false
-                showReferenceDetails = true
+                if (useClassicComposer) {
+                    showAdvancedSettings = true
+                } else {
+                    showReferenceDetails = true
+                }
             },
             onSaveDraft = {
-                if (saveDraft()) showPreviewDialog = false
+                if (!isSubmitting && saveDraft()) showPreviewDialog = false
             }
         )
     }
