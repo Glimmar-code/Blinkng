@@ -23,7 +23,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.supabase.BlinkContestService
+import com.blinkng.shared.BlinkContestDraftValidator
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -78,6 +81,23 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var prizeTwo by remember { mutableStateOf("0") }
     var prizeThree by remember { mutableStateOf("0") }
     var autoApprove by remember { mutableStateOf(false) }
+    var maxEntries by remember { mutableStateOf("") }
+    var editingContestId by remember { mutableStateOf<String?>(null) }
+    var applicantFilter by remember { mutableStateOf("All") }
+    val listState = rememberLazyListState()
+    val resetDraft: () -> Unit = {
+        editingContestId = null
+        title = ""; description = ""; rules = ""; category = "General"
+        university = ""; cover = ""; coverChoice = null
+        registrationStart = ""; registrationEnd = ""; votingStart = ""
+        votingEnd = ""; resultsDate = ""
+        prizeOne = "0"; prizeTwo = "0"; prizeThree = "0"
+        maxEntries = ""; autoApprove = false
+    }
+    val draftError = BlinkContestDraftValidator.error(
+        title, listOf(registrationStart, registrationEnd, votingStart, votingEnd, resultsDate),
+        listOf(prizeOne, prizeTwo, prizeThree), maxEntries, cover, coverChoice != null
+    )
 
     LaunchedEffect(revision) {
         api.adminContests().onSuccess { contests = it.contestObjects() }
@@ -94,7 +114,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         }
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -107,7 +127,11 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Text(message, color = MaterialTheme.colorScheme.primary)
                 TextButton(onClick = { message = "" }) { Text("Dismiss") }
             }
-            Text("Create contest draft", style = MaterialTheme.typography.titleMedium)
+            Text(if (editingContestId == null) "Create contest draft" else "Edit contest draft",
+                style = MaterialTheme.typography.titleMedium)
+            if (editingContestId != null) {
+                TextButton(enabled = !busy, onClick = resetDraft) { Text("Cancel editing") }
+            }
         }
         item { OutlinedTextField(title, { title = it.take(100) }, label = { Text("Contest title") }, modifier = Modifier.fillMaxWidth()) }
         item { OutlinedTextField(description, { description = it.take(2000) }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
@@ -136,6 +160,13 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         item { BlinkContestDateTimeField("Voting closes", votingEnd, { votingEnd = it }) }
         item { BlinkContestDateTimeField("Results announcement", resultsDate, { resultsDate = it }) }
         item {
+            OutlinedTextField(maxEntries, { maxEntries = it.take(6) },
+                label = { Text("Maximum participants (optional)") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true)
+            Text("Leave blank for unlimited entries; minimum 2, maximum 100,000.",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(prizeOne, { prizeOne = it }, label = { Text("1st ₦") }, modifier = Modifier.weight(1f))
                 OutlinedTextField(prizeTwo, { prizeTwo = it }, label = { Text("2nd ₦") }, modifier = Modifier.weight(1f))
@@ -147,7 +178,19 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Checkbox(checked = autoApprove, onCheckedChange = { autoApprove = it })
                 Text("Automatically approve valid applications")
             }
-            Button(enabled = !busy && title.trim().length in 4..100, onClick = {
+            if (autoApprove) {
+                Text("Auto-approved applications become visible without human moderation. Enable only when submissions are reviewed through other safeguards.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("All applications and votes remain free.")
+            }
+            if (draftError != null) {
+                Text(draftError, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            Button(enabled = !busy && draftError == null, onClick = {
                 busy = true
                 message = ""
                 val data = JSONObject()
@@ -165,6 +208,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     .put("prize_first", prizeOne.toIntOrNull() ?: -1)
                     .put("prize_second", prizeTwo.toIntOrNull() ?: -1)
                     .put("prize_third", prizeThree.toIntOrNull() ?: -1)
+                    .put("max_entries", maxEntries.toIntOrNull() ?: JSONObject.NULL)
                     .put("auto_approve", autoApprove)
                 scope.launch {
                     runCatching {
@@ -172,15 +216,16 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                             mediaUpload.upload(context, it).getOrThrow()
                         } ?: cover
                         data.put("banner_url", resolvedCover.trim())
-                        api.adminSave(data).getOrThrow()
+                        api.adminSave(data, editingContestId).getOrThrow()
                     }.onSuccess {
-                        message = "Contest draft created."
-                        coverChoice = null
+                        message = if (editingContestId == null) "Contest draft created."
+                            else "Contest draft updated."
+                        resetDraft()
                         revision++
                     }.onFailure { message = it.message ?: "Unable to save draft." }
                     busy = false
                 }
-            }) { Text("Save contest draft") }
+            }) { Text(if (editingContestId == null) "Save contest draft" else "Save draft changes") }
         }
         item {
             HorizontalDivider()
@@ -194,6 +239,30 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Text(contest.optString("status"))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         TextButton(onClick = { selectedContest = contest.optString("id") }) { Text("Entries") }
+                        if (contest.optString("status") == "draft") {
+                            TextButton(enabled = !busy, onClick = {
+                                editingContestId = contest.optString("id")
+                                title = contest.optString("title")
+                                description = contest.optString("description")
+                                rules = contest.optString("rules")
+                                category = contest.optString("category")
+                                university = contest.optString("university").takeUnless { it == "null" }.orEmpty()
+                                cover = contest.optString("banner_url").takeUnless { it == "null" }.orEmpty()
+                                coverChoice = null
+                                registrationStart = contest.optString("registration_opens_at")
+                                registrationEnd = contest.optString("registration_closes_at")
+                                votingStart = contest.optString("voting_opens_at")
+                                votingEnd = contest.optString("voting_closes_at")
+                                resultsDate = contest.optString("results_at")
+                                prizeOne = contest.optInt("prize_first").toString()
+                                prizeTwo = contest.optInt("prize_second").toString()
+                                prizeThree = contest.optInt("prize_third").toString()
+                                maxEntries = if (contest.isNull("max_entries")) ""
+                                    else contest.optInt("max_entries").toString()
+                                autoApprove = contest.optBoolean("auto_approve")
+                                scope.launch { listState.animateScrollToItem(0) }
+                            }) { Text("Edit") }
+                        }
                         val action = when (contest.optString("status")) {
                             "draft" -> "publish"
                             "published" -> "pause"
@@ -228,6 +297,19 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         if (selectedContest != null) item {
             HorizontalDivider()
             Text("Contest applications", style = MaterialTheme.typography.titleLarge)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(listOf("All", "Pending", "Approved", "Rejected", "Disqualified")) { status ->
+                    FilterChip(selected = applicantFilter == status,
+                        onClick = { applicantFilter = status },
+                        label = { Text(status) })
+                }
+            }
+            val visibleCount = entries.count {
+                applicantFilter == "All" || it.optString("status")
+                    .equals(applicantFilter, ignoreCase = true)
+            }
+            Text("$visibleCount matching applications",
+                style = MaterialTheme.typography.bodySmall)
         }
         if (selectedContest != null) item {
             val stats = insights
@@ -328,7 +410,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
-        items(entries, key = { it.optString("id") }) { entry ->
+        items(entries.filter {
+            applicantFilter == "All" ||
+                it.optString("status").equals(applicantFilter, ignoreCase = true)
+        }, key = { it.optString("id") }) { entry ->
             ElevatedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("@" + entry.optString("username") + " · " + entry.optString("status"),
@@ -339,7 +424,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                         BlinkContestApplicantMediaCard(media) { previewEntryMedia = media }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        listOf("approve", "reject", "disqualify").forEach { action ->
+                        listOf("approve", "reject", "disqualify")
+                            .filter { it != entry.optString("status") && !(it == "approve" && entry.optString("status") == "approved") }
+                            .forEach { action ->
                             TextButton(enabled = !busy, onClick = {
                                 if (action != "approve") {
                                     pendingEntryDecision = entry.optString("id") to action
