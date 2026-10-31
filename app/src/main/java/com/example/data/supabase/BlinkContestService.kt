@@ -43,6 +43,8 @@ class BlinkContestService {
                         .getOrNull().orEmpty().ifBlank { "Contest request failed (" + it.code + ")." }
                     if (msg.contains("blink_contest_entry_media_required"))
                         error("A photo or video is required to apply for a contest.")
+                    if (msg.contains("PRIVATE_CONTEST_MEDIA_REQUIRED"))
+                        error("Choose and upload your own photo or video before applying.")
                     error(msg.replace('_', ' '))
                 }
                 raw
