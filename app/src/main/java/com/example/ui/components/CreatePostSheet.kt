@@ -3313,10 +3313,15 @@ internal fun PollComposer(
         onSurfaceVariant = Color(0xFFADB4C2)
     )) {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = if (standalone) 6.dp else 8.dp,
+                    vertical = if (standalone) 2.dp else 10.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF15181F), contentColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFF30333C))
+            colors = CardDefaults.cardColors(
+                containerColor = if (standalone) Color.Transparent else Color(0xFF15181F),
+                contentColor = Color.White
+            ),
+            border = if (standalone) null else BorderStroke(1.dp, Color(0xFF30333C))
         ) {
         Column(Modifier.padding(14.dp)) {
             if (!standalone) {
