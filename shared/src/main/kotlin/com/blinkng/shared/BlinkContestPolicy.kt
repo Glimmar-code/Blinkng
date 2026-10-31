@@ -18,6 +18,19 @@ object BlinkContestPolicy {
         "cancelled" -> "Cancelled"
         else -> "Coming soon"
     }
+    /** Reject responses from a previous contest after rapid navigation. */
+    fun isCurrentContest(requestId: String, selectedId: String?): Boolean =
+        requestId.isNotBlank() && selectedId != null && requestId.equals(selectedId, ignoreCase = true)
+
+    /** A share flyer must match the requested contest and candidate. */
+    fun isRequestedCandidate(
+        requestedContestId: String, requestedEntryId: String, selectedContestId: String?,
+        responseContestId: String, responseEntryId: String
+    ): Boolean = isCurrentContest(requestedContestId, selectedContestId) &&
+        requestedEntryId.isNotBlank() &&
+        requestedContestId.equals(responseContestId, ignoreCase = true) &&
+        requestedEntryId.equals(responseEntryId, ignoreCase = true)
+
     fun validStatement(text: String) = text.trim().length in MIN_STATEMENT..MAX_STATEMENT
     fun validEntryMediaUrl(value: String): Boolean = runCatching {
         val uri = java.net.URI(value.trim())
