@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.InsertEmoticon
@@ -995,41 +996,80 @@ internal fun BlinkReferenceMediaReview(
                 }
             }
             }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().testTag("blink_gallery_selected_strip"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
             LazyRow(
-                modifier = Modifier.weight(1f).height(56.dp),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                modifier = Modifier.weight(1f).height(64.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 items(count = images.size, key = { index -> images[index] }) { index ->
                     val uri = images[index]
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Preview selected photo " + (index + 1),
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
-                            .clickable { previewIndex = index }
-                    )
+                    Box(Modifier.size(56.dp)) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = "Preview selected photo " + (index + 1),
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(52.dp).align(Alignment.BottomStart)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { previewIndex = index }
+                        )
+                        Box(
+                            Modifier.align(Alignment.TopEnd).size(20.dp)
+                                .clip(RoundedCornerShape(100.dp))
+                                .background(Color(0xFF292C35))
+                                .clickable { onRemove(index) }
+                                .testTag("blink_gallery_remove_selected_" + index),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove selected photo " + (index + 1),
+                                tint = Color.White, modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
+                }
+                if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                    item(key = "add-photo") {
+                        Box(
+                            Modifier.size(52.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0xFF252A34))
+                                .clickable(onClick = onAddMore)
+                                .testTag("blink_gallery_add_more"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Add more photos",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                 }
             }
-            Text(images.size.toString() + " selected",
-                modifier = Modifier.padding(start = 8.dp),
-                color = Color(0xFFD3D6DE), fontSize = 12.sp)
+            Text(
+                images.size.toString() + " selected",
+                color = Color(0xFFD3D6DE), fontSize = 12.sp,
+                modifier = Modifier.testTag("blink_gallery_selected_count")
+            )
         }
-        Text(
-            "Tap a photo to preview, edit or change its order.",
-            color = Color(0xFFB0B7C4), fontSize = 11.sp
-        )
-        OutlinedButton(
-            onClick = onAddMore, enabled = images.size < 10,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Add more photos") }
-        Button(
-            onClick = onNext,
-            enabled = images.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
-        ) { Text("Next (" + images.size + ")", color = Color.White) }
-        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Button(
+                onClick = onNext,
+                enabled = images.isNotEmpty(),
+                modifier = Modifier.width(136.dp).height(44.dp)
+                    .testTag("blink_gallery_next"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
+            ) { Text("Next (" + images.size + ")", color = Color.White) }
+        }
+        Spacer(Modifier.height(3.dp))
     }
 }
 
