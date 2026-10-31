@@ -29,6 +29,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
@@ -540,7 +541,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_post_preview_back").assertExists()
         rule.onAllNodesWithTag("blink_post_preview_photo", useUnmergedTree = true)
             .onFirst().assertExists()
-        rule.onNodeWithText("Preview only · Not published").assertExists()
+        rule.onNodeWithContentDescription("Post preview; not published").assertExists()
+        rule.onNodeWithText("Preview only · Not published").assertDoesNotExist()
         rule.onNodeWithText("Back to editor").assertDoesNotExist()
         capture("create-post-preview-staging.png", "blink_post_preview_stage")
         rule.onNodeWithTag("blink_post_preview_back").performClick()
