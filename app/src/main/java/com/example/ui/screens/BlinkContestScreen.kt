@@ -178,9 +178,13 @@ fun BlinkContestScreen(
     }
     // Keep status and leaderboard state in sync with the server while viewing.
     LaunchedEffect(selectedId) {
-        while (true) {
-            delay(60_000)
-            revision++
+        // Avoid polling the entire app every minute while the user is browsing
+        // other tabs; only the opened contest needs a live-ish refresh.
+        if (selectedId != null) {
+            while (true) {
+                delay(60_000)
+                revision++
+            }
         }
     }
     LaunchedEffect(target?.contestId, target?.entryId) {
@@ -275,6 +279,16 @@ fun BlinkContestScreen(
             if (selectedId != null) TextButton(onClick = { selectedId = null; invitedEntryId = null }) { Text("Back") }
             Text("Contest", Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = { revision++ }) { Text("Refresh") }
+        }
+        if (selectedId == null) {
+            listError?.let { failure ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(failure, modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    TextButton(onClick = { revision++ }) { Text("Retry") }
+                }
+            }
         }
         error?.let {
             Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
@@ -668,44 +682,58 @@ fun BlinkContestScreen(
                         if (myVote.isNotBlank()) Text("You've already voted in this contest.", fontSize = 12.sp)
                     }
                     if (top.isEmpty()) item { Text("No approved contestants yet.") }
-                    items(top.filterNot { it.optString("id") == invitedEntryId && invitedCandidate != null }, key = { it.optString("id") }) { candidate ->
+                    items(top.filterNot { it.optString("id") == invitedEntryId && invitedCandidate != null },
+                        key = { it.optString("id") }) { candidate ->
                         ElevatedCard(Modifier.fillMaxWidth()) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("#" + candidate.optInt("rank"), fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(6.dp))
-                                BlinkContestAvatar(candidate.optString("avatar_url"),
-                                    candidate.optString("username"), 42.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text("@" + candidate.optString("username"), fontWeight = FontWeight.Medium)
-                                    Text(candidate.optInt("votes").toString() + " votes" +
-                                        BlinkContestRankMovement.label(candidate), fontSize = 12.sp)
-                                    Text(candidate.optString("statement"), fontSize = 12.sp, maxLines = 2)
-                                    Text("View profile", color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 11.sp, modifier = Modifier.clickable {
-                                            inspectedCandidate = candidate
-                                        })
-                                }
-                                OutlinedButton(onClick = { openFlyer(candidate) }) { Text("Share") }
-                                Spacer(Modifier.width(6.dp))
-                                Button(
-                                    enabled = !busy && BlinkContestPolicy.canVote(
-                                        status, myVote, own, candidate.optString("id")),
-                                    onClick = {
-                                        busy = true; error = null; notice = null
-                                        scope.launch {
-                                            api.vote(c.optString("id"), candidate.optString("id"))
-                                                .onSuccess {
-                                                    notice = if (it.optString("vote_status") == "under_review")
-                                                        "Vote received; awaiting integrity review."
-                                                    else "Your free vote was counted."
-                                                    revision++
-                                                }
-                                                .onFailure { error = it.message }
-                                            busy = false
-                                        }
+                            Column(Modifier.fillMaxWidth().padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("#" + candidate.optInt("rank"), fontWeight = FontWeight.Bold)
+                                    BlinkContestAvatar(candidate.optString("avatar_url"),
+                                        candidate.optString("username"), 42.dp)
+                                    Column(Modifier.weight(1f)) {
+                                        Text("@" + candidate.optString("username"),
+                                            fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                        Text(candidate.optInt("votes").toString() + " votes" +
+                                            BlinkContestRankMovement.label(candidate),
+                                            fontSize = 12.sp)
+                                        Text(candidate.optString("statement"),
+                                            fontSize = 12.sp, maxLines = 2)
                                     }
-                                ) { Text("Vote") }
+                                    TextButton(onClick = { inspectedCandidate = candidate }) {
+                                        Text("View")
+                                    }
+                                }
+                                // Buttons live on their own row. The previous layout
+                                // overflowed at 320dp and large accessibility fonts.
+                                Row(Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedButton(
+                                        onClick = { openFlyer(candidate) },
+                                        enabled = !shareLookupBusy,
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Share flyer") }
+                                    Button(
+                                        enabled = !busy && BlinkContestPolicy.canVote(
+                                            status, myVote, own, candidate.optString("id")),
+                                        modifier = Modifier.weight(1f),
+                                        onClick = {
+                                            busy = true; error = null; notice = null
+                                            scope.launch {
+                                                api.vote(c.optString("id"), candidate.optString("id"))
+                                                    .onSuccess {
+                                                        notice = if (it.optString("vote_status") == "under_review")
+                                                            "Vote received; awaiting integrity review."
+                                                        else "Your free vote was counted."
+                                                        revision++
+                                                    }
+                                                    .onFailure { error = it.message }
+                                                busy = false
+                                            }
+                                        }
+                                    ) { Text("Vote free") }
+                                }
                             }
                         }
                     }
