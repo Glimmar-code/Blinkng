@@ -40,19 +40,53 @@ internal fun BlinkChatNativePollCard(
     var poll by remember(message.id) { mutableStateOf<JSONObject?>(null) }
     var sending by remember(message.id) { mutableStateOf(false) }
     var error by remember(message.id) { mutableStateOf<String?>(null) }
+    var loading by remember(message.id) { mutableStateOf(true) }
+    var loadError by remember(message.id) { mutableStateOf<String?>(null) }
+    var refreshKey by remember(message.id) { mutableIntStateOf(0) }
+    val validMessageId = remember(message.id) {
+        runCatching { java.util.UUID.fromString(message.id) }.isSuccess
+    }
 
-    LaunchedEffect(message.id) {
-        if (runCatching { java.util.UUID.fromString(message.id) }.isSuccess) {
-            service.results(message.id).onSuccess { poll = it }
+    LaunchedEffect(message.id, refreshKey) {
+        if (!validMessageId) {
+            loading = false
+            loadError = "Poll results are unavailable for this message."
+            return@LaunchedEffect
         }
+        loading = true
+        loadError = null
+        service.results(message.id)
+            .onSuccess { response ->
+                if (BlinkChatPollResultPolicy.parse(response, message.id) != null) {
+                    poll = response
+                } else {
+                    poll = null
+                    loadError = "Poll results could not be verified."
+                }
+            }
+            .onFailure {
+                poll = null
+                loadError = "Couldn't load poll results. Check your connection."
+            }
+        loading = false
     }
     val result = poll?.let { BlinkChatPollResultPolicy.parse(it, message.id) }
     if (result == null) {
-        if (fallback != null) {
-            BlinkChatLegacyPollCard(fallback, palette, textColor, onLegacyChoice)
-        } else {
-            Text("Poll results unavailable · Open chat again later",
-                color = textColor, fontSize = 12.sp)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (fallback != null) {
+                // Explicitly labeled reply-only fallback; never imply a
+                // prepared reply is a counted server vote.
+                BlinkChatLegacyPollCard(fallback, palette, textColor, onLegacyChoice)
+            }
+            if (message.messageType == "poll" || fallback == null) {
+                BlinkChatPollRecoveryControls(
+                    loading = loading,
+                    message = loadError,
+                    allowRetry = validMessageId,
+                    palette = palette,
+                    onRetry = { if (!loading) refreshKey++ }
+                )
+            }
         }
         return
     }
@@ -78,6 +112,52 @@ internal fun BlinkChatNativePollCard(
             }
         }
     )
+}
+
+/**
+ * Poll failure and retry are explicit, never a fabricated percentage.
+ * Useful on offline devices and when the native poll RPC is temporarily down.
+ */
+@Composable
+internal fun BlinkChatPollRecoveryControls(
+    loading: Boolean,
+    message: String?,
+    allowRetry: Boolean,
+    palette: MessagePalette,
+    onRetry: () -> Unit
+) {
+    Column(
+        modifier = Modifier.widthIn(min = 180.dp, max = 305.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .testTag("chat_poll_recovery"),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = palette.accent,
+                    strokeWidth = 2.dp
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                if (loading) "Loading poll results…" else
+                    message ?: "Poll results are unavailable.",
+                color = palette.textSecondary, fontSize = 11.sp,
+                maxLines = 2
+            )
+        }
+        if (!loading && allowRetry) {
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.heightIn(min = 36.dp)
+                    .testTag("chat_poll_retry")
+            ) {
+                Text("Try again", color = palette.accent, fontSize = 12.sp)
+            }
+        }
+    }
 }
 
 /** Reference-style result card. Accepts validated, server-provided data only. */
