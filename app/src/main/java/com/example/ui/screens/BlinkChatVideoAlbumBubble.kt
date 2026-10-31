@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -62,7 +63,12 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                             .aspectRatio(BlinkChatReferenceStyle.VideoTileAspect)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(BlinkChatReferenceStyle.Canvas))
-                            .clickable { selected = index },
+                            .clickable(
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = "Play video ${index + 1} of ${videos.size}",
+                                onClick = { selected = index }
+                            )
+                            .testTag("chat_reference_album_video_" + index),
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
