@@ -251,9 +251,10 @@ fun BlinkContestScreen(
                 scope.launch {
                     api.candidate(contestId, entryId)
                         .onSuccess { resolved ->
-                            if (selectedId == contestId &&
-                                resolved.optString("contest_id") == contestId &&
-                                resolved.optString("id") == entryId) {
+                            if (BlinkContestPolicy.isRequestedCandidate(
+                                    contestId, entryId, selectedId,
+                                    resolved.optString("contest_id"), resolved.optString("id")
+                                )) {
                                 flyerCandidate = resolved
                             } else if (selectedId == contestId) {
                                 error = "This contestant is no longer available for sharing."
