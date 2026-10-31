@@ -33,6 +33,7 @@ for (const name of [
   '20261031070000_blink_contest_private_submissions.sql',
   '20261031080000_blink_contest_candidate_search.sql',
   '20261031090000_blink_contest_moderation_audit.sql',
+  '20261031100000_blink_contest_review_history.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -125,6 +126,20 @@ await rpc('admin_review_blink_contest_entry', admin, {
 const entryAuditCount = sql(`select count(*) from public.blink_contest_entry_review_audit
   where entry_id='${entry.entry_id}' and next_status='approved';`);
 assert.equal(entryAuditCount,'1');
+await rejected('/rest/v1/rpc/admin_get_blink_contest_entry_review_history',
+  creator.token, { p_entry_id: entry.entry_id, p_limit: 30 }, /ADMIN_REQUIRED/);
+const auditHistory = await rpc('admin_get_blink_contest_entry_review_history', admin, {
+  p_entry_id: entry.entry_id, p_limit: 30
+});
+assert.equal(auditHistory.total,1);
+assert.equal(auditHistory.history[0].next_status,'approved');
+assert.equal(auditHistory.history[0].reason,'Meets all the published Contest requirements');
+assert.equal(auditHistory.history[0].actor_id,admin.id);
+const auditPage = await rpc('admin_get_blink_contest_entry_review_history', admin, {
+  p_entry_id: entry.entry_id, p_limit: 1
+});
+assert.equal(auditPage.history.length,1);
+assert.equal(auditPage.limit,1);
 const participantNotices = ok(await request(
   '/rest/v1/notifications?select=id,sub_text,metadata&metadata->>kind=eq.blink_contest_application_review',
   creator.token, undefined, 'GET'), 'Owner moderation notice');
