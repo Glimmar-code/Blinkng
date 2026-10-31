@@ -94,6 +94,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -199,7 +200,7 @@ private data class DropItem(
     val previewVideoUrl: String = "",
 )
 
-private data class TopGiver(
+internal data class TopGiver(
     val creatorId: String,
     val username: String,
     val name: String,
@@ -368,7 +369,7 @@ fun BlinkDropsRoute(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = { refresh() }) {
+            IconButton(onClick = { refresh() }, enabled = isOnline && !loading) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh Drops")
             }
             IconButton(onClick = onClose) {
@@ -658,16 +659,29 @@ fun BlinkDropsRoute(
                 message?.let { value ->
                     item { StatusCard(value, isError = false) }
                 }
-                if (topGivers.isEmpty()) {
-                    item { EmptyCard("Top Givers will appear after completed Drops.") }
+                if (topGivers.isEmpty() && error == null) {
+                    item {
+                        TopGiversEmptyState(
+                            onBrowse = { selectedColumn = DropsColumn.GIVEAWAYS },
+                            onCreate = { showOrganizer = true }
+                        )
+                    }
+                } else if (topGivers.isEmpty()) {
+                    item { OutlinedButton(onClick = { refresh() }, enabled = isOnline && !loading) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Retry Top Givers")
+                    } }
                 } else {
                     itemsIndexed(topGivers, key = { _, giver -> "giver-${giver.creatorId}" }) { index, giver ->
                         TopGiverCard(
                             giver = giver,
                             rank = index + 1,
                             formatter = formatter,
-                            onFollow = if (giver.following || followBusyId != null) null else {
-                                {
+                            following = giver.following,
+                            followBusy = followBusyId != null,
+                            onFollow = {
+                                if (!giver.following && followBusyId == null) {
                                     followBusyId = giver.creatorId
                                     scope.launch {
                                         service.followCreator(giver.creatorId)
@@ -1097,21 +1111,80 @@ private fun DropReceiptCard(
 }
 
 @Composable
-private fun TopGiverCard(
+internal fun TopGiversEmptyState(
+    onBrowse: () -> Unit,
+    onCreate: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Icon(
+                Icons.Default.EmojiEvents,
+                contentDescription = null,
+                modifier = Modifier.size(38.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text("The first Top Givers are coming",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White)
+            Text(
+                "Only BLINK Coins actually rewarded through completed Drops count. " +
+                    "No accounts or coin totals are shown until distribution is confirmed.",
+                color = Color(0xFFCFD3DD),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
+                Text("Create a Drop")
+            }
+            OutlinedButton(onClick = onBrowse, modifier = Modifier.fillMaxWidth()) {
+                Text("Browse Giveaways")
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TopGiverCard(
     giver: TopGiver,
     rank: Int,
     formatter: NumberFormat,
-    onFollow: (() -> Unit)?,
+    following: Boolean,
+    followBusy: Boolean,
+    onFollow: () -> Unit,
 ) {
-    Card(shape = RoundedCornerShape(18.dp)) {
+    val podium = when (rank) {
+        1 -> Color(0xFFD7AC4B)
+        2 -> Color(0xFF93A4BC)
+        3 -> Color(0xFFBA7B53)
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (rank <= 3) podium.copy(alpha = .16f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .27f),
+            contentColor = Color.White
+        )
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(42.dp),
+                modifier = Modifier.size(44.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = podium.copy(alpha = if (rank <= 3) .27f else .12f),
+                contentColor = Color.White,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -1123,17 +1196,21 @@ private fun TopGiverCard(
             }
             Spacer(Modifier.width(11.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(giver.name.ifBlank { "@${giver.username}" }, fontWeight = FontWeight.Bold)
+                Text(giver.name.ifBlank { "@${giver.username}" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "${formatter.format(giver.coinsGiven)} coins given · ${giver.peopleRewarded} people · ${giver.dropsCompleted} Drops",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFFCFD3DD),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (onFollow != null) {
-                OutlinedButton(onClick = onFollow) { Text("Follow") }
-            } else {
+            if (following) {
                 Text("Following", style = MaterialTheme.typography.labelMedium)
+            } else {
+                OutlinedButton(onClick = onFollow, enabled = !followBusy) {
+                    Text(if (followBusy) "Please wait" else "Follow")
+                }
             }
         }
     }

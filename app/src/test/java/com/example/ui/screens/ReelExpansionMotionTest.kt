@@ -26,6 +26,19 @@ class ReelExpansionMotionTest {
         assertFalse(ReelExpansionMotion.shouldCompleteFastSwipe(-70f, 2500f, 28f, 1100f))
     }
 
+    @Test fun slightIntentionalSwipeExpandsWithoutFastFlick() {
+        assertTrue(ReelExpansionMotion.shouldExpandFromPreview(.10f, false))
+        assertTrue(ReelExpansionMotion.shouldExpandFromPreview(.01f, true))
+        assertFalse(ReelExpansionMotion.shouldExpandFromPreview(.03f, false))
+        assertFalse(ReelExpansionMotion.shouldExpandFromPreview(Float.NaN, false))
+    }
+
+    @Test fun deliberateDownwardPullRestoresPreview() {
+        assertTrue(ReelExpansionMotion.shouldCollapseFromFullscreen(.80f, false))
+        assertTrue(ReelExpansionMotion.shouldCollapseFromFullscreen(.99f, true))
+        assertFalse(ReelExpansionMotion.shouldCollapseFromFullscreen(.96f, false))
+    }
+
     @Test fun horizontalNavigationRequiresDistanceSpeedAndSameDirection() {
         assertTrue(ReelExpansionMotion.shouldCompleteFastSwipe(110f, 1600f, 84f, 900f))
         assertTrue(ReelExpansionMotion.shouldCompleteFastSwipe(-110f, -1600f, 84f, 900f))
