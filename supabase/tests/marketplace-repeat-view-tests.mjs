@@ -82,20 +82,20 @@ try {
   assert.equal(await record(event(3)),2,'a later genuine visit counts again');
 
   await setViewer(blue);
-  assert.equal(await record(event(4)),2,'rapid visits by another viewer are rate-limited');
+  assert.equal(await record(event(4)),5,'a separate viewer contributes their own weighted view');
   await ageLastEvent(3);
-  assert.equal(await record(event(5)),5,'active Blue adds 3');
+  assert.equal(await record(event(5)),8,'active Blue repeat adds 3');
 
   await setViewer(gold);
   await ageLastEvent(3);
-  assert.equal(await record(event(6)),11,'active Gold adds 6');
+  assert.equal(await record(event(6)),14,'active Gold adds 6');
 
   await db.query(`update public.profiles set verification_expires_at='2020-01-01' where id=$1`,[gold]);
   await ageLastEvent(3);
-  assert.equal(await record(event(7)),12,'expired Gold falls back to 1');
+  assert.equal(await record(event(7)),15,'expired Gold falls back to 1');
 
   await setViewer(seller);
-  assert.equal(await record(event(8)),12,'seller self-views do not inflate listing metrics');
+  assert.equal(await record(event(8)),15,'seller self-views do not inflate listing metrics');
 
   const dailyUnique = (await db.query(
     `select count(*)::integer as n from public.marketplace_views where item_id=$1`,[listing]
