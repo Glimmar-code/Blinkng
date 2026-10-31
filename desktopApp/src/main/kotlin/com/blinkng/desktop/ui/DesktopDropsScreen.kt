@@ -79,7 +79,6 @@ fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
             runCatching { rpc.getDropById(id) }
                 .onSuccess { root -> selectedGiveaway = root.optJSONObject("item") }
                 .onFailure { error = it.message ?: "Couldn't open this Giveaway." }
-            state.selectedGiveawayId = null
         }
     }
     val input = BlinkDropRequest(selectedTarget?.optString("type").orEmpty(), selectedTarget?.optString("id").orEmpty(),
@@ -114,8 +113,10 @@ fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
                         else "Follow the creator to be notified about the next Giveaway.")
                     if (!selected.optBoolean("is_following") && selected.optString("creator_id").isNotBlank()) {
                         TextButton(enabled = !busy, onClick = {
-                            perform { rpc.followDropCreator(selected.optString("creator_id")) }
-                            selected.put("is_following", true)
+                            perform {
+                                rpc.followDropCreator(selected.optString("creator_id"))
+                                selected.put("is_following", true)
+                            }
                         }) { Text("Follow creator") }
                     }
                 }
