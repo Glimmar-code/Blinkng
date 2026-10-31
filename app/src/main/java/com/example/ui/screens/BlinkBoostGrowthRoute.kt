@@ -1789,7 +1789,7 @@ private fun ProfileTargetCard(
 }
 
 @Composable
-private fun CampaignQuoteCard(
+internal fun CampaignQuoteCard(
     quote: JSONObject?,
     quoteLoading: Boolean,
     balance: Long?,
@@ -1862,7 +1862,7 @@ private fun CampaignQuoteCard(
 }
 
 @Composable
-private fun ActiveCampaignCard(
+internal fun ActiveCampaignCard(
     campaign: JSONObject,
     formatter: NumberFormat,
     working: Boolean,
@@ -1927,7 +1927,7 @@ private fun ActiveCampaignCard(
 }
 
 @Composable
-private fun BoostAnalyticsCard(
+internal fun BoostAnalyticsCard(
     analytics: JSONObject,
     formatter: NumberFormat,
 ) {

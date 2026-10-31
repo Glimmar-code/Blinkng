@@ -200,7 +200,7 @@ private data class DropItem(
     val previewVideoUrl: String = "",
 )
 
-private data class TopGiver(
+internal data class TopGiver(
     val creatorId: String,
     val username: String,
     val name: String,
@@ -1111,7 +1111,7 @@ private fun DropReceiptCard(
 }
 
 @Composable
-private fun TopGiversEmptyState(
+internal fun TopGiversEmptyState(
     onBrowse: () -> Unit,
     onCreate: () -> Unit
 ) {
@@ -1152,7 +1152,7 @@ private fun TopGiversEmptyState(
 }
 
 @Composable
-private fun TopGiverCard(
+internal fun TopGiverCard(
     giver: TopGiver,
     rank: Int,
     formatter: NumberFormat,

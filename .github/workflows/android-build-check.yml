@@ -205,6 +205,32 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Real Compose renderings of the same Reels and growth components shipped
+      # in the APK, with isolated staging data (no production payment or session).
+      - name: Capture Reels, Drops and Boost reference screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest \\
+            --tests com.example.ui.screens.BlinkReelsVisualCaptureTest \\
+            --tests com.example.ui.screens.BlinkGrowthVisualCaptureTest \\
+            -Proborazzi.test.record=true --rerun-tasks --no-daemon
+          count=$(find app/src/test/screenshots -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
+          echo "Captured $count Reels/Drops/Boost visuals"
+          test "$count" -ge 6
+
+      - name: Upload BLINK Reels and growth screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-reels-growth-screenshots-${{ github.sha }}
+          path: |
+            '**/reels-reference-*.png'
+            '**/growth-reference-*.png'
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Capture campus Search reference screenshots
         if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         shell: bash
