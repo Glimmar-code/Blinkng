@@ -54,7 +54,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
-      Column(Modifier.widthIn(max = 276.dp).clip(RoundedCornerShape(14.dp))
+      Column(Modifier.widthIn(max = 306.dp).clip(RoundedCornerShape(14.dp))
         .padding(4.dp)) {
         groups.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -62,8 +62,8 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                     val index = videos.indexOfFirst { it.id == message.id }
                     // Signed remote media can be large. Only inspect a local
                     // recording Uri to obtain duration; never invent 0:28.
-                    val localVideo = (message.localAttachmentUri ?: message.attachedVideoUrl)
-                        ?.takeIf { it.startsWith("content://") || it.startsWith("file:") }
+                    val localVideo = listOf(message.localAttachmentUri, message.attachedVideoUrl)
+                        .firstOrNull { it?.startsWith("content://") == true || it?.startsWith("file:") == true }
                     val thumbnail = BlinkChatVideoAlbumMedia.thumbnail(message)
                     val duration by produceState<Long?>(
                         initialValue = null, key1 = localVideo
@@ -88,7 +88,9 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                                 model = remember(thumbnail) {
                                     ImageRequest.Builder(context)
                                         .data(thumbnail)
-                                        .videoFrameMillis(800L).build()
+                                        .videoFrameMillis(800L)
+                                        .crossfade(140)
+                                        .build()
                                 },
                                 contentDescription = "Video " + (index + 1),
                                 contentScale = ContentScale.Crop,
