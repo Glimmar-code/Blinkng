@@ -398,15 +398,33 @@ internal fun PremiumReelEditor(
                 }
 
                 if (filmstrip.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))) {
-                        filmstrip.forEach { thumbnail ->
-                            Image(
-                                bitmap = thumbnail.asImageBitmap(),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.weight(1f).height(55.dp)
-                            )
+                    // Real frames from the selected clip form the scrub timeline.
+                    // The playhead tracks ExoPlayer position independently of trim handles.
+                    BoxWithConstraints(
+                        Modifier.fillMaxWidth().height(58.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .testTag("blink_video_editor_filmstrip")
+                    ) {
+                        Row(Modifier.fillMaxSize()) {
+                            filmstrip.forEach { thumbnail ->
+                                Image(
+                                    bitmap = thumbnail.asImageBitmap(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxHeight()
+                                )
+                            }
                         }
+                        val playheadFraction = if (durationMs > 0L)
+                            (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                        else 0f
+                        Box(
+                            Modifier.align(Alignment.CenterStart)
+                                .offset(x = maxWidth * playheadFraction)
+                                .fillMaxHeight().width(2.dp)
+                                .background(Color.White)
+                                .testTag("blink_video_editor_playhead")
+                        )
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
