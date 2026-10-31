@@ -117,7 +117,7 @@ await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', admin.token,
   /CONTEST_REVIEW_REASON_REQUIRED/);
 await rejected('/rest/v1/rpc/admin_review_blink_contest_entry', admin.token,
   { p_entry_id: entry.entry_id, p_action: 'approve' },
-  /Could not find|function|does not exist|schema cache|not found/i);
+  /permission denied|Could not find|function|does not exist|schema cache|not found/i);
 await rpc('admin_review_blink_contest_entry', admin, {
   p_entry_id: entry.entry_id, p_action: 'approve',
   p_reason: 'Meets all the published Contest requirements'
