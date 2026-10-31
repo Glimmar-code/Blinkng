@@ -470,11 +470,25 @@ private fun BoostCampaignColumn(
         service.boostableContent()
             .onSuccess { ownedContent = it; contentError = null }
             .onFailure { contentError = "Unable to load all your content. Showing cached posts." }
+        var pageFetchFailed = false
         for (type in listOf("POST","REEL","LISTING")) {
             service.boostableContentPage(type,0).onSuccess { payload ->
                 ownedPages = ownedPages + (type to payload.optJSONArray("items").objectList())
                 ownedMore = if (payload.optBoolean("has_more")) ownedMore + type else ownedMore - type
+            }.onFailure {
+                // Some production versions only expose the original authenticated
+                // content RPC. Preserve its results instead of falsely saying
+                // the user has no posts, Reels or listings to promote.
+                pageFetchFailed = true
+                ownedPages = ownedPages - type
+                ownedMore = ownedMore - type
             }
+        }
+        if (pageFetchFailed) {
+            contentError = if (ownedContent == null)
+                "Your content could not load. Check your connection and try again."
+            else
+                "Showing available content. Older content may require a server update."
         }
         contentLoading = false
     }
@@ -800,8 +814,19 @@ private fun BoostCampaignColumn(
                                         ) { Text(if (contentPageBusy) "Loading…" else "Load more of your content") }
                                     }
                                 }
-                                contentError?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodySmall) }
+                                contentError?.let { warning ->
+                                    Text(warning, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(
+                                        onClick = { refreshNonce += 1 },
+                                        enabled = isOnline && !contentLoading,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Retry loading content")
+                                    }
+                                }
                             }
                             1 -> {
                                 SectionTitle("2. Audience", "Choose your campus or expand across BLINK.")
@@ -1764,13 +1789,20 @@ private fun ProfileTargetCard(
 }
 
 @Composable
-private fun CampaignQuoteCard(
+internal fun CampaignQuoteCard(
     quote: JSONObject?,
     quoteLoading: Boolean,
     balance: Long?,
     formatter: NumberFormat,
 ) {
-    Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f),
+            contentColor = Color.White
+        )
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -1783,7 +1815,7 @@ private fun CampaignQuoteCard(
                 }
                 quote == null -> Text(
                     "Select content and audience to see the server-calculated price.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFFCFD3DD),
                 )
                 else -> {
                     val cost = quote.optLong("coin_cost", 0L)
@@ -1799,6 +1831,7 @@ private fun CampaignQuoteCard(
                     Text(
                         formatter.format(cost) + " Blink Coins",
                         style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Black,
                     )
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
@@ -1817,13 +1850,13 @@ private fun CampaignQuoteCard(
                         Text(
                             "After reserve: " + formatter.format(remainingAfter.coerceAtLeast(0L)) + " coins",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFFCFD3DD),
                         )
                     }
                     Text(
                         "Estimates are not guarantees. Paid delivery is marked Promoted and stays separate from organic Trending.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFFCFD3DD),
                     )
                 }
             }
@@ -1832,7 +1865,7 @@ private fun CampaignQuoteCard(
 }
 
 @Composable
-private fun ActiveCampaignCard(
+internal fun ActiveCampaignCard(
     campaign: JSONObject,
     formatter: NumberFormat,
     working: Boolean,
@@ -1863,7 +1896,12 @@ private fun ActiveCampaignCard(
             }
             val progress = if (budget <= 0L) 0f else (spent.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
             val conversion = if (impressions <= 0L) 0.0 else opens.toDouble() * 100.0 / impressions.toDouble()
-            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = Modifier.fillMaxWidth().height(7.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f)
+            )
             Text(
                 ((progress * 100).toInt()).toString() + "% of coin budget spent • " +
                     formatter.format(impressions) + " impressions • " +
@@ -1892,7 +1930,7 @@ private fun ActiveCampaignCard(
 }
 
 @Composable
-private fun BoostAnalyticsCard(
+internal fun BoostAnalyticsCard(
     analytics: JSONObject,
     formatter: NumberFormat,
 ) {
@@ -1902,25 +1940,47 @@ private fun BoostAnalyticsCard(
     val impressions = analytics.optLong("impressions", 0L)
     val opens = analytics.optLong("opens", 0L)
     val conversion = analytics.optDouble("conversion_rate", 0.0)
-    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f),
+            contentColor = Color.White
+        )
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("Boost performance", fontWeight = FontWeight.Black)
-            Text(
-                formatter.format(campaigns) + " campaigns • " +
-                    formatter.format(impressions) + " impressions • " +
-                    formatter.format(opens) + " opens",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BoostInsightMetric(formatter.format(campaigns), "Campaigns", Modifier.weight(1f))
+                BoostInsightMetric(formatter.format(impressions), "Impressions", Modifier.weight(1f))
+                BoostInsightMetric(formatter.format(opens), "Opens", Modifier.weight(1f))
+            }
             Text(
                 "Spent " + formatter.format(spent) + " • Refunded " + formatter.format(refunded) +
                     " • Open rate " + String.format(Locale.US, "%.1f%%", conversion),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color(0xFFCFD3DD),
             )
         }
+    }
+}
+
+@Composable
+private fun BoostInsightMetric(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text(value, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFFCFD3DD), maxLines = 1)
     }
 }
 

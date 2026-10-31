@@ -62,6 +62,7 @@ internal fun BlinkPremiumProfileDashboard(
     onEarnCoins: () -> Unit,
     onWallet: () -> Unit,
     onCampusRank: () -> Unit,
+    onHpProgress: () -> Unit = {},
     onShowBadges: () -> Unit,
     onShare: () -> Unit,
     onCopyUsername: () -> Unit,
@@ -227,10 +228,10 @@ internal fun BlinkPremiumProfileDashboard(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                PremiumProfileStat(if (metricsComplete) "Posts" else "Loaded", postCount.toLong(), Modifier.weight(1f))
+                PremiumProfileStat("Posts", postCount.toLong(), Modifier.weight(1f))
                 PremiumProfileStat("Followers", profile.followerCount.toLong(), Modifier.weight(1f).clickable(onClick = onFollowers))
+                PremiumProfileStat("Following", profile.followingCount.toLong(), Modifier.weight(1f).clickable(onClick = onFollowing))
                 PremiumProfileStat("Views", totalLoadedViews, Modifier.weight(1f))
-                PremiumProfileStat("Likes", totalLoadedLikes, Modifier.weight(1f))
             }
         }
         Text(if (metricsComplete) "Totals from all active content" else "Engagement reflects loaded posts",
@@ -260,28 +261,36 @@ internal fun BlinkPremiumProfileDashboard(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        // Exactly three public rank/progress cards. The owner gets two more
+        // private actions without exposing coin balance to profile visitors.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             PremiumProfileShortcut(
-                text = "Campus Rank ${profileRankLabel(profile.campusRank)}",
-                icon = Icons.Default.EmojiEvents,
-                modifier = Modifier.weight(1f),
-                onClick = onCampusRank
+                text = "Campus Rank", icon = Icons.Default.EmojiEvents,
+                value = profileRankLabel(profile.campusRank),
+                modifier = Modifier.weight(1f), onClick = onCampusRank
             )
-            if (isMe) {
+            PremiumProfileShortcut(
+                text = "World Rank", icon = Icons.Default.Public,
+                value = profileRankLabel(profile.worldRank),
+                modifier = Modifier.weight(1f), onClick = { showDetails = true }
+            )
+            PremiumProfileShortcut(
+                text = "HP Level", icon = Icons.Default.AutoAwesome,
+                value = "Lv ${xpProgress(profile.totalXp, profile.xpLevel).level}",
+                modifier = Modifier.weight(1f),
+                onClick = { if (isMe) onHpProgress() else showDetails = true }
+            )
+        }
+        if (isMe) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 PremiumProfileShortcut(
                     text = "Earn Coins", icon = Icons.Default.Paid,
                     modifier = Modifier.weight(1f), onClick = onEarnCoins
                 )
-                if (profile.verificationBadge == VerificationBadge.NONE) {
-                    PremiumProfileShortcut(
-                        text = "Get Verified", icon = Icons.Default.Verified,
-                        modifier = Modifier.weight(1f), onClick = onVerify
-                    )
-                }
+                PremiumProfileShortcut(
+                    text = "Get Verified", icon = Icons.Default.Verified,
+                    modifier = Modifier.weight(1f), onClick = onVerify
+                )
             }
         }
 
@@ -289,7 +298,9 @@ internal fun BlinkPremiumProfileDashboard(
             OutlinedButton(
                 onClick = onCreatorStudio,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                border = BorderStroke(1.dp, accent.copy(alpha = .52f))
             ) {
                 Icon(Icons.Default.Insights, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
@@ -308,7 +319,7 @@ internal fun BlinkPremiumProfileDashboard(
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val xp = xpProgress(profile.totalXp, profile.xpLevel)
-                    Text("World ${profileRankLabel(profile.worldRank)} · Level ${xp.level} · ${xp.tierLabel}",
+                    Text("Campus ${profileRankLabel(profile.campusRank)} · World ${profileRankLabel(profile.worldRank)} · HP Level ${xp.level} · ${xp.tierLabel}",
                         color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Text("Following ${profile.followingCount}", color = softInk,
                         fontSize = 11.sp, modifier = Modifier.clickable(onClick = onFollowing))
@@ -341,28 +352,41 @@ private fun PremiumProfileStat(label: String, value: Long, modifier: Modifier = 
     }
 }
 
+/** Compact phone-safe shortcuts: icon above copy instead of squeezing three labels into a row. */
 @Composable
 private fun PremiumProfileShortcut(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier,
+    value: String? = null,
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.heightIn(min = 48.dp).clickable(onClick = onClick),
+        modifier = modifier.heightIn(min = 78.dp).clickable(onClick = onClick),
         color = Color.White.copy(alpha = .10f),
         shape = RoundedCornerShape(13.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
         ) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(15.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(text, color = Color.White, fontSize = 10.sp,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
+            Text(
+                text, color = Color.White, fontSize = 10.sp,
+                lineHeight = 12.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            value?.let {
+                Text(
+                    it, color = Color.White.copy(alpha = .88f),
+                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
         }
     }
 }

@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkNotificationTimelinePolicyTest {
-    @Test fun chatActivityIsNotPartOfSocialBadge() {
-        assertFalse(BlinkNotificationTimelinePolicy.belongsInActivityTimeline("CHAT"))
+    @Test fun allActivityTypesAppearInTheTimeline() {
+        assertTrue(BlinkNotificationTimelinePolicy.belongsInActivityTimeline("CHAT"))
         assertTrue(BlinkNotificationTimelinePolicy.belongsInActivityTimeline("post"))
     }
 

@@ -205,6 +205,45 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Real Compose renderings of the same Reels and growth components shipped
+      # in the APK, with isolated staging data (no production payment or session).
+      - name: Capture Reels, Drops and Boost reference screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkReelsVisualCaptureTest --tests com.example.ui.screens.BlinkGrowthVisualCaptureTest -Proborazzi.test.record=true --rerun-tasks --no-daemon
+          count=$(find app/src/test/screenshots -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
+          echo "Captured $count Reels/Drops/Boost visuals"
+          test "$count" -ge 6
+          # Detect unreadable headings in the exact rendered Pixel8 fixtures.
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root = Path("app/src/test/screenshots")
+          regions = {
+              "growth-reference-drops-empty.png": (0,0,1078,720),
+              "growth-reference-drops-podium.png": (0,0,1078,520),
+              "growth-reference-boost-quote-analytics.png": (0,0,1078,950),
+          }
+          for name, box in regions.items():
+              frame = Image.open(root / name).convert("RGB").crop(box)
+              bright = sum(1 for red, green, blue in frame.getdata() if min(red,green,blue) > 185)
+              print(f"{name}: readable light-text pixels = {bright}")
+              assert bright >= 180, f"{name}: dark card text is not visibly readable"
+          PY
+
+      - name: Upload BLINK Reels and growth screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-reels-growth-screenshots-${{ github.sha }}
+          path: |
+            app/src/test/screenshots/reels-reference-*.png
+            app/src/test/screenshots/growth-reference-*.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Capture campus Search reference screenshots
         if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         shell: bash

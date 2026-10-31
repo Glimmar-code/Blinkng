@@ -55,3 +55,7 @@ internal fun reelPlaybackErrorMessage(errorCode: String?): String = when {
         "Can't load the reel. Check your connection and retry."
     else -> "Unable to play this reel."
 }
+
+/** Preview stays silent, immersive playback can be manually muted. */
+internal fun reelShouldBeMuted(expanded: Boolean, manuallyMuted: Boolean): Boolean =
+    !expanded || manuallyMuted

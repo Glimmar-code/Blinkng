@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -93,17 +94,6 @@ internal fun ReelsReferenceChrome(
     val foreground = if (isDark) Color.White else Color(0xFF101014)
     val background = if (isDark) Color(0xFF121214) else Color.White
     val featured = remember(featuredReels) { featuredReels.take(5) }
-    val validStories = remember(stories) {
-        // Keep a real uploaded "story_me"; only an empty placeholder is excluded.
-        stories.filter { it.storyImage.isNotBlank() }
-            .distinctBy { it.id }
-    }
-    val ownStory = validStories.firstOrNull {
-        it.isUser || it.username.removePrefix("@").equals(
-            currentUsername.removePrefix("@"), ignoreCase = true
-        )
-    }
-    val otherStories = validStories.filterNot { it.id == ownStory?.id }
     val featuredPager = rememberPagerState(pageCount = { featured.size })
     LaunchedEffect(featured.map { it.reel.id }, autoSlideEnabled) {
         if (autoSlideEnabled && featured.size > 1) {
@@ -163,82 +153,11 @@ internal fun ReelsReferenceChrome(
         }
         }
 
-        // Compact strip uses the actual Story models and existing viewer callbacks.
-        // The current user's ring exists only while an uploaded story exists.
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().height(72.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            item(key = "my_story") {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(60.dp)
-                        .clickable { if (ownStory != null) onStoryClick(ownStory) else onAddStory() }
-                        .semantics {
-                            contentDescription = if (ownStory != null) "Open my story" else "Add story"
-                        }
-                ) {
-                    Box(contentAlignment = Alignment.BottomEnd) {
-                        AsyncImage(
-                            model = ownStory?.avatar?.ifBlank { userAvatar } ?: userAvatar,
-                            fallback = painterResource(R.drawable.ic_default_profile),
-                            error = painterResource(R.drawable.ic_default_profile),
-                            contentDescription = "My story",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(42.dp).clip(CircleShape)
-                                .then(
-                                    if (ownStory != null) Modifier.border(
-                                        2.dp, foreground, CircleShape
-                                    ) else Modifier
-                                )
-                        )
-                        if (ownStory == null) {
-                            Box(
-                                Modifier.size(19.dp).clip(CircleShape).background(foreground),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null,
-                                    tint = background, modifier = Modifier.size(15.dp))
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text("Your story", color = foreground, fontSize = 10.sp, maxLines = 1)
-                }
-            }
-            items(otherStories, key = { it.id }) { story ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(60.dp)
-                        .clickable { onStoryClick(story) }
-                        .semantics { contentDescription = "Open ${story.displayLabel}'s story" }
-                ) {
-                    AsyncImage(
-                        model = story.avatar,
-                        fallback = painterResource(R.drawable.ic_default_profile),
-                        error = painterResource(R.drawable.ic_default_profile),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(42.dp).clip(CircleShape)
-                            .border(
-                                2.dp,
-                                if (story.hasUnseen) foreground else foreground.copy(alpha = .32f),
-                                CircleShape
-                            )
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        story.displayLabel, color = foreground, fontSize = 10.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
+        // Stories belong on Home. Reels reserves this position for the featured banner.
         if (featured.isNotEmpty()) {
         Box(
             Modifier.fillMaxWidth().height(featuredCardHeight).padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag("blink_top_reels_carousel")
                 .semantics { contentDescription = "Top Reels: up to five featured videos" }
         ) {
             if (featured.isNotEmpty()) {
@@ -249,14 +168,17 @@ internal fun ReelsReferenceChrome(
                 ) { page ->
                     val item = featured[page]
                     val caption = item.caption.ifBlank { "Featured Reel" }.replace("\\n", " ").take(84)
+                    val shortBanner = featuredCardHeight <= 108.dp
+                    val compactBanner = featuredCardHeight <= 150.dp
                     Box(
                         Modifier.fillMaxSize()
+                            .testTag("blink_featured_reel_$page")
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
                             .border(1.dp, Color.White.copy(alpha = .20f),
                                 androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
                             .background(
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF17171D), Color(0xFF111720), Color(0xFF14212A))
+                                    listOf(Color(0xFF320A21), Color(0xFF9E183C), Color(0xFFE34255))
                                 )
                             )
                             .clickable { onFeaturedReelClick(item.reel.id) }
@@ -270,17 +192,21 @@ internal fun ReelsReferenceChrome(
                         Box(
                             Modifier.fillMaxSize().background(
                                 Brush.horizontalGradient(
-                                    listOf(Color.Black.copy(alpha = .96f),
-                                        Color(0xFF141820).copy(alpha = .85f),
+                                    listOf(Color(0xFF16070F).copy(alpha = .97f),
+                                        Color(0xFF450F2B).copy(alpha = .84f),
                                         Color.Transparent)
                                 )
                             )
                         )
                         Column(
-                            Modifier.fillMaxWidth(.72f).padding(start = 14.dp, top = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Modifier.fillMaxWidth(.72f).padding(
+                                start = 14.dp,
+                                top = if (shortBanner) 7.dp else 9.dp,
+                                bottom = 8.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(if (compactBanner) 4.dp else 6.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!shortBanner) Row(verticalAlignment = Alignment.CenterVertically) {
                                 AsyncImage(
                                     model = item.avatarUrl,
                                     contentDescription = null,
@@ -317,11 +243,11 @@ internal fun ReelsReferenceChrome(
                                 caption,
                                 color = Color.White,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 16.sp,
-                                maxLines = 2,
+                                fontSize = if (compactBanner) 13.sp else 16.sp,
+                                maxLines = if (compactBanner) 1 else 2,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!shortBanner) Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Visibility, contentDescription = null,
                                     tint = Color.White, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -356,6 +282,35 @@ internal fun ReelsReferenceChrome(
                 }
             }
         }
+        }
+        if (featured.isEmpty() && featuredCardHeight > 0.dp) {
+            // No fabricated thumbnails: keep a genuine, useful empty state until
+            // the last-12-hours Top Reels service has eligible video views.
+            Box(
+                modifier = Modifier.fillMaxWidth().height(featuredCardHeight)
+                    .testTag("blink_top_reels_empty")
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF310D23), Color(0xFF9B2246)))),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Text("Top Reels · New highlights appear as videos gain views",
+                        color = Color.White, fontSize = 12.sp, maxLines = 2)
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onCreateReel,
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .60f))
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Create a Reel", fontSize = 11.sp)
+                    }
+                }
+            }
         }
         val tabs = listOf("Reels", "Following", "For You")
         Row(

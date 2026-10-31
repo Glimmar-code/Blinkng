@@ -7991,7 +7991,7 @@ private suspend fun restoreSupabaseSession() {
 
         // These destination types are handled by MainActivity after read acknowledgement.
         if (activity.targetType?.lowercase() in setOf(
-                "channel", "giveaway", "drops", "boost", "wallet", "coins", "coin", "reward", "items"
+                "channel", "giveaway", "drops", "boost", "wallet", "coins", "coin", "reward", "coin_gift", "items"
             )) return
 
         activity.targetPostId?.let { postId ->
