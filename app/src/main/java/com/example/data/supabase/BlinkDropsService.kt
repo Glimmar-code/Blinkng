@@ -29,8 +29,8 @@ data class BlinkDropDiscovery(
 /**
  * Authenticated client for BLINK Giveaways.
  *
- * The Android client never modifies balances directly. Reserve, reward, refund,
- * eligibility and anti-replay rules are authoritative Supabase RPCs.
+ * The Android client never modifies balances directly. Giveaway commitments,
+ * rewards, eligibility and anti-replay rules are authoritative Supabase RPCs.
  */
 class BlinkDropsService {
     private val client = OkHttpClient.Builder()
@@ -74,7 +74,7 @@ class BlinkDropsService {
         rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", limit.coerceIn(1, 50)))
     }
 
-    /** Server-authoritative pages: MINE is owner-only, AVAILABLE requires a saved eligibility snapshot. */
+    /** MINE is owner-only; AVAILABLE includes unclaimed Giveaways open to this viewer's audience. */
     suspend fun page(scope: String, offset: Int, limit: Int = 30) = runCatching {
         require(scope in setOf("MINE", "AVAILABLE")) { "Unknown Giveaway list." }
         rpc("get_blink_drop_page", JSONObject()
