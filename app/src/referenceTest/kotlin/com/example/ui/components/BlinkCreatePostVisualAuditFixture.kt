@@ -316,7 +316,9 @@ abstract class BlinkCreatePostVisualAuditFixture {
         capture("create-post-gallery-video-tab-staging.png")
         rule.onNodeWithTag("blink_media_tab_photos").performClick()
         rule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
-        rule.onNodeWithTag("blink_gallery_photo_0").performClick()
+        // The selected strip is always available without requesting broad
+        // device-library permission. Open the first selected original directly.
+        rule.onNodeWithContentDescription("Preview selected photo 1").performClick()
         rule.onNodeWithTag("blink_gallery_edit_preview").performClick()
         rule.runOnIdle { check(edited == resource) { "Preview edit must keep the selected original photo" } }
     }
