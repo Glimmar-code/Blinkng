@@ -857,7 +857,7 @@ begin
        where c.user_id=old.user_id
          and c.action='LIKE'
          and d.action='LIKE'
-         and d.target_type='POST'
+         and d.target_type in ('POST','REEL')
          and d.target_id=old.post_id
      ) then
     raise exception 'GIVEAWAY_LIKE_LOCKED'
