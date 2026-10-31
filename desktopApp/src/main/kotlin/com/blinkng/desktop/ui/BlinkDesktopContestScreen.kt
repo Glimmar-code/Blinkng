@@ -175,6 +175,12 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                     item {
                         Text(c.optString("title"), style = MaterialTheme.typography.headlineSmall)
                         Text(BlinkContestPolicy.statusLabel(status))
+                        if (status == "cancelled") {
+                            Text(
+                                "This contest was cancelled after publication. Applications and voting are closed; no prizes will be awarded.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Text(c.optString("description"))
                         Text("1st " + prize(c.optInt("prize_first")) +
                             " · 2nd " + prize(c.optInt("prize_second")) +
