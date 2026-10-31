@@ -169,9 +169,15 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
         composeRule.onNodeWithTag("blink_gallery_add_more").performClick()
         composeRule.onNodeWithTag("blink_media_tab_videos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_video_selection").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_next").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_gallery_choose_videos").performClick()
+        // Canceling video selection doesn't destroy selected photos.
+        composeRule.onNodeWithTag("blink_media_tab_photos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
         composeRule.onNodeWithTag("blink_gallery_next").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("edit:content://sample/1", "add", "video", "next"), actions)
+            assertEquals(listOf("edit:content://sample/1", "add", "video", "video", "next"), actions)
         }
     }
 
