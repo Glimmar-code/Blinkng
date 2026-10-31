@@ -651,13 +651,14 @@ abstract class BlinkCreatePostVisualAuditFixture {
     }
 
     @Test fun mentionResultsUseRealSuggestionComponentWithOfflineTestData() {
+        var selectedMention: String? = null
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val avatar = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
         rule.setContent {
             AuditSurface {
                 BlinkPostMentionSuggestions(
-                    text = "@a",
-                    onTextChanged = {},
+                    text = "@",
+                    onTextChanged = { selectedMention = it },
                     searchProfiles = { _, _, _, _ ->
                         listOf(
                             UserProfile(id = "mention-1", fullName = "Ayo", username = "ayo_futa", avatarUrl = avatar),
@@ -672,7 +673,14 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.waitUntil(12_000) {
             rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty()
         }
+        rule.onNodeWithTag("blink_mention_suggestions").assertExists()
         capture("create-post-mentions-staging.png")
+        rule.onNodeWithTag("blink_mention_user_mention-1").performClick()
+        rule.runOnIdle {
+            check(selectedMention == "@ayo_futa ") {
+                "Picking a user after a bare @ must insert the real username."
+            }
+        }
     }
 
 }
