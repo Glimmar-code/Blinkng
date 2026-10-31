@@ -2797,10 +2797,14 @@ internal fun PostPreviewDialog(
                             if (post.text.isNotBlank()) {
                                 Text(post.text, color = Color.Black, fontSize = 14.sp)
                             }
-                            if (post.tags.isNotEmpty()) {
+                            val additionalHashtags = remember(post.text, post.tags) {
+                                BlinkPostTagPresentation.extraTags(post.text, post.tags)
+                            }
+                            if (additionalHashtags.isNotEmpty()) {
                                 Text(
-                                    post.tags.joinToString(" ") { "#" + it.removePrefix("#") },
-                                    color = Color(0xFF4C62D9), fontSize = 12.sp
+                                    additionalHashtags.joinToString(" "),
+                                    color = Color(0xFF4C62D9), fontSize = 12.sp,
+                                    modifier = Modifier.testTag("blink_preview_extra_hashtags")
                                 )
                             }
                             if (post.images.isNotEmpty()) {
