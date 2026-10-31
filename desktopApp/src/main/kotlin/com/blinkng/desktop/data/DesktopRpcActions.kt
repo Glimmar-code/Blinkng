@@ -501,10 +501,10 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         com.blinkng.shared.BlinkContestMediaPolicy.validate(mime, file.length())
         val owner = requireSessionUserId()
         val path = "$owner/${UUID.randomUUID()}.$extension"
-        execute(requestBuilder("/storage/v1/object/blink-contest-media/$path")
+        execute(requestBuilder("/storage/v1/object/blink-contest-private/$path")
             .header("x-upsert", "false")
             .post(file.asRequestBody(mime.toMediaType())).build())
-        "$baseUrl/storage/v1/object/public/blink-contest-media/$path"
+        "$baseUrl/functions/v1/blink-contest-private-media/$path"
     }
 
     suspend fun adminGlobalSearch(query: String): JSONObject {
