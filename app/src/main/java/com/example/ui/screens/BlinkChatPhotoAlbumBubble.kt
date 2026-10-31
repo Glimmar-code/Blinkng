@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,8 +43,16 @@ internal fun BlinkChatPhotoAlbumBubble(
 ) {
     if (messages.isEmpty()) return
     val ordered = remember(messages) {
-        messages.sortedWith(compareBy<ChatMessage> { it.imageAlbumPosition }.thenBy { it.id })
+        messages.filter { photo ->
+            !photo.deletedForEveryone && listOf(
+                photo.imagePreviewUrl,
+                photo.attachedImageUrl,
+                photo.localAttachmentUri
+            ).any { !it.isNullOrBlank() }
+        }.distinctBy { it.id }
+            .sortedWith(compareBy<ChatMessage> { it.imageAlbumPosition }.thenBy { it.id })
     }
+    if (ordered.isEmpty()) return
     val anchor = ordered.first()
     val isMine = anchor.isFromMe
     val groupedCount = maxOf(anchor.imageAlbumSize, ordered.size)
@@ -175,7 +184,12 @@ private fun AlbumPhotoTile(
     Box(
         modifier.clip(RoundedCornerShape(9.dp))
             .background(Color(BlinkChatReferenceStyle.Incoming))
-            .clickable { onOpen(photo) },
+            .clickable(
+                role = androidx.compose.ui.semantics.Role.Button,
+                onClickLabel = "Open photo ${position + 1} of $total",
+                onClick = { onOpen(photo) }
+            )
+            .testTag("chat_reference_album_photo_" + position),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
