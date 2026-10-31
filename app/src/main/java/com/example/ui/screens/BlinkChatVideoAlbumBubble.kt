@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -28,13 +29,15 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.blinkng.shared.BlinkChatReferenceStyle
 import com.example.ui.theme.MessagePalette
+import com.example.ui.components.blinkSelectedClipDurationMs
+import com.example.ui.components.blinkSelectedClipDurationLabel
 
 /** An album includes only confirmed videos with the same server-recorded ID. */
 @Composable
 internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: MessagePalette) {
     val videos = remember(messages) {
         messages.sortedBy { it.imageAlbumPosition }
-            .filter { !it.attachedVideoUrl.isNullOrBlank() && !it.deletedForEveryone }
+            .filter(BlinkChatVideoAlbumMedia::available)
             .distinctBy { it.id }
     }
     if (videos.isEmpty()) return
@@ -42,8 +45,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
     val context = LocalContext.current
     val isMine = videos.first().isFromMe
     val latest = videos.last()
-    val read = videos.all { it.status == MessageStatus.READ }
-    val delivered = videos.all { it.status in setOf(MessageStatus.READ, MessageStatus.DELIVERED) }
+    val albumStatus = BlinkChatAlbumStatus.aggregate(videos.map { it.status })
     val groups = when (videos.size) {
         1 -> listOf(videos)
         2 -> listOf(videos)
@@ -52,33 +54,77 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
-      Column(Modifier.widthIn(max = 276.dp).clip(RoundedCornerShape(14.dp))
+      Column(Modifier.widthIn(max = 306.dp).clip(RoundedCornerShape(14.dp))
         .padding(4.dp)) {
         groups.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 row.forEach { message ->
                     val index = videos.indexOfFirst { it.id == message.id }
+                    // Signed remote media can be large. Only inspect a local
+                    // recording Uri to obtain duration; never invent 0:28.
+                    val localVideo = listOf(message.localAttachmentUri, message.attachedVideoUrl)
+                        .firstOrNull { it?.startsWith("content://") == true || it?.startsWith("file:") == true }
+                    val thumbnail = BlinkChatVideoAlbumMedia.thumbnail(message)
+                    var frameLoaded by remember(message.id, thumbnail) { mutableStateOf(false) }
+                    val duration by produceState<Long?>(
+                        initialValue = null, key1 = localVideo
+                    ) {
+                        value = localVideo?.let { blinkSelectedClipDurationMs(context, it) }
+                    }
                     Box(
                         Modifier.weight(1f)
                             .aspectRatio(BlinkChatReferenceStyle.VideoTileAspect)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(BlinkChatReferenceStyle.Canvas))
-                            .clickable { selected = index },
+                            .clickable(
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = "Play video ${index + 1} of ${videos.size}",
+                                onClick = { selected = index }
+                            )
+                            .testTag("chat_reference_album_video_" + index),
                         contentAlignment = Alignment.Center
                     ) {
-                        AsyncImage(
-                            model = remember(message.attachedVideoUrl) {
-                                ImageRequest.Builder(context)
-                                    .data(message.attachedVideoUrl)
-                                    .videoFrameMillis(800L).build()
-                            },
-                            contentDescription = "Video " + (index + 1),
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-                        )
+                        if (thumbnail != null) {
+                            AsyncImage(
+                                model = remember(thumbnail) {
+                                    ImageRequest.Builder(context)
+                                        .data(thumbnail)
+                                        .videoFrameMillis(800L)
+                                        .crossfade(140)
+                                        .build()
+                                },
+                                contentDescription = "Video " + (index + 1),
+                                contentScale = ContentScale.Crop,
+                                onSuccess = { frameLoaded = true },
+                                modifier = Modifier.fillMaxSize()
+                                    .testTag("chat_video_frame_image_" + index)
+                            )
+                            if (frameLoaded) {
+                                Box(Modifier.size(1.dp).testTag("chat_video_frame_loaded_" + index))
+                            }
+                        } else {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Video thumbnail unavailable",
+                                tint = Color(0xFFB4C3D8),
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
                         Box(Modifier.size(38.dp).background(Color.Black.copy(alpha = .55f), CircleShape),
                             contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null,
                                 tint = Color.White, modifier = Modifier.size(27.dp))
+                        }
+                        blinkSelectedClipDurationLabel(duration)?.let { label ->
+                            Surface(
+                                color = Color.Black.copy(alpha = .75f),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.align(Alignment.BottomEnd)
+                                    .padding(4.dp).testTag("chat_video_duration_" + index)
+                            ) {
+                                Text(label, color = Color.White, fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                            }
                         }
                         if (index == 3 && videos.size > 4) {
                             Box(Modifier.fillMaxSize()
@@ -98,15 +144,31 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(latest.timestamp, color = palette.textSecondary,
-                fontSize = 10.sp)
-            if (isMine && latest.status !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
+            Text(
+                when (albumStatus) {
+                    MessageStatus.FAILED -> "Waiting to retry"
+                    MessageStatus.SENDING -> "Sending…"
+                    else -> latest.timestamp
+                },
+                color = if (albumStatus == MessageStatus.FAILED) palette.danger
+                    else palette.textSecondary,
+                fontSize = 10.sp
+            )
+            if (isMine && albumStatus !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
                 Spacer(Modifier.width(3.dp))
-                Icon(if (delivered) Icons.Default.DoneAll else Icons.Default.Check,
-                    contentDescription = if (read) "Read" else if (delivered) "Delivered" else "Sent",
-                    tint = if (read) Color(BlinkChatReferenceStyle.BlueBright)
-                        else palette.textSecondary,
-                    modifier = Modifier.size(14.dp))
+                Icon(
+                    if (albumStatus == MessageStatus.SENT) Icons.Default.Check
+                    else Icons.Default.DoneAll,
+                    contentDescription = when (albumStatus) {
+                        MessageStatus.READ -> "Read"
+                        MessageStatus.DELIVERED -> "Delivered"
+                        else -> "Sent"
+                    },
+                    tint = if (albumStatus == MessageStatus.READ)
+                        Color(BlinkChatReferenceStyle.BlueBright)
+                    else palette.textSecondary,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
       }
@@ -127,7 +189,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     var playing by remember(selected) { mutableStateOf(false) }
                     BlinkChatInlineVideo(
-                        url = videos[selected].attachedVideoUrl.orEmpty(),
+                        url = BlinkChatVideoAlbumMedia.playback(videos[selected]).orEmpty(),
                         isActive = playing,
                         onActivate = { playing = true },
                         onDeactivate = { playing = false },

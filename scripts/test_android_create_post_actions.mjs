@@ -58,13 +58,23 @@ assert.ok(sheet.includes('if (!saved) return false'), 'Do not close the composer
 assert.ok(vm.includes('fun saveDraft(draft: PostDraft): Boolean'), 'ViewModel must return draft storage success');
 assert.ok(vm.includes('return saved'), 'ViewModel must return actual saved result');
 assert.ok(main.includes('onSaveDraft = { draft ->'), 'Main app must persist drafts');
-assert.ok(sheet.includes('when (BlinkPhotoEntryPolicy.decide('), 'Photo tile must use tested navigation policy');
-assert.ok(sheet.includes('BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER ->'), 'First Photo tap must open picker');
-assert.ok(sheet.includes('BlinkPhotoEntryPolicy.returnToLandingAfterPicker(initialPicker, uris.size)'), 'Cancelled Photo picker must return to landing');
-assert.ok(sheet.includes('if (uris.isNotEmpty()) {'), 'Empty picker result must not destroy prior media');
-for (const choice of ['CONFIRM_REPLACEMENT','REVIEW_EXISTING','OPEN_SYSTEM_PICKER'])
+assert.ok(sheet.includes('BlinkPhotoEntryPolicy.decide('), 'Photo tile must use tested navigation policy');
+assert.ok(sheet.includes('BlinkPhotoEntryAction.OPEN_MEDIA_REVIEW ->'), 'First Photo tap must open BLINK Select Media');
+assert.ok(sheet.includes('showMediaReview = true'), 'Photo entry must render in-app Select Media');
+assert.ok(sheet.includes('onAddMore = {') && sheet.includes('imagePicker.launch('),
+  'Select Media must retain a real Android Photo Picker action');
+assert.ok(options.includes('BlinkMediaEmptyGallery(') &&
+  options.includes('onClick = onPick') && options.includes('onClick = onRequestLibrary'),
+  'Empty gallery must offer permission-free photo selection and optional gallery access');
+assert.ok(sheet.includes('BlinkPhotoEntryPolicy.returnToLandingAfterPicker(initialPicker, uris.size)'),
+  'Cancelled initial photo picker must preserve the landing flow');
+assert.ok(sheet.includes('if (uris.isNotEmpty()) {'),
+  'Empty photo-picker result must not destroy prior media');
+for (const choice of ['CONFIRM_REPLACEMENT','REVIEW_EXISTING','OPEN_MEDIA_REVIEW'])
   assert.ok(photoPolicy.includes(choice), 'Missing Photo policy state: '+choice);
-assert.ok(photoTests.includes('fun firstPhotoTapOpensPickerInsteadOfEmptyReview()'));
+assert.ok(photoTests.includes('fun firstPhotoTapOpensSelectMediaWithPickerFallback()'));
+assert.ok(photoTests.includes('fun existingPhotosOpenReviewWithoutForcingAnotherPicker()'));
+assert.ok(photoTests.includes('fun switchingFromPollOrReelRequiresExplicitConfirmation()'));
 assert.ok(photoTests.includes('fun cancellingFirstPhotoPickerRestoresLandingButAddingMoreDoesNot()'));
 assert.ok(main.includes('viewModel.addPost('), 'Native Post Now must use ViewModel upload');
 console.log('PASS APK Create Post: working share buttons, real URI access, draft failure navigation, one-vote poll label, and native tests.');

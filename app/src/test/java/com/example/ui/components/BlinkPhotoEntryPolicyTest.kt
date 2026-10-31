@@ -4,9 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BlinkPhotoEntryPolicyTest {
-    @Test fun firstPhotoTapOpensPickerInsteadOfEmptyReview() {
+    @Test fun firstPhotoTapOpensSelectMediaWithPickerFallback() {
         assertEquals(
-            BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER,
+            BlinkPhotoEntryAction.OPEN_MEDIA_REVIEW,
             BlinkPhotoEntryPolicy.decide(
                 hasVideo = false, hasPoll = false, hasVideoClips = false, hasPhotos = false
             )

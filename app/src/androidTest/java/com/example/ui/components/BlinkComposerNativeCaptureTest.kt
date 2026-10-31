@@ -89,6 +89,13 @@ class BlinkComposerNativeCaptureTest {
         }
         rule.onNodeWithTag("blink_create_choice_text").performClick()
         rule.waitForIdle()
+        // The real text input must be interacted with before validating focus.
+        // This keeps the OS-focus assertion meaningful, rather than requiring
+        // a newly created dialog to grab focus before any user interaction.
+        val field = rule.onNodeWithTag("blink_create_post_caption_field")
+        field.assertExists()
+        field.performClick()
+        field.assertIsFocused()
         try {
             rule.waitUntil(15_000) {
                 var focused = false
@@ -103,8 +110,6 @@ class BlinkComposerNativeCaptureTest {
             runCatching { captureDisplay("create-post-keyboard-failure-staging.png") }
             throw AssertionError("Composer did not receive native window focus: ${windowState()}", error)
         }
-        val field = rule.onAllNodes(hasSetTextAction()).onFirst()
-        field.performClick()
         try {
             rule.waitUntil(15_000) {
                 var visible = false
@@ -154,6 +159,12 @@ class BlinkComposerNativeCaptureTest {
         rule.waitUntil(20_000) {
             rule.onAllNodesWithText("/ 00:01", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
+        // The MP4 must produce a real decoded filmstrip, not just a placeholder.
+        rule.waitUntil(15_000) {
+            rule.onAllNodesWithTag("blink_video_editor_filmstrip")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_video_editor_playhead").assertExists()
         captureDisplay("create-post-video-preview-staging.png")
         rule.onNodeWithText("Trim video").performScrollTo()
         rule.onNodeWithContentDescription("Play or pause reel").performClick()

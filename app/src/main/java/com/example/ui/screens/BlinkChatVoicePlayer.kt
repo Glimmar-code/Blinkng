@@ -5,6 +5,11 @@ import android.media.MediaPlayer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.TextButton
@@ -82,8 +87,17 @@ internal fun BlinkChatVoicePlayer(
             modifier = Modifier.size(40.dp)
                 .background(Color(0xFF0879F8), CircleShape)
                 .testTag("chat_reference_voice_play"),
-            enabled = url?.startsWith("https://") == true && !preparing && !failed,
+            // Failed preparations must remain retriable; previously the
+            // button became permanently disabled until leaving the chat.
+            enabled = url?.startsWith("https://") == true && !preparing,
             onClick = {
+                if (failed) {
+                    player?.let { runCatching { it.reset(); it.release() } }
+                    player = null
+                    ready = false
+                    failed = false
+                    elapsed = 0
+                }
                 val live = player
                 if (live != null && ready) {
                     runCatching {
@@ -97,6 +111,9 @@ internal fun BlinkChatVoicePlayer(
                     }.onFailure {
                         isPlaying = false
                         failed = true
+                        runCatching { live.reset(); live.release() }
+                        player = null
+                        ready = false
                     }
                 } else if (live == null && !url.isNullOrBlank()) {
                     val next = MediaPlayer()
@@ -119,6 +136,9 @@ internal fun BlinkChatVoicePlayer(
                         preparing = false
                         isPlaying = false
                         failed = true
+                        ready = false
+                        // MediaPlayer error state must be discarded before retry.
+                        // Release is deferred to the next explicit attempt/dispose.
                         true
                     }
                     runCatching {
@@ -133,6 +153,7 @@ internal fun BlinkChatVoicePlayer(
                     }.onFailure {
                         preparing = false
                         failed = true
+                        ready = false
                         runCatching { next.release() }
                         player = null
                     }
@@ -146,7 +167,7 @@ internal fun BlinkChatVoicePlayer(
                     else -> Icons.Default.PlayArrow
                 },
                 contentDescription = when {
-                    failed -> "Voice note failed to play"
+                    failed -> "Retry voice note playback"
                     isPlaying -> "Pause voice note"
                     preparing -> "Loading voice note"
                     url.isNullOrBlank() -> "Voice note unavailable"
@@ -156,50 +177,64 @@ internal fun BlinkChatVoicePlayer(
                 modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            val progress = if (duration > 0) {
-                (elapsed.toFloat() / duration).coerceIn(0f, 1f)
-            } else 0f
-            // Reference waveform styling; highlight follows the real player position.
-            Row(
-                Modifier.fillMaxWidth().height(26.dp)
-                    .testTag("chat_reference_voice_waveform"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                val heights = measuredHeights ?: List(32) { index ->
-                    // Stable placeholder geometry, not fabricated audio analytics.
-                    listOf(8, 13, 18, 10, 20, 13, 7, 16, 23, 12, 17, 9)[index % 12]
+        Spacer(Modifier.width(7.dp))
+        val progress = if (duration > 0) {
+            (elapsed.toFloat() / duration).coerceIn(0f, 1f)
+        } else 0f
+        // Waveform, duration, and playback speed share one slim reference row.
+        // Real measured samples replace stable placeholders when available.
+        Row(
+            Modifier.weight(1f).height(24.dp)
+                .testTag("chat_reference_voice_waveform")
+                .semantics {
+                    contentDescription = if (ready) "Seek within voice message"
+                        else "Voice message waveform"
                 }
-                heights.forEachIndexed { index, height ->
-                    Box(
-                        Modifier.weight(1f)
-                            .height(height.dp)
-                            .background(
-                                if (index.toFloat() / heights.size <= progress)
-                                    Color(0xFF1685FF) else Color(0xFF6B747E),
-                                RoundedCornerShape(2.dp)
-                            )
-                    )
-                }
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                when {
-                    failed -> "Unable to play · refresh chat"
-                    preparing -> "Loading voice note…"
-                    url.isNullOrBlank() -> "Voice note unavailable"
-                    duration > 0 -> "${elapsed / 1000}s / ${duration / 1000}s"
-                    else -> durationLabel.ifBlank { "Voice note" }
+                .pointerInput(player, duration, ready) {
+                    if (ready && duration > 0) detectTapGestures { position ->
+                        val fraction = (position.x / size.width.coerceAtLeast(1))
+                            .coerceIn(0f, 1f)
+                        val toMs = blinkVoiceSeekPositionMs(fraction, duration)
+                        player?.let { runCatching {
+                            it.seekTo(toMs)
+                            elapsed = toMs
+                        } }
+                    }
                 },
-                color = tint.copy(alpha = .85f),
-                fontSize = 10.sp,
-                maxLines = 1
-            )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            val heights = measuredHeights ?: List(32) { index ->
+                listOf(8, 13, 18, 10, 20, 13, 7, 16, 23, 12, 17, 9)[index % 12]
+            }
+            heights.forEachIndexed { index, height ->
+                Box(
+                    Modifier.weight(1f)
+                        .height(height.coerceIn(4, 21).dp)
+                        .background(
+                            if (index.toFloat() / heights.size <= progress)
+                                Color(0xFF1685FF) else Color(0xFF6B747E),
+                            RoundedCornerShape(2.dp)
+                        )
+                )
+            }
         }
-        BlinkChatDownloadAction(url = url, kind = "voice", extension = "m4a",
-            compact = true)
+        Spacer(Modifier.width(5.dp))
+        Text(
+            when {
+                failed -> "Error"
+                preparing -> "Loading"
+                url.isNullOrBlank() -> "—"
+                duration > 0 && elapsed > 0 -> formatBlinkVoiceDuration(elapsed)
+                duration > 0 -> formatBlinkVoiceDuration(duration)
+                else -> durationLabel.ifBlank { "0:00" }
+            },
+            color = tint.copy(alpha = .82f),
+            fontSize = 10.sp,
+            maxLines = 1,
+            modifier = Modifier.testTag("chat_reference_voice_duration")
+        )
+        Spacer(Modifier.width(5.dp))
         TextButton(
             enabled = ready,
             onClick = {
@@ -210,7 +245,8 @@ internal fun BlinkChatVoicePlayer(
                     }
                 }
             },
-            modifier = Modifier.widthIn(min = 38.dp)
+            contentPadding = PaddingValues(0.dp),
+            modifier = Modifier.width(38.dp).height(36.dp)
                 .testTag("chat_reference_voice_speed")
         ) {
             Text(
@@ -225,3 +261,14 @@ internal fun BlinkChatVoicePlayer(
         }
     }
 }
+
+
+/** Human-readable voice position and total length for the compact player. */
+internal fun formatBlinkVoiceDuration(milliseconds: Int): String {
+    val seconds = milliseconds.coerceAtLeast(0) / 1000
+    return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+}
+
+/** Maps a touch position to the bounded MediaPlayer seek time. */
+internal fun blinkVoiceSeekPositionMs(fraction: Float, durationMs: Int): Int =
+    (fraction.coerceIn(0f, 1f) * durationMs.coerceAtLeast(0)).toInt()
