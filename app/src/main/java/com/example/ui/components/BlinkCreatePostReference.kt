@@ -890,7 +890,10 @@ internal fun BlinkReferenceMediaReview(
             Modifier.fillMaxWidth().height(56.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag("blink_media_review_back")
+            ) {
                 Icon(Icons.Default.ChevronLeft, contentDescription = "Back from selected photos", tint = Color.White)
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
