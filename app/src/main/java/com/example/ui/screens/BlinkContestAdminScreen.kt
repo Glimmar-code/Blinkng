@@ -487,55 +487,27 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         }
     }
     reviewHistoryEntry?.let { entryId ->
-        AlertDialog(
-            onDismissRequest = { reviewHistoryEntry = null },
-            title = { Text("Review history · @" + reviewHistoryName) },
-            text = {
-                Column(
-                    Modifier.fillMaxWidth().heightIn(max = 380.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (reviewHistoryBusy) CircularProgressIndicator()
-                    reviewHistoryError?.let { fault ->
-                        Text(fault, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = {
-                            scope.launch {
-                                reviewHistoryBusy = true
-                                api.adminEntryHistory(entryId)
-                                    .onSuccess { response ->
-                                        reviewHistoryRows = response.optJSONArray("history")
-                                            ?.contestObjects().orEmpty()
-                                        reviewHistoryTotal = response.optInt("total")
-                                        reviewHistoryError = null
-                                    }.onFailure {
-                                        reviewHistoryError = it.message ?: "Unable to refresh history."
-                                    }
-                                reviewHistoryBusy = false
-                            }
-                        }) { Text("Retry") }
-                    }
-                    if (!reviewHistoryBusy && reviewHistoryError == null) {
-                        Text("$reviewHistoryTotal recorded decision(s) · displaying the latest 30",
-                            style = MaterialTheme.typography.bodySmall)
-                        if (reviewHistoryRows.isEmpty()) Text("No moderation decisions recorded yet.")
-                        reviewHistoryRows.forEach { audit ->
-                            HorizontalDivider()
-                            Text(
-                                audit.optString("previous_status").replaceFirstChar { it.uppercase() } +
-                                    " → " + audit.optString("next_status").replaceFirstChar { it.uppercase() },
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(audit.optString("reason"))
-                            Text("By @" + audit.optString("actor_username") +
-                                " · " + audit.optString("created_at").replace('T',' ').take(19) + " UTC",
-                                style = MaterialTheme.typography.bodySmall)
+        BlinkContestReviewHistoryDialog(
+            username = reviewHistoryName,
+            history = reviewHistoryRows,
+            total = reviewHistoryTotal,
+            busy = reviewHistoryBusy,
+            error = reviewHistoryError,
+            onDismiss = { reviewHistoryEntry = null },
+            onRetry = {
+                scope.launch {
+                    reviewHistoryBusy = true
+                    api.adminEntryHistory(entryId)
+                        .onSuccess { response ->
+                            reviewHistoryRows = response.optJSONArray("history")
+                                ?.contestObjects().orEmpty()
+                            reviewHistoryTotal = response.optInt("total")
+                            reviewHistoryError = null
+                        }.onFailure {
+                            reviewHistoryError = it.message ?: "Unable to refresh history."
                         }
-                    }
+                    reviewHistoryBusy = false
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { reviewHistoryEntry = null }) { Text("Close") }
             }
         )
     }
@@ -626,6 +598,54 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             }
         )
     }
+}
+
+/** Reusable audited moderation timeline, captured by emulator screenshot tests. */
+@Composable
+internal fun BlinkContestReviewHistoryDialog(
+    username: String,
+    history: List<JSONObject>,
+    total: Int,
+    busy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Review history · @" + username) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (busy) CircularProgressIndicator()
+                error?.let { fault ->
+                    Text(fault, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onRetry) { Text("Retry") }
+                }
+                if (!busy && error == null) {
+                    Text("$total recorded decision(s) · displaying the latest 30",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (history.isEmpty()) Text("No moderation decisions recorded yet.")
+                    history.forEach { audit ->
+                        HorizontalDivider()
+                        Text(
+                            audit.optString("previous_status").replaceFirstChar { it.uppercase() } +
+                                " → " + audit.optString("next_status").replaceFirstChar { it.uppercase() },
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(audit.optString("reason"))
+                        Text("By @" + audit.optString("actor_username") +
+                            " · " + audit.optString("created_at").replace('T',' ').take(19) + " UTC",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }
 
 /** Readable application-media preview, shared by live admin UI and emulator visual tests. */
