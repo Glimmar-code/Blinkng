@@ -19,7 +19,7 @@ import com.example.data.views.ContentViewCoordinator
 import kotlinx.coroutines.delay
 
 private const val MIN_VISIBLE_FRACTION = 0.50f
-private const val POST_QUALIFICATION_MS = 60_000L
+internal const val POST_QUALIFICATION_MS = 1_500L
 
 /** Tracks a single genuine exposure per continuous qualified visibility session. */
 internal class ContentVisibilityGate {
