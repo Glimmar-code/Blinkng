@@ -21,7 +21,7 @@ import org.json.JSONObject
 import java.util.UUID
 
 @Composable
-fun DesktopDropsScreen(state: DesktopAppState) {
+fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
     val rpc = remember(state.client) { DesktopRpcActions(state.client) }
     val scope = rememberCoroutineScope()
     var data by remember { mutableStateOf<JSONObject?>(null) }
@@ -35,6 +35,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
     var busy by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var selectedPage by remember { mutableIntStateOf(0) }
+    var selectedGiveaway by remember { mutableStateOf<JSONObject?>(null) }
     var selectedTarget by remember { mutableStateOf<JSONObject?>(null) }
     var action by remember { mutableStateOf("LIKE") }
     var reward by remember { mutableStateOf("100") }
@@ -70,6 +71,17 @@ fun DesktopDropsScreen(state: DesktopAppState) {
         }
     }
     LaunchedEffect(rpc) { while (isActive) { reload(); delay(30_000) } }
+    LaunchedEffect(initialDropId) {
+        val id = initialDropId?.takeIf(String::isNotBlank)
+        if (id == null) {
+            selectedGiveaway = null
+        } else {
+            runCatching { rpc.getDropById(id) }
+                .onSuccess { root -> selectedGiveaway = root.optJSONObject("item") }
+                .onFailure { error = it.message ?: "Couldn't open this Giveaway." }
+            state.selectedGiveawayId = null
+        }
+    }
     val input = BlinkDropRequest(selectedTarget?.optString("type").orEmpty(), selectedTarget?.optString("id").orEmpty(),
         action, reward.toIntOrNull() ?: 0, recipients.toIntOrNull() ?: 0, audience, hours)
     val targets = data?.optJSONObject("targets")
@@ -87,6 +99,26 @@ fun DesktopDropsScreen(state: DesktopAppState) {
             TabRow(selectedTabIndex = selectedPage) {
                 Tab(selected = selectedPage == 0, onClick = { selectedPage = 0 }, text = { Text("Giveaways") })
                 Tab(selected = selectedPage == 1, onClick = { selectedPage = 1 }, text = { Text("Most Givers") })
+            }
+        }
+        if (selectedPage == 0 && selectedGiveaway != null) item {
+            val selected = selectedGiveaway!!
+            val isLive = selected.optString("status").equals("ACTIVE", ignoreCase = true)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (isLive) "Selected BLINK Giveaway · LIVE" else "You missed this BLINK Giveaway",
+                        fontWeight = FontWeight.Bold)
+                    Text(selected.optString("target_title"), fontWeight = FontWeight.SemiBold)
+                    Text("${selected.optLong("total_coins")} BLINK Coins · ${selected.optInt("reward_per_user")} each · ${selected.optInt("winner_count")} winners")
+                    Text(if (isLive) "Open the active Giveaway below to complete its required action."
+                        else "Follow the creator to be notified about the next Giveaway.")
+                    if (!selected.optBoolean("is_following") && selected.optString("creator_id").isNotBlank()) {
+                        TextButton(enabled = !busy, onClick = {
+                            perform { rpc.followDropCreator(selected.optString("creator_id")) }
+                            selected.put("is_following", true)
+                        }) { Text("Follow creator") }
+                    }
+                }
             }
         }
         if (selectedPage == 0) item {
