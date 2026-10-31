@@ -25,6 +25,15 @@ class BlinkChatVideoAlbumMediaTest {
         assertEquals(local, BlinkChatVideoAlbumMedia.thumbnail(pending))
     }
 
+    @Test fun javaFileUriWithSingleSlashIsPlayableAndSafeToPreview() {
+        // File.toURI().toString() commonly emits file:/... rather than file:///...
+        val local = "file:/data/user/0/com.example/cache/reference-fixture.png"
+        val pending = ChatMessage(id = "java-file-uri-video", attachedVideoUrl = local)
+        assertTrue(BlinkChatVideoAlbumMedia.available(pending))
+        assertEquals(local, BlinkChatVideoAlbumMedia.playback(pending))
+        assertEquals(local, BlinkChatVideoAlbumMedia.thumbnail(pending))
+    }
+
     @Test fun remoteVideoRequiresRealPreviewToAvoidFullMediaFetch() {
         val uploaded = ChatMessage(
             id = "published-video",
