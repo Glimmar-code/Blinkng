@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -49,7 +50,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
 
     suspend fun reload() {
         runCatching { rpc.getDropsState() }.onSuccess { data = it; error = null }
-            .onFailure { error = it.message ?: "Unable to load Drops." }
+            .onFailure { error = it.message ?: "Unable to load BLINK Giveaway." }
         runCatching { rpc.getDropsPage("AVAILABLE",0) }.onSuccess {
             availablePage = it.optJSONArray("items").dropRows()
             availableMore = it.optBoolean("has_more")
@@ -169,7 +170,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                         .onSuccess {
                             availablePage = (available + it.optJSONArray("items").dropRows()).distinctBy { row -> row.optString("id") }
                             availableMore = it.optBoolean("has_more")
-                        }.onFailure { error = it.message ?: "Could not load more Drops." }
+                        }.onFailure { error = it.message ?: "Could not load more Giveaways." }
                     pageBusy = false
                 }
             }) { Text(if (pageBusy) "Loading…" else "Load more active Giveaways") }
@@ -208,9 +209,9 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (givers.isEmpty()) item { Text("No published Giveaways yet. Create the first one.") }
-            items(givers, key = { "giver-" + it.optString("creator_id") }) { giver ->
+            itemsIndexed(givers, key = { _, giver -> "giver-" + giver.optString("creator_id") }) { index, giver ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("@${giver.optString("username")} · ${giver.optLong("coins_spent")} BLINK Coins spent · ${giver.optInt("giveaways_created")} Giveaways",
+                    Text("#${index + 1}  @${giver.optString("username")} · ${giver.optLong("coins_spent")} BLINK Coins spent · ${giver.optInt("giveaways_created")} Giveaways",
                         modifier = Modifier.weight(1f))
                     if (!giver.optBoolean("is_following") && giver.optString("creator_id") != state.session?.userId)
                         TextButton(enabled = !busy, onClick = { perform { rpc.followDropCreator(giver.optString("creator_id")) } }) { Text("Follow") }
@@ -234,7 +235,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                 }) { Text("Confirm cancellation") }
             },
             dismissButton = {
-                TextButton(enabled = !busy, onClick = { pendingCancel = null }) { Text("Keep Drop") }
+                TextButton(enabled = !busy, onClick = { pendingCancel = null }) { Text("Keep Giveaway") }
             },
         )
     }
