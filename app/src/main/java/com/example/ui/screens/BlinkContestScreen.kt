@@ -345,12 +345,12 @@ fun BlinkContestScreen(
                             }
                             OutlinedTextField(
                                 value = mediaUrl, onValueChange = { mediaUrl = it },
-                                label = { Text("Or paste an existing image/Reel HTTPS URL") },
+                                label = { Text("Only new private uploads are accepted") },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = mediaChoice == null
+                                enabled = false
                             )
                             Text("A photo or video is required. JPG/PNG/WebP up to 8 MB, or MP4 up to 25 MB. " +
-                                "Uploading creates a public link; BLINK shows your entry after approval.",
+                                "Your selected media is stored privately for moderation. It becomes publicly viewable only after approval.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp)
                             Button(
@@ -359,7 +359,7 @@ fun BlinkContestScreen(
                                     scope.launch {
                                         runCatching {
                                             val url = mediaChoice?.let {
-                                                mediaUpload.upload(context, it).getOrThrow()
+                                                mediaUpload.upload(context, it, privateEntry = true).getOrThrow()
                                             } ?: mediaUrl
                                             api.apply(c.optString("id"), statement, url).getOrThrow()
                                         }.onSuccess {
