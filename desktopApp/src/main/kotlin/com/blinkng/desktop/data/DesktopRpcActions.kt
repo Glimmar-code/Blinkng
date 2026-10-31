@@ -109,6 +109,11 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun contestSubmitAppeal(entryId: String, reason: String): JSONObject =
         rpc("submit_blink_contest_entry_appeal", JSONObject()
             .put("p_entry_id", entryId).put("p_statement", reason.trim()))
+    suspend fun adminContestOrphanMedia(): JSONObject {
+        requireAdmin()
+        return rpc("admin_list_blink_contest_orphan_media", JSONObject()
+            .put("p_min_age_hours", 72).put("p_limit", 50))
+    }
     suspend fun adminContestAppeals(contestId: String): JSONArray {
         requireAdmin()
         return rpcAny("admin_list_blink_contest_entry_appeals",
