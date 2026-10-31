@@ -59,6 +59,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var pendingEntryDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingEntryReason by remember { mutableStateOf("") }
     var previewEntryMedia by remember { mutableStateOf<String?>(null) }
     var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
 
@@ -435,11 +436,13 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                             .forEach { action ->
                             TextButton(enabled = !busy, onClick = {
                                 if (action != "approve") {
+                                    pendingEntryReason = ""
                                     pendingEntryDecision = entry.optString("id") to action
                                 } else {
                                     busy = true
                                     scope.launch {
-                                        api.adminReview(entry.optString("id"), action)
+                                        api.adminReview(entry.optString("id"), action,
+                                            "Application meets contest eligibility rules")
                                             .onSuccess { message = "Entry approved."; revision++ }
                                             .onFailure { message = it.message ?: "Review failed." }
                                         busy = false
@@ -477,23 +480,40 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     }
     pendingEntryDecision?.let { (entryId, action) ->
         AlertDialog(
-            onDismissRequest = { if (!busy) pendingEntryDecision = null },
+            onDismissRequest = {
+                if (!busy) { pendingEntryDecision = null; pendingEntryReason = "" }
+            },
             title = { Text(if (action == "reject") "Reject application?" else "Disqualify contestant?") },
-            text = { Text("This changes the contestant's eligibility. Confirm the decision before continuing.") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("State a specific reason. The contestant will receive it in a notification, and the decision will be audited.")
+                    OutlinedTextField(
+                        value = pendingEntryReason,
+                        onValueChange = { pendingEntryReason = it.take(300) },
+                        label = { Text("Reason (8–300 characters)") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
             confirmButton = {
-                TextButton(enabled = !busy, onClick = {
+                TextButton(enabled = !busy && pendingEntryReason.trim().length in 8..300, onClick = {
                     busy = true
                     scope.launch {
-                        api.adminReview(entryId, action)
+                        api.adminReview(entryId, action, pendingEntryReason)
                             .onSuccess { message = "Application updated."; revision++ }
                             .onFailure { message = it.message ?: "Review failed." }
                         busy = false
                         pendingEntryDecision = null
+                        pendingEntryReason = ""
                     }
                 }) { Text("Confirm " + action) }
             },
             dismissButton = {
-                TextButton(enabled = !busy, onClick = { pendingEntryDecision = null }) { Text("Go back") }
+                TextButton(enabled = !busy, onClick = {
+                    pendingEntryDecision = null
+                    pendingEntryReason = ""
+                }) { Text("Go back") }
             }
         )
     }
