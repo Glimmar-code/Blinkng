@@ -65,6 +65,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                     val localVideo = listOf(message.localAttachmentUri, message.attachedVideoUrl)
                         .firstOrNull { it?.startsWith("content://") == true || it?.startsWith("file:") == true }
                     val thumbnail = BlinkChatVideoAlbumMedia.thumbnail(message)
+                    var frameLoaded by remember(message.id, thumbnail) { mutableStateOf(false) }
                     val duration by produceState<Long?>(
                         initialValue = null, key1 = localVideo
                     ) {
@@ -94,8 +95,13 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                                 },
                                 contentDescription = "Video " + (index + 1),
                                 contentScale = ContentScale.Crop,
+                                onSuccess = { frameLoaded = true },
                                 modifier = Modifier.fillMaxSize()
+                                    .testTag("chat_video_frame_image_" + index)
                             )
+                            if (frameLoaded) {
+                                Box(Modifier.size(1.dp).testTag("chat_video_frame_loaded_" + index))
+                            }
                         } else {
                             Icon(
                                 Icons.Default.PlayArrow,
