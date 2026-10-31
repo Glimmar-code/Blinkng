@@ -3065,7 +3065,7 @@ fun MainAppContent(
                             viewModel.setFeedSubTab(0)
                             feedUtilitySheet = "items"
                         }
-                        "wallet", "coins", "coin", "reward" -> {
+                        "wallet", "coins", "coin", "reward", "coin_gift" -> {
                             walletOpenedFromMenu = false
                             showWallet = true
                         }

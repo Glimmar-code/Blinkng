@@ -200,7 +200,8 @@ fun PostCard(
     xFeedStyle: Boolean = false,
     isFeedScrolling: Boolean = false,
     onOpenPost: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    profileSurfaceColor: Color? = null
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
     val resolvedAuthorUsername = authorUsername.trim().removePrefix("@").ifBlank {
@@ -208,12 +209,15 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
-    val surfaceColor = if (xFeedStyle) {
+    val surfaceColor = profileSurfaceColor ?: if (xFeedStyle) {
         if (isDark) FeedCardSurface else Color.White
     } else if (isDark) FeedCardSurface else LightSurface
-    val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
-    val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
-    val dividerColor = if (isDark) FeedBorder else LightBorder
+    val primaryText = if (profileSurfaceColor != null) Color.White
+        else if (isDark) FeedTextPrimary else LightTextPrimary
+    val secondaryText = if (profileSurfaceColor != null) Color.White.copy(alpha = .72f)
+        else if (isDark) FeedTextSecondary else LightTextSecondary
+    val dividerColor = if (profileSurfaceColor != null) Color.White.copy(alpha = .22f)
+        else if (isDark) FeedBorder else LightBorder
     val socialBlue = FeedBlue
 
     val displayImages = remember(post.images) {

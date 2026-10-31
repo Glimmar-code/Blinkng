@@ -1842,3 +1842,24 @@ own run and manual artifact review; capture completion alone is not visual appro
 ### PARITY-EXCEPTION: android-reference-loader-isolation
 
 The Android composer accepts an optional trending-tag loader so native and Robolectric fixtures can supply test-only tags without the default repository request. Production continues to use its existing loader. This changes no user feature, permission, payload or backend contract. The Windows equivalent is its existing injected HTTP tests and explicit account-free packaged GUI diagnostic; Android's native IME/Media3 capture assertions are platform-specific. Mention visibility is now asserted on screen in addition to loading results.
+
+## Testlab — notifications, profile, splash, Drops/Boost and Reels (2026-10-31)
+
+- Notification display and event type improvements use shared notification presentation and classification rules for Android/Windows. The Android activity list gets readable rows, real social actor labels and new message/contest/reward filters; Windows uses the same wire aliases and notification classification contract.
+- The approved splash drawing receives a proportional B correction in the shared brand Compose asset, so Android/Windows surfaces using that asset agree. Android-only startup animation timing remains platform-specific.
+- Android Reels removes the Home Stories strip, uses the existing server-ranked featured-video carousel and expands with preview-muted/immersive-audio playback. Desktop has its own layout and native audio controls; this is an explicit form-factor exception, not a change to shared ranking data.
+- Profile stat ordering and owner/public action visibility remain server-derived; Android applies the saved profile card color to the owner's posts. Desktop uses its own layout while preserving the same public rank/HP information and owner-only coin controls.
+- Drops and Boost keep the same secure backend contracts. Android now exposes refresh and page errors rather than falsely treating failed calls as empty data; Windows' corresponding failure/empty states remain separately implemented.
+- Merge remains blocked until Android/Windows tests, actual Android screenshot comparisons and relevant live-service checks pass. No production data or environment settings changed in this patch.
+
+- The existing idempotent coin-gift RPC already creates a receiver notification. A stage-only, receipt-keyed trigger now emits a sender receipt without duplicating notifications on retries. Android and Windows use the shared `tip` event alias; a coin-gift notification opens the wallet on Android. The SQL migration is NOT applied until disposable staging/RLS/notification delivery validation succeeds.
+
+- Drops Top Givers now separates the actual followed state from global follow-request busy state; an unrelated account no longer appears as Following. The empty leaderboard offers genuine Browse/Create actions without synthetic rankings. This is Android-specific layout polish over existing shared backend semantics; Windows continues using its own native empty/action presentation.
+
+- Coin-gift sender receipt trigger now has a dedicated GitHub Actions isolated PostgreSQL fixture that tests reapply, duplicate gift requests, recipient/actor IDs, metadata and deny-execute ACL; the fixture never connects to live Supabase and does not validate production dispatch or user RLS end-to-end.
+
+
+### PARITY-EXCEPTION: android-drops-boost-dark-card-contrast-20261031
+
+- Android-only contrast hardening sets explicit light foreground colors inside the dark Drops empty/podium cards and Boost quote/analytics cards. This is a native Compose presentation correction; it does not change the shared data model, API, eligibility, pricing, balances, transactions or user actions.
+- Windows equivalent: the desktop Drops and Boost surfaces retain their existing native theme-aware text rendering and separate layout. The parity contract is identical data, actions and readable foreground/background contrast, not pixel-identical native card styling. The Windows parity/build gate verifies its existing desktop implementation independently.

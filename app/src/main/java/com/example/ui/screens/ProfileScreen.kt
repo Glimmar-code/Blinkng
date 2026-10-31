@@ -180,7 +180,12 @@ fun ProfileScreen(
     onTopAction: (String) -> Unit = {},
     initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 7)) }
+    // Prevent owner-only deep links from showing a visitor an invalid private tab,
+    // including during the first frame before LaunchedEffect runs.
+    var selectedTab by rememberSaveable(profile.id, initialTab, isMe) {
+        mutableIntStateOf(if (isMe) initialTab.coerceIn(0, 7)
+            else initialTab.takeIf { it in 0..4 } ?: 0)
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
@@ -564,6 +569,7 @@ fun ProfileScreen(
                         onEarnCoins = onOpenCoinsWallet,
                         onWallet = onOpenCoinsWallet,
                         onCampusRank = { onNavigateMainTab("leaderboard") },
+                        onHpProgress = { if (isMe) showProgressHub = true },
                         onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
                         onShare = { showShareSheet = true },
                         onCopyUsername = {
@@ -677,6 +683,7 @@ fun ProfileScreen(
                         isDark = isDark,
                         textPrimary = textPrimary,
                         textSecondary = textSecondary,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onLike = onLikePost,
                         onComment = onCommentPost,
                         onBookmark = onBookmarkPost,
@@ -693,6 +700,7 @@ fun ProfileScreen(
                         columns = 3,
                         isLoading = isPostsLoading,
                         hasLoadError = hasPostsLoadError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onRetry = onRefreshProfile
                     )
 
@@ -702,6 +710,7 @@ fun ProfileScreen(
                         onOpen = onOpenPost,
                         isLoading = arePrivateCollectionsLoading,
                         hasLoadError = havePrivateCollectionsError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onRetry = onRefreshProfile
                     )
 
@@ -711,6 +720,7 @@ fun ProfileScreen(
                         onOpen = onOpenPost,
                         isLoading = arePrivateCollectionsLoading,
                         hasLoadError = havePrivateCollectionsError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onRetry = onRefreshProfile
                     )
 
@@ -782,6 +792,7 @@ fun ProfileScreen(
                             isDark = isDark,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
+                            themeCardColor = Color(savedProfileTheme.cardArgb),
                             emptyTitle = "Nothing saved yet",
                             emptySubtitle = "Posts you save will stay private here.",
                             onLike = onLikePost,
@@ -813,6 +824,7 @@ fun ProfileScreen(
                             isDark = isDark,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
+                            themeCardColor = Color(savedProfileTheme.cardArgb),
                             emptyTitle = "No liked posts yet",
                             emptySubtitle = "Posts you like will stay private here.",
                             onLike = onLikePost,
@@ -1370,7 +1382,8 @@ private fun LazyListScope.premiumProfileGridItems(
     columns: Int = 2,
     isLoading: Boolean = false,
     hasLoadError: Boolean = false,
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    themeCardColor: Color? = null
 ) {
     if (items.isEmpty() && isLoading) {
         item(key = "premium_grid_loading_${emptyMessage}") {
@@ -1408,7 +1421,7 @@ private fun LazyListScope.premiumProfileGridItems(
                             modifier = Modifier.weight(1f)
                                 .aspectRatio(if (columns == 3) .72f else .86f)
                                 .clip(RoundedCornerShape(if (columns == 3) 9.dp else 14.dp))
-                                .background(Color(0xFF1B1525))
+                                .background(themeCardColor ?: Color(0xFF1B1525))
                                 .clickable { onOpen(post.id) }
                                 .testTag("premium_profile_post_${post.id}"),
                             contentAlignment = Alignment.Center
@@ -1635,6 +1648,7 @@ private fun LazyListScope.profilePostItems(
     isDark: Boolean,
     textPrimary: Color,
     textSecondary: Color,
+    themeCardColor: Color? = null,
     emptyTitle: String = "No posts yet",
     emptySubtitle: String = "Posts published by @${profile.username} will show up here.",
     onLike: (String) -> Unit,
@@ -1707,7 +1721,8 @@ private fun LazyListScope.profilePostItems(
                 isAuthor = canDelete && authoredByProfile,
                 onDelete = { onDelete(post.id) },
                 onOpenPost = { onOpenPost?.invoke(post.id) },
-                xFeedStyle = true
+                xFeedStyle = true,
+                profileSurfaceColor = themeCardColor
             )
 
             if (canDelete && authoredByProfile && onPin != null) {

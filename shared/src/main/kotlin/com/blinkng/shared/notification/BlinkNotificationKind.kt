@@ -29,6 +29,10 @@ enum class BlinkNotificationKind(
     COIN("coins"),
     VIP("vip"),
     BOOST("boosts"),
+    CONTEST("social"),
+    DROP("coins"),
+    REFERRAL("social"),
+    VERIFICATION("vip"),
     SOCIAL("social"),
     SYSTEM("admin"),
     UNKNOWN("social");
@@ -52,9 +56,16 @@ enum class BlinkNotificationKind(
                 "reel", "reel_like", "reel_comment", "reel_reply", "reel_share" -> REEL
                 "admin", "announcement", "admin_announcement", "broadcast" -> ADMIN
                 "security", "login_alert", "password_changed", "account_alert" -> SECURITY
-                "coin", "coins", "coin_credit", "coin_spent", "coin_reward" -> COIN
+                "coin", "coins", "coin_credit", "coin_spent", "coin_reward",
+                "coin_transfer", "coin_received", "coin_sent", "gift", "gift_coins",
+                "coins_gifted", "coins_received", "tip", "coin_gift", "gift_sent", "gift_received" -> COIN
                 "vip", "vip_activated", "vip_expiring", "vip_expired" -> VIP
                 "boost", "boost_started", "boost_ended", "boost_result" -> BOOST
+                "contest", "contest_entry", "contest_approved", "contest_rejected",
+                "contest_vote", "vote_received", "contest_result" -> CONTEST
+                "drop", "drop_created", "drop_received", "drop_reward", "drop_completed" -> DROP
+                "referral", "referral_joined", "referral_reward" -> REFERRAL
+                "verification", "verification_approved", "verification_expired" -> VERIFICATION
                 "system" -> SYSTEM
                 "social", "activity" -> SOCIAL
                 "" -> SOCIAL

@@ -64,3 +64,12 @@ class ReelPlaybackPolicyTest {
         assertEquals(0f, reelSeekFraction(50f, 0), 0f)
     }
 }
+
+class ReelPreviewAudioPolicyTest {
+    @org.junit.Test fun previewMutedFullscreenAudibleUnlessManuallyMuted() {
+        org.junit.Assert.assertTrue(reelShouldBeMuted(expanded = false, manuallyMuted = false))
+        org.junit.Assert.assertTrue(reelShouldBeMuted(expanded = false, manuallyMuted = true))
+        org.junit.Assert.assertFalse(reelShouldBeMuted(expanded = true, manuallyMuted = false))
+        org.junit.Assert.assertTrue(reelShouldBeMuted(expanded = true, manuallyMuted = true))
+    }
+}
