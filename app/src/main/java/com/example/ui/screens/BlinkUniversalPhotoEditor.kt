@@ -62,6 +62,23 @@ import java.io.File
  *
  * Android Photo Picker is deliberately retained for private scoped selection.
  */
+/** Same preview transform for main canvas and selectable filter thumbnails. */
+internal fun blinkPhotoColorPreviewFilter(
+    exposure: Float, contrast: Float, saturation: Float
+): ColorFilter {
+    val inv = 1f - saturation
+    val r = inv * .213f
+    val g = inv * .715f
+    val b = inv * .072f
+    val offset = ((1f - contrast) * 128f + exposure * 75f) / 255f
+    return ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
+        contrast * (r + saturation), contrast * g, contrast * b, 0f, offset,
+        contrast * r, contrast * (g + saturation), contrast * b, 0f, offset,
+        contrast * r, contrast * g, contrast * (b + saturation), 0f, offset,
+        0f, 0f, 0f, 1f, 0f
+    )))
+}
+
 private data class PhotoStudioHistory(
     val uri: Uri, val exposure: Float, val contrast: Float, val saturation: Float,
     val strokes: List<BlinkChatPhotoEditor.Stroke>,
@@ -157,16 +174,8 @@ fun BlinkUniversalPhotoEditor(
     }
     val palette = listOf(AndroidColor.WHITE,AndroidColor.YELLOW,AndroidColor.RED,
         AndroidColor.CYAN,AndroidColor.GREEN,AndroidColor.BLACK)
-    val previewFilter = remember(exposure,contrast,saturation) {
-        val inv = 1f-saturation
-        val r = inv*.213f; val g=inv*.715f; val b=inv*.072f
-        val offset = ((1f-contrast)*128f+exposure*75f)/255f
-        ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
-            contrast*(r+saturation),contrast*g,contrast*b,0f,offset,
-            contrast*r,contrast*(g+saturation),contrast*b,0f,offset,
-            contrast*r,contrast*g,contrast*(b+saturation),0f,offset,
-            0f,0f,0f,1f,0f
-        )))
+    val previewFilter = remember(exposure, contrast, saturation) {
+        blinkPhotoColorPreviewFilter(exposure, contrast, saturation)
     }
     fun applyCrop(operation: BlinkChatPhotoEditor.Edit) {
         if (busy) return
@@ -443,15 +452,40 @@ fun BlinkUniversalPhotoEditor(
                                 listOf(.02f,1.12f,0f) to "B&W",
                                 listOf(.08f,1.13f,.72f) to "Warm"
                             ).forEach { (values, title) ->
-                                OutlinedButton(
-                                    onClick = {
-                                        saveUndo()
-                                        exposure=values[0]
-                                        contrast=values[1]
-                                        saturation=values[2]
-                                    },
-                                    enabled=!busy
-                                ) { Text(title,fontSize=11.sp) }
+                                val chosen = exposure == values[0] &&
+                                    contrast == values[1] && saturation == values[2]
+                                Column(
+                                    Modifier.width(76.dp)
+                                        .testTag("blink_photo_filter_" + title.lowercase())
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .border(
+                                            if (chosen) 2.dp else 1.dp,
+                                            if (chosen) Color(0xFF8D85FF) else Color(0xFF383D47),
+                                            RoundedCornerShape(9.dp)
+                                        )
+                                        .clickable(enabled = !busy) {
+                                            saveUndo()
+                                            exposure = values[0]
+                                            contrast = values[1]
+                                            saturation = values[2]
+                                        }
+                                        .padding(4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    AsyncImage(
+                                        model = workingUri,
+                                        contentDescription = "$title photo filter preview",
+                                        contentScale = ContentScale.Crop,
+                                        colorFilter = blinkPhotoColorPreviewFilter(
+                                            values[0], values[1], values[2]
+                                        ),
+                                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                    )
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(title, color = Color.White, fontSize = 10.sp,
+                                        maxLines = 1)
+                                }
                             }
                         }
                         Text("Filters are applied to your actual photo when you tap Done.",
