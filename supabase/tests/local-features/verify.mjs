@@ -29,6 +29,7 @@ for (const name of [
   '20261028200938_blink_block_unprotected_private_audiences_20261028.sql',
   '20261028212000_blink_contest_media_bucket.sql',
   '20261029190000_blink_contest_media_owner_select.sql',
+  '20261031060000_blink_contest_require_entry_media.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -76,7 +77,13 @@ const contest = await rpc('admin_save_blink_contest', admin, { p_id: null, p_dat
 } });
 await rejected('/rest/v1/rpc/admin_transition_blink_contest', creator.token, { p_contest_id: contest.id, p_action: 'publish' }, /ADMIN_REQUIRED/);
 await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p_action: 'publish' });
-const entry = await rpc('apply_blink_contest', creator, { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null });
+await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
+  { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null },
+  /blink_contest_entry_media_required/);
+const entry = await rpc('apply_blink_contest', creator, {
+  p_contest_id: contest.id, p_statement: 'Real local authenticated entry',
+  p_media_url: 'https://example.com/contest-image.jpg'
+});
 await rpc('admin_review_blink_contest_entry', admin, { p_entry_id: entry.entry_id, p_action: 'approve' });
 // Android must receive a complete approved candidate before creating its flyer;
 // compact leaderboard rows deliberately omit contest_id.
