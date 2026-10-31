@@ -2011,10 +2011,12 @@ fun CreatePostSheet(
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
-                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
-                        else imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        if (selectedVideo != null || showPoll) {
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            galleryReturnToEditor = true
+                            showMediaReview = true
+                        }
                     },
                     onVideo = {
                         if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
@@ -3325,7 +3327,8 @@ internal fun PollComposer(
                 enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = 8.dp)
+                    .testTag("blink_poll_question_input"),
                 placeholder = { Text("Ask a question") },
                 singleLine = true,
                 colors = fieldColors,
@@ -3349,7 +3352,8 @@ internal fun PollComposer(
                             )
                         },
                         enabled = enabled,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f)
+                            .testTag("blink_poll_option_" + index),
                         placeholder = { Text("Option ${index + 1}") },
                         singleLine = true,
                         colors = fieldColors,
@@ -3404,6 +3408,7 @@ internal fun PollComposer(
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF20242D))
                     .clickable(enabled = enabled) { durationChoicesExpanded = !durationChoicesExpanded }
+                    .testTag("blink_poll_duration")
                     .padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
