@@ -2,6 +2,8 @@ package com.example
 
 import android.content.ContentValues
 import android.graphics.Bitmap
+import android.app.UiAutomation
+import android.view.accessibility.AccessibilityNodeInfo
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.foundation.layout.*
@@ -224,6 +226,33 @@ class ContestReferenceVisualAuditTest {
         rule.runOnIdle { org.junit.Assert.assertTrue(closed) }
     }
 
+    /**
+     * The headless Android emulator can display a system Launcher ANR dialog
+     * above BLINK even when Compose semantic assertions pass. Such screenshots
+     * are NOT valid UI evidence. Try to close only that background Launcher
+     * popup, then require it to be gone before accepting the capture.
+     */
+    private fun clearLauncherPopup(automation: UiAutomation): Boolean {
+        repeat(3) {
+            val root = automation.rootInActiveWindow ?: return true
+            val anr = root.findAccessibilityNodeInfosByText("isn't responding")
+                .any { it.text?.toString()?.contains("Pixel Launcher") == true }
+            if (!anr) return true
+            val button = root.findAccessibilityNodeInfosByText("Close app").firstOrNull()
+                ?: return false
+            var clickable: AccessibilityNodeInfo? = button
+            while (clickable != null && !clickable.isClickable) {
+                clickable = clickable.parent
+            }
+            if (clickable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) != true)
+                return false
+            android.os.SystemClock.sleep(400)
+        }
+        val root = automation.rootInActiveWindow ?: return true
+        return root.findAccessibilityNodeInfosByText("isn't responding")
+            .none { it.text?.toString()?.contains("Pixel Launcher") == true }
+    }
+
     private fun containsRenderedContent(bitmap: Bitmap): Boolean {
         // Subsample the full screenshot to detect a false-positive all-black
         // artifact without relying on any fixture's exact text or colors.
@@ -251,15 +280,21 @@ class ContestReferenceVisualAuditTest {
         val image = if (dialog) {
             val instrumentation = InstrumentationRegistry.getInstrumentation()
             instrumentation.waitForIdleSync()
+            val automation = instrumentation.uiAutomation
             var visible: Bitmap? = null
             for (attempt in 1..3) {
-                val frame = instrumentation.uiAutomation.takeScreenshot()
-                if (frame != null && containsRenderedContent(frame)) {
+                check(clearLauncherPopup(automation)) {
+                    "Android Launcher ANR obscured the Contest screenshot: $name"
+                }
+                instrumentation.waitForIdleSync()
+                val frame = automation.takeScreenshot()
+                if (frame != null && containsRenderedContent(frame) &&
+                    clearLauncherPopup(automation)) {
                     visible = frame
                     break
                 }
                 frame?.recycle()
-                if (attempt < 3) android.os.SystemClock.sleep(250)
+                if (attempt < 3) android.os.SystemClock.sleep(400)
             }
             checkNotNull(visible) { "Dialog visual audit captured no rendered pixels: $name" }
         } else {
