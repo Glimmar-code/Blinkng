@@ -182,9 +182,11 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             OutlinedTextField(statement, { statement = it.take(500) },
                                 label = { Text("Why should people vote for you?") },
                                 modifier = Modifier.fillMaxWidth())
-                            OutlinedTextField(mediaUrl, { },
-                                label = { Text("Media URL is created after a private upload") },
-                                modifier = Modifier.fillMaxWidth())
+                            Text(
+                                if (mediaUrl.isBlank()) "No private entry media uploaded yet."
+                                else "Private photo or video uploaded and ready to submit.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                             Text("Contestant media stays private until approved. Choose a file and upload it before applying.", style = MaterialTheme.typography.bodySmall)
                             OutlinedButton(enabled = !busy, onClick = {
                                 scope.launch {
