@@ -692,7 +692,9 @@ begin
   select nullif(btrim(coalesce(p.university,'')),'') into v_university
   from public.profiles p where p.id=v_user;
 
-  select coalesce(jsonb_agg(x.item order by x.is_active desc,x.created_at desc),'[]'::jsonb)
+  select coalesce(jsonb_agg(x.item order by x.is_active desc,
+      case when x.is_active then x.created_at end asc,
+      case when not x.is_active then x.created_at end desc),'[]'::jsonb)
   into v_items
   from (
     select d.created_at,
@@ -727,7 +729,10 @@ begin
       and not exists (select 1 from public.blocks b
         where (b.blocker_id=v_user and b.blocked_id=d.creator_id)
            or (b.blocker_id=d.creator_id and b.blocked_id=v_user))
-    order by is_active desc,d.created_at desc
+    order by is_active desc,
+      case when is_active then d.created_at end asc,
+      case when not is_active then d.created_at end desc,
+      d.id
     limit v_limit
   ) x;
 
