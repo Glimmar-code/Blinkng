@@ -2010,9 +2010,7 @@ private fun PremiumHomeFeed(
                                                     uiScope.launch {
                                                         dropsService.followCreator(row.item.creatorId)
                                                             .onSuccess {
-                                                                dropDiscovery = dropDiscovery.filterNot {
-                                                                    it.creatorId == row.item.creatorId
-                                                                }
+                                                                // Following is for next-time notifications; keep the current Giveaway visible.
                                                                 FollowStateStore.refresh()
                                                             }
                                                     }
