@@ -14,11 +14,13 @@ class BlinkNotificationPresentationTest {
     @Test fun officialEventsStayOfficial() {
         assertTrue(BlinkNotificationPresentation.isOfficial("NOTIFICATION", "system", "New features"))
         assertTrue(BlinkNotificationPresentation.isOfficial("system", null, "BLINK announcement"))
+        assertFalse(BlinkNotificationPresentation.isOfficial("CHAT", "system", "sent you a message"))
         assertTrue(BlinkNotificationPresentation.isOfficial("notification", null, "Official update"))
     }
     @Test fun allGiftAndContestAliasesMapToAnExpectedPreference() {
         assertEquals(BlinkNotificationKind.COIN, BlinkNotificationKind.fromWire("coins_received"))
         assertEquals(BlinkNotificationKind.COIN, BlinkNotificationKind.fromWire("gift_coins"))
+        assertEquals(BlinkNotificationKind.COIN, BlinkNotificationKind.fromWire("tip"))
         assertEquals(BlinkNotificationKind.CONTEST, BlinkNotificationKind.fromWire("contest_vote"))
         assertEquals(BlinkNotificationKind.DROP, BlinkNotificationKind.fromWire("drop_reward"))
     }

@@ -1176,7 +1176,7 @@ private fun notificationIcon(item: ActivityItem): ImageVector {
     val event = item.eventType.orEmpty().lowercase()
     val action = item.action.lowercase()
     return when {
-        event.contains("coin") || event.contains("gift") || action.contains("coin") ||
+        event.contains("coin") || event == "tip" || event.contains("gift") || action.contains("coin") ||
             action.contains("gift") -> Icons.Default.Paid
         event.contains("contest") || action.contains("contest") || action.contains("vote") ->
             Icons.Default.EmojiEvents
@@ -1203,7 +1203,7 @@ private fun resolvedNotificationCategory(item: ActivityItem): NotificationCatego
     val event = item.eventType.orEmpty().lowercase()
     val action = item.action.lowercase()
     return when {
-        event.contains("coin") || event.contains("gift") || event.contains("drop") ||
+        event.contains("coin") || event == "tip" || event.contains("gift") || event.contains("drop") ||
             event.contains("referral") || action.contains("coin") || action.contains("reward") ||
             action.contains("gift") || action.contains("rank point") -> NotificationCategory.REWARDS
         event.contains("contest") || action.contains("contest") || action.contains("vote") ->

@@ -58,7 +58,7 @@ enum class BlinkNotificationKind(
                 "security", "login_alert", "password_changed", "account_alert" -> SECURITY
                 "coin", "coins", "coin_credit", "coin_spent", "coin_reward",
                 "coin_transfer", "coin_received", "coin_sent", "gift", "gift_coins",
-                "coins_gifted", "coins_received" -> COIN
+                "coins_gifted", "coins_received", "tip", "coin_gift", "gift_sent", "gift_received" -> COIN
                 "vip", "vip_activated", "vip_expiring", "vip_expired" -> VIP
                 "boost", "boost_started", "boost_ended", "boost_result" -> BOOST
                 "contest", "contest_entry", "contest_approved", "contest_rejected",

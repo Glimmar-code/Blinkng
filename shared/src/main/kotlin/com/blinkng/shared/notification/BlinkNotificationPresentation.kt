@@ -7,6 +7,9 @@ package com.blinkng.shared.notification
  */
 object BlinkNotificationPresentation {
     fun isOfficial(targetType: String?, eventType: String?, action: String?): Boolean {
+        // Legacy message notifications may use system as their wire type;
+        // their CHAT destination takes priority over the announcement fallback.
+        if (targetType.equals("CHAT", true)) return false
         val event = eventType.orEmpty().trim().lowercase()
         if (event in setOf("system", "admin", "announcement", "admin_announcement",
                 "broadcast", "security", "login_alert", "account_alert")) return true
