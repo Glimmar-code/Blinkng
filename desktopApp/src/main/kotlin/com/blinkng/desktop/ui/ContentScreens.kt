@@ -142,12 +142,25 @@ import org.json.JSONObject
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 
+private sealed interface DesktopHomeFeedRow {
+    val key: String
+    data class Post(val post: DesktopFeedPost) : DesktopHomeFeedRow {
+        override val key: String = "post-${post.id}"
+    }
+    data class Giveaway(val item: JSONObject, val slot: Int) : DesktopHomeFeedRow {
+        override val key: String = "giveaway-${item.optString("drop_id")}-$slot"
+    }
+}
+
 @Composable
 fun HomeScreen(
     state: DesktopAppState,
     onFeedCompactChange: (Boolean) -> Unit = {},
 ) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var giveawayDiscovery by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var pendingGiveawayFollowId by remember { mutableStateOf<String?>(null) }
+    val giveawayRpc = remember(state.client) { DesktopRpcActions(state.client) }
     var composer by remember { mutableStateOf("") }
     var referenceComposerOpen by remember { mutableStateOf(false) }
     var classicComposerOpen by remember { mutableStateOf(false) }
@@ -178,6 +191,28 @@ fun HomeScreen(
                     !post.imageUrl.isNullOrBlank()
                 "Polls" -> post.hasPoll
                 else -> true
+            }
+        }
+    }
+    val homeFeedRows = remember(visiblePosts, giveawayDiscovery, feedFilter) {
+        buildList<DesktopHomeFeedRow> {
+            if (feedFilter != "All" || giveawayDiscovery.isEmpty()) {
+                visiblePosts.forEach { add(DesktopHomeFeedRow.Post(it)) }
+            } else {
+                val firstIsLive = giveawayDiscovery.firstOrNull()
+                    ?.optString("status")?.equals("ACTIVE", ignoreCase = true) == true
+                var giveawaySlot = 0
+                if (firstIsLive || visiblePosts.isEmpty()) {
+                    add(DesktopHomeFeedRow.Giveaway(giveawayDiscovery[giveawaySlot], giveawaySlot))
+                    giveawaySlot++
+                }
+                visiblePosts.forEachIndexed { index, post ->
+                    add(DesktopHomeFeedRow.Post(post))
+                    if ((index + 1) % 5 == 0 && giveawaySlot < giveawayDiscovery.size) {
+                        add(DesktopHomeFeedRow.Giveaway(giveawayDiscovery[giveawaySlot], giveawaySlot))
+                        giveawaySlot++
+                    }
+                }
             }
         }
     }
@@ -223,6 +258,14 @@ fun HomeScreen(
         loading = true
         try {
             val page = state.client.fetchFeed()
+            runCatching { giveawayRpc.getGiveawayFeedDiscovery(20) }.onSuccess { root ->
+                val items = root.optJSONArray("items")
+                giveawayDiscovery = buildList {
+                    repeat(items?.length() ?: 0) { index ->
+                        items?.optJSONObject(index)?.let(::add)
+                    }
+                }
+            }
             posts = page.distinctBy { it.id }
             consumedPostRows = page.size
             hasMorePosts = page.size >= 60
@@ -335,6 +378,11 @@ fun HomeScreen(
                     Icon(Icons.Rounded.ShoppingBag, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Store")
+                }
+                OutlinedButton(onClick = { state.selectedRoute = "giveaway" }) {
+                    Icon(Icons.Rounded.CardGiftcard, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Giveaway")
                 }
             }
         }
@@ -696,7 +744,7 @@ fun HomeScreen(
             }
         }
         if (loading && posts.isEmpty()) item { LoadingRow() }
-        if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
+        if (!loading && posts.isEmpty() && giveawayDiscovery.isEmpty()) item { EmptyState("No posts are available yet.") }
         if (!loading && posts.isNotEmpty() && visiblePosts.isEmpty() &&
             !(feedFilter == "Polls" && pollMetadataUnavailable)) {
             item(key = "home_filtered_empty") {
@@ -711,8 +759,11 @@ fun HomeScreen(
                 }
             }
         }
-        items(visiblePosts, key = { it.id }) { post ->
-            DesktopFeedPostCard(
+        items(homeFeedRows, key = { it.key }) { row ->
+            when (row) {
+                is DesktopHomeFeedRow.Post -> {
+                    val post = row.post
+                    DesktopFeedPostCard(
                 post = post,
                 viewClient = state.client,
                 onLike = {
@@ -809,7 +860,35 @@ fun HomeScreen(
                 },
                 xFeedStyle = true,
             )
-            if (commentsFor == post.id) DesktopCommentsPanel(state, post.id)
+                    if (commentsFor == post.id) DesktopCommentsPanel(state, post.id)
+                }
+                is DesktopHomeFeedRow.Giveaway -> {
+                    val item = row.item
+                    val creatorId = item.optString("creator_id")
+                    DesktopGiveawayDiscoveryCard(
+                        item = item,
+                        followBusy = pendingGiveawayFollowId == creatorId,
+                        onFollow = {
+                            if (creatorId.isNotBlank() && pendingGiveawayFollowId == null) {
+                                pendingGiveawayFollowId = creatorId
+                                scope.launch {
+                                    runCatching { giveawayRpc.followDropCreator(creatorId) }
+                                        .onSuccess {
+                                            giveawayDiscovery = giveawayDiscovery.map { existing ->
+                                                if (existing.optString("creator_id") == creatorId) {
+                                                    JSONObject(existing.toString()).put("is_following", true)
+                                                } else existing
+                                            }
+                                        }
+                                        .onFailure { error = it.message ?: "Couldn't follow this creator." }
+                                    pendingGiveawayFollowId = null
+                                }
+                            }
+                        },
+                        onOpen = { state.selectedRoute = "giveaway" },
+                    )
+                }
+            }
         }
         if (loadingMorePosts) item(key = "home_more_loading") {
             LoadingRow()
