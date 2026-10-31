@@ -56,6 +56,10 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     var searchTotal by remember { mutableIntStateOf(0) }
     var searchBusy by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf("") }
+    var appeal by remember { mutableStateOf<JSONObject?>(null) }
+    var appealReason by remember { mutableStateOf("") }
+    var appealError by remember { mutableStateOf("") }
+    var appealBusy by remember { mutableStateOf(false) }
 
     LaunchedEffect(selected) {
         searchOpen = false
@@ -63,6 +67,17 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
         searchOffset = 0
         searchResults = emptyList()
         searchError = ""
+    }
+    LaunchedEffect(selected, detail?.optString("my_entry_id"), revision) {
+        appeal = null
+        appealError = ""
+        val entry = detail?.optString("my_entry_id")
+            ?.takeUnless { it == "null" }.orEmpty()
+        if (selected != null && entry.isNotBlank()) {
+            runCatching { api.contestMyAppeal(entry) }
+                .onSuccess { appeal = it }
+                .onFailure { appealError = it.message ?: "Appeal status unavailable." }
+        }
     }
     LaunchedEffect(selected, searchOpen, searchQuery, searchOffset, revision) {
         val id = selected
@@ -223,6 +238,40 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                 Text("Check Notifications for the moderator's reason.",
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodySmall)
+                                appeal?.let { record ->
+                                    Text("Appeal: " + record.optString("status"))
+                                    val decision = record.optString("decision_reason")
+                                        .takeUnless { it == "null" }.orEmpty()
+                                    if (decision.isNotBlank()) Text("Decision: " + decision)
+                                }
+                                if (appealError.isNotBlank()) {
+                                    Text(appealError, color = MaterialTheme.colorScheme.error)
+                                    TextButton(onClick = { revision++ }) { Text("Retry appeal status") }
+                                }
+                                if (appeal == null && status !in listOf("cancelled", "completed", "review")) {
+                                    OutlinedTextField(
+                                        value = appealReason,
+                                        onValueChange = { appealReason = it.take(1000) },
+                                        label = { Text("Explain why your application should be reconsidered") },
+                                        minLines = 3, modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Button(
+                                        enabled = !busy && !appealBusy && appealReason.trim().length in 20..1000,
+                                        onClick = {
+                                            appealBusy = true
+                                            scope.launch {
+                                                runCatching { api.contestSubmitAppeal(own, appealReason) }
+                                                    .onSuccess {
+                                                        appeal = it
+                                                        appealReason = ""
+                                                        message = "Appeal submitted for admin review."
+                                                    }.onFailure {
+                                                        appealError = it.message ?: "Appeal failed."
+                                                    }
+                                                appealBusy = false
+                                            }
+                                        }) { Text("Submit one appeal") }
+                                }
                             }
                         }
                         if (voted.isNotBlank()) Text("You've already used your free vote.")
