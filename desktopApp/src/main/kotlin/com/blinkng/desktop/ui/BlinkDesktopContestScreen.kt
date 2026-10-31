@@ -476,6 +476,12 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var insights by remember { mutableStateOf<JSONObject?>(null) }
     var reviewNote by remember { mutableStateOf("") }
     var applicationReviewReason by remember { mutableStateOf("") }
+    var historyEntry by remember { mutableStateOf<String?>(null) }
+    var historyUsername by remember { mutableStateOf("") }
+    var historyRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var historyTotal by remember { mutableIntStateOf(0) }
+    var historyBusy by remember { mutableStateOf(false) }
+    var historyError by remember { mutableStateOf("") }
     var paymentReference by remember { mutableStateOf("") }
     var paymentNote by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
@@ -496,6 +502,23 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     LaunchedEffect(revision) {
         runCatching { api.adminContestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
+    }
+    LaunchedEffect(inspectId) { historyEntry = null }
+    LaunchedEffect(historyEntry, revision) {
+        historyRows = emptyList()
+        historyTotal = 0
+        historyError = ""
+        val id = historyEntry
+        if (id != null) {
+            historyBusy = true
+            runCatching { api.adminContestEntryHistory(id) }
+                .onSuccess {
+                    historyRows = it.optJSONArray("history")?.rows().orEmpty()
+                    historyTotal = it.optInt("total")
+                }
+                .onFailure { historyError = it.message ?: "Review history unavailable." }
+            historyBusy = false
+        }
     }
     LaunchedEffect(inspectId, revision) {
         entries = emptyList()
@@ -702,8 +725,42 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                     }
                 }
                 Text(entry.optString("statement"))
+                TextButton(enabled = !busy, onClick = {
+                    historyUsername = entry.optString("username")
+                    historyEntry = entry.optString("id")
+                }) { Text("Review history") }
             }
         }
+    }
+    historyEntry?.let {
+        AlertDialog(
+            onDismissRequest = { historyEntry = null },
+            title = { Text("Review history · @" + historyUsername) },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (historyBusy) CircularProgressIndicator()
+                    if (historyError.isNotEmpty()) Text(historyError,
+                        color = MaterialTheme.colorScheme.error)
+                    if (!historyBusy && historyError.isEmpty()) {
+                        Text("$historyTotal recorded decisions · newest 30 shown",
+                            style = MaterialTheme.typography.bodySmall)
+                        if (historyRows.isEmpty()) Text("No moderation decisions recorded.")
+                        historyRows.forEach { audit ->
+                            HorizontalDivider()
+                            Text(audit.optString("previous_status").replaceFirstChar { it.uppercase() } +
+                                " → " + audit.optString("next_status").replaceFirstChar { it.uppercase() },
+                                fontWeight = FontWeight.SemiBold)
+                            Text(audit.optString("reason"))
+                            Text("By @" + audit.optString("actor_username") + " · " +
+                                audit.optString("created_at").replace('T',' ').take(19) + " UTC",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { historyEntry = null }) { Text("Close") } }
+        )
     }
 }
 
