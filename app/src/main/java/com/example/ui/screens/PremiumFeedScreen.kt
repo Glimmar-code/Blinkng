@@ -179,9 +179,9 @@ private fun buildPremiumHomeRows(
     var marketSponsoredSlot = 0
     var dropSlot = 0
     var postsSinceDrop = 0
-    var nextDropGap = random.nextInt(8, 13)
+    var nextDropGap = 5
 
-    // The first missed-Drop module appears before organic Post #1 without replacing it.
+    // The first Giveaway appears before organic Post #1 without replacing it.
     if (dropDiscovery.isNotEmpty()) {
         rows += PremiumHomeRow.DropDiscoveryRow(dropDiscovery.first(), dropSlot++)
     }
@@ -204,7 +204,7 @@ private fun buildPremiumHomeRows(
             )
             dropSlot += 1
             postsSinceDrop = 0
-            nextDropGap = random.nextInt(8, 13)
+            nextDropGap = 5
         }
         val shouldInsertBoosted =
             promotedSlot < promotedPosts.size &&
@@ -995,7 +995,7 @@ private fun PremiumHomeFeed(
             hasPlayableVideo && (laneIndex == 0 || authorKey in followedAuthorKeys)
         }
     }
-    // Keep Reel / Sponsored / Drop insertion gaps consistent when realtime
+    // Keep Reel / Sponsored / Giveaway insertion gaps consistent when realtime
     // receives a newly ranked first post or after an explicit hide/delete.
     val reelMixSeed = remember(laneResumeKey, filter) {
         "$laneResumeKey:${filter.name}".hashCode()
@@ -1015,7 +1015,7 @@ private fun PremiumHomeFeed(
             dropDiscovery = emptyList()
             return@LaunchedEffect
         }
-        dropsService.discovery(3)
+        dropsService.discovery(20)
             .onSuccess { dropDiscovery = it }
             .onFailure { dropDiscovery = emptyList() }
     }
