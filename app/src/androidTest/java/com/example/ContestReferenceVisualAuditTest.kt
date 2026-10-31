@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.onLast
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -136,12 +134,50 @@ class ContestReferenceVisualAuditTest {
         rule.runOnIdle { org.junit.Assert.assertTrue(dismissed) }
     }
 
+    private fun containsRenderedContent(bitmap: Bitmap): Boolean {
+        // Subsample the full screenshot to detect a false-positive all-black
+        // artifact without relying on any fixture's exact text or colors.
+        val xStep = (bitmap.width / 48).coerceAtLeast(1)
+        val yStep = (bitmap.height / 48).coerceAtLeast(1)
+        var visible = 0
+        for (y in 0 until bitmap.height step yStep) {
+            for (x in 0 until bitmap.width step xStep) {
+                val color = bitmap.getPixel(x, y)
+                if (android.graphics.Color.red(color) > 25 ||
+                    android.graphics.Color.green(color) > 25 ||
+                    android.graphics.Color.blue(color) > 25) {
+                    if (++visible >= 6) return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun capture(name: String, dialog: Boolean = false) {
         rule.waitForIdle()
-        // Dialogs are rendered in a separate Compose root; capture that visible
-        // root instead of the underlying empty Activity composition.
-        val root = if (dialog) rule.onAllNodes(isRoot()).onLast() else rule.onRoot()
-        val image = root.captureToImage().asAndroidBitmap()
+        // A Compose semantics root can capture as *pure black* for a separate
+        // Android Dialog window while the UI assertion still passes. Use a real
+        // compositor screenshot for dialogs and reject blank captures.
+        val image = if (dialog) {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.waitForIdleSync()
+            var visible: Bitmap? = null
+            for (attempt in 1..3) {
+                val frame = instrumentation.uiAutomation.takeScreenshot()
+                if (frame != null && containsRenderedContent(frame)) {
+                    visible = frame
+                    break
+                }
+                frame?.recycle()
+                if (attempt < 3) android.os.SystemClock.sleep(250)
+            }
+            checkNotNull(visible) { "Dialog visual audit captured no rendered pixels: $name" }
+        } else {
+            rule.onRoot().captureToImage().asAndroidBitmap()
+        }
+        check(containsRenderedContent(image)) {
+            "Visual audit must not accept a blank screen: $name"
+        }
         val resolver = InstrumentationRegistry.getInstrumentation()
             .targetContext.contentResolver
         val values = ContentValues().apply {
