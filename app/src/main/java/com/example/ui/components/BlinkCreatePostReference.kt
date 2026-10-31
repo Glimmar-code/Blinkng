@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.AlternateEmail
@@ -127,7 +128,8 @@ internal fun BlinkCreatePostLanding(
 ) {
     val white = Color.White
     val context = LocalContext.current
-    var showAllDrafts by remember { mutableStateOf(false) }
+    var showSavedDrafts by remember { mutableStateOf(false) }
+    var showCreateMenu by remember { mutableStateOf(false) }
     var recentPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
     // Only display real device photos when gallery access has already been granted.
     // Android Photo Picker remains the privacy-preserving fallback.
@@ -150,6 +152,25 @@ internal fun BlinkCreatePostLanding(
                 "Create Post", color = white, fontWeight = FontWeight.Bold,
                 fontSize = 18.sp, modifier = Modifier.align(Alignment.Center)
             )
+            Box(Modifier.align(Alignment.CenterEnd)) {
+                IconButton(
+                    onClick = { showCreateMenu = true },
+                    modifier = Modifier.testTag("blink_create_post_more_menu")
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More create post options",
+                        tint = white)
+                }
+                DropdownMenu(
+                    expanded = showCreateMenu,
+                    onDismissRequest = { showCreateMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Classic composer") },
+                        onClick = { showCreateMenu = false; onClassic() },
+                        modifier = Modifier.testTag("blink_create_post_classic")
+                    )
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BlinkPostChoice("Text", "Share your thoughts", Icons.Default.TextFields,
@@ -205,29 +226,30 @@ internal fun BlinkCreatePostLanding(
                 }
             }
         }
-        if (drafts.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Color(0xFF12151C),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color(0xFF2D3139))
+        BlinkPostMenuRow(
+            title = "Drafts", detail = when {
+                drafts.isEmpty() -> "No saved drafts"
+                drafts.size == 1 -> "1 saved draft"
+                else -> "${drafts.size} saved drafts"
+            },
+            icon = Icons.Default.Save,
+            onClick = { showSavedDrafts = !showSavedDrafts },
+            enabled = drafts.isNotEmpty()
+        )
+        if (showSavedDrafts && drafts.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                modifier = Modifier.testTag("blink_create_saved_drafts")
             ) {
-                Text(
-                    "No drafts yet. Your selected photos and videos stay in the editor.",
-                    color = Color(BlinkPostReferenceStyle.Muted), fontSize = 12.sp,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-        } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                items(if (showAllDrafts) drafts else drafts.take(8), key = { it.id }) { draft ->
+                items(drafts, key = { it.id }) { draft ->
                     val rawImage = draft.imageUri.orEmpty()
                     val previewImage = if (rawImage.startsWith("[")) {
                         runCatching { JSONArray(rawImage).optString(0) }.getOrDefault("")
                     } else rawImage
                     Surface(
                         modifier = Modifier.size(width = 92.dp, height = 100.dp)
-                            .clickable { onDraft(draft) },
+                            .clickable { onDraft(draft) }
+                            .testTag("blink_create_saved_draft_" + draft.id),
                         shape = RoundedCornerShape(12.dp),
                         color = Color(0xFF1B1E26)
                     ) {
@@ -249,11 +271,12 @@ internal fun BlinkCreatePostLanding(
                                 )
                             }
                             Text(
-                                draft.text.ifBlank { "Draft" }, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                draft.text.ifBlank { "Draft" },
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 fontSize = 10.sp, color = white,
                                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                                    .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f)).padding(5.dp)
+                                    .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f))
+                                    .padding(5.dp)
                             )
                         }
                     }
@@ -261,28 +284,8 @@ internal fun BlinkCreatePostLanding(
             }
         }
         BlinkPostMenuRow(
-            title = "Drafts", detail = when {
-                drafts.isEmpty() -> "No saved drafts"
-                drafts.size == 1 -> "Tap to resume your saved draft"
-                else -> "${drafts.size} saved drafts · tap to view"
-            },
-            icon = Icons.Default.Save, onClick = {
-                if (drafts.size > 1) showAllDrafts = !showAllDrafts
-                else drafts.firstOrNull()?.let(onDraft)
-            }, enabled = drafts.isNotEmpty()
-        )
-        BlinkPostMenuRow(
             title = "Camera", detail = "Take a photo or record a Reel",
             icon = Icons.Default.CameraAlt, onClick = onCamera
-        )
-        BlinkPostMenuRow(
-            title = "Classic composer", detail = "Use BLINK's original posting screen",
-            icon = Icons.Default.Description, onClick = onClassic
-        )
-        Text(
-            "Posts can include text, photos or polls. Videos are published as Reels.",
-            color = Color(0xFF9BA2B1), fontSize = 12.sp,
-            modifier = Modifier.padding(top = 4.dp)
         )
     }
 }
