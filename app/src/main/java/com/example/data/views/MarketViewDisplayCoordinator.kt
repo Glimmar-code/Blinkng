@@ -17,13 +17,13 @@ internal const val MARKET_VIEW_REFLECTION_DELAY_MS = 120_000L
 
 internal data class MarketViewDisplayState(
     val revealedCounts: Map<String, Long> = emptyMap(),
-    val suppressedBaselines: Map<String, Int> = emptyMap(),
+    val suppressedBaselines: Map<String, Long> = emptyMap(),
     val activeWindows: Set<String> = emptySet(),
 ) {
     fun displayedCount(itemId: String, modelCount: Long): Long {
         val cleanModel = modelCount.coerceAtLeast(0L)
         if (itemId in activeWindows) {
-            return (suppressedBaselines[itemId] ?: cleanModel).coerceAtLeast(0)
+            return (suppressedBaselines[itemId] ?: cleanModel).coerceAtLeast(0L)
         }
         return maxOf(cleanModel, revealedCounts[itemId]?.coerceAtLeast(0L) ?: 0L)
     }
