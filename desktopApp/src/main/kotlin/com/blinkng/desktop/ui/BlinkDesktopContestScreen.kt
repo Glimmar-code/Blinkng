@@ -24,6 +24,7 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.shared.BlinkContestPolicy
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -48,7 +49,42 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     var revision by remember { mutableIntStateOf(0) }
     var ownCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var sharingCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchOffset by remember { mutableIntStateOf(0) }
+    var searchResults by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var searchTotal by remember { mutableIntStateOf(0) }
+    var searchBusy by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf("") }
 
+    LaunchedEffect(selected) {
+        searchOpen = false
+        searchQuery = ""
+        searchOffset = 0
+        searchResults = emptyList()
+        searchError = ""
+    }
+    LaunchedEffect(selected, searchOpen, searchQuery, searchOffset, revision) {
+        val id = selected
+        if (!searchOpen || id == null || searchQuery.trim().length == 1) {
+            searchResults = emptyList()
+            searchTotal = 0
+            searchBusy = false
+        } else {
+            searchBusy = true
+            searchError = ""
+            delay(300)
+            runCatching { api.contestSearchCandidates(id, searchQuery, searchOffset) }
+                .onSuccess {
+                    searchResults = it.optJSONArray("entries")?.rows().orEmpty()
+                    searchTotal = it.optInt("total")
+                }.onFailure {
+                    searchResults = emptyList()
+                    searchError = it.message ?: "Cannot search contestants."
+                }
+            searchBusy = false
+        }
+    }
     LaunchedEffect(selected, detail?.optString("my_entry_id"), revision) {
         ownCandidate = null
         val contest = selected
@@ -267,6 +303,97 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                             color = Color(0xFF9ACFFF), fontSize = 11.sp)
                                     }
                                 }
+                            }
+                        }
+                    }
+                    item {
+                        OutlinedButton(onClick = { searchOpen = !searchOpen },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(if (searchOpen) "Hide contestant directory"
+                                else "Find contestants beyond the Top 20")
+                        }
+                    }
+                    if (searchOpen) {
+                        item {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it.take(60); searchOffset = 0 },
+                                label = { Text("Search name or username") },
+                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                            )
+                            Text("Leave blank to browse all approved contestants.",
+                                style = MaterialTheme.typography.bodySmall)
+                            if (searchQuery.trim().length == 1) {
+                                Text("Enter at least two characters, or clear to browse.",
+                                    color = MaterialTheme.colorScheme.error)
+                            } else if (searchBusy) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            } else {
+                                Text("$searchTotal approved results")
+                            }
+                            if (searchError.isNotEmpty()) {
+                                Text(searchError, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = { revision++ }) { Text("Retry search") }
+                            }
+                        }
+                        items(searchResults, key = { "directory-" + it.optString("id") }) { candidate ->
+                            ElevatedCard {
+                                Row(Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text("#" + candidate.optInt("rank"),
+                                        fontWeight = FontWeight.Bold)
+                                    DesktopContestAvatar(candidate.optString("avatar_url"),
+                                        candidate.optString("username"), 42.dp)
+                                    Column(Modifier.weight(1f)) {
+                                        Text("@" + candidate.optString("username"),
+                                            fontWeight = FontWeight.SemiBold)
+                                        Text(candidate.optInt("votes").toString() + " votes",
+                                            style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    OutlinedButton(onClick = {
+                                        scope.launch {
+                                            runCatching { api.contestCandidate(c.optString("id"), candidate.optString("id")) }
+                                                .onSuccess { sharingCandidate = it }
+                                                .onFailure { message = it.message.orEmpty() }
+                                        }
+                                    }) { Text("Share") }
+                                    Button(enabled = !busy && BlinkContestPolicy.canVote(
+                                        status, voted, own, candidate.optString("id")),
+                                        onClick = {
+                                            busy = true
+                                            scope.launch {
+                                                runCatching { api.contestVote(c.optString("id"), candidate.optString("id")) }
+                                                    .onSuccess {
+                                                        message = if (it.optString("vote_status") == "under_review")
+                                                            "Free vote received; pending integrity review."
+                                                        else "Your free vote was counted."
+                                                        revision++
+                                                    }
+                                                    .onFailure { message = it.message.orEmpty() }
+                                                busy = false
+                                            }
+                                        }) { Text("Vote") }
+                                }
+                            }
+                        }
+                        if (!searchBusy && searchError.isEmpty() && searchResults.isEmpty() &&
+                            searchQuery.trim().length != 1) item {
+                            Text("No approved contestants found.")
+                        }
+                        if (searchTotal > 20) item {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(enabled = !searchBusy && searchOffset > 0,
+                                    onClick = { searchOffset = (searchOffset - 20).coerceAtLeast(0) }) {
+                                    Text("Previous")
+                                }
+                                Text("Page " + (searchOffset / 20 + 1),
+                                    modifier = Modifier.weight(1f))
+                                OutlinedButton(
+                                    enabled = !searchBusy && searchOffset + 20 < searchTotal &&
+                                        searchOffset < 10000,
+                                    onClick = { searchOffset += 20 }) { Text("Next") }
                             }
                         }
                     }
