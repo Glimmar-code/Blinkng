@@ -88,6 +88,26 @@ class BlinkContestService {
         JSONObject(call("get_blink_contest_candidate", JSONObject()
             .put("p_contest_id", contestId).put("p_entry_id", entryId)))
     }
+    suspend fun myAppeal(entryId: String): Result<JSONObject?> = contestResult {
+        val value = call("my_blink_contest_entry_appeal",
+            JSONObject().put("p_entry_id", entryId))
+        if (value.trim() == "null") null else JSONObject(value)
+    }
+    suspend fun submitAppeal(entryId: String, reason: String): Result<JSONObject> = contestResult {
+        JSONObject(call("submit_blink_contest_entry_appeal", JSONObject()
+            .put("p_entry_id", entryId).put("p_statement", reason.trim())))
+    }
+    suspend fun adminAppeals(contestId: String): Result<JSONArray> = contestResult {
+        JSONArray(call("admin_list_blink_contest_entry_appeals", JSONObject()
+            .put("p_contest_id", contestId).put("p_limit", 100)))
+    }
+    suspend fun adminDecideAppeal(appealId: String, action: String, reason: String): Result<JSONObject> =
+        contestResult {
+            JSONObject(call("admin_decide_blink_contest_entry_appeal", JSONObject()
+                .put("p_appeal_id", appealId).put("p_action", action)
+                .put("p_reason", reason.trim())))
+        }
+
     suspend fun apply(id: String, statement: String, mediaUrl: String): Result<JSONObject> = contestResult {
         JSONObject(call("apply_blink_contest", JSONObject().put("p_contest_id", id)
             .put("p_statement", statement.trim())
