@@ -22,6 +22,9 @@ const candidateSearchMigration = readFileSync(
 const moderationAuditMigration = readFileSync(
   new URL('../migrations/20261031090000_blink_contest_moderation_audit.sql', import.meta.url), 'utf8'
 );
+const moderationHistoryMigration = readFileSync(
+  new URL('../migrations/20261031100000_blink_contest_review_history.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -64,6 +67,7 @@ try {
   await db.exec(privateMedia);
   await db.exec(candidateSearchMigration);
   await db.exec(moderationAuditMigration);
+  await db.exec(moderationHistoryMigration);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
@@ -143,6 +147,28 @@ try {
     and metadata->>'new_status'='rejected'`,[creator2])).rows;
   assert.equal(rejectionNotice.length,1);
   assert.match(rejectionNotice[0].sub_text,/competition rules/);
+  const fullHistory = json((await rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,30])).rows[0].result);
+  assert.equal(fullHistory.total,3);
+  assert.equal(fullHistory.history.length,3);
+  assert.equal(fullHistory.history[0].actor_id,admin);
+  assert.equal(fullHistory.history[0].actor_username,'contestadmin');
+  assert.equal(fullHistory.history.filter(h=>h.next_status==='rejected').length,1);
+  assert.match(fullHistory.history.find(h=>h.next_status==='rejected').reason,/competition rules/);
+  const oneHistory = json((await rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,1])).rows[0].result);
+  assert.equal(oneHistory.total,3);
+  assert.equal(oneHistory.history.length,1);
+  const cappedHistory = json((await rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,1000])).rows[0].result);
+  assert.equal(cappedHistory.limit,50);
+  await setUser(creator2);
+  await assert.rejects(() => rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,30]), /ADMIN_REQUIRED/);
+  await setUser(admin);
+  await assert.rejects(() => rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',['99999999-9999-4999-8999-999999999999',30]),
+    /ENTRY_NOT_FOUND/);
 
   // Every approved contestant has a validated public share destination.
   await setUser(voter);
