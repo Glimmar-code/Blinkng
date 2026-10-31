@@ -80,6 +80,19 @@ fun BlinkDropDiscoveryCard(
                 }
             }
 
+            if (item.targetTitle.isNotBlank()) {
+                Text(item.targetTitle, fontWeight = FontWeight.SemiBold)
+            }
+            Text(
+                when (item.action.uppercase()) {
+                    "LIKE" -> "Entry action: like the linked post."
+                    "COMMENT" -> "Entry action: comment on the linked post."
+                    "REPOST" -> "Entry action: repost the linked post."
+                    else -> "Complete the required action to enter."
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
             Text(
                 "${formatter.format(item.totalCoins)} BLINK Coins · ${formatter.format(item.rewardPerUser)} each · ${item.winnerCount} rewards",
                 fontWeight = FontWeight.Bold,
