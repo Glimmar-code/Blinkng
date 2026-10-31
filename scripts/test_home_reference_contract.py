@@ -214,7 +214,7 @@ class HomeReferenceContractTests(unittest.TestCase):
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)
         self.assertIn('title = "Boost"', ITEMS)
-        self.assertIn('title = "Drops"', ITEMS)
+        self.assertIn('title = "BLINK Giveaway"', ITEMS)
         self.assertIn('title = "Store"', ITEMS)
         self.assertIn('if (isAdmin)', ITEMS)
         self.assertIn('onOpenAdmin = {', MAIN)
