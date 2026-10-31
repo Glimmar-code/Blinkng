@@ -705,7 +705,11 @@ begin
         'creator_avatar',coalesce(p.avatar_url,''),
         'total_coins',d.total_budget,'reward_per_user',d.reward_per_user,
         'winner_count',d.winner_count,'claimed_count',d.claimed_count,
-        'status',d.status,'action',d.action,'created_at',d.created_at,'ends_at',d.ends_at
+        'status',d.status,'action',d.action,'created_at',d.created_at,'ends_at',d.ends_at,
+        'is_following',exists(
+          select 1 from public.follows f
+          where f.follower_id=v_user and f.following_id=d.creator_id
+        )
       ) item
     from public.blink_drops d
     join public.profiles p on p.id=d.creator_id
