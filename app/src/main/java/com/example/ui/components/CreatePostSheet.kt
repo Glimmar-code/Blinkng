@@ -2930,18 +2930,15 @@ internal fun PostPreviewDialog(
                             }
                         }
                     }
+                    // The reference preview ends with the familiar post-card
+                    // actions. The existing top-left Back button remains the
+                    // only exit; an extra full-width footer distorted layout.
                     Text(
-                        "Preview only · Your post has not been published",
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                        "Preview only · Not published",
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         textAlign = TextAlign.Center,
                         color = Color(0xFFBFC2D2), fontSize = 11.sp
                     )
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = .55f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                    ) { Text("Back to editor") }
                 }
             }
         }
