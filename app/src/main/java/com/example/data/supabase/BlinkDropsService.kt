@@ -24,6 +24,7 @@ data class BlinkDropDiscovery(
     val action: String,
     val createdAt: String,
     val endsAt: String,
+    val targetTitle: String = "",
 )
 
 /**
