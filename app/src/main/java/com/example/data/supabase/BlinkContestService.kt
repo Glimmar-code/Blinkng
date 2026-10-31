@@ -48,6 +48,25 @@ class BlinkContestService {
                 raw
             }
         }
+    /** Reveal pending entry media only after the Edge Function verifies the admin JWT. */
+    suspend fun adminMediaPreview(mediaUrl: String): Result<String> = contestResult {
+        if (!mediaUrl.contains("/functions/v1/blink-contest-private-media/")) {
+            mediaUrl
+        } else withContext(Dispatchers.IO) {
+            val session = SupabaseService()
+            if (!session.restoreSession()) error("Sign in to view private contest media.")
+            val token = SupabaseService.accessToken()?.takeIf { it.isNotBlank() }
+                ?: error("Sign in to view private contest media.")
+            val url = mediaUrl + if ('?' in mediaUrl) "&format=json" else "?format=json"
+            http.newCall(Request.Builder().url(url)
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer " + token).get().build()).execute().use { response ->
+                if (!response.isSuccessful) error("Private contest media is not available to this account.")
+                JSONObject(response.body?.string().orEmpty()).getString("url")
+            }
+        }
+    }
+
     suspend fun contests(): Result<JSONArray> = contestResult { JSONArray(call("list_blink_contests")) }
     suspend fun detail(id: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
