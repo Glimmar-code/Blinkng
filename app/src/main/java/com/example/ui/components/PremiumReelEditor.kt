@@ -327,7 +327,7 @@ internal fun PremiumReelEditor(
                         activeTool = "STICKERS"; showAdvanced = true
                     }),
                     Triple(Icons.Default.FilterVintage, "Filters", {
-                        activeTool = "FILTERS"; grayscale = !grayscale
+                        activeTool = "FILTERS"; showAdvanced = true
                     }),
                     Triple(Icons.Default.AutoAwesome, "Effects", {
                         activeTool = "EFFECTS"; showAdvanced = true
@@ -497,7 +497,7 @@ internal fun PremiumReelEditor(
                         Text("${display(overlayStart)} – ${display(overlayEnd)}",
                             fontSize = 12.sp, color = white)
                     }
-                    if (activeTool == "EFFECTS") {
+                    if (activeTool == "EFFECTS" || activeTool == "FILTERS") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { grayscale = !grayscale },
                                 enabled = !isExporting) {
