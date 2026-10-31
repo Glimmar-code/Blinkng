@@ -37,7 +37,7 @@ begin
 
   v_path := substring(
     new.media_url from
-    '/functions/v1/blink-contest-private-media/([0-9a-f-]{36}/[0-9a-f-]{36}\\.(jpg|jpeg|png|webp|mp4))$'
+    '/functions/v1/blink-contest-private-media/([0-9a-f-]{36}/[0-9a-f-]{36}[.](jpg|jpeg|png|webp|mp4))$'
   );
 
   if v_path is null
