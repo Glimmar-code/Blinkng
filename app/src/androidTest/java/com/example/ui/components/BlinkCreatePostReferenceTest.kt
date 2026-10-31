@@ -145,12 +145,37 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("2 / 10").assertExists()
         composeRule.onNodeWithTag("blink_gallery_photo_0").performClick()
         composeRule.onNodeWithTag("blink_gallery_edit_preview").performClick()
-        composeRule.onNodeWithText("Add more photos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_add_more").performClick()
         composeRule.onNodeWithTag("blink_media_tab_videos").performClick()
-        composeRule.onNodeWithText("Next (2)").performClick()
+        composeRule.onNodeWithTag("blink_gallery_next").performClick()
         composeRule.runOnIdle {
             assertEquals(listOf("edit:content://sample/1", "add", "video", "next"), actions)
         }
+    }
+
+    @Test
+    fun galleryStripRemovesOnlyTheTappedPhotoAndKeepsSelectedOrder() {
+        val removed = mutableListOf<Int>()
+        var nextCalls = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferenceMediaReview(
+                    images = listOf("content://sample/photo-a", "content://sample/photo-b"),
+                    onBack = {},
+                    onRemove = { removed += it },
+                    onMove = { _, _ -> },
+                    onEdit = {},
+                    onAddMore = {},
+                    onPickVideos = {},
+                    onNext = { nextCalls++ }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_gallery_remove_selected_1").performClick()
+        composeRule.runOnIdle { assertEquals(listOf(1), removed) }
+        composeRule.onNodeWithTag("blink_gallery_next").performClick()
+        composeRule.runOnIdle { assertEquals(1, nextCalls) }
     }
 
     @Test
