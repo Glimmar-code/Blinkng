@@ -404,6 +404,12 @@ fun BlinkDropsRoute(
                 modifier = Modifier.weight(1f),
             )
         }
+        Text(
+            if (selectedColumn == DropsColumn.GIVEAWAYS) "Swipe left to see the Most Givers leaderboard" else "Swipe right to return to Giveaways",
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         if (loading && state == null) {
             BlinkSkeletonList(
@@ -502,15 +508,15 @@ fun BlinkDropsRoute(
 
                 item {
                     SectionHeader(
-                        "Active for you",
-                        "These rewards were reserved for eligible followers when each Giveaway started."
+                        "Active Giveaways",
+                        "Anyone can participate within the creator's selected audience. Followers are notified when a Giveaway starts."
                     )
                 }
 
                 if (activeDrops.isEmpty()) {
                     item {
                         EmptyCard(
-                            "No active Giveaways are available for you right now. Follow creators you like so you can be included in their next Giveaway."
+                            "There are no active Giveaways right now. Check back soon or create the first one."
                         )
                     }
                 } else {
@@ -557,7 +563,7 @@ fun BlinkDropsRoute(
                     Spacer(Modifier.height(4.dp))
                     SectionHeader(
                         "Your Giveaways",
-                        "Reserved coins stay locked until claimed, cancelled or expired."
+                        "The amount committed at publication is non-refundable, even if a Giveaway ends early or expires."
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         items(listOf("ALL", "ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED")) { status ->
@@ -641,8 +647,8 @@ fun BlinkDropsRoute(
                     item {
                         Spacer(Modifier.height(4.dp))
                         SectionHeader(
-                            "Growth receipts",
-                            "Every Giveaway reserve, reward and refund stays auditable in your Blink Coin ledger."
+                            "Giveaway receipts",
+                            "Every Giveaway commitment and reward stays auditable in your BLINK Coin ledger."
                         )
                     }
                     if (receipts.size > 4) {
@@ -1099,7 +1105,9 @@ private fun DropReceiptCard(
     formatter: NumberFormat,
 ) {
     val amount = receipt.optLong("amount", 0L)
-    val kind = receipt.optString("kind").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+    val kind = receipt.optString("kind").replace('_', ' ').lowercase()
+        .replace("drop", "giveaway")
+        .replaceFirstChar { it.uppercase() }
     Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(13.dp),
@@ -1216,7 +1224,7 @@ internal fun TopGiverCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(giver.name.ifBlank { "@${giver.username}" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${formatter.format(giver.coinsSpent)} coins given · ${giver.peopleRewarded} people · ${giver.giveawaysCreated} Giveaways",
+                    "${formatter.format(giver.coinsSpent)} BLINK Coins spent · ${giver.giveawaysCreated} Giveaways · ${giver.peopleRewarded} people rewarded",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFCFD3DD),
                     maxLines = 2,
