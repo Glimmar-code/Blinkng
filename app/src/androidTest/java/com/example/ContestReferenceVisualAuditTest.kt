@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.ui.screens.BlinkContestHeroCard
 import com.example.ui.screens.BlinkContestApplicantMediaCard
+import com.example.ui.screens.BlinkContestReviewHistoryDialog
 import com.example.ui.screens.BlinkContestPodium
 import com.example.ui.screens.BlinkContestWinnerCard
 import com.example.ui.theme.BlinkTheme
@@ -100,6 +101,37 @@ class ContestReferenceVisualAuditTest {
         capture("contest-applicant-card-staging.png")
         rule.onNodeWithText("View application photo").performClick()
         rule.runOnIdle { org.junit.Assert.assertTrue(opened) }
+    }
+
+    @Test fun contestModerationHistoryShowsAuditedReasons() {
+        val timeline = listOf(
+            JSONObject().put("previous_status", "rejected")
+                .put("next_status", "approved")
+                .put("reason", "Appeal accepted after verification of original entry")
+                .put("actor_username", "contestadmin")
+                .put("created_at", "2026-10-31T07:15:00+00:00"),
+            JSONObject().put("previous_status", "pending")
+                .put("next_status", "rejected")
+                .put("reason", "Image did not meet the published competition rules")
+                .put("actor_username", "contestadmin")
+                .put("created_at", "2026-10-30T15:45:00+00:00")
+        )
+        var dismissed = false
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                BlinkContestReviewHistoryDialog(
+                    username = "samplecreator", history = timeline,
+                    total = 2, busy = false, error = null,
+                    onDismiss = { dismissed = true }, onRetry = {}
+                )
+            }
+        }
+        rule.onNodeWithText("Review history · @samplecreator").assertExists()
+        rule.onNodeWithText("Appeal accepted after verification of original entry").assertExists()
+        rule.onNodeWithText("Image did not meet the published competition rules").assertExists()
+        capture("contest-review-history-staging.png")
+        rule.onNodeWithText("Close").performClick()
+        rule.runOnIdle { org.junit.Assert.assertTrue(dismissed) }
     }
 
     private fun capture(name: String) {
