@@ -58,6 +58,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -101,6 +102,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
@@ -4699,7 +4702,7 @@ private fun EmojiRail(palette: MessagePalette, onEmoji: (String) -> Unit) {
 }
 
 @Composable
-private fun MessageComposer(
+internal fun MessageComposer(
     value: String,
     onValueChange: (String) -> Unit,
     palette: MessagePalette,
@@ -4779,7 +4782,8 @@ private fun MessageComposer(
                         keyboardActions = KeyboardActions(
                             onSend = { if (value.isNotBlank()) onSubmit() }
                         ),
-                        modifier = Modifier.weight(1f).heightIn(min = 22.dp, max = 94.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 22.dp, max = 94.dp)
+                            .testTag("chat_reference_message_input"),
                         decorationBox = { innerTextField ->
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (value.isBlank()) Text(
@@ -4789,22 +4793,28 @@ private fun MessageComposer(
                             }
                         }
                     )
-                    IconButton(onClick = onCamera, modifier = Modifier.size(33.dp)) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Open camera",
-                            tint = palette.textPrimary, modifier = Modifier.size(21.dp))
+                    IconButton(
+                        onClick = onCamera,
+                        modifier = Modifier.size(33.dp).testTag("chat_reference_camera")
+                    ) {
+                        Icon(Icons.Outlined.CameraAlt, contentDescription = "Open camera",
+                            tint = palette.textPrimary, modifier = Modifier.size(22.dp))
                     }
                     Box(
-                        modifier = Modifier.size(33.dp).pointerInput(onDictation, onVoiceStart) {
-                            detectTapGestures(
-                                onTap = { onDictation() },
-                                onLongPress = { onVoiceStart() }
-                            )
-                        },
+                        modifier = Modifier.size(33.dp)
+                            .testTag("chat_reference_microphone")
+                            .combinedClickable(
+                                role = Role.Button,
+                                onClickLabel = "Start voice typing",
+                                onLongClickLabel = "Record voice note",
+                                onClick = onDictation,
+                                onLongClick = onVoiceStart
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Mic,
-                            contentDescription = "Tap for voice typing, hold for voice note",
-                            tint = palette.textPrimary, modifier = Modifier.size(21.dp))
+                        Icon(Icons.Outlined.Mic,
+                            contentDescription = null,
+                            tint = palette.textPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
