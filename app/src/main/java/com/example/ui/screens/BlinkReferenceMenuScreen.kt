@@ -43,7 +43,6 @@ import coil.compose.AsyncImage
 import com.blinkng.shared.BlinkMenuDestination
 import com.example.R
 import com.example.data.models.UserProfile
-import com.example.data.supabase.AdminSupabaseService
 import com.example.update.WebsiteApkUpdateCoordinator
 import com.example.BuildConfig
 import kotlinx.coroutines.launch
@@ -76,6 +75,8 @@ fun BlinkReferenceMenuScreen(
     onCallSettings: () -> Unit,
     onSwitchAccount: () -> Unit,
     onOpenAdmin: () -> Unit,
+    /** Passed from the app's authenticated capability check; avoids a second racy lookup. */
+    canOpenAdmin: Boolean = false,
     onMessages: () -> Unit,
     onEditProfile: () -> Unit,
     onFindFriends: () -> Unit,
@@ -112,14 +113,10 @@ fun BlinkReferenceMenuScreen(
     var page by rememberSaveable(profile.id) { mutableStateOf("menu") }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
     var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
-    var adminModeAvailable by remember(profile.id) { mutableStateOf(false) }
+    val adminModeAvailable = canOpenAdmin
     var updateMessage by rememberSaveable { mutableStateOf("Check for the latest verified BLINK release.") }
     var checkingUpdate by remember { mutableStateOf(false) }
     val updateScope = rememberCoroutineScope()
-    LaunchedEffect(profile.id) {
-        adminModeAvailable = runCatching { AdminSupabaseService().fetchCapability().getOrNull()?.isAdmin == true }
-            .getOrDefault(false)
-    }
 
     if (showReferGrow) {
         BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
@@ -269,7 +266,7 @@ fun BlinkReferenceMenuScreen(
                         Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null,
                             tint = MenuPurple, modifier = Modifier.size(25.dp))
                         Spacer(Modifier.width(16.dp))
-                        Text("Switch to Admin Profile", color = foreground,
+                        Text("BLINK Admin Dashboard", color = foreground,
                             modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                         Icon(Icons.Rounded.ChevronRight, contentDescription = "Open admin workspace",
                             tint = foreground)
