@@ -28,6 +28,9 @@ const moderationHistoryMigration = readFileSync(
 const cancelledVisibilityMigration = readFileSync(
   new URL('../migrations/20261031110000_blink_contest_cancelled_visibility.sql', import.meta.url), 'utf8'
 );
+const appealsMigration = readFileSync(
+  new URL('../migrations/20261031120000_blink_contest_entry_appeals.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -72,6 +75,7 @@ try {
   await db.exec(moderationAuditMigration);
   await db.exec(moderationHistoryMigration);
   await db.exec(cancelledVisibilityMigration);
+  await db.exec(appealsMigration);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
@@ -154,12 +158,49 @@ try {
   const afterRejection = json((await rpc('search_blink_contest_candidates',
     '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',20,0])).rows[0].result);
   assert.equal(afterRejection.total,1);
+  await assert.rejects(() => rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'An appeal for another user']),
+    /ENTRY_NOT_AVAILABLE/);
+  await setUser(creator2);
+  await assert.rejects(() => rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'short']), /APPEAL_REASON_LENGTH/);
+  const appeal = json((await rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'I have supplied proof that my contest entry complies with the rules'])
+  ).rows[0].result);
+  assert.equal(appeal.status,'pending');
+  await assert.rejects(() => rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'A duplicate appeal should be rejected by the unique constraint']),
+    /duplicate|unique/i);
+  const ownedAppeal = json((await rpc('my_blink_contest_entry_appeal','$1::uuid',
+    [second.entry_id])).rows[0].result);
+  assert.equal(ownedAppeal.status,'pending');
+  await setUser(voter);
+  await assert.rejects(() => rpc('my_blink_contest_entry_appeal','$1::uuid',
+    [second.entry_id]), /ENTRY_NOT_AVAILABLE/);
+  await assert.rejects(() => rpc('admin_list_blink_contest_entry_appeals',
+    '$1::uuid,$2::integer',[id,100]), /ADMIN_REQUIRED/);
   await setUser(admin);
+  const appealQueue = json((await rpc('admin_list_blink_contest_entry_appeals',
+    '$1::uuid,$2::integer',[id,100])).rows[0].result);
+  assert.equal(appealQueue.length,1);
+  assert.equal(appealQueue[0].entry_id,second.entry_id);
+  await assert.rejects(() => rpc('admin_decide_blink_contest_entry_appeal',
+    '$1::uuid,$2::text,$3::text',[appeal.id,'accept','no']),/INVALID_APPEAL_DECISION/);
   await assert.rejects(() => rpc('admin_review_blink_contest_entry',
     '$1::uuid,$2::text,$3::text', [second.entry_id,'reject','Repeated rejection of same entry']),
     /ENTRY_ALREADY_IN_STATUS/);
-  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
-    [second.entry_id,'approve','Appeal reviewed and application reinstated']);
+  const accepted = json((await rpc('admin_decide_blink_contest_entry_appeal',
+    '$1::uuid,$2::text,$3::text',
+    [appeal.id,'accept','Appeal reviewed and application reinstated'])).rows[0].result);
+  assert.equal(accepted.status,'accepted');
+  await assert.rejects(() => rpc('admin_decide_blink_contest_entry_appeal',
+    '$1::uuid,$2::text,$3::text',[appeal.id,'deny','Repeated decision is not allowed']),
+    /APPEAL_NOT_PENDING/);
+  const appealDecisionNotice = (await q(`select metadata->>'status' as status from public.notifications
+    where user_id=$1 and metadata->>'kind'='blink_contest_appeal_decision'`,
+    [creator2])).rows;
+  assert.equal(appealDecisionNotice.length,1);
+  assert.equal(appealDecisionNotice[0].status,'accepted');
   const audits=(await q('select previous_status,next_status,reason from public.blink_contest_entry_review_audit where entry_id=$1 order by created_at',
     [second.entry_id])).rows;
   assert.equal(audits.length,3);
