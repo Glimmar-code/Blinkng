@@ -1342,7 +1342,7 @@ private fun OrganizeDropDialog(
             quoteError = null
         }.onFailure {
             quote = null
-            quoteError = "Couldn't verify the Giveaway budget and eligible followers. Please retry."
+            quoteError = "Couldn't verify the Giveaway budget and selected audience. Please retry."
         }
         quoteLoading = false
     }
