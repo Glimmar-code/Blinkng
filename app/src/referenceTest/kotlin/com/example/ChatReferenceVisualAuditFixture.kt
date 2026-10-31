@@ -336,8 +336,12 @@ abstract class ChatReferenceVisualAuditFixture {
         val videoFile = File(context.cacheDir, "chat-reference-fixture-video.mp4")
         // referenceTest is a separate APK from androidTest. Keep its fixture
         // self-contained instead of reading an asset from the other test APK.
-        val encodedVideo = InstrumentationRegistry.getInstrumentation().context.assets
-            .open("blink-visual-synthetic.mp4.b64").bufferedReader().use { it.readText() }
+        val encodedVideo = javaClass.classLoader
+            ?.getResourceAsStream("blink-visual-synthetic.mp4.b64")
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: InstrumentationRegistry.getInstrumentation().context.assets
+                .open("blink-visual-synthetic.mp4.b64").bufferedReader().use { it.readText() }
         val videoBytes = android.util.Base64.decode(encodedVideo, android.util.Base64.DEFAULT)
         videoFile.writeBytes(videoBytes)
         val videoUri = videoFile.toURI().toString()
