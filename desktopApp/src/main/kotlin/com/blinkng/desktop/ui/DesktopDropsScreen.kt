@@ -20,6 +20,25 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+private fun giveawayErrorMessage(error: Throwable): String {
+    val message = error.message.orEmpty()
+    return when {
+        message.contains("GIVEAWAY_LIKE_LOCKED", ignoreCase = true) ->
+            "A Like used to claim a Giveaway reward cannot be removed."
+        message.contains("DROP_NOT_ELIGIBLE", ignoreCase = true) ->
+            "This Giveaway is not available to your account."
+        message.contains("DROP_NOT_ACTIVE", ignoreCase = true) ->
+            "This Giveaway has ended."
+        message.contains("DROP_ALREADY_CLAIMED", ignoreCase = true) ->
+            "You have already entered this Giveaway."
+        message.contains("DROP_NO_ELIGIBLE_FOLLOWERS", ignoreCase = true) ->
+            "The selected audience has no other eligible accounts yet."
+        message.contains("DROP_", ignoreCase = true) ->
+            "BLINK Giveaway couldn't complete that request. Refresh and try again."
+        else -> message.ifBlank { "BLINK Giveaway couldn't complete that request." }
+    }
+}
+
 @Composable
 fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
     val rpc = remember(state.client) { DesktopRpcActions(state.client) }
@@ -51,7 +70,7 @@ fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
 
     suspend fun reload() {
         runCatching { rpc.getDropsState() }.onSuccess { data = it; error = null }
-            .onFailure { error = it.message ?: "Unable to load BLINK Giveaway." }
+            .onFailure { error = giveawayErrorMessage(it) }
         runCatching { rpc.getDropsPage("AVAILABLE",0) }.onSuccess {
             availablePage = it.optJSONArray("items").dropRows()
             availableMore = it.optBoolean("has_more")
@@ -78,7 +97,7 @@ fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
         } else {
             runCatching { rpc.getDropById(id) }
                 .onSuccess { root -> selectedGiveaway = root.optJSONObject("item") }
-                .onFailure { error = it.message ?: "Couldn't open this Giveaway." }
+                .onFailure { error = giveawayErrorMessage(it) }
         }
     }
     val input = BlinkDropRequest(selectedTarget?.optString("type").orEmpty(), selectedTarget?.optString("id").orEmpty(),
@@ -203,7 +222,7 @@ fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
                         .onSuccess {
                             availablePage = (available + it.optJSONArray("items").dropRows()).distinctBy { row -> row.optString("id") }
                             availableMore = it.optBoolean("has_more")
-                        }.onFailure { error = it.message ?: "Could not load more Giveaways." }
+                        }.onFailure { error = giveawayErrorMessage(it) }
                     pageBusy = false
                 }
             }) { Text(if (pageBusy) "Loading…" else "Load more active Giveaways") }
