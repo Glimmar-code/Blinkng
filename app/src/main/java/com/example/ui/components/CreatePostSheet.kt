@@ -300,6 +300,9 @@ fun CreatePostSheet(
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
     var showReferenceDetails by rememberSaveable { mutableStateOf(false) }
     var showMediaReview by rememberSaveable { mutableStateOf(false) }
+    // Opening media from the composer must return to the composer on Back.
+    // The same media screen opened from Create Options returns to landing.
+    var galleryReturnToEditor by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
     var pickerOpenedFromLanding by rememberSaveable { mutableStateOf(false) }
     var showCameraActions by rememberSaveable { mutableStateOf(false) }
@@ -1080,7 +1083,8 @@ fun CreatePostSheet(
             showReferenceDetails && !useClassicComposer -> showReferenceDetails = false
             showMediaReview && !useClassicComposer -> {
                 showMediaReview = false
-                showCreateLanding = true
+                showCreateLanding = !galleryReturnToEditor
+                galleryReturnToEditor = false
             }
             videoClips.isNotEmpty() && !showCreateLanding && !useClassicComposer ->
                 showCreateLanding = true
@@ -1224,7 +1228,8 @@ fun CreatePostSheet(
                     },
                     onBack = {
                         showMediaReview = false
-                        showCreateLanding = true
+                        showCreateLanding = !galleryReturnToEditor
+                        galleryReturnToEditor = false
                     },
                     onRemove = { index ->
                         selectedImages = selectedImages.filterIndexed { i, _ -> i != index }
@@ -1260,7 +1265,10 @@ fun CreatePostSheet(
                             pendingMediaSwitch = "reel"
                         }
                     },
-                    onNext = { showMediaReview = false }
+                    onNext = {
+                        showMediaReview = false
+                        galleryReturnToEditor = false
+                    }
                 )
             } else if (visibleStage == "landing") {
                 BlinkCreatePostLanding(
@@ -1279,6 +1287,7 @@ fun CreatePostSheet(
                         }
                     },
                     onPhoto = {
+                        galleryReturnToEditor = false
                         val entryAction = BlinkPhotoEntryPolicy.decide(
                             hasVideo = selectedVideo != null,
                             hasPoll = showPoll,
@@ -1336,6 +1345,7 @@ fun CreatePostSheet(
                     },
                     onDraft = { restoreDraft(it) },
                     onRecentPhoto = { photoUri ->
+                        galleryReturnToEditor = false
                         // Preserve existing content instead of silently replacing a Reel or poll.
                         if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
                             pickerOpenedFromLanding = true
@@ -1352,6 +1362,7 @@ fun CreatePostSheet(
                         }
                     },
                     onRecentSeeAll = {
+                        galleryReturnToEditor = false
                         if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
                             pickerOpenedFromLanding = true
                             pendingMediaSwitch = "gallery"
@@ -1877,10 +1888,15 @@ fun CreatePostSheet(
                 BlinkReferenceComposerToolbar(
                     enabled = !isSubmitting,
                     onPhoto = {
-                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
-                        else imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        if (selectedVideo != null || showPoll) {
+                            // Confirm content replacement before changing types.
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            // Keep the text draft and open BLINK Select Media,
+                            // the same permission-scoped gallery as Create Options.
+                            galleryReturnToEditor = true
+                            showMediaReview = true
+                        }
                     },
                     onVideo = {
                         if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
