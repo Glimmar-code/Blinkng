@@ -274,7 +274,7 @@ private fun mergeStablePremiumFeed(
  * Premium feed shell.
  *
  * For You and Following stay inside Home. Reels and Connect use the persistent
- * bottom navigation, while Rank, Game, Store, Boost and Drops remain visible Home shortcuts.
+ * bottom navigation, while Rank, Game, Store, Boost and BLINK Giveaway remain visible Home shortcuts.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
