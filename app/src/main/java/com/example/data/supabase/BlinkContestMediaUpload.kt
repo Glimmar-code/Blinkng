@@ -14,14 +14,15 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Explicit contestant/admin selection only; never uploads media during screen load.
- * Owner-segment storage policy and public read URL require the paired staging SQL.
+ * Owner-segment storage policy is server-enforced. Entrant uploads use private
+ * storage; cover art remains public. Never expose pending entry objects.
  */
 class BlinkContestMediaUpload {
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS).writeTimeout(90, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS).build()
 
-    suspend fun upload(context: Context, selected: Uri): Result<String> = runCatching {
+    suspend fun upload(context: Context, selected: Uri, privateEntry: Boolean = false): Result<String> = runCatching {
         withContext(Dispatchers.IO) {
             val auth = SupabaseService()
             require(auth.restoreSession()) { "Sign in before attaching media." }
@@ -56,8 +57,9 @@ class BlinkContestMediaUpload {
                 }
                 require(staged.length() > 0) { "The selected file is empty." }
                 val path = owner + "/" + UUID.randomUUID().toString() + "." + extension
+                val bucket = if (privateEntry) "blink-contest-private" else "blink-contest-media"
                 val endpoint = SupabaseConfig.url.trimEnd('/') +
-                    "/storage/v1/object/blink-contest-media/" + path
+                    "/storage/v1/object/" + bucket + "/" + path
                 val token = SupabaseService.accessToken() ?: error("Sign in again.")
                 val request = Request.Builder().url(endpoint)
                     .header("apikey", SupabaseConfig.anonKey)
@@ -71,7 +73,8 @@ class BlinkContestMediaUpload {
                     }
                 }
                 SupabaseConfig.url.trimEnd('/') +
-                    "/storage/v1/object/public/blink-contest-media/" + path
+                    if (privateEntry) "/functions/v1/blink-contest-private-media/" + path
+                    else "/storage/v1/object/public/blink-contest-media/" + path
             } finally {
                 staged.delete()
             }
