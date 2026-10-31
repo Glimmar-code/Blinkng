@@ -19,11 +19,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkChatReferenceStyle
 import com.example.data.models.ChatMessage
@@ -65,7 +67,7 @@ internal fun BlinkChatPhotoAlbumBubble(
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
         Column(
-            Modifier.widthIn(max = 306.dp).clip(corner)
+            Modifier.widthIn(max = 312.dp).clip(corner)
                 .background(if (palette.mode == MessageThemeMode.DARK && caption.isBlank())
                         androidx.compose.ui.graphics.Brush.linearGradient(
                             listOf(Color.Transparent, Color.Transparent)
@@ -181,6 +183,9 @@ private fun AlbumPhotoTile(
     modifier: Modifier,
     onOpen: (ChatMessage) -> Unit
 ) {
+    val context = LocalContext.current
+    val photoSource = listOf(photo.imagePreviewUrl, photo.attachedImageUrl, photo.localAttachmentUri)
+        .firstOrNull { !it.isNullOrBlank() }
     Box(
         modifier.clip(RoundedCornerShape(9.dp))
             .background(Color(BlinkChatReferenceStyle.Incoming))
@@ -193,8 +198,9 @@ private fun AlbumPhotoTile(
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
-            model = photo.imagePreviewUrl ?: photo.attachedImageUrl
-                ?: photo.localAttachmentUri,
+            model = remember(photoSource) {
+                ImageRequest.Builder(context).data(photoSource).crossfade(140).build()
+            },
             contentDescription = "Photo ${position + 1} of $total",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
