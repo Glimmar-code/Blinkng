@@ -528,6 +528,8 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var appeals by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var cleanupPreview by remember { mutableStateOf<JSONObject?>(null) }
+    var cleanupAuditBusy by remember { mutableStateOf(false) }
     var appealReviewReason by remember { mutableStateOf("") }
     var appealReviewError by remember { mutableStateOf("") }
     var inspectId by remember { mutableStateOf<String?>(null) }
@@ -638,6 +640,30 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
             }
         }) { Text("Save draft") }
         HorizontalDivider()
+        HorizontalDivider()
+        Text("Private media maintenance", style = MaterialTheme.typography.titleLarge)
+        Text("Read-only audit of unreferenced uploads older than 72 hours. Nothing is deleted.",
+            style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(enabled = !cleanupAuditBusy, onClick = {
+            cleanupAuditBusy = true
+            scope.launch {
+                runCatching { api.adminContestOrphanMedia() }
+                    .onSuccess { cleanupPreview = it }
+                    .onFailure { message = it.message ?: "Media audit failed." }
+                cleanupAuditBusy = false
+            }
+        }) { Text(if (cleanupAuditBusy) "Checking…" else "Inspect unreferenced media") }
+        cleanupPreview?.let { report ->
+            val candidates = report.optJSONArray("objects")?.rows().orEmpty()
+            Text(candidates.size.toString() + " candidate upload(s) in first 50 examined")
+            candidates.forEach { candidate ->
+                Text(candidate.optString("path") + " · " +
+                    candidate.optString("created_at").take(10),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Deletion is disabled until verified storage cleanup is available.",
+                style = MaterialTheme.typography.bodySmall)
+        }
         Text("Manage contests", style = MaterialTheme.typography.titleLarge)
         contests.forEach { contest ->
             ElevatedCard(Modifier.fillMaxWidth()) {
