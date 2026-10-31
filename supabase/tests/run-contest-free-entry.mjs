@@ -16,6 +16,9 @@ const mediaRequirement = readFileSync(
 const privateMedia = readFileSync(
   new URL('../migrations/20261031070000_blink_contest_private_submissions.sql', import.meta.url), 'utf8'
 );
+const candidateSearchMigration = readFileSync(
+  new URL('../migrations/20261031080000_blink_contest_candidate_search.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -56,6 +59,7 @@ try {
   await db.exec(growthMigration);
   await db.exec(mediaRequirement);
   await db.exec(privateMedia);
+  await db.exec(candidateSearchMigration);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
@@ -94,6 +98,10 @@ try {
     [id,'I create photography stories',mediaTwo])).rows[0].result);
   assert.notEqual(first.entry_id, second.entry_id);
 
+  await setUser(voter);
+  const noneBeforeApproval = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',20,0])).rows[0].result);
+  assert.equal(noneBeforeApproval.total, 0);
   await setUser(admin);
   const entries = json((await rpc('admin_list_blink_contest_entries', '$1::uuid', [id])).rows[0].result);
   assert.equal(entries.length, 2);
@@ -109,6 +117,21 @@ try {
   assert.equal(approved.name, 'CREATORONE');
   assert.equal(approved.rank, 1);
   assert.equal(approved.votes, 0);
+  const pageOne = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',1,0])).rows[0].result);
+  assert.equal(pageOne.total,2);
+  assert.equal(pageOne.entries.length,1);
+  assert.equal(pageOne.entries[0].rank,1);
+  const pageTwo = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',1,1])).rows[0].result);
+  assert.equal(pageTwo.entries.length,1);
+  assert.equal(pageTwo.entries[0].rank,2);
+  const foundByName = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'CREATORTWO',20,0])).rows[0].result);
+  assert.equal(foundByName.total,1);
+  assert.equal(foundByName.entries[0].username,'creatortwo');
+  await assert.rejects(() => rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'x',20,0]), /CANDIDATE_SEARCH_TERM_INVALID/);
   await assert.rejects(() => rpc('record_blink_contest_share','$1::uuid,$2::uuid,$3::text',
     [id,'99999999-9999-4999-8999-999999999999','copy']), /CANDIDATE_NOT_AVAILABLE/);
   const shared = json((await rpc('record_blink_contest_share','$1::uuid,$2::uuid,$3::text',
