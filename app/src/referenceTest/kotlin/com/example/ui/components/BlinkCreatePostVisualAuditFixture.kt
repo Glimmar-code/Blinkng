@@ -168,16 +168,27 @@ abstract class BlinkCreatePostVisualAuditFixture {
             }
         }
         rule.onNodeWithTag("blink_create_choice_poll").performClick()
-        rule.onNodeWithText("Poll duration").assertExists()
+        rule.onNodeWithTag("blink_poll_question_input")
+            .performTextReplacement("Which campus club should we support?")
+        rule.onNodeWithTag("blink_poll_option_0").performTextReplacement("Coding")
+        rule.onNodeWithTag("blink_poll_option_1").performTextReplacement("Robotics")
+        rule.onNodeWithTag("blink_poll_done").performClick()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_poll_attached_card").fetchSemanticsNodes().isNotEmpty()
+        }
         rule.onNodeWithTag("blink_compose_action_0").performScrollTo().performClick()
         rule.onNodeWithText("Change post type?").assertExists()
         rule.onNodeWithText("Continue").performClick()
         rule.onNodeWithTag("blink_media_review").assertExists()
         capture("create-post-poll-switch-gallery-staging.png", "blink_create_post_full_screen")
         rule.onNodeWithTag("blink_media_review_back").performClick()
-        // No photo was chosen: the previous poll must still be editable.
-        rule.onNodeWithText("Poll duration").assertExists()
-        rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
+        // The old Poll must still be attached if no image was chosen.
+        rule.onNodeWithTag("blink_poll_attached_card").assertExists()
+        rule.onNodeWithTag("blink_edit_attached_poll").performClick()
+        rule.onNodeWithTag("blink_poll_question_input").assertExists()
+        check(rule.onNodeWithTag("blink_poll_question_input")
+            .fetchSemanticsNode().config[SemanticsProperties.EditableText].text ==
+            "Which campus club should we support?") { "Canceling photo replacement lost the original Poll." }
     }
 
     @Test fun landingPhotoBackReturnsToCreateOptions() {
