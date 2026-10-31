@@ -31,6 +31,9 @@ const cancelledVisibilityMigration = readFileSync(
 const appealsMigration = readFileSync(
   new URL('../migrations/20261031120000_blink_contest_entry_appeals.sql', import.meta.url), 'utf8'
 );
+const orphanAuditMigration = readFileSync(
+  new URL('../migrations/20261031130000_blink_contest_orphan_media_audit.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -76,12 +79,20 @@ try {
   await db.exec(moderationHistoryMigration);
   await db.exec(cancelledVisibilityMigration);
   await db.exec(appealsMigration);
+  await db.exec(orphanAuditMigration);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
     creator2 + '/22222222-2222-4222-8222-222222222222.jpg'
   ]);
+  const orphanPath = creator1 + '/33333333-3333-4333-8333-333333333333.jpg';
+  await q(`insert into storage.objects(bucket_id,name,created_at)
+    values('blink-contest-private',$1,now()-interval '6 days')`,[orphanPath]);
+  await q(`update storage.objects set created_at=now()-interval '6 days'
+    where bucket_id='blink-contest-private'`);
   await setUser(creator1);
+  await assert.rejects(() => rpc('admin_list_blink_contest_orphan_media',
+    '$1::integer,$2::integer',[72,100]), /ADMIN_REQUIRED/);
   await assert.rejects(() => rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
     [null,JSON.stringify(payload)]), /ADMIN_REQUIRED/);
 
@@ -125,6 +136,16 @@ try {
   const first = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
     [id,'I make creative campus videos',mediaOne])).rows[0].result);
   assert.equal(first.status,'pending');
+  await setUser(admin);
+  const orphans = json((await rpc('admin_list_blink_contest_orphan_media',
+    '$1::integer,$2::integer',[72,100])).rows[0].result);
+  assert.equal(orphans.dry_run,true);
+  assert.ok(orphans.objects.some(o=>o.path===orphanPath));
+  assert.ok(!orphans.objects.some(o=>o.path===creator1+'/11111111-1111-4111-8111-111111111111.jpg'),
+    'Referenced applicant media must never appear in orphan suggestions');
+  await assert.rejects(() => rpc('admin_list_blink_contest_orphan_media',
+    '$1::integer,$2::integer',[1,100]), /INVALID_MEDIA_RETENTION/);
+  await setUser(creator1);
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
     [id,'Another duplicated application',mediaOne]), /duplicate|unique|CONTEST_FULL/i);
 
