@@ -109,7 +109,7 @@ fun ProductDetailScreen(
 ) {
     val context = LocalContext.current
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
-    val displayedMarketViews = rememberDelayedMarketViewCount(item.id, item.viewsCount.toInt().coerceAtLeast(0))
+    val displayedMarketViews = rememberDelayedMarketViewCount(item.id, item.viewsCount)
     var selectedImageIndex by remember(item.id) { mutableIntStateOf(0) }
     var imageSwipeDrag by remember(item.id) { mutableFloatStateOf(0f) }
     var imageSwipeActive by remember(item.id) { mutableStateOf(false) }
