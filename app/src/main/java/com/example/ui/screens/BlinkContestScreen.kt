@@ -372,8 +372,7 @@ fun BlinkContestScreen(
                                         busy = false
                                     }
                                 },
-                                enabled = !busy && BlinkContestPolicy.validStatement(statement) &&
-                                    (mediaChoice != null || mediaUrl.trim().startsWith("https://")),
+                                enabled = !busy && BlinkContestPolicy.canApply(statement, mediaChoice != null, mediaUrl),
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Apply for free") }
                         }
