@@ -1,3 +1,9 @@
+## 2026-10-31 — Android Chat composer touch/hold accessibility and reference icons
+
+- **PARITY-EXCEPTION: android-chat-composer-touch-microphone-20261031** — Android Compose's inline microphone supports touch tap (voice typing) and long press (start voice-note recording). The fix gives the control proper click/long-click accessibility semantics and matches the supplied outlined camera/microphone artwork. These are native Android gesture/accessibility affordances; applying an Android long-press modifier to the Windows desktop composer would be inappropriate.
+- **Desktop scope:** Windows composer and its existing send/attachment actions remain unchanged. This exception does **not** certify full voice recording/dictation parity on Windows.
+- **Validation hold:** An Android instrumentation screenshot fixture and real semantic-action assertions cover camera, tap-to-dictate, long-press-to-record, and send. Latest-head CI, updated screenshot comparison and native device functionality must pass before main merge.
+
 ## 2026-10-30 — Compact native Android Chat voice player (reference fidelity)
 
 - **PARITY-EXCEPTION: android-native-compact-voice-player-20261030** — The small-screen Android `BlinkChatVoicePlayer` renders the selected reference's compact single-row waveform, duration and playback-speed control using Android MediaPlayer. Android native DownloadManager remains available from the message action menu, not an extra button consuming inline waveform space.
