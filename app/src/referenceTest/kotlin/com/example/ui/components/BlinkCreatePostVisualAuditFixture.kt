@@ -212,6 +212,10 @@ abstract class BlinkCreatePostVisualAuditFixture {
                 )
             }
         }
+        rule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
+        rule.onNodeWithTag("blink_gallery_remove_selected_0").assertExists()
+        rule.onNodeWithTag("blink_gallery_add_more").assertExists()
+        rule.onNodeWithTag("blink_gallery_next").assertExists()
         capture("create-post-gallery-staging.png")
         rule.onNodeWithTag("blink_gallery_photo_0").performClick()
         rule.onNodeWithTag("blink_gallery_edit_preview").performClick()
