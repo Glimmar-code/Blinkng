@@ -35,7 +35,36 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
       - name: Record real Compose launch frames and test completion
-        run: gradle :app:testDebugUnitTest --tests com.example.BlinkBeyondLinkIntroTest -Proborazzi.test.record=true --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Robolectric fetches Android SDK test jars at runtime. On a fresh CI
+          # runner a transient Maven HTTP failure can occur before any test runs.
+          # Retry ONLY that dependency-fetch failure, and still require all
+          # original screenshot and animation assertions to pass.
+          run_intro() {
+            gradle :app:testDebugUnitTest --tests com.example.BlinkBeyondLinkIntroTest -Proborazzi.test.record=true --stacktrace --no-daemon > intro-test.log 2>&1
+          }
+          if ! run_intro; then
+            cat intro-test.log
+            if grep -q 'MavenArtifactFetcher.java' intro-test.log &&
+               grep -q 'HttpURLConnection.java' intro-test.log; then
+              echo "::warning::Transient Robolectric artifact fetch failed; retrying exact same test once"
+              sleep 3
+              run_intro || { cat intro-test.log; exit 1; }
+            else
+              exit 1
+            fi
+          fi
+          cat intro-test.log
+      - name: Preserve introductory test failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-intro-failure-log-${{ github.sha }}
+          path: intro-test.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify all viewport captures exist and differ
         run: |
           set -euo pipefail
