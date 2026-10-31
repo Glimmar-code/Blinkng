@@ -1839,3 +1839,9 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - Drops Top Givers now separates the actual followed state from global follow-request busy state; an unrelated account no longer appears as Following. The empty leaderboard offers genuine Browse/Create actions without synthetic rankings. This is Android-specific layout polish over existing shared backend semantics; Windows continues using its own native empty/action presentation.
 
 - Coin-gift sender receipt trigger now has a dedicated GitHub Actions isolated PostgreSQL fixture that tests reapply, duplicate gift requests, recipient/actor IDs, metadata and deny-execute ACL; the fixture never connects to live Supabase and does not validate production dispatch or user RLS end-to-end.
+
+
+### PARITY-EXCEPTION: android-drops-boost-dark-card-contrast-20261031
+
+- Android-only contrast hardening sets explicit light foreground colors inside the dark Drops empty/podium cards and Boost quote/analytics cards. This is a native Compose presentation correction; it does not change the shared data model, API, eligibility, pricing, balances, transactions or user actions.
+- Windows equivalent: the desktop Drops and Boost surfaces retain their existing native theme-aware text rendering and separate layout. The parity contract is identical data, actions and readable foreground/background contrast, not pixel-identical native card styling. The Windows parity/build gate verifies its existing desktop implementation independently.
