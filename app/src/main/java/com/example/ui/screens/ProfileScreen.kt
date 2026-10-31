@@ -694,6 +694,7 @@ fun ProfileScreen(
                         columns = 3,
                         isLoading = isPostsLoading,
                         hasLoadError = hasPostsLoadError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onRetry = onRefreshProfile
                     )
 
@@ -703,6 +704,7 @@ fun ProfileScreen(
                         onOpen = onOpenPost,
                         isLoading = arePrivateCollectionsLoading,
                         hasLoadError = havePrivateCollectionsError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onRetry = onRefreshProfile
                     )
 
@@ -712,6 +714,7 @@ fun ProfileScreen(
                         onOpen = onOpenPost,
                         isLoading = arePrivateCollectionsLoading,
                         hasLoadError = havePrivateCollectionsError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onRetry = onRefreshProfile
                     )
 
@@ -783,6 +786,7 @@ fun ProfileScreen(
                             isDark = isDark,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
+                            themeCardColor = Color(savedProfileTheme.cardArgb),
                             emptyTitle = "Nothing saved yet",
                             emptySubtitle = "Posts you save will stay private here.",
                             onLike = onLikePost,
@@ -814,6 +818,7 @@ fun ProfileScreen(
                             isDark = isDark,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
+                            themeCardColor = Color(savedProfileTheme.cardArgb),
                             emptyTitle = "No liked posts yet",
                             emptySubtitle = "Posts you like will stay private here.",
                             onLike = onLikePost,
@@ -1371,7 +1376,8 @@ private fun LazyListScope.premiumProfileGridItems(
     columns: Int = 2,
     isLoading: Boolean = false,
     hasLoadError: Boolean = false,
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    themeCardColor: Color? = null
 ) {
     if (items.isEmpty() && isLoading) {
         item(key = "premium_grid_loading_${emptyMessage}") {
@@ -1409,7 +1415,7 @@ private fun LazyListScope.premiumProfileGridItems(
                             modifier = Modifier.weight(1f)
                                 .aspectRatio(if (columns == 3) .72f else .86f)
                                 .clip(RoundedCornerShape(if (columns == 3) 9.dp else 14.dp))
-                                .background(Color(0xFF1B1525))
+                                .background(themeCardColor ?: Color(0xFF1B1525))
                                 .clickable { onOpen(post.id) }
                                 .testTag("premium_profile_post_${post.id}"),
                             contentAlignment = Alignment.Center
