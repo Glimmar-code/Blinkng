@@ -88,6 +88,8 @@ abstract class ChatReferenceVisualAuditFixture {
         rule.onNodeWithTag("chat_reference_camera").assertExists()
         rule.onNodeWithTag("chat_reference_microphone").assertExists()
         rule.onNodeWithTag("chat_reference_send").assertExists()
+        rule.onNodeWithTag("chat_reference_send_plane",
+            useUnmergedTree = true).assertExists()
         capture("chat-reference-composer-controls.png")
         rule.onNodeWithTag("chat_reference_camera").performClick()
         rule.onNodeWithTag("chat_reference_microphone").performClick()
