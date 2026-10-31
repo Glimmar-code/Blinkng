@@ -13,10 +13,10 @@ import com.example.ui.screens.BlinkDropsRoute
 import com.example.ui.theme.BlinkTheme
 
 /**
- * Direct notification destination for BLINK Drops.
+ * Direct notification destination for BLINK GIVEAWAY.
  *
  * Keeping this destination separate means a foreground or background giveaway
- * notification can open the exact Drops experience without disturbing whatever
+ * notification can open the exact Giveaway dashboard without disturbing whatever
  * MainActivity navigation state the user had before.
  */
 class BlinkDropsActivity : ComponentActivity() {

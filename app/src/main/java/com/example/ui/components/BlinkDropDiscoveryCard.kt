@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,20 +25,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.supabase.BlinkDropDiscovery
 import java.text.NumberFormat
+import java.time.Instant
 import java.util.Locale
 
 /**
- * Feed discovery module for creators the viewer did not follow when a Drop started.
- * It is a separate feed row and never reorders the ranked organic posts around it.
+ * Public Giveaway discovery stays in its own feed row and never reorders organic posts.
  */
 @Composable
 fun BlinkDropDiscoveryCard(
     item: BlinkDropDiscovery,
     onFollow: () -> Unit,
     onOpenDrops: () -> Unit,
+    following: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val formatter = NumberFormat.getIntegerInstance(Locale.US)
+    val active = item.status.equals("ACTIVE", ignoreCase = true)
+    val endedLabel = runCatching {
+        val endedAt = Instant.parse(item.endsAt).toEpochMilli()
+        "Ended " + DateUtils.getRelativeTimeSpanString(
+            endedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
+        ).toString()
+    }.getOrDefault("Giveaway ended")
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
@@ -59,33 +68,51 @@ fun BlinkDropDiscoveryCard(
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "You missed a BLINK Drop",
+                        if (active) "BLINK GIVEAWAY · LIVE" else "You missed this BLINK Giveaway",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
                     )
                     Text(
-                        "@${item.creatorUsername} gave followers a chance to earn BLINK Coins.",
+                        if (active) "@${item.creatorUsername} is running a Giveaway. Join before it ends." else "@${item.creatorUsername} ran this Giveaway. $endedLabel.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
 
+            if (item.targetTitle.isNotBlank()) {
+                Text(item.targetTitle, fontWeight = FontWeight.SemiBold)
+            }
             Text(
-                "${formatter.format(item.totalCoins)} coins · ${formatter.format(item.rewardPerUser)} each · ${item.winnerCount} rewards",
+                when (item.action.uppercase()) {
+                    "LIKE" -> "Entry action: like the linked post."
+                    "COMMENT" -> "Entry action: comment on the linked post."
+                    "REPOST" -> "Entry action: repost the linked post."
+                    else -> "Complete the required action to enter."
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "${formatter.format(item.totalCoins)} BLINK Coins · ${formatter.format(item.rewardPerUser)} each · ${item.winnerCount} rewards",
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                "You weren't following this creator when the Drop started. Follow now to be eligible for future Drops.",
+                when {
+                    active && following -> "You follow @${item.creatorUsername}. Join this Giveaway before it ends."
+                    active -> "Anyone can discover this Giveaway. Follow the creator to be notified next time."
+                    following -> "You follow @${item.creatorUsername}. Watch for the next Giveaway."
+                    else -> "Follow @${item.creatorUsername} to be among the first notified about the next Giveaway."
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onFollow) {
-                    Text("Follow")
+                if (!following) {
+                    Button(onClick = onFollow) { Text("Follow") }
                 }
                 OutlinedButton(onClick = onOpenDrops) {
-                    Text("View Drops")
+                    Text(if (active) "View Giveaway" else "View Giveaway details")
                 }
             }
         }

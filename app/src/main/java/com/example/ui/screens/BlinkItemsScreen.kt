@@ -373,8 +373,8 @@ private fun BlinkItemsHome(
             ) {
                 BlinkCompactItemTile(
                     icon = Icons.Default.CardGiftcard,
-                    title = "Drops",
-                    subtitle = "Explore BLINK Drops",
+                    title = "BLINK Giveaway",
+                    subtitle = "Create and discover Giveaways",
                     enabled = true,
                     showSwitch = false,
                     onToggle = {},

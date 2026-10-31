@@ -11,9 +11,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import java.time.Duration
+import java.time.Instant
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.BlinkTheme
+import com.example.data.supabase.BlinkDropDiscovery
+import com.example.ui.components.BlinkDropDiscoveryCard
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.json.JSONObject
@@ -26,7 +30,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.text.NumberFormat
 import java.util.Locale
 
-/** Isolated, real Compose captures of the same growth cards used in the app. */
+/** Isolated, real Compose captures of BLINK Giveaway and growth cards used in the app. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
@@ -44,7 +48,7 @@ class BlinkGrowthVisualCaptureTest {
         }
     }
 
-    @Test fun topGiversWithVerifiedRewardTotals() {
+    @Test fun mostGiversWithCommittedGiveawayTotals() {
         scene {
             TopGiverCard(TopGiver("u1","first","First Creator",1200,3,20,false),
                 rank = 1, formatter = formatter, following = false, followBusy = false, onFollow = {})
@@ -53,12 +57,56 @@ class BlinkGrowthVisualCaptureTest {
             TopGiverCard(TopGiver("u3","third","Third Creator",300,1,8,false),
                 rank = 3, formatter = formatter, following = false, followBusy = false, onFollow = {})
         }
-        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/growth-reference-drops-podium.png")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-most-givers-podium.png")
     }
 
-    @Test fun topGiversGenuineEmptyState() {
+    @Test fun mostGiversGenuineEmptyState() {
         scene { TopGiversEmptyState(onBrowse = {}, onCreate = {}) }
-        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/growth-reference-drops-empty.png")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-most-givers-empty.png")
+    }
+
+    @Test fun giveawayFeedLiveDiscoveryCard() {
+        val item = BlinkDropDiscovery(
+            dropId = "giveaway-live",
+            creatorId = "creator-1",
+            creatorUsername = "glimmar",
+            creatorName = "Glimmar",
+            creatorAvatar = "",
+            totalCoins = 10000,
+            rewardPerUser = 500,
+            winnerCount = 20,
+            claimedCount = 5,
+            status = "ACTIVE",
+            action = "LIKE",
+            createdAt = "2026-10-31T18:00:00Z",
+            endsAt = "2026-10-31T20:00:00Z",
+        )
+        scene {
+            BlinkDropDiscoveryCard(item, onFollow = {}, onOpenDrops = {}, following = false)
+        }
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-feed-live.png")
+    }
+
+    @Test fun giveawayFeedMissedDiscoveryCard() {
+        val item = BlinkDropDiscovery(
+            dropId = "giveaway-ended",
+            creatorId = "creator-2",
+            creatorUsername = "campusstar",
+            creatorName = "Campus Star",
+            creatorAvatar = "",
+            totalCoins = 5000,
+            rewardPerUser = 500,
+            winnerCount = 10,
+            claimedCount = 10,
+            status = "COMPLETED",
+            action = "LIKE",
+            createdAt = "2026-10-30T18:00:00Z",
+            endsAt = Instant.now().minus(Duration.ofHours(2)).toString(),
+        )
+        scene {
+            BlinkDropDiscoveryCard(item, onFollow = {}, onOpenDrops = {}, following = false)
+        }
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/giveaway-feed-missed.png")
     }
 
     @Test fun boostQuoteAndAnalytics() {
