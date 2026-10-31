@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.blinkng.shared.BlinkMentionTokenPolicy
 import com.blinkng.shared.BlinkUserSuggestionPolicy
@@ -59,7 +60,9 @@ fun BlinkPostMentionSuggestions(
 
     LaunchedEffect(token?.query) {
         val query = token?.query.orEmpty()
-        if (query.isBlank()) return@LaunchedEffect
+        // A bare @ is a valid mention picker entry in the reference.
+        // Ask the existing privacy-filtered backend for a bounded first page.
+        // If it doesn't permit an empty query, show search guidance.
         delay(220)
         loading = true
         try {
@@ -75,7 +78,7 @@ fun BlinkPostMentionSuggestions(
         }
     }
 
-    if (token == null || token.query.isBlank()) return
+    if (token == null) return
     val ranked = BlinkUserSuggestionPolicy.rank(
         candidates, token.query,
         username = { it.username }, displayName = { it.fullName }
@@ -88,7 +91,9 @@ fun BlinkPostMentionSuggestions(
                 color = Color(0xFF17191F)
             ) {
                 Text(
-                    if (loading) "Finding students..." else "No matching student accounts",
+                    if (loading) "Finding students..." else if (token.query.isBlank())
+                        "Type a name or username to find students"
+                    else "No matching student accounts",
                     color = Color(0xFFD5D7DF), style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(14.dp)
                 )
@@ -98,7 +103,9 @@ fun BlinkPostMentionSuggestions(
     }
 
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = modifier.fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .testTag("blink_mention_suggestions"),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text("Mention a BLINK student", color = Color(0xFFE8EAF1), style = MaterialTheme.typography.labelMedium)
@@ -110,7 +117,9 @@ fun BlinkPostMentionSuggestions(
                 Surface(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                     color = Color(0xFF17191F),
-                    modifier = Modifier.fillMaxWidth().clickable {
+                    modifier = Modifier.fillMaxWidth()
+                        .testTag("blink_mention_user_" + person.id)
+                        .clickable {
                         val current = BlinkMentionTokenPolicy.active(text)
                         if (current != null) {
                             onTextChanged(
