@@ -238,10 +238,19 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall)
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(prizeOne, { prizeOne = it }, label = { Text("1st ₦") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(prizeTwo, { prizeTwo = it }, label = { Text("2nd ₦") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(prizeThree, { prizeThree = it }, label = { Text("3rd ₦") }, modifier = Modifier.weight(1f))
+            Text("Prizes in naira", style = MaterialTheme.typography.titleMedium)
+            // Three inline edit fields were too narrow on 320dp devices and
+            // during font scaling, especially for five-figure prize amounts.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = prizeOne, onValueChange = { prizeOne = it.take(10) },
+                    label = { Text("First place (₦)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = prizeTwo, onValueChange = { prizeTwo = it.take(10) },
+                    label = { Text("Second place (₦)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = prizeThree, onValueChange = { prizeThree = it.take(10) },
+                    label = { Text("Third place (₦)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
             }
         }
         item {
@@ -311,7 +320,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(contest.optString("title"), fontWeight = FontWeight.Bold)
                     Text(contest.optString("status"))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         TextButton(onClick = {
                             entries = emptyList()
                             appeals = emptyList()
