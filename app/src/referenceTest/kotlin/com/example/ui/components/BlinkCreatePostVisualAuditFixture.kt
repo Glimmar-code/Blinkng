@@ -13,6 +13,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -20,6 +24,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -379,6 +385,30 @@ abstract class BlinkCreatePostVisualAuditFixture {
             rule.onAllNodesWithText("Ayo").fetchSemanticsNodes().isNotEmpty()
         }
         capture("create-post-full-mentions-staging.png", "blink_create_post_full_screen")
+    }
+
+    @Test fun pollOptionControlsAreVisibleAndRespectTwoAnswerMinimum() {
+        rule.setContent {
+            AuditSurface {
+                var options by remember { mutableStateOf(listOf("Sports", "Technology")) }
+                PollComposer(
+                    question = "Which club?",
+                    onQuestionChanged = {},
+                    options = options,
+                    onOptionsChanged = { options = it },
+                    durationHours = 24,
+                    onDurationChanged = {},
+                    enabled = true,
+                    standalone = true
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_poll_remove_0").assertExists().assertIsNotEnabled()
+        rule.onNodeWithTag("blink_poll_remove_1").assertExists().assertIsNotEnabled()
+        rule.onNodeWithText("Add option (up to 4)").performClick()
+        rule.onNodeWithTag("blink_poll_remove_2").assertIsEnabled()
+        rule.onNodeWithTag("blink_poll_remove_2").performClick()
+        rule.onNodeWithTag("blink_poll_remove_0").assertIsNotEnabled()
     }
 
     @Test fun pollTileOpensFullScreenAndDoneKeepsEditablePoll() {
