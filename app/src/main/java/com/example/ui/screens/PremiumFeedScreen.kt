@@ -2016,6 +2016,7 @@ private fun PremiumHomeFeed(
                                                     }
                                                 },
                                                 onOpenDrops = onDropsClick,
+                                                following = row.item.creatorId in feedFollowedIds,
                                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                             )
                                         }
