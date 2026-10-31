@@ -496,7 +496,7 @@ private fun BlinkPostShareRow(
 ) {
     Surface(
         color = Color(0xFF1A1D24), shape = RoundedCornerShape(0.dp),
-        modifier = Modifier.fillMaxWidth().height(55.dp)
+        modifier = Modifier.fillMaxWidth().height(52.dp)
             .clickable(enabled = enabled, onClick = onClick)
     ) {
         Row(
