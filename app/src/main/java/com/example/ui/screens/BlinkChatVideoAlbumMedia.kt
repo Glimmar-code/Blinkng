@@ -17,6 +17,7 @@ internal object BlinkChatVideoAlbumMedia {
         remote(message.attachedVideoUrl) ?: local(message.attachedVideoUrl)
             ?: remote(message.localAttachmentUri) ?: local(message.localAttachmentUri)
 
+    /** Prefer an uploaded poster; otherwise decode a frame from an actual local video. */
     fun thumbnail(message: ChatMessage): String? =
         remote(message.imagePreviewUrl) ?: local(message.imagePreviewUrl)
             ?: local(message.attachedVideoUrl) ?: local(message.localAttachmentUri)
