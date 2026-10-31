@@ -19,6 +19,12 @@ object BlinkContestPolicy {
         else -> "Coming soon"
     }
     fun validStatement(text: String) = text.trim().length in MIN_STATEMENT..MAX_STATEMENT
+    fun validEntryMediaUrl(value: String): Boolean = runCatching {
+        val uri = java.net.URI(value.trim())
+        uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
+    }.getOrDefault(false)
+    fun canApply(text: String, hasSelectedMedia: Boolean, mediaUrl: String): Boolean =
+        validStatement(text) && (hasSelectedMedia || validEntryMediaUrl(mediaUrl))
     fun canVote(status: String, voteId: String?, ownId: String, candidateId: String): Boolean =
         status == "voting" && (voteId.isNullOrBlank() || voteId == "null") &&
             candidateId.isNotBlank() && candidateId != "null" && ownId != candidateId
