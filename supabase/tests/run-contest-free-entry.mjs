@@ -19,6 +19,9 @@ const privateMedia = readFileSync(
 const candidateSearchMigration = readFileSync(
   new URL('../migrations/20261031080000_blink_contest_candidate_search.sql', import.meta.url), 'utf8'
 );
+const moderationAuditMigration = readFileSync(
+  new URL('../migrations/20261031090000_blink_contest_moderation_audit.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -60,6 +63,7 @@ try {
   await db.exec(mediaRequirement);
   await db.exec(privateMedia);
   await db.exec(candidateSearchMigration);
+  await db.exec(moderationAuditMigration);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
@@ -105,8 +109,40 @@ try {
   await setUser(admin);
   const entries = json((await rpc('admin_list_blink_contest_entries', '$1::uuid', [id])).rows[0].result);
   assert.equal(entries.length, 2);
-  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text', [first.entry_id,'approve']);
-  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text', [second.entry_id,'approve']);
+  await assert.rejects(
+    () => rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+      [first.entry_id,'approve','short']),
+    /CONTEST_REVIEW_REASON_REQUIRED/
+  );
+  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+    [first.entry_id,'approve','Application meets contest eligibility rules']);
+  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+    [second.entry_id,'approve','Submission approved by moderator']);
+  const rejection = json((await rpc('admin_review_blink_contest_entry',
+    '$1::uuid,$2::text,$3::text',
+    [second.entry_id,'reject','Submission violates the published competition rules'])
+  ).rows[0].result);
+  assert.equal(rejection.status,'rejected');
+  await setUser(voter);
+  const afterRejection = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',20,0])).rows[0].result);
+  assert.equal(afterRejection.total,1);
+  await setUser(admin);
+  await assert.rejects(() => rpc('admin_review_blink_contest_entry',
+    '$1::uuid,$2::text,$3::text', [second.entry_id,'reject','Repeated rejection of same entry']),
+    /ENTRY_ALREADY_IN_STATUS/);
+  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+    [second.entry_id,'approve','Appeal reviewed and application reinstated']);
+  const audits=(await q('select previous_status,next_status,reason from public.blink_contest_entry_review_audit where entry_id=$1 order by created_at',
+    [second.entry_id])).rows;
+  assert.equal(audits.length,3);
+  assert.equal(audits.filter(r=>r.next_status==='rejected').length,1);
+  const rejectionNotice=(await q(`select metadata->>'new_status' as status,sub_text
+    from public.notifications where user_id=$1
+    and metadata->>'kind'='blink_contest_application_review'
+    and metadata->>'new_status'='rejected'`,[creator2])).rows;
+  assert.equal(rejectionNotice.length,1);
+  assert.match(rejectionNotice[0].sub_text,/competition rules/);
 
   // Every approved contestant has a validated public share destination.
   await setUser(voter);
