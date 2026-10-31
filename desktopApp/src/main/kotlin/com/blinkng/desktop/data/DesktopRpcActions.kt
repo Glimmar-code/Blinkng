@@ -150,6 +150,12 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_status", status).put("p_reference", if (reference.isBlank()) JSONObject.NULL else reference.trim())
             .put("p_note", note))
     }
+    suspend fun adminContestEntryHistory(entryId: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_get_blink_contest_entry_review_history",
+            JSONObject().put("p_entry_id", entryId).put("p_limit", 30))
+    }
+
     suspend fun adminContestReview(id: String, action: String, reason: String): JSONObject {
         requireAdmin()
         return rpc("admin_review_blink_contest_entry",
