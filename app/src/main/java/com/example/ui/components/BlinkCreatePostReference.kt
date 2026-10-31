@@ -868,9 +868,13 @@ internal fun BlinkReferenceMediaReview(
     LaunchedEffect(permissionVersion, canBrowse) {
         library = if (canBrowse) readAvailableGalleryPhotos(context).map { it.uri.toString() } else emptyList()
     }
-    val visiblePhotos = (library + images).distinct()
-    var previewIndex by remember { mutableIntStateOf(-1) }
     var selectedTab by remember { mutableStateOf("All") }
+    // Images and Reels use different validated publishing pipelines.
+    // Videos is a real video-selection page, not the same photos grid under
+    // a misleading label. The scoped Android picker remains permission-free.
+    val visiblePhotos = if (selectedTab == "Videos") emptyList()
+        else (library + images).distinct()
+    var previewIndex by remember { mutableIntStateOf(-1) }
     if (previewIndex in images.indices) {
         Dialog(onDismissRequest = { previewIndex = -1 }) {
             Column(
@@ -961,11 +965,12 @@ internal fun BlinkReferenceMediaReview(
                     shape = RoundedCornerShape(22.dp),
                     modifier = Modifier.weight(1f).height(36.dp)
                         .clickable {
+                            selectedTab = tab
                             if (tab == "Videos") {
                                 // Keep Android's system picker in charge of device-library access.
+                                // The current photo draft is retained if cancelled.
                                 onPickVideos()
                             } else {
-                                selectedTab = tab
                                 // Tabs only filter or refresh permitted media.
                                 // Asking for all-gallery access is a separate,
                                 // explicit action in the empty-gallery state.
@@ -996,7 +1001,31 @@ internal fun BlinkReferenceMediaReview(
             )
             Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
         }
-        if (visiblePhotos.isEmpty()) {
+        if (selectedTab == "Videos") {
+            Column(
+                Modifier.fillMaxWidth().weight(1f)
+                    .testTag("blink_gallery_video_selection"),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.Videocam, contentDescription = null,
+                    tint = Color(0xFFB7ADFF), modifier = Modifier.size(36.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("Select videos for your Reel", color = Color.White,
+                    fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Videos open in the Reel editor. Photos and Reels are separate post types.",
+                    color = Color(0xFFABB4C3), fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 15.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Button(onClick = onPickVideos,
+                    modifier = Modifier.testTag("blink_gallery_choose_videos")) {
+                    Text("Choose videos", color = Color.White)
+                }
+            }
+        } else if (visiblePhotos.isEmpty()) {
             BlinkMediaEmptyGallery(
                 canBrowse = canBrowse,
                 onPick = onAddMore,
@@ -1042,6 +1071,7 @@ internal fun BlinkReferenceMediaReview(
                 }
             }
             }
+        if (selectedTab != "Videos") {
         Row(
             modifier = Modifier.fillMaxWidth().testTag("blink_gallery_selected_strip"),
             verticalAlignment = Alignment.CenterVertically,
@@ -1114,6 +1144,7 @@ internal fun BlinkReferenceMediaReview(
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
             ) { Text("Next (" + images.size + ")", color = Color.White) }
+        }
         }
         Spacer(Modifier.height(3.dp))
     }
