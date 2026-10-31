@@ -996,10 +996,16 @@ internal fun BlinkReferenceMediaReview(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (canBrowse) "Recent photos" else "Selected photos", color = Color.White, fontWeight = FontWeight.SemiBold,
+                when {
+                    selectedTab == "Videos" -> "Video selection"
+                    canBrowse -> "Recent photos"
+                    else -> "Selected photos"
+                }, color = Color.White, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
-            Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
+            if (selectedTab != "Videos") {
+                Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
+            }
         }
         if (selectedTab == "Videos") {
             Column(
