@@ -216,7 +216,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     }
                                 }) { Text("Upload public preview") }
                             }
-                            Button(enabled = !busy && BlinkContestPolicy.validStatement(statement), onClick = {
+                            Button(enabled = !busy && BlinkContestPolicy.canApply(statement, false, mediaUrl), onClick = {
                                 busy = true
                                 scope.launch {
                                     runCatching { api.contestApply(c.optString("id"), statement, mediaUrl) }
