@@ -3206,6 +3206,7 @@ private fun SelectedImagePreview(
         Modifier
             .size(116.dp)
             .clip(RoundedCornerShape(16.dp))
+            .testTag("blink_selected_media_thumbnail_" + index)
     ) {
         AsyncImage(
             model = uri,
