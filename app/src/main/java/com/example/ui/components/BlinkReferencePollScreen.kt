@@ -16,6 +16,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/** Shared UI validation. Server-side poll validation remains authoritative. */
+internal fun isBlinkPollReady(
+    question: String,
+    options: List<String>,
+    durationHours: Int
+): Boolean {
+    val cleaned = options.map { it.trim() }
+    return question.trim().isNotBlank() &&
+        question.length <= 240 &&
+        cleaned.size in 2..4 &&
+        cleaned.all { it.isNotBlank() && it.length <= 120 } &&
+        cleaned.map { it.lowercase() }.distinct().size == cleaned.size &&
+        durationHours in listOf(1, 24, 72, 168)
+}
+
 /**
  * Reference-first Poll creation. Done returns the editable, unsent poll to
  * Create Post; publishing remains a separate Post Details -> Post Options action.
@@ -32,6 +47,7 @@ internal fun BlinkReferencePollScreen(
     onBack: () -> Unit,
     onDone: () -> Unit
 ) {
+    val ready = isBlinkPollReady(question, options, durationHours)
     Column(Modifier.fillMaxSize().background(Color.Black)
         .testTag("blink_poll_fullscreen")) {
         Box(Modifier.fillMaxWidth().height(54.dp)) {
@@ -46,7 +62,7 @@ internal fun BlinkReferencePollScreen(
                 fontSize = 16.sp, modifier = Modifier.align(Alignment.Center))
             Button(
                 onClick = onDone,
-                enabled = enabled,
+                enabled = enabled && ready,
                 modifier = Modifier.align(Alignment.CenterEnd)
                     .padding(end = 12.dp).height(36.dp)
                     .testTag("blink_poll_done"),
@@ -55,6 +71,15 @@ internal fun BlinkReferencePollScreen(
             ) { Text("Done", color = Color.White, fontSize = 12.sp) }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            if (!ready) {
+                Text(
+                    "Enter a question and 2–4 different answers to continue.",
+                    color = Color(0xFFB9C0CF),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                        .testTag("blink_poll_validation_hint")
+                )
+            }
             PollComposer(
                 question = question,
                 onQuestionChanged = onQuestionChanged,
