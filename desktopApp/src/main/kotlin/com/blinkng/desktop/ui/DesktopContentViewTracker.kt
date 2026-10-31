@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -13,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -20,6 +25,9 @@ import kotlinx.coroutines.launch
 
 /** BLINK Android and desktop share a two-minute presentation-only delay. */
 internal const val DESKTOP_VIEW_REFLECTION_DELAY_MS = 120_000L
+
+/** Minimum foreground dwell before a visible item becomes a view. */
+internal const val DESKTOP_CONTENT_EXPOSURE_DWELL_MS = 1_500L
 
 /** Do not count repeated layouts or preloaded/off-screen content. */
 internal class DesktopVisibilityGate {
@@ -142,26 +150,41 @@ internal fun Modifier.trackDesktopContentExposure(
 ): Modifier {
     val window = LocalWindowInfo.current
     val gate = remember(postId) { DesktopVisibilityGate() }
+    val scope = rememberCoroutineScope()
+    var currentlyVisible by remember(postId) { mutableStateOf(false) }
+    var pendingExposure by remember(postId) { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(postId) {
+        onDispose { pendingExposure?.cancel() }
+    }
+
     return this.onGloballyPositioned { coordinates ->
         val size = window.containerSize
-        if (!coordinates.isAttached || size.width <= 0 || size.height <= 0) {
-            gate.update(false)
-            return@onGloballyPositioned
-        }
         val bounds = coordinates.boundsInWindow()
         val refWidth = minOf(bounds.width, size.width.toFloat())
         val refHeight = minOf(bounds.height, size.height.toFloat())
-        if (refWidth <= 0f || refHeight <= 0f) {
-            gate.update(false)
-            return@onGloballyPositioned
-        }
         val visibleWidth = (minOf(bounds.right, size.width.toFloat()) -
             maxOf(bounds.left, 0f)).coerceAtLeast(0f)
         val visibleHeight = (minOf(bounds.bottom, size.height.toFloat()) -
             maxOf(bounds.top, 0f)).coerceAtLeast(0f)
-        if (gate.update(visibleWidth >= refWidth * 0.5f &&
-            visibleHeight >= refHeight * 0.5f)) {
-            DesktopContentViewCoordinator.record(client, postId, currentCount)
+        val qualified = coordinates.isAttached && size.width > 0 && size.height > 0 &&
+            refWidth > 0f && refHeight > 0f &&
+            visibleWidth >= refWidth * 0.5f && visibleHeight >= refHeight * 0.5f
+
+        if (!qualified) {
+            currentlyVisible = false
+            pendingExposure?.cancel()
+            pendingExposure = null
+            gate.update(false)
+        } else if (!currentlyVisible) {
+            currentlyVisible = true
+            pendingExposure = scope.launch {
+                delay(DESKTOP_CONTENT_EXPOSURE_DWELL_MS)
+                if (currentlyVisible && gate.update(true)) {
+                    DesktopContentViewCoordinator.record(client, postId, currentCount)
+                }
+                pendingExposure = null
+            }
         }
     }
 }
