@@ -3415,7 +3415,7 @@ internal fun PollComposer(
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("Add option")
+                    Text("Add option (up to 4)")
                 }
             }
             Text(
