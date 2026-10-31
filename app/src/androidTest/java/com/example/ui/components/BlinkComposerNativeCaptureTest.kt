@@ -159,6 +159,12 @@ class BlinkComposerNativeCaptureTest {
         rule.waitUntil(20_000) {
             rule.onAllNodesWithText("/ 00:01", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
+        // The MP4 must produce a real decoded filmstrip, not just a placeholder.
+        rule.waitUntil(15_000) {
+            rule.onAllNodesWithTag("blink_video_editor_filmstrip")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_video_editor_playhead").assertExists()
         captureDisplay("create-post-video-preview-staging.png")
         rule.onNodeWithText("Trim video").performScrollTo()
         rule.onNodeWithContentDescription("Play or pause reel").performClick()
