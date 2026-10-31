@@ -330,6 +330,15 @@ abstract class ChatReferenceVisualAuditFixture {
             bitmap.recycle()
             file.toURI().toString()
         }
+        // Use an actual playable MP4 for video-album verification. The fixture
+        // asset is decoded by Coil's video-frame fetcher and MediaMetadataRetriever;
+        // photos remain separate PNG assets and are never passed as videos.
+        val videoFile = File(context.cacheDir, "chat-reference-fixture-video.mp4")
+        InstrumentationRegistry.getInstrumentation().context.assets
+            .open("blink-visual-synthetic.mp4").use { input ->
+                videoFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        val videoUri = videoFile.toURI().toString()
         val base = "2026-10-29T"
         fun msg(
             id: String, text: String, time: String, fromMe: Boolean = false
@@ -360,11 +369,11 @@ abstract class ChatReferenceVisualAuditFixture {
             isVoiceNote = true, voiceDuration = "0:24", messageType = "audio"
         )
         reference += msg("reference-videos-label", "Check these videos from the event.", "09:20", true)
-        // Local URI thumbnails exercise the real video-album composable
-        // without fetching untrusted/private content or playing a video.
+        // Actual MP4 source exercises video-frame extraction and duration parsing.
+        // No still-image fixture is masqueraded as a video attachment.
         for (index in 0..1) {
             reference += msg("reference-video-$index", "Video", "09:20", true).copy(
-                attachedVideoUrl = photoUris[index],
+                attachedVideoUrl = videoUri,
                 imageAlbumId = "reference-video-group",
                 imageAlbumSize = 2,
                 imageAlbumPosition = index,
@@ -431,6 +440,11 @@ abstract class ChatReferenceVisualAuditFixture {
         saveFrame("chat-reference-full-media.png")
         list.performScrollToIndex(8)
         rule.onNodeWithTag("chat_reference_album_video_0").assertExists()
+        rule.waitUntil(15_000) {
+            rule.onAllNodesWithTag("chat_video_duration_0")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("chat_video_duration_0").assertExists()
         saveFrame("chat-reference-full-videos.png")
         list.performScrollToIndex(9)
         rule.onNodeWithTag("chat_reference_document_card").assertExists()
