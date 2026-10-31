@@ -310,6 +310,12 @@ abstract class BlinkCreatePostVisualAuditFixture {
         // One footer Next; the header must not offer a duplicate advance.
         rule.onNodeWithText("Next").assertDoesNotExist()
         capture("create-post-gallery-staging.png")
+        rule.onNodeWithTag("blink_media_tab_videos").performClick()
+        rule.onNodeWithTag("blink_gallery_video_selection").assertExists()
+        rule.onNodeWithTag("blink_gallery_next").assertDoesNotExist()
+        capture("create-post-gallery-video-tab-staging.png")
+        rule.onNodeWithTag("blink_media_tab_photos").performClick()
+        rule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
         rule.onNodeWithTag("blink_gallery_photo_0").performClick()
         rule.onNodeWithTag("blink_gallery_edit_preview").performClick()
         rule.runOnIdle { check(edited == resource) { "Preview edit must keep the selected original photo" } }
