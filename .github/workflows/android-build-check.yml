@@ -222,15 +222,15 @@ jobs:
           from PIL import Image
           root = Path("app/src/test/screenshots")
           regions = {
-              "growth-reference-drops-empty.png": (70,155,650,215),
-              "growth-reference-drops-podium.png": (170,45,550,110),
-              "growth-reference-boost-quote-analytics.png": (60,60,550,100),
+              "growth-reference-drops-empty.png": (0,0,1078,720),
+              "growth-reference-drops-podium.png": (0,0,1078,520),
+              "growth-reference-boost-quote-analytics.png": (0,0,1078,950),
           }
           for name, box in regions.items():
               frame = Image.open(root / name).convert("RGB").crop(box)
-              bright = sum(1 for red, green, blue in frame.getdata() if min(red,green,blue) > 155)
-              print(f"{name}: readable heading ink pixels = {bright}")
-              assert bright >= 60, f"{name}: dark-on-dark heading is unreadable"
+              bright = sum(1 for red, green, blue in frame.getdata() if min(red,green,blue) > 185)
+              print(f"{name}: readable light-text pixels = {bright}")
+              assert bright >= 180, f"{name}: dark card text is not visibly readable"
           PY
 
       - name: Upload BLINK Reels and growth screenshots

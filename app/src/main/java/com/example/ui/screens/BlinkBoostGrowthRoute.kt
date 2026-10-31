@@ -1800,7 +1800,7 @@ internal fun CampaignQuoteCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f),
-            contentColor = MaterialTheme.colorScheme.onSurface
+            contentColor = Color.White
         )
     ) {
         Column(
@@ -1815,7 +1815,7 @@ internal fun CampaignQuoteCard(
                 }
                 quote == null -> Text(
                     "Select content and audience to see the server-calculated price.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFFCFD3DD),
                 )
                 else -> {
                     val cost = quote.optLong("coin_cost", 0L)
@@ -1850,13 +1850,13 @@ internal fun CampaignQuoteCard(
                         Text(
                             "After reserve: " + formatter.format(remainingAfter.coerceAtLeast(0L)) + " coins",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFFCFD3DD),
                         )
                     }
                     Text(
                         "Estimates are not guarantees. Paid delivery is marked Promoted and stays separate from organic Trending.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFFCFD3DD),
                     )
                 }
             }
@@ -1944,7 +1944,7 @@ internal fun BoostAnalyticsCard(
         shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f),
-            contentColor = MaterialTheme.colorScheme.onSurface
+            contentColor = Color.White
         )
     ) {
         Column(
@@ -1964,7 +1964,7 @@ internal fun BoostAnalyticsCard(
                 "Spent " + formatter.format(spent) + " • Refunded " + formatter.format(refunded) +
                     " • Open rate " + String.format(Locale.US, "%.1f%%", conversion),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color(0xFFCFD3DD),
             )
         }
     }
@@ -1980,7 +1980,7 @@ private fun BoostInsightMetric(value: String, label: String, modifier: Modifier 
         Text(value, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            color = Color(0xFFCFD3DD), maxLines = 1)
     }
 }
 

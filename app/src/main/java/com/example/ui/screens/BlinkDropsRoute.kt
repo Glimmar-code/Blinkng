@@ -1135,11 +1135,12 @@ internal fun TopGiversEmptyState(
             )
             Text("The first Top Givers are coming",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold)
+                fontWeight = FontWeight.Bold,
+                color = Color.White)
             Text(
                 "Only BLINK Coins actually rewarded through completed Drops count. " +
                     "No accounts or coin totals are shown until distribution is confirmed.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color(0xFFCFD3DD),
                 style = MaterialTheme.typography.bodySmall
             )
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
@@ -1172,7 +1173,7 @@ internal fun TopGiverCard(
         colors = CardDefaults.cardColors(
             containerColor = if (rank <= 3) podium.copy(alpha = .16f)
                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .27f),
-            contentColor = MaterialTheme.colorScheme.onSurface
+            contentColor = Color.White
         )
     ) {
         Row(
@@ -1183,7 +1184,7 @@ internal fun TopGiverCard(
                 modifier = Modifier.size(44.dp),
                 shape = CircleShape,
                 color = podium.copy(alpha = if (rank <= 3) .27f else .12f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                contentColor = Color.White,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -1195,11 +1196,11 @@ internal fun TopGiverCard(
             }
             Spacer(Modifier.width(11.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(giver.name.ifBlank { "@${giver.username}" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(giver.name.ifBlank { "@${giver.username}" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "${formatter.format(giver.coinsGiven)} coins given · ${giver.peopleRewarded} people · ${giver.dropsCompleted} Drops",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFFCFD3DD),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
