@@ -16,23 +16,23 @@ import kotlinx.coroutines.launch
 internal const val MARKET_VIEW_REFLECTION_DELAY_MS = 120_000L
 
 internal data class MarketViewDisplayState(
-    val revealedCounts: Map<String, Int> = emptyMap(),
+    val revealedCounts: Map<String, Long> = emptyMap(),
     val suppressedBaselines: Map<String, Int> = emptyMap(),
     val activeWindows: Set<String> = emptySet(),
 ) {
-    fun displayedCount(itemId: String, modelCount: Int): Int {
-        val cleanModel = modelCount.coerceAtLeast(0)
+    fun displayedCount(itemId: String, modelCount: Long): Long {
+        val cleanModel = modelCount.coerceAtLeast(0L)
         if (itemId in activeWindows) {
             return (suppressedBaselines[itemId] ?: cleanModel).coerceAtLeast(0)
         }
-        return maxOf(cleanModel, revealedCounts[itemId]?.coerceAtLeast(0) ?: 0)
+        return maxOf(cleanModel, revealedCounts[itemId]?.coerceAtLeast(0L) ?: 0L)
     }
 }
 
 private class MarketViewWindow(
     val itemId: String,
-    val baseline: Int,
-    var latestAuthoritativeCount: Int,
+    val baseline: Long,
+    var latestAuthoritativeCount: Long,
 )
 
 /**
@@ -46,7 +46,7 @@ internal object MarketViewDisplayCoordinator {
     private val _state = MutableStateFlow(MarketViewDisplayState())
     val state: StateFlow<MarketViewDisplayState> = _state.asStateFlow()
 
-    fun recordExposure(itemId: String, modelCount: Int, authoritativeCount: Int) {
+    fun recordExposure(itemId: String, modelCount: Long, authoritativeCount: Long) {
         if (itemId.isBlank()) return
         var created: MarketViewWindow? = null
         synchronized(lock) {
@@ -54,14 +54,14 @@ internal object MarketViewDisplayCoordinator {
             if (existing != null) {
                 existing.latestAuthoritativeCount = maxOf(
                     existing.latestAuthoritativeCount,
-                    authoritativeCount.coerceAtLeast(0),
+                    authoritativeCount.coerceAtLeast(0L),
                 )
             } else {
                 val baseline = _state.value.displayedCount(itemId, modelCount)
                 MarketViewWindow(
                     itemId = itemId,
                     baseline = baseline,
-                    latestAuthoritativeCount = maxOf(baseline, authoritativeCount.coerceAtLeast(0)),
+                    latestAuthoritativeCount = maxOf(baseline, authoritativeCount.coerceAtLeast(0L)),
                 ).also { window ->
                     windows[itemId] = window
                     created = window
@@ -84,7 +84,7 @@ internal object MarketViewDisplayCoordinator {
                         current.copy(
                             revealedCounts = current.revealedCounts + (
                                 itemId to maxOf(
-                                    current.revealedCounts[itemId] ?: 0,
+                                    current.revealedCounts[itemId] ?: 0L,
                                     window.latestAuthoritativeCount,
                                 )
                             ),
@@ -99,7 +99,7 @@ internal object MarketViewDisplayCoordinator {
 }
 
 @Composable
-fun rememberDelayedMarketViewCount(itemId: String, modelCount: Int): Int {
+fun rememberDelayedMarketViewCount(itemId: String, modelCount: Long): Long {
     val displayState by MarketViewDisplayCoordinator.state.collectAsState()
     return displayState.displayedCount(itemId, modelCount)
 }
