@@ -563,7 +563,17 @@ abstract class BlinkCreatePostVisualAuditFixture {
                 )
             }
         }
+        rule.onNodeWithTag("blink_photo_editor_back").assertExists()
+        rule.onNodeWithTag("blink_photo_editor_next").assertExists()
+        rule.onNodeWithTag("blink_photo_tool_panel").assertDoesNotExist()
         capture("create-post-photo-editor-staging.png", "blink_photo_editor_stage")
+        rule.onNodeWithTag("blink_photo_tool_crop").performClick()
+        rule.onNodeWithTag("blink_photo_tool_panel").assertExists()
+        capture("create-post-photo-crop-panel-staging.png", "blink_photo_editor_stage")
+        rule.onNodeWithTag("blink_photo_tool_crop").performClick()
+        rule.onNodeWithTag("blink_photo_tool_panel").assertDoesNotExist()
+        rule.onNodeWithTag("blink_photo_tool_sticker").performClick()
+        rule.onNodeWithTag("blink_photo_tool_panel").assertExists()
     }
 
     @Test fun mentionResultsUseRealSuggestionComponentWithOfflineTestData() {
