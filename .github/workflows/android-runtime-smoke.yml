@@ -113,6 +113,9 @@ jobs:
             # These captures use the actual full CreatePostSheet, not isolated toolbar fixtures.
             for view in full-text full-mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
             for view in keyboard-mentions video-preview video-timeline gallery-library; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # Full-route screenshot fixtures: retain actual emulator renders from
+            # Photo/Poll transitions, not only isolated component snapshots.
+            for view in poll-fullscreen text-to-gallery poll-switch-gallery photo-first-entry gallery-empty; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
             # Capture native dark conversation chrome for the reference audit.
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-staging-dark.png app/build/visual-audit/chat-reference-staging-dark.png
             test -s app/build/visual-audit/chat-reference-staging-dark.png
@@ -124,6 +127,7 @@ jobs:
             test -s app/build/visual-audit/chat-reference-full-media.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
             test -s app/build/visual-audit/chat-reference-full-bottom.png
+            for view in chat-reference-composer-controls chat-native-poll-synthetic-fixture chat-native-poll-retry-fixture; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/${view}.png" "app/build/visual-audit/${view}.png" && test -s "app/build/visual-audit/${view}.png" || exit 1; done
             for theme in dark light; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-outgoing-document-${theme}.png" "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" && test -s "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" || exit 1; done
 
       - name: Expose actual runtime failures through check annotations
