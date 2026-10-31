@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onLast
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -129,14 +132,17 @@ class ContestReferenceVisualAuditTest {
         rule.onNodeWithText("Review history · @samplecreator").assertExists()
         rule.onNodeWithText("Appeal accepted after verification of original entry").assertExists()
         rule.onNodeWithText("Image did not meet the published competition rules").assertExists()
-        capture("contest-review-history-staging.png")
+        capture("contest-review-history-staging.png", dialog = true)
         rule.onNodeWithText("Close").performClick()
         rule.runOnIdle { org.junit.Assert.assertTrue(dismissed) }
     }
 
-    private fun capture(name: String) {
+    private fun capture(name: String, dialog: Boolean = false) {
         rule.waitForIdle()
-        val image = rule.onRoot().captureToImage().asAndroidBitmap()
+        // Dialogs are rendered in a separate Compose root; capture that visible
+        // root instead of the underlying empty Activity composition.
+        val root = if (dialog) rule.onAllNodes(isRoot()).onLast() else rule.onRoot()
+        val image = root.captureToImage().asAndroidBitmap()
         val resolver = InstrumentationRegistry.getInstrumentation()
             .targetContext.contentResolver
         val values = ContentValues().apply {
