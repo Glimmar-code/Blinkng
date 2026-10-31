@@ -7605,6 +7605,12 @@ private suspend fun restoreSupabaseSession() {
         )
         if (item.id.isBlank() || !_uiState.value.isOnline) return
         viewModelScope.launch {
+            // Opening a detail route is only a candidate exposure. Count it after
+            // two seconds with the same listing still genuinely on screen.
+            kotlinx.coroutines.delay(2_000L)
+            if (_uiState.value.viewingProduct?.id != item.id || !_uiState.value.isOnline) {
+                return@launch
+            }
             val count = supabaseService.recordMarketView(item.id) ?: return@launch
             val latest = _uiState.value
             val update: (MarketItem) -> MarketItem = { current ->
