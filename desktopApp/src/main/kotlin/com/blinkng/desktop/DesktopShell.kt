@@ -556,6 +556,7 @@ private fun AuthenticatedShell(
             val current = BlinkSwipeNavigation.pageForDesktopRoute(state.selectedRoute)
             val next = current?.let { BlinkSwipeNavigation.adjacent(it, direction) }
             if (next == null) false else {
+                state.selectedGiveawayId = null
                 state.selectedRoute = BlinkSwipeNavigation.surfaces[next].desktopRoute
                 true
             }
@@ -566,7 +567,10 @@ private fun AuthenticatedShell(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
-            onNavigate = { state.selectedRoute = it },
+            onNavigate = { route ->
+                if (route != "giveaway") state.selectedGiveawayId = null
+                state.selectedRoute = route
+            },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -577,7 +581,10 @@ private fun AuthenticatedShell(
                     compact = compact,
                     destinations = visibleDestinations,
                     selectedId = state.selectedRoute,
-                    onSelect = { state.selectedRoute = it },
+                    onSelect = { route ->
+                        if (route != "giveaway") state.selectedGiveawayId = null
+                        state.selectedRoute = route
+                    },
                 )
                 Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)))
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
