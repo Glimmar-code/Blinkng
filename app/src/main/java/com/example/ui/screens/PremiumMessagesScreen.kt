@@ -3955,11 +3955,11 @@ private fun MessageBubble(
                                 .clickable(onClick = onReplyTargetClick)
                         ) {
                             Row(
-                                modifier = Modifier.padding(start = 5.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                                modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
-                                    Modifier.width(3.dp).height(33.dp)
+                                    Modifier.width(3.dp).height(30.dp)
                                         .background(palette.accent, RoundedCornerShape(3.dp))
                                 )
                                 Spacer(Modifier.width(7.dp))
@@ -4007,9 +4007,28 @@ private fun MessageBubble(
                         !message.isVoiceNote && !message.imageViewOnce &&
                         !message.text.contains("https://") &&
                         !message.text.contains("http://")
-                    if (compactTextOnly) {
+                    // Quoted short text uses the same inline metadata layout
+                    // as ordinary text bubbles. Avoid a separate footer row that
+                    // adds excess height below the compact quoted-message card.
+                    val compactReplyText = message.replyToMessageId != null &&
+                        message.text.isNotBlank() && message.text.length <= 120 &&
+                        !message.isForwarded && !message.deletedForEveryone &&
+                        message.messageType == "text" &&
+                        message.attachedImageUrl.isNullOrBlank() &&
+                        message.attachedVideoUrl.isNullOrBlank() &&
+                        message.attachedAudioUrl.isNullOrBlank() &&
+                        message.attachedDocumentUrl.isNullOrBlank() &&
+                        !message.isVoiceNote && !message.imageViewOnce &&
+                        !message.text.contains("https://") &&
+                        !message.text.contains("http://")
+                    if (compactTextOnly || compactReplyText) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .then(if (compactReplyText)
+                                    Modifier.testTag("chat_reference_reply_inline_text")
+                                else Modifier)
+                                .padding(horizontal = 11.dp,
+                                    vertical = if (compactReplyText) 6.dp else 8.dp),
                             verticalAlignment = Alignment.Bottom,
                             horizontalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
