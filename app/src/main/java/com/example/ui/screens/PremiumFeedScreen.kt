@@ -343,6 +343,7 @@ fun PremiumFeedScreen(
     onStoreClick: () -> Unit = {},
     onBoostClick: () -> Unit = {},
     onDropsClick: () -> Unit = {},
+    onOpenGiveaway: (String) -> Unit = { onDropsClick() },
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit = {},
@@ -482,6 +483,7 @@ fun PremiumFeedScreen(
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
+            onOpenGiveaway = onOpenGiveaway,
             onOpenMarketListing = onOpenMarketListing,
             onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
             onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
@@ -696,6 +698,7 @@ private fun PremiumHomeFeed(
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
     onDropsClick: () -> Unit,
+    onOpenGiveaway: (String) -> Unit,
     onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -2015,7 +2018,7 @@ private fun PremiumHomeFeed(
                                                             }
                                                     }
                                                 },
-                                                onOpenDrops = onDropsClick,
+                                                onOpenDrops = { onOpenGiveaway(row.item.dropId) },
                                                 following = row.item.creatorId in feedFollowedIds,
                                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                             )
