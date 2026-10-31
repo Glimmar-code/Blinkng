@@ -2744,7 +2744,10 @@ internal fun PostPreviewDialog(
                     Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onDismiss) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("blink_post_preview_back")
+                    ) {
                         Icon(Icons.Default.KeyboardArrowLeft, "Back to editor", tint = Color.White)
                     }
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
