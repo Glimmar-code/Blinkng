@@ -299,6 +299,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_gallery_remove_selected_0").assertExists()
         rule.onNodeWithTag("blink_gallery_add_more").assertExists()
         rule.onNodeWithTag("blink_gallery_next").assertExists()
+        // One footer Next; the header must not offer a duplicate advance.
+        rule.onNodeWithText("Next").assertDoesNotExist()
         capture("create-post-gallery-staging.png")
         rule.onNodeWithTag("blink_gallery_photo_0").performClick()
         rule.onNodeWithTag("blink_gallery_edit_preview").performClick()
@@ -506,6 +508,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
             }
         }
         rule.onNodeWithTag("blink_post_preview_back").assertExists()
+        rule.onAllNodesWithTag("blink_post_preview_photo", useUnmergedTree = true)
+            .onFirst().assertExists()
         rule.onNodeWithText("Preview only · Not published").assertExists()
         rule.onNodeWithText("Back to editor").assertDoesNotExist()
         capture("create-post-preview-staging.png", "blink_post_preview_stage")
