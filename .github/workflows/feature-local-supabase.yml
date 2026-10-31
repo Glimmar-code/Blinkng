@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'supabase/tests/local-features/**'
+      - 'app/src/main/java/com/example/ui/screens/BlinkContest*.kt'
+      - 'app/src/main/java/com/example/data/supabase/BlinkContest*.kt'
+      - 'shared/src/main/kotlin/com/blinkng/shared/BlinkContest*.kt'
+      - 'shared/src/test/kotlin/com/blinkng/shared/BlinkContest*.kt'
       - 'supabase/migrations/*blink_contest*'
       - 'supabase/migrations/*blink_poll_vote*'
       - 'supabase/migrations/*blink_block_unprotected*'
