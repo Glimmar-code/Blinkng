@@ -194,7 +194,8 @@ fun ActivityScreen(
     val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
         LocalConfiguration.current.screenWidthDp,
         LocalDensity.current.fontScale
-    )
+    ) || LocalConfiguration.current.screenWidthDp <= 430
+    // The full action cluster used to truncate "Notifications" on 390dp phones.
     val filtered = remember(timelineActivities, actorProfiles, filter, viewMode, searchQuery) {
         timelineActivities.filter { item ->
             val categoryMatches = filter == NotificationCategory.ALL || resolvedNotificationCategory(item) == filter
@@ -245,14 +246,14 @@ fun ActivityScreen(
                         }
                     },
                     title = {
-                        if (!compactToolbar) {
-                            Column {
-                                Text(
-                                    "Notifications",
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                        Column {
+                            Text(
+                                "Notifications",
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (!compactToolbar) {
                                 Text(
                                     when {
                                         unread == 0 -> "You're all caught up"
@@ -338,25 +339,18 @@ fun ActivityScreen(
                 )
 
                 if (compactToolbar) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            "Notifications",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2
-                        )
-                        Text(
-                            when {
-                                unread == 0 -> "You're all caught up"
-                                unread == 1 -> "1 unread"
-                                else -> "$unread unread"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        when {
+                            unread == 0 -> "You're all caught up"
+                            unread == 1 -> "1 unread"
+                            else -> "$unread unread"
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(
+                            start = 72.dp, end = 16.dp, bottom = 3.dp
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 if (searchVisible) {

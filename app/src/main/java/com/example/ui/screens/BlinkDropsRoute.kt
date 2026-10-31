@@ -1118,7 +1118,8 @@ internal fun TopGiversEmptyState(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
+            contentColor = MaterialTheme.colorScheme.onSurface
         )
     ) {
         Column(
@@ -1170,7 +1171,8 @@ internal fun TopGiverCard(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (rank <= 3) podium.copy(alpha = .16f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .27f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .27f),
+            contentColor = MaterialTheme.colorScheme.onSurface
         )
     ) {
         Row(
@@ -1181,6 +1183,7 @@ internal fun TopGiverCard(
                 modifier = Modifier.size(44.dp),
                 shape = CircleShape,
                 color = podium.copy(alpha = if (rank <= 3) .27f else .12f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(

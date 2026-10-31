@@ -168,6 +168,8 @@ internal fun ReelsReferenceChrome(
                 ) { page ->
                     val item = featured[page]
                     val caption = item.caption.ifBlank { "Featured Reel" }.replace("\\n", " ").take(84)
+                    val shortBanner = featuredCardHeight <= 108.dp
+                    val compactBanner = featuredCardHeight <= 150.dp
                     Box(
                         Modifier.fillMaxSize()
                             .testTag("blink_featured_reel_$page")
@@ -197,10 +199,14 @@ internal fun ReelsReferenceChrome(
                             )
                         )
                         Column(
-                            Modifier.fillMaxWidth(.72f).padding(start = 14.dp, top = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Modifier.fillMaxWidth(.72f).padding(
+                                start = 14.dp,
+                                top = if (shortBanner) 7.dp else 9.dp,
+                                bottom = 8.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(if (compactBanner) 4.dp else 6.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!shortBanner) Row(verticalAlignment = Alignment.CenterVertically) {
                                 AsyncImage(
                                     model = item.avatarUrl,
                                     contentDescription = null,
@@ -237,11 +243,11 @@ internal fun ReelsReferenceChrome(
                                 caption,
                                 color = Color.White,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 16.sp,
-                                maxLines = 2,
+                                fontSize = if (compactBanner) 13.sp else 16.sp,
+                                maxLines = if (compactBanner) 1 else 2,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!shortBanner) Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Visibility, contentDescription = null,
                                     tint = Color.White, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))

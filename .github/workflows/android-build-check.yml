@@ -216,6 +216,22 @@ jobs:
           count=$(find app/src/test/screenshots -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
           echo "Captured $count Reels/Drops/Boost visuals"
           test "$count" -ge 6
+          # Detect unreadable headings in the exact rendered Pixel8 fixtures.
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root = Path("app/src/test/screenshots")
+          regions = {
+              "growth-reference-drops-empty.png": (70,155,650,215),
+              "growth-reference-drops-podium.png": (170,45,550,110),
+              "growth-reference-boost-quote-analytics.png": (60,60,550,100),
+          }
+          for name, box in regions.items():
+              frame = Image.open(root / name).convert("RGB").crop(box)
+              bright = sum(1 for red, green, blue in frame.getdata() if min(red,green,blue) > 155)
+              print(f"{name}: readable heading ink pixels = {bright}")
+              assert bright >= 60, f"{name}: dark-on-dark heading is unreadable"
+          PY
 
       - name: Upload BLINK Reels and growth screenshots
         if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'

@@ -1798,7 +1798,10 @@ internal fun CampaignQuoteCard(
     Card(
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f))
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
     ) {
         Column(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -1939,7 +1942,10 @@ internal fun BoostAnalyticsCard(
     val conversion = analytics.optDouble("conversion_rate", 0.0)
     Card(
         shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f))
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
     ) {
         Column(
             Modifier.fillMaxWidth().padding(14.dp),

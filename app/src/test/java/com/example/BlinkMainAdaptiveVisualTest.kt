@@ -120,7 +120,7 @@ class BlinkMainAdaptiveVisualTest {
         rule.onNodeWithContentDescription("Open Items (includes Game)").assertExists()
         rule.onNodeWithTag("feed_tab_for_you").assertExists()
         rule.onNodeWithTag("feed_add_coins").assertExists()
-        rule.activity.window.decorView.captureRoboImage(
+        rule.onNodeWithTag("main_home_capture").captureRoboImage(
             filePath = "src/test/screenshots/main_home_w${widthDp}_font${scale.toString().replace('.', '_')}_${if (dark) "dark" else "light"}.png"
         )
     }
@@ -140,9 +140,21 @@ class BlinkMainAdaptiveVisualTest {
                         ActivityScreen(
                             activities = listOf(
                                 ActivityItem(
-                                    id = "local-notice-1",
-                                    user = "", avatar = "", action = "started following you",
-                                    time = "1 hour ago", isUnread = true, previewText = "null"
+                                    id = "local-follow-1", user = "", avatar = "",
+                                    action = "started following you",
+                                    time = "1 hour ago", isUnread = true, eventType = "follow"
+                                ),
+                                ActivityItem(
+                                    id = "local-like-2", user = "", avatar = "",
+                                    action = "liked your Reel",
+                                    time = "2 hours ago", isUnread = false, eventType = "like"
+                                ),
+                                ActivityItem(
+                                    id = "local-official-3", user = "", avatar = "",
+                                    action = "Your BLINK network is growing!",
+                                    time = "Yesterday", isUnread = true,
+                                    eventType = "system", targetType = "system",
+                                    previewText = "A new user joined with your referral."
                                 )
                             ),
                             onBack = {}, onProfileClick = {}, onNotificationClick = {},
@@ -153,7 +165,7 @@ class BlinkMainAdaptiveVisualTest {
             }
         }
         rule.onNodeWithText("Notifications").assertExists()
-        rule.activity.window.decorView.captureRoboImage(
+        rule.onNodeWithTag("main_notifications_capture").captureRoboImage(
             filePath = "src/test/screenshots/main_notifications_w${widthDp}_font${scale.toString().replace('.', '_')}_${if (dark) "dark" else "light"}.png"
         )
     }
