@@ -77,7 +77,7 @@ try {
 
   await setUser(creator1);
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I have a contest entry but no media',null]), /blink_contest_entry_media_required/);
+    [id,'I have a contest entry but no media',null]), /PRIVATE_CONTEST_MEDIA_REQUIRED|blink_contest_entry_media_required/);
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
     [id,'I have a contest entry with public media','https://example.com/public.jpg']),
     /PRIVATE_CONTEST_MEDIA_REQUIRED/);
