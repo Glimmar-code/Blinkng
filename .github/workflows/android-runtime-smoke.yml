@@ -125,6 +125,7 @@ jobs:
             test -s app/build/visual-audit/chat-reference-full-top.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-media.png app/build/visual-audit/chat-reference-full-media.png
             test -s app/build/visual-audit/chat-reference-full-media.png
+            for name in photos videos; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-${name}.png" "app/build/visual-audit/chat-reference-full-${name}.png" && test -s "app/build/visual-audit/chat-reference-full-${name}.png" || exit 1; done
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
             test -s app/build/visual-audit/chat-reference-full-bottom.png
             for view in chat-reference-composer-controls chat-native-poll-synthetic-fixture chat-native-poll-retry-fixture; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/${view}.png" "app/build/visual-audit/${view}.png" && test -s "app/build/visual-audit/${view}.png" || exit 1; done
