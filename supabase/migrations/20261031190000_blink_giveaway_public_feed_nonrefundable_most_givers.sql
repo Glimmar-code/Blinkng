@@ -135,8 +135,7 @@ begin
     and (
       d.creator_id=v_user
       or (
-        d.created_at>now()-interval '14 days'
-        and (
+        (
           d.audience_scope='ALL_CAMPUSES'
           or (d.audience_scope='MY_CAMPUS' and exists (
             select 1 from public.profiles viewer where viewer.id=v_user
@@ -714,7 +713,6 @@ begin
     from public.blink_drops d
     join public.profiles p on p.id=d.creator_id
     where d.creator_id<>v_user
-      and d.created_at>now()-interval '14 days'
       and (
         (d.status='ACTIVE' and d.ends_at>now() and d.claimed_count<d.winner_count)
         or d.status in ('COMPLETED','EXPIRED','CANCELLED')
