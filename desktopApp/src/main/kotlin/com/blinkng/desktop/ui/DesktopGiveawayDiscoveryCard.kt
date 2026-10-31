@@ -73,6 +73,19 @@ internal fun DesktopGiveawayDiscoveryCard(
                     if (!active) Text(giveawayEndedLabel(item.optString("ends_at")), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            if (item.optString("target_title").isNotBlank()) {
+                Text(item.optString("target_title"), fontWeight = FontWeight.SemiBold)
+            }
+            Text(
+                when (item.optString("action").uppercase()) {
+                    "LIKE" -> "Entry action: like the linked post."
+                    "COMMENT" -> "Entry action: comment on the linked post."
+                    "REPOST" -> "Entry action: repost the linked post."
+                    else -> "Complete the required action to enter."
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
             Text("$amount BLINK Coins · ${item.optInt("reward_per_user")} each · ${item.optInt("winner_count")} winners",
                 fontWeight = FontWeight.SemiBold)
             Text(
