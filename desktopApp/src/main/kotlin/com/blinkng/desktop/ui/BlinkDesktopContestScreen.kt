@@ -542,6 +542,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var historyTotal by remember { mutableIntStateOf(0) }
     var historyBusy by remember { mutableStateOf(false) }
     var historyError by remember { mutableStateOf("") }
+    var previewEntryMedia by remember { mutableStateOf<String?>(null) }
     var paymentReference by remember { mutableStateOf("") }
     var paymentNote by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
@@ -859,12 +860,52 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                     }
                 }
                 Text(entry.optString("statement"))
+                val media = entry.optString("media_url")
+                if (media.startsWith("https://")) {
+                    TextButton(enabled = !busy, onClick = {
+                        scope.launch {
+                            runCatching { api.adminContestMediaPreview(media) }
+                                .onSuccess { previewEntryMedia = it }
+                                .onFailure { message = it.message ?: "Unable to preview application media." }
+                        }
+                    }) { Text("Preview application photo/video") }
+                }
                 TextButton(enabled = !busy, onClick = {
                     historyUsername = entry.optString("username")
                     historyEntry = entry.optString("id")
                 }) { Text("Review history") }
             }
         }
+    }
+    previewEntryMedia?.let { media ->
+        AlertDialog(
+            onDismissRequest = { previewEntryMedia = null },
+            title = { Text("Contest application media") },
+            text = {
+                val mediaPath = media.substringBefore('?').lowercase()
+                if (mediaPath.endsWith(".mp4")) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Video preview opens in your default browser.")
+                        Button(onClick = {
+                            runCatching {
+                                java.awt.Desktop.getDesktop().browse(java.net.URI(media))
+                            }.onFailure {
+                                message = it.message ?: "Unable to open video."
+                            }
+                        }) { Text("Open video") }
+                    }
+                } else {
+                    AsyncImage(
+                        model = media, contentDescription = "Contest application photo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(340.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { previewEntryMedia = null }) { Text("Close") }
+            }
+        )
     }
     historyEntry?.let {
         AlertDialog(
