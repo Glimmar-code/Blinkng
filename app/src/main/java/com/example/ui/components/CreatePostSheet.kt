@@ -276,6 +276,8 @@ fun CreatePostSheet(
     var category by rememberSaveable { mutableStateOf("Campus Life") }
     var allowComments by rememberSaveable { mutableStateOf(true) }
     var showPoll by rememberSaveable { mutableStateOf(false) }
+    var showPollCreator by rememberSaveable { mutableStateOf(false) }
+    var pollReturnToEditor by rememberSaveable { mutableStateOf(false) }
     var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
     var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
@@ -1085,6 +1087,11 @@ fun CreatePostSheet(
                 showReferenceDetails = true
             }
             showReferenceDetails && !useClassicComposer -> showReferenceDetails = false
+            showPollCreator && !useClassicComposer -> {
+                showPollCreator = false
+                showCreateLanding = !pollReturnToEditor
+                pollReturnToEditor = false
+            }
             showMediaReview && !useClassicComposer -> {
                 showMediaReview = false
                 showCreateLanding = !galleryReturnToEditor
@@ -1140,6 +1147,7 @@ fun CreatePostSheet(
             val referenceStage = when {
                 videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
                 showMediaReview -> "gallery"
+                showPollCreator -> "poll"
                 showCreateLanding -> "landing"
                 showReferenceDetails -> "details"
                 showPublishOptions -> "publish"
@@ -1148,7 +1156,7 @@ fun CreatePostSheet(
             AnimatedContent(
                 targetState = referenceStage,
                 transitionSpec = {
-                    val order = listOf("landing", "gallery", "clips", "editor", "details", "publish")
+                    val order = listOf("landing", "gallery", "poll", "clips", "editor", "details", "publish")
                     val direction = if (order.indexOf(targetState) >= order.indexOf(initialState)) 1 else -1
                     if (reduceReferenceMotion) {
                         fadeIn(animationSpec = tween(0)) togetherWith
@@ -1289,6 +1297,24 @@ fun CreatePostSheet(
                         galleryReturnToEditor = false
                     }
                 )
+            } else if (visibleStage == "poll") {
+                BlinkReferencePollScreen(
+                    question = pollQuestion,
+                    onQuestionChanged = { pollQuestion = it.take(240) },
+                    options = pollOptions,
+                    onOptionsChanged = { pollOptions = it },
+                    durationHours = pollDurationHours,
+                    onDurationChanged = { pollDurationHours = it },
+                    enabled = !isSubmitting,
+                    onBack = ::navigateBack,
+                    onDone = {
+                        showPollCreator = false
+                        pollReturnToEditor = false
+                        showCreateLanding = false
+                        showPoll = true
+                        mode = "post"
+                    }
+                )
             } else if (visibleStage == "landing") {
                 BlinkCreatePostLanding(
                     drafts = savedDrafts,
@@ -1342,12 +1368,14 @@ fun CreatePostSheet(
                         }
                     },
                     onPoll = {
-                        showCreateLanding = false
                         if (selectedVideo != null || selectedImages.isNotEmpty() || videoClips.isNotEmpty()) {
                             pickerOpenedFromLanding = true
                             pendingMediaSwitch = "poll"
                         } else {
                             showPoll = true
+                            showPollCreator = true
+                            pollReturnToEditor = false
+                            showCreateLanding = false
                             mode = "post"
                         }
                     },
@@ -1899,15 +1927,49 @@ fun CreatePostSheet(
                     exit = fadeOut(tween(BlinkDesignTokens.Motion.Interaction)) + shrinkVertically(tween(BlinkDesignTokens.Motion.Interaction)),
                     label = "composerPollReveal"
                 ) {
-                    PollComposer(
-                        question = pollQuestion,
-                        onQuestionChanged = { pollQuestion = it.take(240) },
-                        options = pollOptions,
-                        onOptionsChanged = { pollOptions = it },
-                        durationHours = pollDurationHours,
-                        onDurationChanged = { pollDurationHours = it },
-                        enabled = !isSubmitting
-                    )
+                    if (useClassicComposer) {
+                        PollComposer(
+                            question = pollQuestion,
+                            onQuestionChanged = { pollQuestion = it.take(240) },
+                            options = pollOptions,
+                            onOptionsChanged = { pollOptions = it },
+                            durationHours = pollDurationHours,
+                            onDurationChanged = { pollDurationHours = it },
+                            enabled = !isSubmitting
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
+                                .testTag("blink_poll_attached_card"),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF1D2028),
+                            border = BorderStroke(1.dp, Color(0xFF353844))
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Poll, contentDescription = null,
+                                    tint = Color(0xFF8E88FF), modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Poll attached", color = Color.White,
+                                        fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Text(pollQuestion.ifBlank { "Finish your question and answers" },
+                                        color = Color(0xFFBAC0CC), fontSize = 11.sp,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                TextButton(
+                                    onClick = {
+                                        pollReturnToEditor = true
+                                        showPollCreator = true
+                                    },
+                                    enabled = !isSubmitting,
+                                    modifier = Modifier.testTag("blink_edit_attached_poll")
+                                ) { Text("Edit", color = Color(0xFFABA4FF)) }
+                            }
+                        }
+                    }
                 }
 
                 if (!useClassicComposer) {
@@ -1933,8 +1995,10 @@ fun CreatePostSheet(
                     onPoll = {
                         if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
                         else {
-                            showPoll = !showPoll
-                            if (showPoll) mode = "post"
+                            showPoll = true
+                            showPollCreator = true
+                            pollReturnToEditor = true
+                            mode = "post"
                         }
                     },
                     onEmoji = { if (text.length < 4998) text += " 😊" },
@@ -1961,8 +2025,10 @@ fun CreatePostSheet(
                     onPoll = {
                         if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
                         else {
-                            showPoll = !showPoll
-                            if (showPoll) mode = "post"
+                            showPoll = true
+                            showPollCreator = true
+                            pollReturnToEditor = true
+                            mode = "post"
                         }
                     },
                     onMention = {
@@ -2528,14 +2594,21 @@ fun CreatePostSheet(
                             showPoll = false
                         }
                         "poll" -> {
+                            val openedFromLanding = pickerOpenedFromLanding
                             pickerOpenedFromLanding = false
                             videoClips = emptyList()
                             selectedVideo = null
                             selectedImages = emptyList()
+                            selectedCoverUri = null
+                            coverFrameIndex = -1
                             reelHasPendingEdits = false
                             reelEditorStage = false
+                            showMediaReview = false
+                            showCreateLanding = false
                             mode = "post"
                             showPoll = true
+                            pollReturnToEditor = !openedFromLanding
+                            showPollCreator = true
                         }
                         "camera" -> openCameraActions()
                         "gallery" -> {
