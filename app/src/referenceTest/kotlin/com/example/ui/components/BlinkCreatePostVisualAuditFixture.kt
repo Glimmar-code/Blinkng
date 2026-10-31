@@ -613,6 +613,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_photo_filter_b&w").assertExists()
         rule.onNodeWithTag("blink_photo_filter_b&w").performClick()
         capture("create-post-photo-filters-staging.png", "blink_photo_editor_stage")
+        rule.onNodeWithTag("blink_photo_undo").assertIsEnabled().performClick()
+        rule.onNodeWithTag("blink_photo_undo").assertIsNotEnabled()
     }
 
     @Test fun mentionResultsUseRealSuggestionComponentWithOfflineTestData() {
