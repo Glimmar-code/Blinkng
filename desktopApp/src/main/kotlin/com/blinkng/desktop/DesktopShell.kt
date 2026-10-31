@@ -598,7 +598,7 @@ private fun AuthenticatedShell(
                         "notifications" -> NotificationsScreen(state)
                         "store" -> StoreProScreen(state)
                         "boost" -> DesktopBoostGrowthScreen(state)
-                        "giveaway" -> DesktopDropsScreen(state)
+                        "giveaway" -> DesktopDropsScreen(state, initialDropId = state.selectedGiveawayId)
                         "leaderboard" -> LeaderboardScreen(state)
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
