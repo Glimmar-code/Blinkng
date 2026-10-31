@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onLast
 import androidx.test.platform.app.InstrumentationRegistry
