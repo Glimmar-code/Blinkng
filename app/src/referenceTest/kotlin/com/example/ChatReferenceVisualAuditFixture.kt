@@ -334,10 +334,12 @@ abstract class ChatReferenceVisualAuditFixture {
         // asset is decoded by Coil's video-frame fetcher and MediaMetadataRetriever;
         // photos remain separate PNG assets and are never passed as videos.
         val videoFile = File(context.cacheDir, "chat-reference-fixture-video.mp4")
-        InstrumentationRegistry.getInstrumentation().context.assets
-            .open("blink-visual-synthetic.mp4").use { input ->
-                videoFile.outputStream().use { output -> input.copyTo(output) }
-            }
+        // referenceTest is a separate APK from androidTest. Keep its fixture
+        // self-contained instead of reading an asset from the other test APK.
+        val encodedVideo = InstrumentationRegistry.getInstrumentation().context.assets
+            .open("blink-visual-synthetic.mp4.b64").bufferedReader().use { it.readText() }
+        val videoBytes = android.util.Base64.decode(encodedVideo, android.util.Base64.DEFAULT)
+        videoFile.writeBytes(videoBytes)
         val videoUri = videoFile.toURI().toString()
         val base = "2026-10-29T"
         fun msg(
