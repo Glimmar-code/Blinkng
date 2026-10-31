@@ -91,7 +91,6 @@ fun BlinkContestScreen(
     var detail by remember { mutableStateOf<JSONObject?>(null) }
     var tab by remember { mutableStateOf("Ongoing") }
     var statement by remember { mutableStateOf("") }
-    var mediaUrl by remember { mutableStateOf("") }
     var mediaChoice by remember { mutableStateOf<Uri?>(null) }
     val mediaPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -112,7 +111,6 @@ fun BlinkContestScreen(
     // Reset attachment state for each contest, including deep-link navigation.
     LaunchedEffect(selectedId) {
         mediaChoice = null
-        mediaUrl = ""
         statement = ""
     }
     // Keep status and leaderboard state in sync with the server while viewing.
@@ -226,7 +224,7 @@ fun BlinkContestScreen(
                 items(rows, key = { it.optString("id") }) { contest ->
                     BlinkContestHeroCard(contest) {
                         selectedId = contest.optString("id")
-                        statement = ""; mediaUrl = ""; mediaChoice = null; notice = null
+                        statement = ""; mediaChoice = null; notice = null
                     }
 
                 }
@@ -343,12 +341,6 @@ fun BlinkContestScreen(
                                     color = MaterialTheme.colorScheme.error)
                                 TextButton(onClick = { mediaChoice = null }) { Text("Remove attachment") }
                             }
-                            OutlinedTextField(
-                                value = mediaUrl, onValueChange = { mediaUrl = it },
-                                label = { Text("Only new private uploads are accepted") },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = false
-                            )
                             Text("A photo or video is required. JPG/PNG/WebP up to 8 MB, or MP4 up to 25 MB. " +
                                 "Your selected media is stored privately for moderation. It becomes publicly viewable only after approval.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -358,21 +350,22 @@ fun BlinkContestScreen(
                                     busy = true; error = null; notice = null
                                     scope.launch {
                                         runCatching {
-                                            val url = mediaChoice?.let {
-                                                mediaUpload.upload(context, it, privateEntry = true).getOrThrow()
-                                            } ?: mediaUrl
+                                            val selectedMedia = mediaChoice
+                                                ?: error("Choose a photo or video to apply.")
+                                            val url = mediaUpload.upload(
+                                                context, selectedMedia, privateEntry = true
+                                            ).getOrThrow()
                                             api.apply(c.optString("id"), statement, url).getOrThrow()
                                         }.onSuccess {
                                             notice = "Application submitted: " + it.optString("status")
                                             mediaChoice = null
-                                            mediaUrl = ""
                                             statement = ""
                                             revision++
                                         }.onFailure { error = it.message }
                                         busy = false
                                     }
                                 },
-                                enabled = !busy && BlinkContestPolicy.canApply(statement, mediaChoice != null, mediaUrl),
+                                enabled = !busy && BlinkContestPolicy.canApply(statement, mediaChoice != null, ""),
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Apply for free") }
                         }
