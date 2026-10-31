@@ -609,6 +609,10 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_photo_tool_panel").assertDoesNotExist()
         rule.onNodeWithTag("blink_photo_tool_sticker").performClick()
         rule.onNodeWithTag("blink_photo_tool_panel").assertExists()
+        rule.onNodeWithTag("blink_photo_tool_filter").performClick()
+        rule.onNodeWithTag("blink_photo_filter_b&w").assertExists()
+        rule.onNodeWithTag("blink_photo_filter_b&w").performClick()
+        capture("create-post-photo-filters-staging.png", "blink_photo_editor_stage")
     }
 
     @Test fun mentionResultsUseRealSuggestionComponentWithOfflineTestData() {
