@@ -23,7 +23,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 import java.text.NumberFormat
+import java.time.Duration
+import java.time.Instant
 import java.util.Locale
+
+private fun giveawayEndedLabel(endsAt: String): String {
+    val endedAt = runCatching { Instant.parse(endsAt) }.getOrNull() ?: return "Giveaway ended"
+    val seconds = Duration.between(endedAt, Instant.now()).seconds.coerceAtLeast(0)
+    val age = when {
+        seconds < 60 -> "less than a minute ago"
+        seconds < 3_600 -> "${seconds / 60} minutes ago"
+        seconds < 86_400 -> "${seconds / 3_600} hours ago"
+        else -> "${seconds / 86_400} days ago"
+    }
+    return "Ended $age"
+}
 
 @Composable
 internal fun DesktopGiveawayDiscoveryCard(
@@ -56,6 +70,7 @@ internal fun DesktopGiveawayDiscoveryCard(
                         fontWeight = FontWeight.Bold,
                     )
                     Text("@$username", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!active) Text(giveawayEndedLabel(item.optString("ends_at")), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
             Text("$amount BLINK Coins · ${item.optInt("reward_per_user")} each · ${item.optInt("winner_count")} winners",
