@@ -7641,9 +7641,9 @@ private suspend fun restoreSupabaseSession() {
             }
             val current = _uiState.value
             _uiState.value = current.copy(
-                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id }),
-                viewingProduct = item
+                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id })
             )
+            openProductDetail(item)
         }
     }
 
