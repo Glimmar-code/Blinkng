@@ -37,6 +37,7 @@ import com.example.ui.screens.ChatConversationView
 import com.example.ui.screens.BlinkChatPollResult
 import com.example.ui.screens.BlinkChatPollResultOption
 import com.example.ui.screens.BlinkChatPollResultsCard
+import com.example.ui.screens.BlinkChatPollRecoveryControls
 import com.example.ui.theme.MessageThemeMode
 import com.example.ui.theme.messagePalette
 import com.example.ui.theme.referenceChatPalette
@@ -90,6 +91,48 @@ abstract class ChatReferenceVisualAuditFixture {
             if (originalTheme == null) editor.remove("message_theme") else editor.putString("message_theme", originalTheme)
             check(editor.commit())
         }
+    }
+
+    @Test fun nativePollFailureHasRealRetryAndNoInventedResultsFixture() {
+        var retries = 0
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                Box(Modifier.fillMaxWidth().height(790.dp)
+                    .testTag("chat_conversation_root")) {
+                    BlinkChatPollRecoveryControls(
+                        loading = false,
+                        message = "Couldn't load poll results. Check your connection.",
+                        allowRetry = true,
+                        palette = referenceChatPalette(messagePalette(MessageThemeMode.DARK)),
+                        onRetry = { retries++ }
+                    )
+                }
+            }
+        }
+        rule.onNodeWithTag("chat_poll_recovery").assertExists()
+        rule.onNodeWithText("Try again").assertExists()
+        rule.onNodeWithTag("chat_reference_native_poll").assertDoesNotExist()
+        capture("chat-native-poll-retry-fixture.png")
+        rule.onNodeWithTag("chat_poll_retry").performClick()
+        rule.runOnIdle { check(retries == 1) }
+    }
+
+    @Test fun nativePollLoadingCannotTriggerDuplicateRetriesFixture() {
+        var retries = 0
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                BlinkChatPollRecoveryControls(
+                    loading = true,
+                    message = null,
+                    allowRetry = true,
+                    palette = referenceChatPalette(messagePalette(MessageThemeMode.DARK)),
+                    onRetry = { retries++ }
+                )
+            }
+        }
+        rule.onNodeWithText("Loading poll results…").assertExists()
+        rule.onNodeWithTag("chat_poll_retry").assertDoesNotExist()
+        rule.runOnIdle { check(retries == 0) }
     }
 
     @Test fun nativeResultsShowServerStylePercentagesAndClickableChoicesFixture() {
