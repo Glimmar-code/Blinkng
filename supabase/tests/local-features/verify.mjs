@@ -98,7 +98,7 @@ assert.ok(outsiderRead.status >= 400, 'Other users must not see pending media');
 const ownerRead = await request(`/storage/v1/object/authenticated/blink-contest-private/${privatePath}`,
   creator.token, undefined, 'GET');
 assert.equal(ownerRead.status, 200, 'Owner can review their private submission');
-const privateMediaUrl = `${root.origin}/functions/v1/blink-contest-private-media/${privatePath}`;
+const privateMediaUrl = `https://blink-local-fixture.example/functions/v1/blink-contest-private-media/${privatePath}`;
 const entry = await rpc('apply_blink_contest', creator, {
   p_contest_id: contest.id, p_statement: 'Real local authenticated entry',
   p_media_url: privateMediaUrl
