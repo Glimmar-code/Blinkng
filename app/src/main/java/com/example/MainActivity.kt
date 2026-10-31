@@ -3448,6 +3448,7 @@ fun MainAppContent(
                         "Could not open administration."
                     )
                 },
+                canOpenAdmin = canOpenAdmin,
                 onMessages = {
                     viewModel.openMenu(false)
                     viewModel.setTab(MainTab.MESSAGES)
