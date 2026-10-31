@@ -35,15 +35,14 @@ internal object BlinkChatPollResultPolicy {
         if (total < 0) return null
         val raw = json.optJSONArray("options") ?: return null
         if (raw.length() !in 2..8) return null
-        val options = buildList {
-            for (index in 0 until raw.length()) {
-                val item = raw.optJSONObject(index) ?: return null
-                val label = item.optString("label").trim()
-                if (label.isBlank() || !item.has("votes") || item.isNull("votes")) return null
-                val votes = item.optInt("votes", -1)
-                if (votes < 0) return null
-                add(BlinkChatPollResultOption(label, votes))
-            }
+        val options = mutableListOf<BlinkChatPollResultOption>()
+        for (index in 0 until raw.length()) {
+            val item = raw.optJSONObject(index) ?: return null
+            val label = item.optString("label").trim()
+            if (label.isBlank() || !item.has("votes") || item.isNull("votes")) return null
+            val votes = item.optInt("votes", -1)
+            if (votes < 0) return null
+            options.add(BlinkChatPollResultOption(label, votes))
         }
         if (options.sumOf { it.votes.toLong() } != total.toLong()) return null
         val mine = if (!json.has("my_vote") || json.isNull("my_vote")) null
