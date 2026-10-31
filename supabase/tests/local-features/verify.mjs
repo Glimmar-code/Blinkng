@@ -36,6 +36,7 @@ for (const name of [
   '20261031100000_blink_contest_review_history.sql',
   '20261031110000_blink_contest_cancelled_visibility.sql',
   '20261031120000_blink_contest_entry_appeals.sql',
+  '20261031130000_blink_contest_orphan_media_audit.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
