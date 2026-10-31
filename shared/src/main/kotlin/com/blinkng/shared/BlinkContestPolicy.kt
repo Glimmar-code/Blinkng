@@ -38,6 +38,10 @@ object BlinkContestPolicy {
     }.getOrDefault(false)
     fun canApply(text: String, hasSelectedMedia: Boolean, mediaUrl: String): Boolean =
         validStatement(text) && (hasSelectedMedia || validEntryMediaUrl(mediaUrl))
+    /** Voting flyers should never invite people to closed or cancelled contests. */
+    fun canShareVoteInvite(status: String): Boolean =
+        status in setOf("upcoming", "registration", "voting")
+
     fun canVote(status: String, voteId: String?, ownId: String, candidateId: String): Boolean =
         status == "voting" && (voteId.isNullOrBlank() || voteId == "null") &&
             candidateId.isNotBlank() && candidateId != "null" && ownId != candidateId
