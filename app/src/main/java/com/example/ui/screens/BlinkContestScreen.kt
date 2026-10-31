@@ -295,6 +295,13 @@ fun BlinkContestScreen(
                         Text(c.optString("title"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         Text(BlinkContestPolicy.statusLabel(status),
                             color = MaterialTheme.colorScheme.primary)
+                        if (status == "cancelled") {
+                            Text(
+                                "This contest was cancelled after publication. Applications and voting are closed; no winners or prizes will be awarded.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                         Text(c.optString("description"))
                         Text("Prizes: 1st " + cash(c.optInt("prize_first")) +
                             " · 2nd " + cash(c.optInt("prize_second")) +
