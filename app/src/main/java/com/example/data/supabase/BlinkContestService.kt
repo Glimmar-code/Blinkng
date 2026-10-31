@@ -73,6 +73,17 @@ class BlinkContestService {
     suspend fun detail(id: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
     }
+    /** Bounded server-side search over approved contestants, including ranks below #20. */
+    suspend fun searchCandidates(
+        contestId: String, query: String, offset: Int, limit: Int = 20
+    ): Result<JSONObject> = contestResult {
+        JSONObject(call("search_blink_contest_candidates", JSONObject()
+            .put("p_contest_id", contestId)
+            .put("p_query", query.trim().take(60))
+            .put("p_limit", limit.coerceIn(1, 30))
+            .put("p_offset", offset.coerceIn(0, 10000))))
+    }
+
     suspend fun candidate(contestId: String, entryId: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest_candidate", JSONObject()
             .put("p_contest_id", contestId).put("p_entry_id", entryId)))
