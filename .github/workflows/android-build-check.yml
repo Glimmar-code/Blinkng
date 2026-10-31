@@ -223,8 +223,8 @@ jobs:
         with:
           name: blink-reels-growth-screenshots-${{ github.sha }}
           path: |
-            '**/reels-reference-*.png'
-            '**/growth-reference-*.png'
+            app/src/test/screenshots/reels-reference-*.png
+            app/src/test/screenshots/growth-reference-*.png
           if-no-files-found: error
           retention-days: 14
 
