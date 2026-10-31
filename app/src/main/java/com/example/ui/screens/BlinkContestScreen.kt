@@ -107,11 +107,45 @@ fun BlinkContestScreen(
     var flyerCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var shareLookupBusy by remember { mutableStateOf(false) }
     var inspectedCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var searchExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchOffset by remember { mutableIntStateOf(0) }
+    var searchCandidates by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var searchTotal by remember { mutableIntStateOf(0) }
+    var searchBusy by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
 
     // Reset attachment state for each contest, including deep-link navigation.
     LaunchedEffect(selectedId) {
         mediaChoice = null
         statement = ""
+        searchExpanded = false
+        searchQuery = ""
+        searchOffset = 0
+        searchCandidates = emptyList()
+        searchError = null
+    }
+    LaunchedEffect(selectedId, searchExpanded, searchQuery, searchOffset, revision) {
+        val id = selectedId
+        if (!searchExpanded || id == null || searchQuery.trim().length == 1) {
+            searchCandidates = emptyList()
+            searchTotal = 0
+            searchBusy = false
+        } else {
+            searchBusy = true
+            searchError = null
+            delay(300) // Debounce typing; server performs bounded approved-only lookup.
+            api.searchCandidates(id, searchQuery, searchOffset)
+                .onSuccess { response ->
+                    searchCandidates = response.optJSONArray("entries")?.contestObjects().orEmpty()
+                    searchTotal = response.optInt("total")
+                }
+                .onFailure {
+                    searchCandidates = emptyList()
+                    searchError = it.message ?: "Cannot load contestants."
+                }
+            searchBusy = false
+        }
     }
     // Keep status and leaderboard state in sync with the server while viewing.
     LaunchedEffect(selectedId) {
@@ -412,6 +446,104 @@ fun BlinkContestScreen(
                     }
                     if (top.isNotEmpty()) item {
                         BlinkContestPodium(top) { inspectedCandidate = it }
+                    }
+                    item {
+                        OutlinedButton(onClick = { searchExpanded = !searchExpanded },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(if (searchExpanded) "Hide contestant directory"
+                                 else "Find contestants beyond the Top 20")
+                        }
+                    }
+                    if (searchExpanded) {
+                        item {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it.take(60); searchOffset = 0 },
+                                label = { Text("Search contestants by name or username") },
+                                placeholder = { Text("Leave blank to browse all approved entries") },
+                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                            )
+                            Text("Only approved contestants appear. Up to 20 per page.",
+                                style = MaterialTheme.typography.bodySmall)
+                            if (searchQuery.trim().length == 1) {
+                                Text("Type at least two characters, or clear to browse everyone.",
+                                    color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            } else if (searchBusy) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            } else {
+                                Text("$searchTotal approved results",
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
+                            searchError?.let {
+                                Text(it, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = { revision++ }) { Text("Retry search") }
+                            }
+                        }
+                        items(searchCandidates, key = { "search-" + it.optString("id") }) { candidate ->
+                            ElevatedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("#" + candidate.optInt("rank"),
+                                            fontWeight = FontWeight.Bold)
+                                        BlinkContestAvatar(candidate.optString("avatar_url"),
+                                            candidate.optString("username"), 40.dp)
+                                        Column(Modifier.weight(1f)) {
+                                            Text("@" + candidate.optString("username"),
+                                                fontWeight = FontWeight.SemiBold)
+                                            Text(candidate.optInt("votes").toString() + " votes",
+                                                style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        TextButton(onClick = { inspectedCandidate = candidate }) {
+                                            Text("Profile")
+                                        }
+                                    }
+                                    Text(candidate.optString("statement"), maxLines = 2)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onClick = { openFlyer(candidate) }) { Text("Share") }
+                                        Button(
+                                            enabled = !busy && BlinkContestPolicy.canVote(
+                                                status, myVote, own, candidate.optString("id")),
+                                            onClick = {
+                                                busy = true
+                                                scope.launch {
+                                                    api.vote(c.optString("id"), candidate.optString("id"))
+                                                        .onSuccess {
+                                                            notice = if (it.optString("vote_status") == "under_review")
+                                                                "Free vote received; pending review."
+                                                            else "Your free vote was counted."
+                                                            revision++
+                                                        }
+                                                        .onFailure { error = it.message }
+                                                    busy = false
+                                                }
+                                            }) { Text("Vote") }
+                                    }
+                                }
+                            }
+                        }
+                        if (!searchBusy && searchCandidates.isEmpty() && searchError == null &&
+                            searchQuery.trim().length != 1) item {
+                            Text("No approved contestants found.")
+                        }
+                        if (searchTotal > 20) item {
+                            Row(Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(enabled = !searchBusy && searchOffset > 0,
+                                    onClick = { searchOffset = (searchOffset - 20).coerceAtLeast(0) }) {
+                                    Text("Previous")
+                                }
+                                Text("Page " + (searchOffset / 20 + 1),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.labelMedium)
+                                OutlinedButton(
+                                    enabled = !searchBusy && searchOffset + 20 < searchTotal &&
+                                        searchOffset < 10000,
+                                    onClick = { searchOffset += 20 }) { Text("Next") }
+                            }
+                        }
                     }
                     item {
                         Text("Top 20 · " + d.optInt("total_ranked") + " ranked contestants",
