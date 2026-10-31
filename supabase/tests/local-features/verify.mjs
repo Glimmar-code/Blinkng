@@ -35,6 +35,7 @@ for (const name of [
   '20261031090000_blink_contest_moderation_audit.sql',
   '20261031100000_blink_contest_review_history.sql',
   '20261031110000_blink_contest_cancelled_visibility.sql',
+  '20261031120000_blink_contest_entry_appeals.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -178,6 +179,54 @@ const auditPage = await rpc('admin_get_blink_contest_entry_review_history', admi
 });
 assert.equal(auditPage.history.length,1);
 assert.equal(auditPage.limit,1);
+await rejected('/rest/v1/rpc/submit_blink_contest_entry_appeal', creator.token,
+  { p_entry_id: entry.entry_id, p_statement: 'This entry is already approved and ineligible' },
+  /APPEAL_NOT_AVAILABLE/);
+await rpc('admin_review_blink_contest_entry', admin, {
+  p_entry_id: entry.entry_id, p_action:'reject',
+  p_reason:'Eligibility documents need further review'
+});
+await rejected('/rest/v1/rpc/submit_blink_contest_entry_appeal', outsider.token,
+  { p_entry_id: entry.entry_id, p_statement: 'I cannot appeal for a different entrant' },
+  /ENTRY_NOT_AVAILABLE/);
+const realAppeal = await rpc('submit_blink_contest_entry_appeal', creator, {
+  p_entry_id: entry.entry_id,
+  p_statement:'I have attached sufficient supporting eligibility information'
+});
+assert.equal(realAppeal.status,'pending');
+await rejected('/rest/v1/rpc/submit_blink_contest_entry_appeal', creator.token,
+  { p_entry_id:entry.entry_id, p_statement:'I should not be able to send duplicate appeals' },
+  /duplicate|unique/i);
+const ownAppeal = await rpc('my_blink_contest_entry_appeal', creator, {
+  p_entry_id:entry.entry_id
+});
+assert.equal(ownAppeal.status,'pending');
+await rejected('/rest/v1/rpc/my_blink_contest_entry_appeal', outsider.token,
+  { p_entry_id:entry.entry_id }, /ENTRY_NOT_AVAILABLE/);
+await rejected('/rest/v1/rpc/admin_list_blink_contest_entry_appeals', creator.token,
+  { p_contest_id:contest.id,p_limit:100 }, /ADMIN_REQUIRED/);
+const pendingAppeals = await rpc('admin_list_blink_contest_entry_appeals', admin, {
+  p_contest_id:contest.id,p_limit:100
+});
+assert.equal(pendingAppeals.length,1);
+await rejected('/rest/v1/rpc/admin_decide_blink_contest_entry_appeal', outsider.token,
+  { p_appeal_id:realAppeal.id,p_action:'accept',p_reason:'Not an administrator' },
+  /ADMIN_REQUIRED/);
+const deniedAppeal = await rpc('admin_decide_blink_contest_entry_appeal', admin, {
+  p_appeal_id:realAppeal.id,p_action:'deny',
+  p_reason:'Supporting evidence did not meet published eligibility rules'
+});
+assert.equal(deniedAppeal.status,'denied');
+await rejected('/rest/v1/rpc/admin_decide_blink_contest_entry_appeal', admin.token,
+  { p_appeal_id:realAppeal.id,p_action:'accept',p_reason:'Repeated decision forbidden' },
+  /APPEAL_NOT_PENDING/);
+const deniedStatus = await rpc('my_blink_contest_entry_appeal', creator,
+  {p_entry_id:entry.entry_id});
+assert.equal(deniedStatus.status,'denied');
+await rpc('admin_review_blink_contest_entry', admin, {
+  p_entry_id:entry.entry_id,p_action:'approve',
+  p_reason:'Manual review subsequently confirmed eligibility'
+});
 const participantNotices = ok(await request(
   '/rest/v1/notifications?select=id,sub_text,metadata&metadata->>kind=eq.blink_contest_application_review',
   creator.token, undefined, 'GET'), 'Owner moderation notice');
