@@ -81,6 +81,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var reviewHistoryError by remember { mutableStateOf<String?>(null) }
     var previewEntryMedia by remember { mutableStateOf<String?>(null) }
     var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingContestError by remember { mutableStateOf<String?>(null) }
 
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -362,9 +363,11 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     if (contest.optString("status") in listOf("published", "paused")) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TextButton(enabled = !busy, onClick = {
+                                pendingContestError = null
                                 pendingContestDecision = contest.optString("id") to "finalize"
                             }) { Text("Finalize") }
                             TextButton(enabled = !busy, onClick = {
+                                pendingContestError = null
                                 pendingContestDecision = contest.optString("id") to "cancel"
                             }) { Text("Cancel") }
                         }
@@ -736,19 +739,30 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { if (!busy) pendingContestDecision = null },
             title = { Text(if (action == "finalize") "Finalize contest results?" else "Cancel contest?") },
-            text = { Text(if (action == "finalize")
-                "Check the voting deadline and pending vote reviews before publishing final winners."
-                else "Cancelling will end applications and voting for this contest.") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (action == "finalize")
+                        "Check the voting deadline and pending vote reviews before publishing final winners."
+                        else "Cancelling will end applications and voting for this contest.")
+                    pendingContestError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     busy = true
                     scope.launch {
                         val result = if (action == "finalize") api.adminFinalize(contestId)
                         else api.adminTransition(contestId, "cancel")
-                        result.onSuccess { message = "Contest updated."; revision++ }
-                            .onFailure { message = it.message ?: "Contest action failed." }
+                        result.onSuccess {
+                            message = "Contest updated."
+                            pendingContestError = null
+                            pendingContestDecision = null
+                            revision++
+                        }.onFailure {
+                            pendingContestError = it.message ?: "Contest action failed. Try again."
+                            message = pendingContestError.orEmpty()
+                        }
                         busy = false
-                        pendingContestDecision = null
                     }
                 }) { Text(if (action == "finalize") "Finalize" else "Cancel contest") }
             },
