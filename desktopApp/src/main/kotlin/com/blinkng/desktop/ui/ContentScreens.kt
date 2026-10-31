@@ -380,7 +380,7 @@ fun HomeScreen(
                     Spacer(Modifier.width(6.dp))
                     Text("Store")
                 }
-                OutlinedButton(onClick = { state.selectedRoute = "giveaway" }) {
+                OutlinedButton(onClick = { state.selectedGiveawayId = null; state.selectedRoute = "giveaway" }) {
                     Icon(Icons.Rounded.CardGiftcard, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Giveaway")
@@ -886,7 +886,7 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        onOpen = { state.selectedRoute = "giveaway" },
+                        onOpen = { state.selectedGiveawayId = item.optString("drop_id"); state.selectedRoute = "giveaway" },
                     )
                 }
             }
