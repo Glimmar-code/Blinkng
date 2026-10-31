@@ -151,6 +151,59 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
     }
 
+    @Test fun cancelledPhotoToPollSwitchKeepsExistingPhotoDraftUntilDone() {
+        rule.setContent {
+            AuditSurface {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-photo-poll-switch",
+                        fullName = "BLINK Test Student",
+                        username = "blink_photo_poll_switch_test",
+                        university = "FUTA"
+                    ),
+                    savedDrafts = listOf(PostDraft(
+                        id = "photo-poll-switch-draft",
+                        text = "Keep my campus photo",
+                        imageUri = "content://sample/selected-photo"
+                    )),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true
+                )
+            }
+        }
+        rule.onNodeWithText("Drafts").performClick()
+        rule.onNodeWithTag("blink_create_saved_draft_photo-poll-switch-draft").performClick()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_selected_media_thumbnail_0")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_compose_action_2").performScrollTo().performClick()
+        rule.onNodeWithText("Change post type?").assertExists()
+        rule.onNodeWithText("Continue").performClick()
+        rule.onNodeWithTag("blink_poll_fullscreen").assertExists()
+        rule.onNodeWithTag("blink_poll_back").performClick()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_selected_media_thumbnail_0")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        // The same photo survives the cancelled conversion. Only a completed
+        // valid Poll may replace it.
+        rule.onNodeWithTag("blink_compose_action_2").performScrollTo().performClick()
+        rule.onNodeWithText("Change post type?").assertExists()
+        rule.onNodeWithText("Continue").performClick()
+        rule.onNodeWithTag("blink_poll_question_input").performTextReplacement(
+            "Which club should host the next event?"
+        )
+        rule.onNodeWithTag("blink_poll_option_0").performTextReplacement("Tech")
+        rule.onNodeWithTag("blink_poll_option_1").performTextReplacement("Sports")
+        rule.onNodeWithTag("blink_poll_done").performClick()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_poll_attached_card").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_selected_media_thumbnail_0").assertDoesNotExist()
+    }
+
     @Test fun changingPollToPhotosOpensSelectMediaAndBackPreservesPoll() {
         rule.setContent {
             AuditSurface {
