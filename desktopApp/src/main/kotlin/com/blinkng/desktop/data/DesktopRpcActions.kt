@@ -93,6 +93,13 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         rpcAny("list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
     suspend fun contestDetail(id: String): JSONObject =
         rpc("get_blink_contest", JSONObject().put("p_contest_id", id))
+    suspend fun contestSearchCandidates(contestId: String, query: String, offset: Int): JSONObject =
+        rpc("search_blink_contest_candidates", JSONObject()
+            .put("p_contest_id", contestId)
+            .put("p_query", query.trim().take(60))
+            .put("p_limit", 20)
+            .put("p_offset", offset.coerceIn(0, 10000)))
+
     suspend fun contestCandidate(contestId: String, entryId: String): JSONObject =
         rpc("get_blink_contest_candidate", JSONObject().put("p_contest_id", contestId)
             .put("p_entry_id", entryId))
