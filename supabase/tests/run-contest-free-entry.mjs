@@ -25,6 +25,9 @@ const moderationAuditMigration = readFileSync(
 const moderationHistoryMigration = readFileSync(
   new URL('../migrations/20261031100000_blink_contest_review_history.sql', import.meta.url), 'utf8'
 );
+const cancelledVisibilityMigration = readFileSync(
+  new URL('../migrations/20261031110000_blink_contest_cancelled_visibility.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -68,6 +71,7 @@ try {
   await db.exec(candidateSearchMigration);
   await db.exec(moderationAuditMigration);
   await db.exec(moderationHistoryMigration);
+  await db.exec(cancelledVisibilityMigration);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
@@ -86,6 +90,25 @@ try {
   await assert.rejects(() => rpc('admin_finalize_blink_contest','$1::uuid',[created.id]),
     /RESULTS_NOT_READY/);
   await rpc('admin_transition_blink_contest', '$1::uuid,$2::text',[id,'publish']);
+  // A cancelled draft must never appear publicly, while a cancelled published
+  // contest stays visible in Completed (without reopening voting/entry).
+  const unpublished = json((await rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
+    [null,JSON.stringify({...payload,title:'Secret cancelled draft'})])).rows[0].result);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[unpublished.id,'cancel']);
+  const launched = json((await rpc('admin_save_blink_contest','$1::uuid,$2::jsonb',
+    [null,JSON.stringify({...payload,title:'Public cancelled challenge'})])).rows[0].result);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[launched.id,'publish']);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[launched.id,'cancel']);
+  await setUser(voter);
+  const publicList = json((await rpc('list_blink_contests','',[])).rows[0].result);
+  assert.ok(publicList.some(c=>c.id===launched.id && c.status==='cancelled'));
+  assert.ok(!publicList.some(c=>c.id===unpublished.id));
+  const ended = json((await rpc('get_blink_contest','$1::uuid',[launched.id])).rows[0].result);
+  assert.equal(ended.contest.status,'cancelled');
+  await assert.rejects(() => rpc('get_blink_contest','$1::uuid',[unpublished.id]),
+    /CONTEST_NOT_AVAILABLE/);
+  await assert.rejects(() => rpc('vote_blink_contest','$1::uuid,$2::uuid',
+    [launched.id,'99999999-9999-4999-8999-999999999999']),/VOTING_CLOSED/);
 
   await setUser(creator1);
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
