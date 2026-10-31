@@ -78,6 +78,15 @@ await rejected('/rest/v1/rpc/admin_transition_blink_contest', creator.token, { p
 await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p_action: 'publish' });
 const entry = await rpc('apply_blink_contest', creator, { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null });
 await rpc('admin_review_blink_contest_entry', admin, { p_entry_id: entry.entry_id, p_action: 'approve' });
+// Android must receive a complete approved candidate before creating its flyer;
+// compact leaderboard rows deliberately omit contest_id.
+const flyerCandidate = await rpc('get_blink_contest_candidate', voter, {
+  p_contest_id: contest.id, p_entry_id: entry.entry_id
+});
+assert.equal(flyerCandidate.id, entry.entry_id);
+assert.equal(flyerCandidate.contest_id, contest.id);
+assert.equal(flyerCandidate.contest_title, 'Local authenticated contest');
+assert.equal(flyerCandidate.rank, 1);
 sql(`update public.blink_contests set registration_opens_at=now()-interval '3 days',registration_closes_at=now()-interval '2 days',voting_opens_at=now()-interval '1 day' where id='${contest.id}';`);
 
 let socket;
