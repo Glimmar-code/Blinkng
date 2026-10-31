@@ -458,7 +458,7 @@ fun BlinkDropsRoute(
                 if (initialDropId != null) {
                     item {
                         notificationDrop?.let { drop ->
-                            SectionHeader("Opened from notification", "Original Giveaway details, including completed or expired rewards.")
+                            SectionHeader("Selected Giveaway", "The Giveaway you opened from the feed or a notification.")
                             DropCard(
                                 drop = drop, formatter = formatter, busy = busyDropId == drop.id,
                                 highlighted = true,
