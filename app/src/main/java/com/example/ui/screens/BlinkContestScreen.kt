@@ -333,8 +333,8 @@ fun BlinkContestScreen(
                                     when(entryStatus) {
                                         "pending" -> "Under review · No voting until approved"
                                         "approved" -> "Approved · Your entry is public"
-                                        "rejected" -> "Not approved · Contact contest support for clarification"
-                                        "disqualified" -> "Disqualified · No longer eligible"
+                                        "rejected" -> "Not approved · Check Notifications for the review reason"
+                                        "disqualified" -> "Disqualified · Check Notifications for the review reason"
                                         else -> entryStatus
                                     }, color = MaterialTheme.colorScheme.primary
                                 )
