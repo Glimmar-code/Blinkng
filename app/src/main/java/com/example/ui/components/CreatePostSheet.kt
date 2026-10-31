@@ -2814,11 +2814,14 @@ internal fun PostPreviewDialog(
                                         AsyncImage(
                                             model = uri,
                                             contentDescription = post.altText ?: "Post photo",
-                                            contentScale = ContentScale.Crop,
+                                            // Do not crop portrait/landscape photos in the
+                                            // preview. Match BLINK's ratio-preserving policy.
+                                            contentScale = ContentScale.Fit,
                                             modifier = Modifier.fillParentMaxWidth()
                                                 .height(254.dp)
                                                 .clip(RoundedCornerShape(11.dp))
-                                                .background(Color(0xFFE7E9EF))
+                                                .background(Color(0xFF171B23))
+                                                .testTag("blink_post_preview_photo")
                                         )
                                     }
                                 }
