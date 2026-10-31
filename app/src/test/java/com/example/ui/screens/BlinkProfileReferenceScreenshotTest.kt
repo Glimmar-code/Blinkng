@@ -14,11 +14,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.data.models.AchievementBadge
 import com.example.data.models.UserProfile
+import com.example.data.models.FeedPost
+import com.example.ui.components.PostCard
+import com.blinkng.shared.BlinkProfileThemes
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
@@ -61,7 +65,7 @@ class BlinkProfileReferenceScreenshotTest {
         ),
     )
 
-    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null, themeId: String = "royal_purple", visitor: Boolean = false) {
+    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null, themeId: String = "royal_purple", visitor: Boolean = false, includePost: Boolean = false) {
         rule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
@@ -91,6 +95,25 @@ class BlinkProfileReferenceScreenshotTest {
                                      onShowBadges = {}, onShare = {},
                                     onCopyUsername = {}, onVisitors = {}, onTopAction = {}
                                 )
+                            }
+                            if (includePost) {
+                                item {
+                                    PostCard(
+                                        post = FeedPost(
+                                            id = "screenshot-post-only", author = "Aisha Khan",
+                                            authorUsername = "aisha", authorAvatar = "",
+                                            timeAgo = "2 days ago", text = "@blink",
+                                            likes = 1, commentsCount = 0, sharesCount = 0,
+                                            viewsCount = 85
+                                        ),
+                                        isDark = dark,
+                                        onLike = {}, onComment = {}, onBookmark = {},
+                                        onShare = {}, onOptionsClick = {}, onProfileClick = {},
+                                        trackExposure = false,
+                                        xFeedStyle = true,
+                                        profileSurfaceColor = Color(BlinkProfileThemes.resolve(themeId).cardArgb)
+                                    )
+                                }
                             }
                         }
                     }
@@ -151,6 +174,29 @@ class BlinkProfileReferenceScreenshotTest {
     @Test fun sapphireVisitorThemeRenders() {
         render(dark = false, fontScale = 1.0f, themeId = "sapphire", visitor = true)
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-sapphire.png")
+    }
+
+    @Test fun sapphireOwnerThemeAndPostCardRenders() {
+        render(dark = true, fontScale = 1.0f, themeId = "sapphire", includePost = true)
+        rule.onNodeWithText("Posts").assertExists()
+        rule.onNodeWithText("Followers").assertExists()
+        rule.onNodeWithText("Following").assertExists()
+        rule.onNodeWithText("Views").assertExists()
+        rule.onNodeWithText("Campus Rank").assertExists()
+        rule.onNodeWithText("World Rank").assertExists()
+        rule.onNodeWithText("HP Level").assertExists()
+        rule.onNodeWithText("Earn Coins").assertExists()
+        rule.onNodeWithText("Get Verified").assertExists()
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-sapphire-owner.png")
+    }
+
+    @Test fun sapphireVisitorHasOnlyPublicShortcuts() {
+        render(dark = true, fontScale = 1.0f, themeId = "sapphire", visitor = true)
+        rule.onNodeWithText("Campus Rank").assertExists()
+        rule.onNodeWithText("World Rank").assertExists()
+        rule.onNodeWithText("HP Level").assertExists()
+        rule.onNodeWithText("Earn Coins").assertDoesNotExist()
+        rule.onNodeWithText("Get Verified").assertDoesNotExist()
     }
 
     @Test fun emeraldVisitorThemeRenders() {
