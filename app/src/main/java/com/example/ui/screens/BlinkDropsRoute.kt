@@ -1159,13 +1159,12 @@ internal fun TopGiversEmptyState(
                 modifier = Modifier.size(38.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-            Text("The first Most Givers are coming",
+            Text("No Givers yet",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White)
             Text(
-                "The top 20 creators are ranked by total BLINK Coins committed to published Giveaways. " +
-                    "Unclaimed amounts still count because published funding is non-refundable.",
+                "Publish a Giveaway to appear in the top 20. Creators are ranked by total BLINK Coins committed, including unclaimed amounts.",
                 color = Color(0xFFCFD3DD),
                 style = MaterialTheme.typography.bodySmall
             )
