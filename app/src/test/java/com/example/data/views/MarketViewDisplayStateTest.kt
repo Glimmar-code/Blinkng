@@ -16,7 +16,7 @@ class MarketViewDisplayStateTest {
             suppressedBaselines = mapOf("listing-a" to 10),
             activeWindows = setOf("listing-a"),
         )
-        assertEquals(10, state.displayedCount("listing-a", 25))
+        assertEquals(10L, state.displayedCount("listing-a", 25))
     }
 
     @Test
@@ -24,12 +24,12 @@ class MarketViewDisplayStateTest {
         val state = MarketViewDisplayState(
             revealedCounts = mapOf("listing-a" to 25),
         )
-        assertEquals(25, state.displayedCount("listing-a", 10))
+        assertEquals(25L, state.displayedCount("listing-a", 10))
     }
 
     @Test
     fun `newer server model count is never hidden after reveal`() {
         val state = MarketViewDisplayState(revealedCounts = mapOf("listing-a" to 25))
-        assertEquals(31, state.displayedCount("listing-a", 31))
+        assertEquals(31L, state.displayedCount("listing-a", 31))
     }
 }
