@@ -315,6 +315,38 @@ abstract class BlinkCreatePostVisualAuditFixture {
         capture("create-post-full-mentions-staging.png", "blink_create_post_full_screen")
     }
 
+    @Test fun pollTileOpensFullScreenAndDoneKeepsEditablePoll() {
+        rule.setContent {
+            AuditSurface {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-poll-fullscreen",
+                        fullName = "BLINK Test Student",
+                        username = "blink_poll_screen_test",
+                        university = "FUTA"
+                    ),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_create_choice_poll").performClick()
+        rule.onNodeWithTag("blink_poll_fullscreen").assertExists()
+        rule.onNodeWithText("Poll duration").assertExists()
+        capture("create-post-poll-fullscreen-staging.png", "blink_create_post_full_screen")
+        rule.onNodeWithTag("blink_poll_done").performClick()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_poll_attached_card").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_edit_attached_poll").performClick()
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("blink_poll_fullscreen").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("blink_poll_back").performClick()
+        rule.onNodeWithTag("blink_poll_attached_card").assertExists()
+    }
+
     @Test fun realPollOptionsAndDurationsFixture() {
         rule.setContent {
             AuditSurface {
