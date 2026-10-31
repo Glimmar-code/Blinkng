@@ -3382,23 +3382,24 @@ internal fun PollComposer(
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    if (options.size > 2) {
-                        IconButton(
-                            onClick = {
-                                onOptionsChanged(
-                                    options.toMutableList().also {
-                                        it.removeAt(index)
-                                    }
-                                )
-                            },
-                            enabled = enabled
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Remove option",
-                                tint = Color(0xFFB4BBC8)
+                    // Keep every option's X aligned with the Poll reference.
+                    // The first two cannot be deleted because at least two
+                    // answers must remain; their X is visibly disabled.
+                    IconButton(
+                        onClick = {
+                            onOptionsChanged(
+                                options.toMutableList().also { it.removeAt(index) }
                             )
-                        }
+                        },
+                        enabled = enabled && options.size > 2,
+                        modifier = Modifier.testTag("blink_poll_remove_" + index)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove option ${index + 1}",
+                            tint = if (enabled && options.size > 2)
+                                Color(0xFFB4BBC8) else Color(0xFF636976)
+                        )
                     }
                 }
             }
