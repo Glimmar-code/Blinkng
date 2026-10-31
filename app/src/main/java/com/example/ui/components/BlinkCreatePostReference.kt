@@ -943,9 +943,9 @@ internal fun BlinkReferenceMediaReview(
                 Text("Select Media", color = Color.White,
                     fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
-            TextButton(onClick = onNext, enabled = images.isNotEmpty()) {
-                Text("Next", color = Color(0xFF8F87FF), fontWeight = FontWeight.Bold)
-            }
+            // Only the bottom-right Next (count) action advances the gallery.
+            // Duplicating Next in this header caused mismatched visual hierarchy.
+            Spacer(Modifier.width(48.dp))
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
