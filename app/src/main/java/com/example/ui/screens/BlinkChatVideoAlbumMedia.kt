@@ -9,7 +9,7 @@ import com.example.data.models.ChatMessage
  */
 internal object BlinkChatVideoAlbumMedia {
     private fun local(uri: String?): String? = uri?.takeIf {
-        it.startsWith("content://") || it.startsWith("file://")
+        it.startsWith("content://") || it.startsWith("file:")
     }
     private fun remote(uri: String?): String? = uri?.takeIf { it.startsWith("https://") }
 
