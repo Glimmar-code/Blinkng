@@ -467,6 +467,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var inspectId by remember { mutableStateOf<String?>(null) }
     var insights by remember { mutableStateOf<JSONObject?>(null) }
     var reviewNote by remember { mutableStateOf("") }
+    var applicationReviewReason by remember { mutableStateOf("") }
     var paymentReference by remember { mutableStateOf("") }
     var paymentNote by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
@@ -651,20 +652,45 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                 }
             }
             Text("Contest applications", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(
+                value = applicationReviewReason,
+                onValueChange = { applicationReviewReason = it.take(300) },
+                label = { Text("Reason for rejection/disqualification (8–300 characters)") },
+                modifier = Modifier.fillMaxWidth(), minLines = 2
+            )
+            Text("The applicant receives this reason in a notification; every moderation decision is audited.",
+                style = MaterialTheme.typography.bodySmall)
             entries.forEach { entry ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("@" + entry.optString("username") + " · " + entry.optString("status"),
                         modifier = Modifier.weight(1f))
-                    listOf("approve", "reject", "disqualify").forEach { action ->
-                        TextButton(enabled = !busy, onClick = {
-                            busy = true
-                            scope.launch {
-                                runCatching { api.adminContestReview(entry.optString("id"), action) }
-                                    .onSuccess { message = "Entry reviewed."; revision++ }
-                                    .onFailure { message = it.message.orEmpty() }
-                                busy = false
+                    listOf("approve", "reject", "disqualify")
+                        .filter { action ->
+                            val targetStatus = when (action) {
+                                "approve" -> "approved"
+                                "reject" -> "rejected"
+                                else -> "disqualified"
                             }
-                        }) { Text(action) }
+                            entry.optString("status") != targetStatus
+                        }.forEach { action ->
+                        TextButton(enabled = !busy &&
+                            (action == "approve" || applicationReviewReason.trim().length in 8..300),
+                            onClick = {
+                                busy = true
+                                val reason = if (action == "approve")
+                                    "Application meets contest eligibility rules"
+                                else applicationReviewReason.trim()
+                                scope.launch {
+                                    runCatching {
+                                        api.adminContestReview(entry.optString("id"), action, reason)
+                                    }.onSuccess {
+                                        message = "Entry reviewed; applicant notified."
+                                        applicationReviewReason = ""
+                                        revision++
+                                    }.onFailure { message = it.message.orEmpty() }
+                                    busy = false
+                                }
+                            }) { Text(action.replaceFirstChar { it.uppercase() }) }
                     }
                 }
                 Text(entry.optString("statement"))
