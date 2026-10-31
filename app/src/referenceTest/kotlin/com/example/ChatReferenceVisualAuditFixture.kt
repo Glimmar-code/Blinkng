@@ -374,6 +374,9 @@ abstract class ChatReferenceVisualAuditFixture {
         rule.onNodeWithTag("chat_reference_document_card").assertExists()
         list.performScrollToIndex(10)
         rule.onNodeWithTag("chat_reference_legacy_poll").assertExists()
+        // The short quoted reply must carry text, time and authoritative blue
+        // receipt in one compact content row, not an oversized separate footer.
+        rule.onNodeWithTag("chat_reference_reply_inline_text").assertExists()
         saveFrame("chat-reference-full-bottom.png")
     }
 
