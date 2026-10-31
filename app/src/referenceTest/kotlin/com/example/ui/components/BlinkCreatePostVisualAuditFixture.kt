@@ -132,6 +132,35 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
     }
 
+    @Test fun changingPollToPhotosOpensSelectMediaAndBackPreservesPoll() {
+        rule.setContent {
+            AuditSurface {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-poll-gallery",
+                        fullName = "BLINK Test Student",
+                        username = "blink_poll_gallery_test",
+                        university = "FUTA"
+                    ),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_create_choice_poll").performClick()
+        rule.onNodeWithText("Poll duration").assertExists()
+        rule.onNodeWithTag("blink_compose_action_0").performScrollTo().performClick()
+        rule.onNodeWithText("Change post type?").assertExists()
+        rule.onNodeWithText("Continue").performClick()
+        rule.onNodeWithTag("blink_media_review").assertExists()
+        capture("create-post-poll-switch-gallery-staging.png", "blink_create_post_full_screen")
+        rule.onNodeWithTag("blink_media_review_back").performClick()
+        // No photo was chosen: the previous poll must still be editable.
+        rule.onNodeWithText("Poll duration").assertExists()
+        rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
+    }
+
     @Test fun landingPhotoBackReturnsToCreateOptions() {
         rule.setContent {
             AuditSurface {
