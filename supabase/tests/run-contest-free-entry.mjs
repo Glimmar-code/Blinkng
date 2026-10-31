@@ -13,6 +13,11 @@ const growthMigration = readFileSync(
 const mediaRequirement = readFileSync(
   new URL('../migrations/20261031060000_blink_contest_require_entry_media.sql', import.meta.url), 'utf8'
 );
+const privateMedia = readFileSync(
+  new URL('../migrations/20261031070000_blink_contest_private_submissions.sql', import.meta.url), 'utf8'
+);
+const mediaOne = `https://example.test/functions/v1/blink-contest-private-media/${creator1}/11111111-1111-4111-8111-111111111111.jpg`;
+const mediaTwo = `https://example.test/functions/v1/blink-contest-private-media/${creator2}/22222222-2222-4222-8222-222222222222.jpg`;
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -50,6 +55,12 @@ try {
   await db.exec(migration);
   await db.exec(growthMigration);
   await db.exec(mediaRequirement);
+  await db.exec(privateMedia);
+  await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
+    'blink-contest-private',
+    creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
+    creator2 + '/22222222-2222-4222-8222-222222222222.jpg'
+  ]);
   await setUser(creator1);
   await assert.rejects(() => rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
     [null,JSON.stringify(payload)]), /ADMIN_REQUIRED/);
@@ -67,15 +78,20 @@ try {
   await setUser(creator1);
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
     [id,'I have a contest entry but no media',null]), /blink_contest_entry_media_required/);
+  await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'I have a contest entry with public media','https://example.com/public.jpg']),
+    /PRIVATE_CONTEST_MEDIA_REQUIRED/);
+  await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'I have another user private media',mediaTwo]), /PRIVATE_CONTEST_MEDIA_REQUIRED/);
   const first = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I make creative campus videos','https://example.com/creator-one.jpg'])).rows[0].result);
+    [id,'I make creative campus videos',mediaOne])).rows[0].result);
   assert.equal(first.status,'pending');
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'Another duplicated application','https://example.com/creator-one.jpg']), /duplicate|unique|CONTEST_FULL/i);
+    [id,'Another duplicated application',mediaOne]), /duplicate|unique|CONTEST_FULL/i);
 
   await setUser(creator2);
   const second = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I create photography stories','https://example.com/creator-two.jpg'])).rows[0].result);
+    [id,'I create photography stories',mediaTwo])).rows[0].result);
   assert.notEqual(first.entry_id, second.entry_id);
 
   await setUser(admin);
