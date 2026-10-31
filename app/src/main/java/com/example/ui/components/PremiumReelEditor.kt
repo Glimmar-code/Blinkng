@@ -108,6 +108,7 @@ internal fun PremiumReelEditor(
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
     var showAdvanced by remember(uri) { mutableStateOf(false) }
+    var activeTool by remember(uri) { mutableStateOf("TRIM") }
     val musicPlayer = remember(musicUri) {
         musicUri?.let { selected ->
             runCatching {
@@ -243,17 +244,19 @@ internal fun PremiumReelEditor(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Edit Reel", color = Color.White, fontWeight = FontWeight.Bold,
+                "Edit Video", color = Color.White, fontWeight = FontWeight.Bold,
                 fontSize = 18.sp, modifier = Modifier.weight(1f)
             )
             Text(
-                "TRIM  ·  AUDIO  ·  EFFECTS",
+                "TRIM  ·  MUSIC  ·  EFFECTS",
                 color = Color(0xFFB5B4C7), fontSize = 10.sp
             )
         }
         Box(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)
-                .aspectRatio(9f / 16f).clip(RoundedCornerShape(27.dp))
+                .aspectRatio(9f / 16f).heightIn(max = 420.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .testTag("blink_video_editor_preview")
                 .background(Color(0xFF121217))
                 .onSizeChanged { previewWidth = it.width.coerceAtLeast(1);
                     previewHeight = it.height.coerceAtLeast(1) },
@@ -313,26 +316,39 @@ internal fun PremiumReelEditor(
             ) {
                 val tools: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
                     Triple(Icons.Default.MusicNote, "Music", {
-                        audioPicker.launch(arrayOf("audio/*"))
-                    }),
-                    Triple(Icons.Default.TextFields, "Text", { showAdvanced = true }),
-                    Triple(Icons.Default.EmojiEmotions, "Stickers", { showAdvanced = true }),
-                    Triple(Icons.Default.FilterVintage, "Filters", { grayscale = !grayscale }),
-                    Triple(Icons.Default.AutoAwesome, "Effects", {
-                        // Open the existing effect controls; never silently rotate the Reel.
+                        activeTool = "MUSIC"
                         showAdvanced = true
+                        if (musicUri == null) audioPicker.launch(arrayOf("audio/*"))
                     }),
-                    Triple(Icons.Default.Tune, "Adjust", { showAdvanced = true }),
+                    Triple(Icons.Default.TextFields, "Text", {
+                        activeTool = "TEXT"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.EmojiEmotions, "Stickers", {
+                        activeTool = "STICKERS"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.FilterVintage, "Filters", {
+                        activeTool = "FILTERS"; grayscale = !grayscale
+                    }),
+                    Triple(Icons.Default.AutoAwesome, "Effects", {
+                        activeTool = "EFFECTS"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.Tune, "Adjust", {
+                        activeTool = "ADJUST"; showAdvanced = true
+                    }),
                     Triple(Icons.Default.ContentCut, "Trim", {
+                        activeTool = "TRIM"; showAdvanced = false
                         player.seekTo(trimStartMs)
                     })
                 )
                 tools.forEach { (icon, label, action) ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         IconButton(onClick = action, enabled = !isExporting,
-                            modifier = Modifier.size(36.dp)) {
+                            modifier = Modifier.size(36.dp)
+                                .testTag("blink_video_tool_" + label.lowercase())) {
                             Icon(icon, contentDescription = label + " editing tool",
-                                tint = Color.White, modifier = Modifier.size(19.dp))
+                                tint = if (activeTool == label.uppercase()) Color(0xFFA7A0FF)
+                                    else Color.White,
+                                modifier = Modifier.size(19.dp))
                         }
                         Text(label, color = Color.White, fontSize = 9.sp, maxLines = 1)
                     }
@@ -357,8 +373,9 @@ internal fun PremiumReelEditor(
                 ) { Icon(Icons.Default.Close, "Remove reel", tint = white) }
             }
         }
-        Surface(color = surface, shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        Surface(color = surface, shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                .testTag("blink_video_editor_timeline")) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -411,6 +428,7 @@ internal fun PremiumReelEditor(
                         player.seekTo(newStart)
                     },
                     modifier = Modifier.fillMaxWidth()
+                        .testTag("blink_video_trim_handles")
                 )
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -423,7 +441,13 @@ internal fun PremiumReelEditor(
                     FilterChip(selected = rotation != 0f, onClick = {
                         rotation = (rotation + 90f) % 360f
                     }, label = { Text("Rotate", fontSize = 11.sp) }, enabled = !isExporting)
-                    TextButton(onClick = { showAdvanced = !showAdvanced }, enabled = !isExporting) {
+                    TextButton(
+                        onClick = {
+                            showAdvanced = !showAdvanced
+                            if (showAdvanced && activeTool == "TRIM") activeTool = "ADJUST"
+                        },
+                        enabled = !isExporting
+                    ) {
                         Text(if (showAdvanced) "Less" else "More", fontSize = 11.sp, color = accent)
                     }
                 }
