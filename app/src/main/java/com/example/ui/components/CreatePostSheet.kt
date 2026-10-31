@@ -1666,6 +1666,7 @@ fun CreatePostSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(textEntryFocusRequester)
+                                .testTag("blink_create_post_caption_field")
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             minLines = if (useClassicComposer) 7 else 2,
                             maxLines = 14,
@@ -1696,6 +1697,7 @@ fun CreatePostSheet(
                         enabled = !isSubmitting,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag("blink_create_post_media_caption_field")
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         minLines = 4,
                         maxLines = 10,
