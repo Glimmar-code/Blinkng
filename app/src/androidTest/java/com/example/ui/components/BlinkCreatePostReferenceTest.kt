@@ -269,6 +269,27 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun tagPeopleOpensMentionActionWithoutMisroutingToEditCaption() {
+        val events = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferencePostDetails(
+                    text = "A FUTA post", mediaUri = null, tags = emptyList(),
+                    audience = "Everyone", location = "", category = "Campus Life",
+                    allowComments = true, hideLikes = false, temporary = false,
+                    onBack = {}, onEditCaption = { events += "edit" },
+                    onTagPeople = { events += "mention" },
+                    onAudienceChange = {}, onLocationChange = {}, onCategoryChange = {},
+                    onCommentsChange = {}, onHideLikesChange = {},
+                    onTemporaryChange = {}, onNext = {}
+                )
+            }
+        }
+        composeRule.onNodeWithText("Tag people").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("mention"), events) }
+    }
+
+    @Test
     fun pollDurationMatchesCollapsedReferenceAndStillSavesUserSelection() {
         val duration = mutableIntStateOf(24)
         composeRule.setContent {
