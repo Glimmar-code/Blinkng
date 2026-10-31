@@ -53,6 +53,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var appeals by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var cleanupPreview by remember { mutableStateOf<JSONObject?>(null) }
+    var cleanupAuditBusy by remember { mutableStateOf(false) }
     var appealReviewReason by remember { mutableStateOf("") }
     var appealReviewError by remember { mutableStateOf<String?>(null) }
     var insights by remember { mutableStateOf<JSONObject?>(null) }
@@ -327,6 +329,32 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+        item {
+            HorizontalDivider()
+            Text("Private media maintenance", style = MaterialTheme.typography.titleLarge)
+            Text("Safe audit only. Shows uploads at least 72 hours old that have no application reference. This screen does not delete files.",
+                style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(enabled = !cleanupAuditBusy, onClick = {
+                cleanupAuditBusy = true
+                scope.launch {
+                    api.adminOrphanMedia()
+                        .onSuccess { cleanupPreview = it }
+                        .onFailure { message = it.message ?: "Cannot inspect private uploads." }
+                    cleanupAuditBusy = false
+                }
+            }) { Text(if (cleanupAuditBusy) "Checking…" else "Inspect unreferenced media") }
+            cleanupPreview?.let { report ->
+                val candidates = report.optJSONArray("objects")?.contestObjects().orEmpty()
+                Text(candidates.size.toString() + " candidate upload(s) in first 50 examined")
+                candidates.forEach { candidate ->
+                    Text(candidate.optString("path") + " · " +
+                        candidate.optString("created_at").take(10),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Deletion remains disabled until storage-safe cleanup is staged and verified.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
         if (selectedContest != null) item {
