@@ -245,7 +245,10 @@ fun BlinkContestScreen(
     // Leaderboard rows are intentionally compact. The flyer requires the full
     // approved candidate record (including contest_id), fetched on demand.
     val openFlyer: (JSONObject) -> Unit = { candidate ->
-        if (!shareLookupBusy) {
+        val currentStatus = detail?.optJSONObject("contest")?.optString("status").orEmpty()
+        if (!BlinkContestPolicy.canShareVoteInvite(currentStatus)) {
+            error = "Voting invitations are unavailable for this contest."
+        } else if (!shareLookupBusy) {
             val contestId = selectedId.orEmpty()
             val entryId = candidate.optString("id")
             if (contestId.isBlank() || entryId.isBlank()) {
@@ -541,7 +544,9 @@ fun BlinkContestScreen(
                             Column(Modifier.padding(16.dp)) {
                                 Text("Your contestant profile", fontWeight = FontWeight.Bold)
                                 BlinkContestCandidateSpotlight(me) { inspectedCandidate = me }
-                                Button(onClick = { openFlyer(me) }) { Text("Share my personalized flyer") }
+                                Button(onClick = { openFlyer(me) },
+                                    enabled = BlinkContestPolicy.canShareVoteInvite(status)
+                                ) { Text("Share my personalized flyer") }
                             }
                         }
                     }
@@ -570,7 +575,9 @@ fun BlinkContestScreen(
                                             }
                                         }
                                     ) { Text("Vote for this contestant") }
-                                    OutlinedButton(onClick = { openFlyer(candidate) }) { Text("Share") }
+                                    OutlinedButton(onClick = { openFlyer(candidate) },
+                                        enabled = BlinkContestPolicy.canShareVoteInvite(status)
+                                    ) { Text("Share") }
                                 }
                             }
                         }
@@ -580,6 +587,7 @@ fun BlinkContestScreen(
                     }
                     item {
                         OutlinedButton(onClick = { searchExpanded = !searchExpanded },
+                            enabled = status != "cancelled",
                             modifier = Modifier.fillMaxWidth()) {
                             Text(if (searchExpanded) "Hide contestant directory"
                                  else "Find contestants beyond the Top 20")
@@ -632,7 +640,9 @@ fun BlinkContestScreen(
                                     }
                                     Text(candidate.optString("statement"), maxLines = 2)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedButton(onClick = { openFlyer(candidate) }) { Text("Share") }
+                                        OutlinedButton(onClick = { openFlyer(candidate) },
+                                        enabled = BlinkContestPolicy.canShareVoteInvite(status)
+                                    ) { Text("Share") }
                                         Button(
                                             enabled = !busy && BlinkContestPolicy.canVote(
                                                 status, myVote, own, candidate.optString("id")),
@@ -686,7 +696,8 @@ fun BlinkContestScreen(
                         key = { it.optString("id") }) { candidate ->
                         BlinkContestLeaderboardRow(
                             candidate = candidate,
-                            sharingEnabled = !shareLookupBusy,
+                            sharingEnabled = !shareLookupBusy &&
+                                BlinkContestPolicy.canShareVoteInvite(status),
                             votingEnabled = !busy && BlinkContestPolicy.canVote(
                                 status, myVote, own, candidate.optString("id")),
                             onView = { inspectedCandidate = candidate },
@@ -776,10 +787,14 @@ fun BlinkContestScreen(
                 ) { Text("Vote free") }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    openFlyer(candidate)
-                    inspectedCandidate = null
-                }) { Text("Share flyer") }
+                TextButton(
+                    enabled = BlinkContestPolicy.canShareVoteInvite(
+                        detail?.optJSONObject("contest")?.optString("status").orEmpty()),
+                    onClick = {
+                        openFlyer(candidate)
+                        inspectedCandidate = null
+                    }
+                ) { Text("Share flyer") }
             }
         )
     }
