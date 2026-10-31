@@ -10,6 +10,9 @@ class BlinkChatDocumentPresentationTest {
         val m = ChatMessage(text = "Document",
             attachedDocumentName = "Project_Proposal.pdf")
         assertEquals("Project_Proposal.pdf", BlinkChatDocumentPresentation.filename(m))
+        assertEquals("Project_Proposal.pdf", BlinkChatDocumentPresentation.filename(
+            m.copy(attachmentName = "Document")
+        ))
         assertTrue(BlinkChatDocumentPresentation.isPdf(
             BlinkChatDocumentPresentation.filename(m), null))
     }
