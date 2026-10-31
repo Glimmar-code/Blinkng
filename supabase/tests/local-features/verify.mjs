@@ -30,6 +30,7 @@ for (const name of [
   '20261028212000_blink_contest_media_bucket.sql',
   '20261029190000_blink_contest_media_owner_select.sql',
   '20261031060000_blink_contest_require_entry_media.sql',
+  '20261031070000_blink_contest_private_submissions.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -80,9 +81,27 @@ await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p
 await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
   { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null },
   /blink_contest_entry_media_required/);
+await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
+  { p_contest_id: contest.id, p_statement: 'Public media should be rejected',
+    p_media_url: 'https://example.com/public.jpg' }, /PRIVATE_CONTEST_MEDIA_REQUIRED/);
+
+const picture = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5r0AAAAASUVORK5CYII=', 'base64');
+const privatePath = `${creator.id}/${randomUUID()}.png`;
+const privateUpload = await request(`/storage/v1/object/blink-contest-private/${privatePath}`,
+  creator.token, picture, 'POST', { 'Content-Type': 'image/png' });
+ok(privateUpload, 'Owner private media upload');
+const privatePublic = await fetch(new URL(`/storage/v1/object/public/blink-contest-private/${privatePath}`, root));
+assert.ok(privatePublic.status >= 400, 'Pending contestant media must not be publicly downloadable');
+const outsiderRead = await request(`/storage/v1/object/authenticated/blink-contest-private/${privatePath}`,
+  outsider.token, undefined, 'GET');
+assert.ok(outsiderRead.status >= 400, 'Other users must not see pending media');
+const ownerRead = await request(`/storage/v1/object/authenticated/blink-contest-private/${privatePath}`,
+  creator.token, undefined, 'GET');
+assert.equal(ownerRead.status, 200, 'Owner can review their private submission');
+const privateMediaUrl = `${root.origin}/functions/v1/blink-contest-private-media/${privatePath}`;
 const entry = await rpc('apply_blink_contest', creator, {
   p_contest_id: contest.id, p_statement: 'Real local authenticated entry',
-  p_media_url: 'https://example.com/contest-image.jpg'
+  p_media_url: privateMediaUrl
 });
 await rpc('admin_review_blink_contest_entry', admin, { p_entry_id: entry.entry_id, p_action: 'approve' });
 // Android must receive a complete approved candidate before creating its flyer;
@@ -126,7 +145,6 @@ try {
   console.log('PASS local Contest: authenticated publish/apply/approve, one concurrent vote, real Realtime notification and recipient-only reads');
 } finally { socket?.close(); }
 
-const picture = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5r0AAAAASUVORK5CYII=', 'base64');
 const mediaPath = `${creator.id}/fixture.png`;
 const upload = (path, actor) => request(`/storage/v1/object/blink-contest-media/${path}`, actor.token, picture, 'POST', { 'Content-Type': 'image/png' });
 ok(await upload(mediaPath, creator), 'Owned Storage upload');
@@ -137,7 +155,7 @@ await request('/storage/v1/object/blink-contest-media', outsider.token, { prefix
 assert.equal((await fetch(new URL(`/storage/v1/object/public/blink-contest-media/${mediaPath}`, root))).status, 200);
 ok(await request('/storage/v1/object/blink-contest-media', creator.token, { prefixes: [mediaPath] }, 'DELETE'), 'Owner delete');
 assert.notEqual((await fetch(new URL(`/storage/v1/object/public/blink-contest-media/${mediaPath}`, root))).status, 200);
-console.log('PASS local Storage: public preview disclosure contract, owner path/delete and cross-account rejection');
+console.log('PASS local Storage: public admin cover, private contestant submissions, owner-only preview and cross-account denial');
 
 const conversation = randomUUID(), message = randomUUID();
 sql(`insert into public.conversations(id) values('${conversation}'); insert into public.conversation_participants(conversation_id,user_id) values('${conversation}','${creator.id}'),('${conversation}','${voter.id}'); insert into public.messages(id,conversation_id,sender_id,content) values('${message}','${conversation}','${creator.id}','Design choice?');`);
