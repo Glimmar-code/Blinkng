@@ -53,6 +53,7 @@ import com.example.notification.BlinkOfflineAnnouncementCache
 import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -919,8 +920,12 @@ private fun NotificationCard(
 
     val motionReduced = rememberBlinkReduceMotion()
     val rowInteraction = remember { MutableInteractionSource() }
+    // This must be fully opaque: otherwise the swipe-to-mark-read background
+    // bleeds through notification text on the idle row (seen in real captures).
+    val unreadBackground = accent.copy(alpha = .075f)
+        .compositeOver(MaterialTheme.colorScheme.background)
     val highlight by animateColorAsState(
-        targetValue = if (item.isUnread) accent.copy(alpha = .075f)
+        targetValue = if (item.isUnread) unreadBackground
             else MaterialTheme.colorScheme.background,
         animationSpec = tween(if (motionReduced) 0 else BlinkDesignTokens.Motion.ContentReveal),
         label = "notificationReadHighlight"
