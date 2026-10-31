@@ -54,6 +54,10 @@ as $$
     'status',p_drop.status,
     'created_at',p_drop.created_at,
     'ends_at',p_drop.ends_at,
+    'is_following',exists(
+      select 1 from public.follows f
+      where f.follower_id=auth.uid() and f.following_id=p_drop.creator_id
+    ),
     'eligible',(
       p_drop.status='ACTIVE' and p_drop.ends_at>now()
       and p_drop.claimed_count<p_drop.winner_count
