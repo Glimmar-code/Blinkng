@@ -1367,7 +1367,6 @@ private fun OrganizeDropDialog(
         !quoteLoading &&
         quote != null &&
         quoteError == null &&
-        BlinkDropsPolicy.hasEligibleRecipients(eligibleFollowers) &&
         BlinkDropsPolicy.hasEligibleRecipients(maximumPossibleRecipients) &&
         action in actions.map { it.name }
 
@@ -1567,8 +1566,8 @@ private fun OrganizeDropDialog(
                                         )
                                     }
                                 }
-                                Text("Eligible followers: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
-                                    "Maximum recipients: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
+                                Text("Followers notified: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
+                                    "Maximum possible winners: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
