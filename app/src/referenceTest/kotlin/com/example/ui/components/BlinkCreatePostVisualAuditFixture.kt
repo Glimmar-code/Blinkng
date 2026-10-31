@@ -554,9 +554,26 @@ abstract class BlinkCreatePostVisualAuditFixture {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val target = instrumentation.targetContext
         val videoFile = File(target.cacheDir, "blink-visual-editor-fixture.mp4")
-        instrumentation.context.assets.open("blink-visual-synthetic.mp4").use { source ->
-            videoFile.outputStream().use { output -> source.copyTo(output) }
+        val testVideoBytes = runCatching {
+            // Android instrumentation packages androidTest/assets in its APK.
+            instrumentation.context.assets.open("blink-visual-synthetic.mp4").use {
+                it.readBytes()
+            }
+        }.getOrElse { assetError ->
+            // Robolectric runs in the host JVM rather than the test APK.
+            // Load exactly the same checked-in MP4 from the module source
+            // tree; never silently replace it with a fake/empty recording.
+            val videoSource = listOf(
+                File("src/androidTest/assets/blink-visual-synthetic.mp4"),
+                File("app/src/androidTest/assets/blink-visual-synthetic.mp4")
+            ).firstOrNull { it.isFile }
+                ?: throw IllegalStateException(
+                    "Real synthetic video fixture missing from both test APK and JVM source tree",
+                    assetError
+                )
+            videoSource.readBytes()
         }
+        videoFile.writeBytes(testVideoBytes)
         rule.setContent {
             AuditSurface {
                 PremiumReelEditor(
