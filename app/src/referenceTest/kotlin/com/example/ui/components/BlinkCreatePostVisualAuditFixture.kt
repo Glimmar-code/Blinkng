@@ -333,7 +333,14 @@ abstract class BlinkCreatePostVisualAuditFixture {
         }
         rule.onNodeWithTag("blink_create_choice_poll").performClick()
         rule.onNodeWithTag("blink_poll_fullscreen").assertExists()
-        rule.onNodeWithText("Poll duration").assertExists()
+        rule.onNodeWithTag("blink_poll_question_input")
+            .performTextReplacement("Which FUTA event should we host?")
+        rule.onNodeWithTag("blink_poll_option_0")
+            .performTextReplacement("Tech meetup")
+        rule.onNodeWithTag("blink_poll_option_1")
+            .performTextReplacement("Sports day")
+        rule.onNodeWithTag("blink_poll_duration").performClick()
+        rule.onNodeWithText("3 days").performClick()
         capture("create-post-poll-fullscreen-staging.png", "blink_create_post_full_screen")
         rule.onNodeWithTag("blink_poll_done").performClick()
         rule.waitUntil(10_000) {
@@ -343,6 +350,13 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.waitUntil(10_000) {
             rule.onAllNodesWithTag("blink_poll_fullscreen").fetchSemanticsNodes().isNotEmpty()
         }
+        rule.onNodeWithTag("blink_poll_question_input")
+            .assertTextEquals("Which FUTA event should we host?")
+        rule.onNodeWithTag("blink_poll_option_0")
+            .assertTextEquals("Tech meetup")
+        rule.onNodeWithTag("blink_poll_option_1")
+            .assertTextEquals("Sports day")
+        rule.onNodeWithText("3 days").assertExists()
         rule.onNodeWithTag("blink_poll_back").performClick()
         rule.onNodeWithTag("blink_poll_attached_card").assertExists()
     }
