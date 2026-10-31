@@ -204,14 +204,22 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
         BlinkContestShare.message(name, candidate.optString("contest_title"),
             candidate.optInt("rank"), candidate.optInt("votes"), link)
     }
-    var rendered by remember(id, candidate.optInt("votes"), candidate.optInt("rank")) {
+    // Prefer the contestant's approved submitted PHOTO over an unrelated
+    // profile avatar; videos use the profile avatar as the still-image fallback.
+    val entryPhoto = candidate.optString("media_url")
+    val portraitUrl = if (contestMediaExtension(entryPhoto) in
+        setOf("jpg", "jpeg", "png", "webp")) entryPhoto
+        else candidate.optString("avatar_url")
+    val candidateSnapshot = candidate.toString()
+    var rendered by remember(contestId, id, candidateSnapshot) {
         mutableStateOf<Bitmap?>(null)
     }
     var sharing by remember { mutableStateOf(false) }
-    LaunchedEffect(id, candidate.optString("avatar_url"), candidate.optInt("votes"), candidate.optInt("rank")) {
+    LaunchedEffect(contestId, id, candidateSnapshot, portraitUrl) {
         rendered = withContext(Dispatchers.IO) {
-            val avatar = loadAvatar(candidate.optString("avatar_url"))
-            try { createContestFlyer(candidate, link, avatar) } finally { avatar?.recycle() }
+            val portrait = loadAvatar(portraitUrl)
+            try { createContestFlyer(candidate, link, portrait) }
+            finally { portrait?.recycle() }
         }
     }
 
