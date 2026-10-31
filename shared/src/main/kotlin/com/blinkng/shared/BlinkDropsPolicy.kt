@@ -19,9 +19,9 @@ enum class BlinkDropAction {
 }
 
 /**
- * Shared guardrails for BLINK Drops.
+ * Shared guardrails for BLINK GIVEAWAY.
  *
- * Drops are deterministic rewards funded entirely from the organizer's existing
+ * Giveaways are deterministic rewards funded entirely from the organizer's existing
  * BLINK Coin balance. There is no random draw, wager, or paid entry.
  */
 object BlinkDropsPolicy {
@@ -49,7 +49,7 @@ object BlinkDropsPolicy {
         require(isRewardValid(rewardPerUser)) { "Reward must be a multiple of 100 BLINK Coins." }
         require(isWinnerCountValid(winnerCount)) { "Invalid number of recipients." }
         val total = rewardPerUser.toLong() * winnerCount.toLong()
-        require(total <= MAX_TOTAL_BUDGET) { "Drop budget is above the supported limit." }
+        require(total <= MAX_TOTAL_BUDGET) { "Giveaway budget is above the supported limit." }
         return total
     }
 

@@ -23,13 +23,15 @@ data class BlinkDropDiscovery(
     val status: String,
     val action: String,
     val createdAt: String,
+    val endsAt: String,
+    val targetTitle: String = "",
 )
 
 /**
- * Authenticated client for BLINK Drops.
+ * Authenticated client for BLINK Giveaways.
  *
- * The Android client never modifies balances directly. Reserve, reward, refund,
- * eligibility and anti-replay rules are authoritative Supabase RPCs.
+ * The Android client never modifies balances directly. Giveaway commitments,
+ * rewards, eligibility and anti-replay rules are authoritative Supabase RPCs.
  */
 class BlinkDropsService {
     private val client = OkHttpClient.Builder()
@@ -73,9 +75,9 @@ class BlinkDropsService {
         rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", limit.coerceIn(1, 50)))
     }
 
-    /** Server-authoritative pages: MINE is owner-only, AVAILABLE requires a saved eligibility snapshot. */
+    /** MINE is owner-only; AVAILABLE includes unclaimed Giveaways open to this viewer's audience. */
     suspend fun page(scope: String, offset: Int, limit: Int = 30) = runCatching {
-        require(scope in setOf("MINE", "AVAILABLE")) { "Unknown Drop list." }
+        require(scope in setOf("MINE", "AVAILABLE")) { "Unknown Giveaway list." }
         rpc("get_blink_drop_page", JSONObject()
             .put("p_scope", scope)
             .put("p_offset", offset.coerceAtLeast(0))
@@ -84,14 +86,14 @@ class BlinkDropsService {
 
     /** Exact item lookup supports older, claimed, cancelled and expired notification targets. */
     suspend fun detail(dropId: String) = runCatching {
-        require(runCatching { java.util.UUID.fromString(dropId) }.isSuccess) { "Invalid Drop identifier." }
+        require(runCatching { java.util.UUID.fromString(dropId) }.isSuccess) { "Invalid Giveaway identifier." }
         rpc("get_blink_drop_by_id", JSONObject().put("p_drop_id", dropId))
     }
 
-    suspend fun discovery(limit: Int = 3): Result<List<BlinkDropDiscovery>> = runCatching {
+    suspend fun discovery(limit: Int = 20): Result<List<BlinkDropDiscovery>> = runCatching {
         val root = rpc(
-            "get_blink_drop_discovery",
-            JSONObject().put("p_limit", limit.coerceIn(1, 5))
+            "get_blink_giveaway_feed_discovery",
+            JSONObject().put("p_limit", limit.coerceIn(1, 20))
         )
         val items = root.optJSONArray("items") ?: JSONArray()
         buildList {
@@ -111,6 +113,7 @@ class BlinkDropsService {
                         status = item.optString("status"),
                         action = item.optString("action"),
                         createdAt = item.optString("created_at"),
+                        endsAt = item.optString("ends_at"),
                     )
                 )
             }
@@ -149,7 +152,7 @@ class BlinkDropsService {
         durationHours: Int,
         requestId: String,
     ) = runCatching {
-        require(requestId.isNotBlank()) { "Drop request is missing." }
+        require(requestId.isNotBlank()) { "Giveaway request is missing." }
         rpc(
             "create_blink_drop_v2",
             JSONObject()
@@ -187,30 +190,30 @@ class BlinkDropsService {
     private fun readableError(raw: String, code: Int): String {
         val message = runCatching { JSONObject(raw).optString("message") }.getOrDefault(raw)
         return when {
-            message.contains("INSUFFICIENT_BLINK_COINS") -> "You don't have enough BLINK Coins for this Drop."
+            message.contains("INSUFFICIENT_BLINK_COINS") -> "You don't have enough BLINK Coins for this Giveaway."
             message.contains("DROP_REWARD_INVALID") -> "Each person must receive a multiple of 100 BLINK Coins."
             message.contains("DROP_WINNER_COUNT_INVALID") -> "Choose a valid number of recipients."
-            message.contains("DROP_NO_ELIGIBLE_FOLLOWERS") -> "You need at least one eligible follower before organizing a Drop."
-            message.contains("DROP_BUDGET_TOO_LARGE") -> "That Drop is above the supported budget."
-            message.contains("DROP_DURATION_INVALID") -> "Choose a supported Drop duration."
+            message.contains("DROP_NO_ELIGIBLE_FOLLOWERS") -> "The selected audience has no other eligible accounts yet."
+            message.contains("DROP_BUDGET_TOO_LARGE") -> "That Giveaway is above the supported budget."
+            message.contains("DROP_DURATION_INVALID") -> "Choose a supported Giveaway duration."
             message.contains("DROP_TARGET_NOT_OWNED") -> "Choose one of your own active posts, Reels or listings."
             message.contains("DROP_ACTION_INVALID") -> "That action is not available for the selected content."
-            message.contains("DROP_NOT_FOUND") -> "That BLINK Drop could not be found."
-            message.contains("DROP_NOT_ACTIVE") -> "That BLINK Drop is no longer active."
-            message.contains("DROP_NOT_ELIGIBLE") -> "You were not an eligible follower when this Drop started."
-            message.contains("DROP_ALREADY_CLAIMED") -> "You already received this Drop reward."
-            message.contains("DROP_FULL") -> "All rewards in this Drop have been claimed."
-            message.contains("DROP_ACTION_ALREADY_DONE") -> "You already completed that action before entering this Drop."
-            message.contains("DROP_COMMENT_REQUIRED") -> "Write a comment to complete this Drop."
+            message.contains("DROP_NOT_FOUND") -> "That BLINK Giveaway could not be found."
+            message.contains("DROP_NOT_ACTIVE") -> "That BLINK Giveaway is no longer active."
+            message.contains("DROP_NOT_ELIGIBLE") -> "You are not eligible to participate in this Giveaway."
+            message.contains("DROP_ALREADY_CLAIMED") -> "You already received this Giveaway reward."
+            message.contains("DROP_FULL") -> "All rewards in this Giveaway have been claimed."
+            message.contains("DROP_ACTION_ALREADY_DONE") -> "You already completed that action before entering this Giveaway."
+            message.contains("DROP_COMMENT_REQUIRED") -> "Write a comment to complete this Giveaway."
             message.contains("DROP_COMMENT_TOO_LONG") -> "Your comment is too long."
-            message.contains("UNIVERSITY_REQUIRED_FOR_DROP") -> "Add your university before creating a campus-only Drop."
+            message.contains("UNIVERSITY_REQUIRED_FOR_DROP") -> "Add your university before creating a campus-only Giveaway."
             message.contains("INVALID_CREATOR") -> "That creator cannot be followed."
-            message.contains("REQUEST_ID_REQUIRED") -> "That Drop request could not be secured. Please try again."
+            message.contains("REQUEST_ID_REQUIRED") -> "That Giveaway request could not be secured. Please try again."
             message.contains("schema cache", ignoreCase = true) ||
                 message.contains("Could not find the function", ignoreCase = true) ->
-                "BLINK Drops is updating. Please try again shortly."
-            message.isNotBlank() -> "BLINK Drops couldn't complete that request. Please try again."
-            else -> "BLINK Drops couldn't complete that request. Please try again."
+                "BLINK Giveaway is updating. Please try again shortly."
+            message.isNotBlank() -> "BLINK Giveaway couldn't complete that request. Please try again."
+            else -> "BLINK Giveaway couldn't complete that request. Please try again."
         }
     }
 }

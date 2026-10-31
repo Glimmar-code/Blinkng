@@ -46,7 +46,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -204,8 +206,8 @@ internal data class TopGiver(
     val creatorId: String,
     val username: String,
     val name: String,
-    val coinsGiven: Long,
-    val dropsCompleted: Int,
+    val coinsSpent: Long,
+    val giveawaysCreated: Int,
     val peopleRewarded: Int,
     val following: Boolean,
 )
@@ -266,7 +268,7 @@ fun BlinkDropsRoute(
                 error = null
             }
             .onFailure {
-                error = it.message ?: "Unable to load BLINK Drops."
+                error = it.message ?: "Unable to load BLINK Giveaway."
             }
         service.page("AVAILABLE", 0).onSuccess { result ->
             availablePage = result.optJSONArray("items").toDropItems()
@@ -287,10 +289,10 @@ fun BlinkDropsRoute(
         service.detail(initialDropId).onSuccess { result ->
             notificationDrop = if (result.optBoolean("not_found")) cached
                 else JSONArray().put(result).toDropItems().firstOrNull() ?: cached
-            if (notificationDrop == null) notificationError = "This Drop is unavailable or you are not eligible to view it."
+            if (notificationDrop == null) notificationError = "This Giveaway is unavailable or no longer visible."
         }.onFailure {
             notificationDrop = cached
-            if (cached == null) notificationError = "Unable to load this Drop. Refresh to retry."
+            if (cached == null) notificationError = "Unable to load this Giveaway. Refresh to retry."
         }
     }
 
@@ -308,7 +310,7 @@ fun BlinkDropsRoute(
                 it.action.contains(q, ignoreCase = true) ||
                 it.status.contains(q, ignoreCase = true)
         }
-    val topGivers = state?.optJSONArray("top_givers").toTopGivers()
+    val topGivers = state?.optJSONArray("top_givers").toTopGivers().take(20)
     val targets = state?.optJSONObject("targets")
     val postTargets = targets?.optJSONArray("posts").toTargets()
     val listingTargets = targets?.optJSONArray("listings").toTargets()
@@ -340,7 +342,7 @@ fun BlinkDropsRoute(
                     refresh()
                 }
                 .onFailure {
-                    error = it.message ?: "Unable to complete this Drop."
+                    error = it.message ?: "Unable to complete this Giveaway."
                 }
             busyDropId = null
         }
@@ -359,7 +361,7 @@ fun BlinkDropsRoute(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "BLINK Drops",
+                    "BLINK Giveaway",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black
                 )
@@ -370,10 +372,10 @@ fun BlinkDropsRoute(
                 )
             }
             IconButton(onClick = { refresh() }, enabled = isOnline && !loading) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh Drops")
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh Giveaways")
             }
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, contentDescription = "Close Drops")
+                Icon(Icons.Default.Close, contentDescription = "Close Giveaways")
             }
         }
 
@@ -397,11 +399,17 @@ fun BlinkDropsRoute(
             DropsTab(
                 selected = selectedColumn == DropsColumn.TOP_GIVERS,
                 icon = Icons.Default.EmojiEvents,
-                label = "Top Givers",
+                label = "Most Givers",
                 onClick = { selectedColumn = DropsColumn.TOP_GIVERS },
                 modifier = Modifier.weight(1f),
             )
         }
+        Text(
+            if (selectedColumn == DropsColumn.GIVEAWAYS) "Swipe left to see the Most Givers leaderboard" else "Swipe right to return to Giveaways",
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         if (loading && state == null) {
             BlinkSkeletonList(
@@ -414,7 +422,23 @@ fun BlinkDropsRoute(
         PullToRefreshBox(
             isRefreshing = loading,
             onRefresh = { if (isOnline) refresh() },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().pointerInput(selectedColumn) {
+            var horizontalDrag = 0f
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { change, dragAmount ->
+                    horizontalDrag += dragAmount
+                    change.consume()
+                },
+                onDragEnd = {
+                    when {
+                        horizontalDrag <= -72f -> selectedColumn = DropsColumn.TOP_GIVERS
+                        horizontalDrag >= 72f -> selectedColumn = DropsColumn.GIVEAWAYS
+                    }
+                    horizontalDrag = 0f
+                },
+                onDragCancel = { horizontalDrag = 0f },
+            )
+        },
         ) {
             when (selectedColumn) {
             DropsColumn.GIVEAWAYS -> LazyColumn(
@@ -434,7 +458,7 @@ fun BlinkDropsRoute(
                 if (initialDropId != null) {
                     item {
                         notificationDrop?.let { drop ->
-                            SectionHeader("Opened from notification", "Original Drop details, including completed or expired rewards.")
+                            SectionHeader("Selected Giveaway", "The Giveaway you opened from the feed or a notification.")
                             DropCard(
                                 drop = drop, formatter = formatter, busy = busyDropId == drop.id,
                                 highlighted = true,
@@ -447,7 +471,7 @@ fun BlinkDropsRoute(
                                     cancellationError = null
                                 }) else null,
                             )
-                        } ?: Text(notificationError ?: "Loading Drop details…",
+                        } ?: Text(notificationError ?: "Loading Giveaway details…",
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -455,7 +479,7 @@ fun BlinkDropsRoute(
                 if (!isOnline) {
                     item {
                         StatusCard(
-                            "You're offline. Existing Drop history stays visible, but rewards and spending wait until you reconnect.",
+                            "You're offline. Existing Giveaway history stays visible, but rewards and spending wait until you reconnect.",
                             isError = false,
                         )
                     }
@@ -470,7 +494,7 @@ fun BlinkDropsRoute(
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Retry Drops")
+                            Text("Retry Giveaways")
                         }
                     }
                 }
@@ -484,20 +508,20 @@ fun BlinkDropsRoute(
 
                 item {
                     SectionHeader(
-                        "Active for you",
-                        "These rewards were reserved for eligible followers when each Drop started."
+                        "Active Giveaways",
+                        "Anyone can participate within the creator's selected audience. Followers are notified when a Giveaway starts."
                     )
                 }
 
                 if (activeDrops.isEmpty()) {
                     item {
                         EmptyCard(
-                            "No active Drops are available for you right now. Follow creators you like so you can be included in their next Drop."
+                            "There are no active Giveaways right now. Check back soon or create the first one."
                         )
                     }
                 } else {
                     items(activeDrops.filterNot { it.id == notificationDrop?.id },
-                        key = { "active-drop-${it.id}" }) { drop ->
+                        key = { "active-giveaway-${it.id}" }) { drop ->
                         DropCard(
                             drop = drop,
                             formatter = formatter,
@@ -527,19 +551,19 @@ fun BlinkDropsRoute(
                                             availablePage = (activeDrops + result.optJSONArray("items").toDropItems())
                                                 .distinctBy { it.id }
                                             availableMore = result.optBoolean("has_more")
-                                        }.onFailure { pageError = it.message ?: "Could not load more Drops." }
+                                        }.onFailure { pageError = it.message ?: "Could not load more Giveaways." }
                                     pageBusy = false
                                 }
                             }
-                        ) { Text(if (pageBusy) "Loading…" else "Load more available Drops") }
+                        ) { Text(if (pageBusy) "Loading…" else "Load more Giveaways") }
                     }
                 }
 
                 item {
                     Spacer(Modifier.height(4.dp))
                     SectionHeader(
-                        "Your Drops",
-                        "Reserved coins stay locked until claimed, cancelled or expired."
+                        "Your Giveaways",
+                        "The amount committed at publication is non-refundable, even if a Giveaway ends early or expires."
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         items(listOf("ALL", "ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED")) { status ->
@@ -560,7 +584,7 @@ fun BlinkDropsRoute(
                     OutlinedTextField(
                         value = historyQuery,
                         onValueChange = { historyQuery = it.take(60) },
-                        label = { Text("Search your Drops") },
+                        label = { Text("Search your Giveaways") },
                         placeholder = { Text("Post, Reel, action or status") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -570,12 +594,12 @@ fun BlinkDropsRoute(
                 if (myDrops.isEmpty()) {
                     item {
                         EmptyCard(
-                            if (allMyDrops.isEmpty()) "You have not organized a BLINK Drop yet."
-                            else "No Drops match this history filter."
+                            if (allMyDrops.isEmpty()) "You have not organized a BLINK Giveaway yet."
+                            else "No Giveaways match this history filter."
                         )
                     }
                 } else {
-                    items(myDrops, key = { "my-drop-${it.id}" }) { drop ->
+                    items(myDrops, key = { "my-giveaway-${it.id}" }) { drop ->
                         DropCard(
                             drop = drop,
                             formatter = formatter,
@@ -606,11 +630,11 @@ fun BlinkDropsRoute(
                                                 .distinctBy { it.id }
                                             mineMore = result.optBoolean("has_more")
                                             pageError = null
-                                        }.onFailure { pageError = it.message ?: "Could not load more history." }
+                                        }.onFailure { pageError = it.message ?: "Could not load more Giveaway history." }
                                     pageBusy = false
                                 }
                             },
-                        ) { Text(if (pageBusy) "Loading…" else "Load more Drop history") }
+                        ) { Text(if (pageBusy) "Loading…" else "Load more Giveaway history") }
                     }
                 }
                 analytics?.let { value ->
@@ -623,8 +647,8 @@ fun BlinkDropsRoute(
                     item {
                         Spacer(Modifier.height(4.dp))
                         SectionHeader(
-                            "Growth receipts",
-                            "Every Drop reserve, reward and refund stays auditable in your Blink Coin ledger."
+                            "Giveaway receipts",
+                            "Every Giveaway commitment and reward stays auditable in your BLINK Coin ledger."
                         )
                     }
                     if (receipts.size > 4) {
@@ -636,7 +660,7 @@ fun BlinkDropsRoute(
                         }
                     }
                     items(if (showAllReceipts) receipts else receipts.take(4),
-                        key = { "drop-receipt-" + it.optString("id") }) { receipt ->
+                        key = { "giveaway-receipt-" + it.optString("id") }) { receipt ->
                         DropReceiptCard(receipt, formatter)
                     }
                 }
@@ -649,8 +673,8 @@ fun BlinkDropsRoute(
             ) {
                 item {
                     SectionHeader(
-                        "Top Givers",
-                        "Ranked by BLINK Coins successfully distributed, not by how many Drops were created."
+                        "Most Givers",
+                        "Ranked by the total BLINK Coins committed to published Giveaways."
                     )
                 }
                 error?.let { value ->
@@ -670,7 +694,7 @@ fun BlinkDropsRoute(
                     item { OutlinedButton(onClick = { refresh() }, enabled = isOnline && !loading) {
                         Icon(Icons.Default.Refresh, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Retry Top Givers")
+                        Text("Retry Most Givers")
                     } }
                 } else {
                     itemsIndexed(topGivers, key = { _, giver -> "giver-${giver.creatorId}" }) { index, giver ->
@@ -686,7 +710,7 @@ fun BlinkDropsRoute(
                                     scope.launch {
                                         service.followCreator(giver.creatorId)
                                             .onSuccess {
-                                                message = "You will be eligible for this creator's future Drops."
+                                                message = "You'll be notified when this creator starts another Giveaway."
                                                 refresh()
                                             }
                                             .onFailure {
@@ -707,10 +731,10 @@ fun BlinkDropsRoute(
     pendingCancelDropId?.let { cancelId ->
         AlertDialog(
             onDismissRequest = { if (busyDropId == null) pendingCancelDropId = null },
-            title = { Text("Cancel this Drop?") },
+            title = { Text("End this Giveaway?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This stops new claims. Unclaimed reserved coins are returned according to the server's refund rules.")
+                    Text("This stops new entries. The amount committed to this Giveaway is non-refundable.")
                     cancellationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             },
@@ -723,21 +747,21 @@ fun BlinkDropsRoute(
                             service.cancelDrop(cancelId)
                                 .onSuccess { result ->
                                     result.takeIf { it.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-                                    message = "Drop cancelled. Unclaimed reserved coins were returned."
+                                    message = "Giveaway ended. No refund was issued."
                                     error = null
                                     pendingCancelDropId = null
                                     cancellationError = null
                                     refresh()
                                 }
-                                .onFailure { cancellationError = it.message ?: "Unable to cancel this Drop." }
+                                .onFailure { cancellationError = it.message ?: "Unable to cancel this Giveaway." }
                             busyDropId = null
                         }
                     }
-                ) { Text(if (busyDropId != null) "Cancelling…" else "Confirm cancellation") }
+                ) { Text(if (busyDropId != null) "Ending…" else "End Giveaway") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingCancelDropId = null }, enabled = busyDropId == null) {
-                    Text("Keep Drop")
+                    Text("Keep Giveaway")
                 }
             },
         )
@@ -784,7 +808,7 @@ fun BlinkDropsRoute(
                     ).onSuccess { result ->
                         result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                         val notified = result.optInt("eligible_followers", 0)
-                        message = "Drop started. $notified eligible follower${if (notified == 1) "" else "s"} notified."
+                        message = "Giveaway started. $notified follower${if (notified == 1) "" else "s"} notified."
                         error = null
                         organizerError = null
                         pendingCreateRequestId = null
@@ -793,7 +817,7 @@ fun BlinkDropsRoute(
                         showOrganizer = false
                         refresh()
                     }.onFailure {
-                        organizerError = it.message ?: "Unable to create this Drop. Please retry."
+                        organizerError = it.message ?: "Unable to create this Giveaway. Please retry."
                     }
                     creatingDrop = false
                 }
@@ -869,7 +893,7 @@ private fun BalanceAndCreateCard(
                     fontWeight = FontWeight.Black,
                 )
                 Text(
-                    "Creating a Drop reserves the full reward budget immediately.",
+                    "Publishing a Giveaway commits the full reward budget. It cannot be refunded.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -887,7 +911,7 @@ private fun BalanceAndCreateCard(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(5.dp))
-                Text("Organize")
+                Text("Create Giveaway")
             }
         }
     }
@@ -973,7 +997,7 @@ private fun DropCard(
                 } else previewSource
                 AsyncImage(
                     model = model,
-                    contentDescription = if (drop.targetType == "REEL") "Reel video preview" else "Drop content preview",
+                    contentDescription = if (drop.targetType == "REEL") "Reel video preview" else "Giveaway content preview",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().height(132.dp),
                 )
@@ -1036,7 +1060,7 @@ private fun DropCard(
                 }
                 onCancel?.let {
                     OutlinedButton(onClick = it, enabled = !busy) {
-                        Text("Cancel Drop")
+                        Text("End Giveaway")
                     }
                 }
             }
@@ -1049,7 +1073,7 @@ private fun DropAnalyticsCard(
     analytics: JSONObject,
     formatter: NumberFormat,
 ) {
-    val drops = analytics.optInt("drops", 0)
+    val drops = analytics.optInt("giveaways", 0)
     val active = analytics.optInt("active", 0)
     val distributed = analytics.optLong("distributed", 0L)
     val refunded = analytics.optLong("refunded", 0L)
@@ -1059,9 +1083,9 @@ private fun DropAnalyticsCard(
             Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            Text("Drop performance", fontWeight = FontWeight.Black)
+            Text("Giveaway performance", fontWeight = FontWeight.Black)
             Text(
-                formatter.format(drops) + " Drops • " + formatter.format(active) + " active • " +
+                formatter.format(drops) + " Giveaways • " + formatter.format(active) + " active • " +
                     formatter.format(recipients) + " recipients",
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1081,7 +1105,9 @@ private fun DropReceiptCard(
     formatter: NumberFormat,
 ) {
     val amount = receipt.optLong("amount", 0L)
-    val kind = receipt.optString("kind").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+    val kind = receipt.optString("kind").replace('_', ' ').lowercase()
+        .replace("drop", "giveaway")
+        .replaceFirstChar { it.uppercase() }
     Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(13.dp),
@@ -1133,21 +1159,20 @@ internal fun TopGiversEmptyState(
                 modifier = Modifier.size(38.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-            Text("The first Top Givers are coming",
+            Text("No Givers yet",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White)
             Text(
-                "Only BLINK Coins actually rewarded through completed Drops count. " +
-                    "No accounts or coin totals are shown until distribution is confirmed.",
+                "Publish a Giveaway to appear in the top 20. Creators are ranked by total BLINK Coins committed, including unclaimed amounts.",
                 color = Color(0xFFCFD3DD),
                 style = MaterialTheme.typography.bodySmall
             )
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
-                Text("Create a Drop")
+                Text("Create a Giveaway")
             }
             OutlinedButton(onClick = onBrowse, modifier = Modifier.fillMaxWidth()) {
-                Text("Browse Giveaways")
+                Text("View Active Giveaways")
             }
         }
     }
@@ -1198,7 +1223,7 @@ internal fun TopGiverCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(giver.name.ifBlank { "@${giver.username}" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${formatter.format(giver.coinsGiven)} coins given · ${giver.peopleRewarded} people · ${giver.dropsCompleted} Drops",
+                    "${formatter.format(giver.coinsSpent)} BLINK Coins spent · ${giver.giveawaysCreated} Giveaways · ${giver.peopleRewarded} people rewarded",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFCFD3DD),
                     maxLines = 2,
@@ -1316,7 +1341,7 @@ private fun OrganizeDropDialog(
             quoteError = null
         }.onFailure {
             quote = null
-            quoteError = "Couldn't verify the Drop budget and eligible followers. Please retry."
+            quoteError = "Couldn't verify the Giveaway budget and selected audience. Please retry."
         }
         quoteLoading = false
     }
@@ -1341,7 +1366,6 @@ private fun OrganizeDropDialog(
         !quoteLoading &&
         quote != null &&
         quoteError == null &&
-        BlinkDropsPolicy.hasEligibleRecipients(eligibleFollowers) &&
         BlinkDropsPolicy.hasEligibleRecipients(maximumPossibleRecipients) &&
         action in actions.map { it.name }
 
@@ -1358,7 +1382,7 @@ private fun OrganizeDropDialog(
                 Column(modifier = Modifier.padding(start = 18.dp, end = 10.dp, top = 14.dp, bottom = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Organize a Drop", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                            Text("Organize a Giveaway", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                             Text("Step ${setupStep + 1} of 6 · ${stepLabels[setupStep]}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall)
@@ -1392,7 +1416,7 @@ private fun OrganizeDropDialog(
                                     fadeOut(tween(160)))
                         }
                     },
-                    label = "drop-setup-step",
+                    label = "giveaway-setup-step",
                 ) { stage ->
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -1420,7 +1444,7 @@ private fun OrganizeDropDialog(
                                 }
                                 item {
                                     if (availableTargets.isEmpty()) {
-                                        EmptyCard("No active ${targetLabel(targetType.name).lowercase()} found. Refresh Drops after creating content.")
+                                        EmptyCard("No active ${targetLabel(targetType.name).lowercase()} found. Refresh Giveaways after creating content.")
                                     } else {
                                         val listState = rememberLazyListState()
                                         LazyRow(
@@ -1434,7 +1458,7 @@ private fun OrganizeDropDialog(
                                                 val scale by animateFloatAsState(
                                                     targetValue = if (selected) 1f else .96f,
                                                     animationSpec = tween(220),
-                                                    label = "drop-target-scale",
+                                                    label = "giveaway-target-scale",
                                                 )
                                                 Card(
                                                     modifier = Modifier.width(248.dp)
@@ -1515,7 +1539,7 @@ private fun OrganizeDropDialog(
                                 Text("Rewards must be multiples of 100 coins.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Reserved: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} · Balance: " +
+                                Text("Committed: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} · Balance: " +
                                     (balance?.let { NumberFormat.getIntegerInstance(Locale.US).format(it) } ?: "—"))
                                 if (balance != null && total > balance) {
                                     OutlinedButton(onClick = onGetCoins, enabled = !creating) { Text("Get Blink Coins") }
@@ -1541,8 +1565,8 @@ private fun OrganizeDropDialog(
                                         )
                                     }
                                 }
-                                Text("Eligible followers: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
-                                    "Maximum recipients: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
+                                Text("Followers notified: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
+                                    "Maximum possible winners: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -1551,7 +1575,7 @@ private fun OrganizeDropDialog(
                                      OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry eligibility check") }
                                  }
                                  if (eligibleFollowers == 0) {
-                                    Text("No eligible followers yet. At least one eligible follower is required to publish.",
+                                    Text("No followers will be notified, but people in your selected audience can still discover and join this Giveaway.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -1572,12 +1596,12 @@ private fun OrganizeDropDialog(
                                         )
                                     }
                                 }
-                                Text("Unclaimed rewards are returned when a Drop ends.",
+                                Text("The amount committed to a Giveaway is non-refundable, even when it ends.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall)
                             }
                             else -> item {
-                                Text("Review your Drop", fontWeight = FontWeight.Bold)
+                                Text("Review your Giveaway", fontWeight = FontWeight.Bold)
                                 Text(selectedTarget?.title.orEmpty().ifBlank { "Choose content first" })
                                 Text("${actionLabel(action)} · ${if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) "My campus" else "All campuses"}")
                                 Text("${NumberFormat.getIntegerInstance(Locale.US).format(total)} coins reserved for ${winners} people")
@@ -1595,7 +1619,7 @@ private fun OrganizeDropDialog(
                                         !isOnline -> "Reconnect to publish."
                                          quoteLoading -> "Verifying the rewards and eligibility…"
                                          quoteError != null || quote == null -> "A verified quote is needed before publishing."
-                                         eligibleFollowers < 1 -> "At least one eligible follower is required."
+                                         maximumPossibleRecipients < 1 -> "No other accounts are available in the selected audience."
                                         selectedTarget == null -> "Choose content first."
                                         !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be a multiple of 100."
                                         !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Enter a valid number of recipients."
@@ -1642,7 +1666,7 @@ private fun OrganizeDropDialog(
                             contentColor = MaterialTheme.colorScheme.surface,
                         ),
                     ) {
-                        Text(if (setupStep == 5) "Review & publish Drop" else "Continue →")
+                        Text(if (setupStep == 5) "Review & publish Giveaway" else "Continue →")
                     }
                 }
             }
@@ -1652,18 +1676,18 @@ private fun OrganizeDropDialog(
     if (confirmPublish) {
         AlertDialog(
             onDismissRequest = { if (!creating) confirmPublish = false },
-            title = { Text("Publish this Drop?") },
+            title = { Text("Publish this Giveaway?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(selectedTarget?.title.orEmpty().ifBlank { targetLabel(targetType.name) }, fontWeight = FontWeight.Bold)
                     Text(actionLabel(action) + " · " + (if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) "My campus" else "All campuses"))
                     Text("$winners recipient${if (winners == 1) "" else "s"} · ${NumberFormat.getIntegerInstance(Locale.US).format(reward)} coins each")
-                    Text("Reserve: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} Blink Coins", fontWeight = FontWeight.Black)
+                    Text("Giveaway amount: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} BLINK Coins", fontWeight = FontWeight.Black)
                     balance?.let {
                         Text("Remaining balance: ${NumberFormat.getIntegerInstance(Locale.US).format((it - total).coerceAtLeast(0L))} Blink Coins")
                     }
                     Text(
-                        "Eligible followers are snapshotted when you publish. Unclaimed coins are returned when the Drop is cancelled or expires.",
+                        "Followers are notified when you publish. Your committed Giveaway amount is non-refundable after publication.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1682,7 +1706,7 @@ private fun OrganizeDropDialog(
                         contentColor = MaterialTheme.colorScheme.surface,
                     ),
                 ) {
-                    Text("Reserve & publish")
+                    Text("Publish Giveaway")
                 }
             },
             dismissButton = {
@@ -1867,8 +1891,8 @@ private fun JSONArray?.toTopGivers(): List<TopGiver> {
                         creatorId = item.optString("creator_id"),
                         username = item.optString("username"),
                         name = item.optString("name"),
-                        coinsGiven = item.optLong("coins_given"),
-                        dropsCompleted = item.optInt("drops_completed"),
+                        coinsSpent = item.optLong("coins_spent"),
+                        giveawaysCreated = item.optInt("giveaways_created"),
                         peopleRewarded = item.optInt("people_rewarded"),
                         following = item.optBoolean("is_following"),
                     )

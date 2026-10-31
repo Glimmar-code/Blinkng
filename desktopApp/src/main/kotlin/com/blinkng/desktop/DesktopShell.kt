@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.CardGiftcard
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Home
@@ -118,6 +119,7 @@ import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.BlinkDesktopContestScreen
 import com.blinkng.desktop.ui.BlinkDesktopContestAdminScreen
 import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
+import com.blinkng.desktop.ui.DesktopDropsScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
 import com.blinkng.desktop.ui.LeaderboardScreen
@@ -150,6 +152,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
     DesktopDestination("boost", "Boost", Icons.Rounded.Campaign),
+    DesktopDestination("giveaway", "BLINK Giveaway", Icons.Rounded.CardGiftcard),
     DesktopDestination("store", "Blink Store · Soon", Icons.Rounded.ShoppingBag),
     DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
@@ -553,6 +556,7 @@ private fun AuthenticatedShell(
             val current = BlinkSwipeNavigation.pageForDesktopRoute(state.selectedRoute)
             val next = current?.let { BlinkSwipeNavigation.adjacent(it, direction) }
             if (next == null) false else {
+                state.selectedGiveawayId = null
                 state.selectedRoute = BlinkSwipeNavigation.surfaces[next].desktopRoute
                 true
             }
@@ -563,7 +567,10 @@ private fun AuthenticatedShell(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
-            onNavigate = { state.selectedRoute = it },
+            onNavigate = { route ->
+                if (route != "giveaway") state.selectedGiveawayId = null
+                state.selectedRoute = route
+            },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -574,7 +581,10 @@ private fun AuthenticatedShell(
                     compact = compact,
                     destinations = visibleDestinations,
                     selectedId = state.selectedRoute,
-                    onSelect = { state.selectedRoute = it },
+                    onSelect = { route ->
+                        if (route != "giveaway") state.selectedGiveawayId = null
+                        state.selectedRoute = route
+                    },
                 )
                 Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)))
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -595,6 +605,7 @@ private fun AuthenticatedShell(
                         "notifications" -> NotificationsScreen(state)
                         "store" -> StoreProScreen(state)
                         "boost" -> DesktopBoostGrowthScreen(state)
+                        "giveaway" -> DesktopDropsScreen(state, initialDropId = state.selectedGiveawayId)
                         "leaderboard" -> LeaderboardScreen(state)
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)

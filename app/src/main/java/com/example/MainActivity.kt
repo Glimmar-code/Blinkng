@@ -1291,6 +1291,7 @@ fun MainAppContent(
     var walletOpenedFromMenu by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
+    var feedUtilityGiveawayId by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
     // MainAppContent hosts the Home feed: keep permission state in this scope.
     val adminService = remember { AdminSupabaseService() }
@@ -1871,7 +1872,11 @@ fun MainAppContent(
                             else feedUtilitySheet = "store"
                         },
                         onBoostClick = { feedUtilitySheet = "boost" },
-                        onDropsClick = { feedUtilitySheet = "drops" },
+                        onDropsClick = { feedUtilityGiveawayId = null; feedUtilitySheet = "giveaway" },
+                        onOpenGiveaway = { giveawayId ->
+                            feedUtilityGiveawayId = giveawayId
+                            feedUtilitySheet = "giveaway"
+                        },
                         onGameClick = { feedUtilitySheet = "game" },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onOpenMarketListing = { item -> viewModel.openProductDetail(item) },
@@ -2312,9 +2317,13 @@ fun MainAppContent(
                             onClose = { dismissUtility() },
                         )
 
-                        "drops" -> BlinkDropsRoute(
+                        "giveaway", "drops" -> BlinkDropsRoute(
+                            initialDropId = feedUtilityGiveawayId,
                             onGetCoins = { viewModel.buyBlinkCoins() },
-                            onClose = { dismissUtility() }
+                            onClose = {
+                                feedUtilityGiveawayId = null
+                                dismissUtility()
+                            }
                         )
 
                         "items" -> BlinkItemsScreen(
@@ -2324,7 +2333,7 @@ fun MainAppContent(
                             onClose = { dismissUtility() },
                             onOpenGame = { dismissUtility { feedUtilitySheet = "game" } },
                             onOpenBoost = { dismissUtility { feedUtilitySheet = "boost" } },
-                            onOpenDrops = { dismissUtility { feedUtilitySheet = "drops" } },
+                            onOpenDrops = { dismissUtility { feedUtilityGiveawayId = null; feedUtilitySheet = "giveaway" } },
                             onOpenStore = {
                                 dismissUtility {
                                     if (BlinkStoreAvailability.isPaused) {

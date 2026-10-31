@@ -207,14 +207,14 @@ jobs:
 
       # Real Compose renderings of the same Reels and growth components shipped
       # in the APK, with isolated staging data (no production payment or session).
-      - name: Capture Reels, Drops and Boost reference screenshots
+      - name: Capture Reels, Giveaways and Boost reference screenshots
         if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         shell: bash
         run: |
           set -euo pipefail
           gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkReelsVisualCaptureTest --tests com.example.ui.screens.BlinkGrowthVisualCaptureTest -Proborazzi.test.record=true --rerun-tasks --no-daemon
-          count=$(find app/src/test/screenshots -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
-          echo "Captured $count Reels/Drops/Boost visuals"
+          count=$(find app/src/test/screenshots -name 'giveaway-*.png' -o -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
+          echo "Captured $count Reels/Giveaway/Boost visuals"
           test "$count" -ge 6
           # Detect unreadable headings in the exact rendered Pixel8 fixtures.
           python3 - <<'PY'
@@ -222,8 +222,8 @@ jobs:
           from PIL import Image
           root = Path("app/src/test/screenshots")
           regions = {
-              "growth-reference-drops-empty.png": (0,0,1078,720),
-              "growth-reference-drops-podium.png": (0,0,1078,520),
+              "giveaway-most-givers-empty.png": (0,0,1078,720),
+              "giveaway-most-givers-podium.png": (0,0,1078,520),
               "growth-reference-boost-quote-analytics.png": (0,0,1078,950),
           }
           for name, box in regions.items():
@@ -241,6 +241,7 @@ jobs:
           path: |
             app/src/test/screenshots/reels-reference-*.png
             app/src/test/screenshots/growth-reference-*.png
+            app/src/test/screenshots/giveaway-*.png
           if-no-files-found: error
           retention-days: 14
 

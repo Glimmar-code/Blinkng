@@ -356,6 +356,8 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         rpc("cancel_blink_boost_campaign", JSONObject().put("p_campaign_id", campaignId.trim()))
 
     suspend fun getDropsState(): JSONObject = rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", 30))
+    suspend fun getGiveawayFeedDiscovery(limit: Int = 20): JSONObject =
+        rpc("get_blink_giveaway_feed_discovery", JSONObject().put("p_limit", limit.coerceIn(1, 20)))
     suspend fun getDropsPage(scope: String, offset: Int, limit: Int = 30): JSONObject =
         rpc("get_blink_drop_page", JSONObject()
             .put("p_scope",scope)

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,8 +20,29 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+private fun giveawayErrorMessage(error: Throwable): String {
+    val message = error.message.orEmpty()
+    return when {
+        message.contains("GIVEAWAY_LIKE_LOCKED", ignoreCase = true) ->
+            "A Like used to claim a Giveaway reward cannot be removed."
+        message.contains("DROP_NOT_ELIGIBLE", ignoreCase = true) ->
+            "This Giveaway is not available to your account."
+        message.contains("DROP_NOT_ACTIVE", ignoreCase = true) ->
+            "This Giveaway has ended."
+        message.contains("DROP_ALREADY_CLAIMED", ignoreCase = true) ->
+            "You have already entered this Giveaway."
+        message.contains("DROP_NO_ELIGIBLE_FOLLOWERS", ignoreCase = true) ->
+            "The selected audience has no other eligible accounts yet."
+        message.contains("DROP_", ignoreCase = true) ->
+            "BLINK Giveaway couldn't complete that request. Refresh and try again."
+        else -> message.replace("Drops", "Giveaways").replace("Drop", "Giveaway")
+            .replace("drops", "giveaways").replace("drop", "giveaway")
+            .ifBlank { "BLINK Giveaway couldn't complete that request." }
+    }
+}
+
 @Composable
-fun DesktopDropsScreen(state: DesktopAppState) {
+fun DesktopDropsScreen(state: DesktopAppState, initialDropId: String? = null) {
     val rpc = remember(state.client) { DesktopRpcActions(state.client) }
     val scope = rememberCoroutineScope()
     var data by remember { mutableStateOf<JSONObject?>(null) }
@@ -33,6 +55,8 @@ fun DesktopDropsScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var selectedPage by remember { mutableIntStateOf(0) }
+    var selectedGiveaway by remember { mutableStateOf<JSONObject?>(null) }
     var selectedTarget by remember { mutableStateOf<JSONObject?>(null) }
     var action by remember { mutableStateOf("LIKE") }
     var reward by remember { mutableStateOf("100") }
@@ -48,7 +72,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
 
     suspend fun reload() {
         runCatching { rpc.getDropsState() }.onSuccess { data = it; error = null }
-            .onFailure { error = it.message ?: "Unable to load Drops." }
+            .onFailure { error = giveawayErrorMessage(it) }
         runCatching { rpc.getDropsPage("AVAILABLE",0) }.onSuccess {
             availablePage = it.optJSONArray("items").dropRows()
             availableMore = it.optBoolean("has_more")
@@ -68,6 +92,16 @@ fun DesktopDropsScreen(state: DesktopAppState) {
         }
     }
     LaunchedEffect(rpc) { while (isActive) { reload(); delay(30_000) } }
+    LaunchedEffect(initialDropId) {
+        val id = initialDropId?.takeIf(String::isNotBlank)
+        if (id == null) {
+            selectedGiveaway = null
+        } else {
+            runCatching { rpc.getDropById(id) }
+                .onSuccess { root -> selectedGiveaway = root.optJSONObject("item") }
+                .onFailure { error = giveawayErrorMessage(it) }
+        }
+    }
     val input = BlinkDropRequest(selectedTarget?.optString("type").orEmpty(), selectedTarget?.optString("id").orEmpty(),
         action, reward.toIntOrNull() ?: 0, recipients.toIntOrNull() ?: 0, audience, hours)
     val targets = data?.optJSONObject("targets")
@@ -77,15 +111,42 @@ fun DesktopDropsScreen(state: DesktopAppState) {
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("BLINK Drops", fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                Text("BLINK GIVEAWAY", fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                 TextButton(enabled = !busy, onClick = { perform { reload() } }) { Text("Refresh") }
             }
-            Text(if (loading) "Loading Drops…" else balance?.let { "$it Blink Coins available" } ?: "Balance unavailable")
+            Text(if (loading) "Loading Giveaways…" else balance?.let { "$it Blink Coins available" } ?: "Balance unavailable")
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            TabRow(selectedTabIndex = selectedPage) {
+                Tab(selected = selectedPage == 0, onClick = { selectedPage = 0 }, text = { Text("Giveaways") })
+                Tab(selected = selectedPage == 1, onClick = { selectedPage = 1 }, text = { Text("Most Givers") })
+            }
         }
-        item {
-            Text("Create a Drop", fontWeight = FontWeight.Bold)
-            Text("Reward eligible followers for an action on your post, Reel or listing.")
+        if (selectedPage == 0 && selectedGiveaway != null) item {
+            val selected = selectedGiveaway!!
+            val isLive = selected.optString("status").equals("ACTIVE", ignoreCase = true)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (isLive) "Selected BLINK Giveaway · LIVE" else "You missed this BLINK Giveaway",
+                        fontWeight = FontWeight.Bold)
+                    Text(selected.optString("target_title"), fontWeight = FontWeight.SemiBold)
+                    if (!isLive) Text(giveawayEndedLabel(selected.optString("ends_at")), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${selected.optLong("total_coins")} BLINK Coins · ${selected.optInt("reward_per_user")} each · ${selected.optInt("winner_count")} winners")
+                    Text(if (isLive) "Open the active Giveaway below to complete its required action."
+                        else "Follow the creator to be notified about the next Giveaway.")
+                    if (!selected.optBoolean("is_following") && selected.optString("creator_id").isNotBlank()) {
+                        TextButton(enabled = !busy, onClick = {
+                            perform {
+                                rpc.followDropCreator(selected.optString("creator_id"))
+                                selected.put("is_following", true)
+                            }
+                        }) { Text("Follow creator") }
+                    }
+                }
+            }
+        }
+        if (selectedPage == 0) item {
+            Text("Create a Giveaway", fontWeight = FontWeight.Bold)
+            Text("Anyone in your selected audience can join. Followers are notified when it starts.")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(choices, key = { it.optString("id") }) { target ->
                     FilterChip(selected = selectedTarget?.optString("id") == target.optString("id"), enabled = !busy,
@@ -93,7 +154,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                         label = { Text(target.optString("title").ifBlank { target.optString("type") }.take(48)) })
                 }
             }
-            if (!loading && choices.isEmpty()) Text("Publish a post, Reel or listing to create a Drop.")
+            if (!loading && choices.isEmpty()) Text("Publish a post, Reel or listing to create a Giveaway.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 (if (input.targetType == "LISTING") listOf("SAVE_LISTING") else listOf("LIKE","COMMENT","REPOST")).forEach { option ->
                     FilterChip(selected = action == option, enabled = !busy, onClick = { action = option }, label = { Text(option.replace('_',' ')) })
@@ -101,7 +162,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(value = reward, onValueChange = { reward = it.filter(Char::isDigit).take(6) }, enabled = !busy,
-                    label = { Text("Coins per follower (multiples of 100)") }, singleLine = true, modifier = Modifier.weight(1f))
+                    label = { Text("Coins per winner (multiples of 100)") }, singleLine = true, modifier = Modifier.weight(1f))
                 OutlinedTextField(value = recipients, onValueChange = { recipients = it.filter(Char::isDigit).take(3) }, enabled = !busy,
                     label = { Text("Recipients (1–500)") }, singleLine = true, modifier = Modifier.weight(1f))
             }
@@ -121,27 +182,28 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                     perform { quote = rpc.quoteDrop(request); quotedRequest = request }
                 }) { Text("Preview eligibility and budget") }
                 Button(enabled = input.isValid() && quotedRequest == input && quote != null && !busy &&
-                    (quote?.optInt("eligible_followers", 0) ?: 0) > 0 &&
+                    (quote?.optInt("maximum_possible_recipients", 0) ?: 0) > 0 &&
                     quote?.optLong("total_budget",Long.MAX_VALUE)?.let { it <= (balance ?: -1) } == true,
-                    onClick = { confirm = input }) { Text("Create Drop") }
+                    onClick = { confirm = input }) { Text("Publish Giveaway") }
             }
             if (quotedRequest == input) quote?.let {
-                Text("${it.optLong("total_budget")} coins reserved · ${it.optInt("eligible_followers")} eligible followers · " +
-                    "${it.optLong("remaining_balance_after_reserve")} coins after reserve")
+                Text("${it.optLong("total_budget")} BLINK Coins committed · ${it.optInt("eligible_followers")} followers notified · " +
+                    "${it.optInt("maximum_possible_recipients")} possible winners · " +
+                    "${it.optLong("remaining_balance_after_reserve")} coins remaining")
                 if (it.optInt("eligible_followers") < 1)
-                    Text("At least one eligible follower is required; no coins will be reserved.",
-                        color = MaterialTheme.colorScheme.error)
+                    Text("No followers will be notified, but users in your selected audience can still discover and join.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         val analytics = data?.optJSONObject("analytics")
-        if (analytics != null) item {
+        if (selectedPage == 0 && analytics != null) item {
             Text("Your results", fontWeight = FontWeight.Bold)
             Text("${analytics.optLong("distributed")} coins rewarded · ${analytics.optInt("recipients")} recipients · ${analytics.optLong("refunded")} coins refunded")
         }
-        item { Text("Available Drops", fontWeight = FontWeight.Bold) }
+        if (selectedPage == 0) item { Text("Active Giveaways", fontWeight = FontWeight.Bold) }
         val available = availablePage ?: data?.optJSONArray("active_drops").dropRows()
-        if (!loading && available.isEmpty()) item { Text("No eligible Drops available right now.") }
-        items(available, key = { "available-" + it.optString("id") }) { drop ->
+        if (selectedPage == 0 && !loading && available.isEmpty()) item { Text("No active Giveaways right now.") }
+        if (selectedPage == 0) items(available, key = { "available-" + it.optString("id") }) { drop ->
             val id = drop.optString("id")
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -155,7 +217,7 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                 }
             }
         }
-        if (availableMore) item {
+        if (selectedPage == 0 && availableMore) item {
             OutlinedButton(enabled = !pageBusy, onClick = {
                 pageBusy = true
                 scope.launch {
@@ -163,25 +225,25 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                         .onSuccess {
                             availablePage = (available + it.optJSONArray("items").dropRows()).distinctBy { row -> row.optString("id") }
                             availableMore = it.optBoolean("has_more")
-                        }.onFailure { error = it.message ?: "Could not load more Drops." }
+                        }.onFailure { error = giveawayErrorMessage(it) }
                     pageBusy = false
                 }
-            }) { Text(if (pageBusy) "Loading…" else "Load more available Drops") }
+            }) { Text(if (pageBusy) "Loading…" else "Load more active Giveaways") }
         }
-        item { Text("Your Drop history", fontWeight = FontWeight.Bold) }
+        if (selectedPage == 0) item { Text("Your Giveaways", fontWeight = FontWeight.Bold) }
         val mine = minePage ?: data?.optJSONArray("my_drops").dropRows()
-        items(mine, key = { "mine-" + it.optString("id") }) { drop ->
+        if (selectedPage == 0) items(mine, key = { "mine-" + it.optString("id") }) { drop ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(drop.optString("target_title"), fontWeight = FontWeight.Bold)
                     Text("${drop.optString("status")} · ${drop.optInt("claimed_count")}/${drop.optInt("winner_count")} claimed")
                     Text("${drop.optLong("coin_distributed")} coins rewarded · ${drop.optLong("coin_refunded")} refunded")
                     if (drop.optString("status") == "ACTIVE") TextButton(enabled = !busy,
-                        onClick = { pendingCancel = drop.optString("id") }) { Text("End Drop and refund unused coins") }
+                        onClick = { pendingCancel = drop.optString("id") }) { Text("End Giveaway (no refund)") }
                 }
             }
         }
-        if (mineMore) item {
+        if (selectedPage == 0 && mineMore) item {
             OutlinedButton(enabled = !pageBusy, onClick = {
                 pageBusy = true
                 scope.launch {
@@ -192,47 +254,55 @@ fun DesktopDropsScreen(state: DesktopAppState) {
                         }.onFailure { error = it.message ?: "Could not load more history." }
                     pageBusy = false
                 }
-            }) { Text(if (pageBusy) "Loading…" else "Load more Drop history") }
+            }) { Text(if (pageBusy) "Loading…" else "Load more Giveaway history") }
         }
-        val givers = data?.optJSONArray("top_givers").dropRows()
-        if (givers.isNotEmpty()) item { Text("Top givers", fontWeight = FontWeight.Bold) }
-        items(givers, key = { "giver-" + it.optString("creator_id") }) { giver ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("@${giver.optString("username")} · ${giver.optLong("coins_given")} coins given", modifier = Modifier.weight(1f))
-                if (!giver.optBoolean("is_following") && giver.optString("creator_id") != state.session?.userId)
-                    TextButton(enabled = !busy, onClick = { perform { rpc.followDropCreator(giver.optString("creator_id")) } }) { Text("Follow") }
+        val givers = data?.optJSONArray("top_givers").dropRows().take(20)
+        if (selectedPage == 1) {
+            item {
+                Text("Most Givers · Top 20", fontWeight = FontWeight.Bold)
+                Text("Ranked by total BLINK Coins committed to published Giveaways.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (givers.isEmpty()) item { Text("No published Giveaways yet. Create the first one.") }
+            itemsIndexed(givers, key = { _, giver -> "giver-" + giver.optString("creator_id") }) { index, giver ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("#${index + 1}  @${giver.optString("username")} · ${giver.optLong("coins_spent")} BLINK Coins spent · ${giver.optInt("giveaways_created")} Giveaways",
+                        modifier = Modifier.weight(1f))
+                    if (!giver.optBoolean("is_following") && giver.optString("creator_id") != state.session?.userId)
+                        TextButton(enabled = !busy, onClick = { perform { rpc.followDropCreator(giver.optString("creator_id")) } }) { Text("Follow") }
+                }
             }
         }
         val receipts = data?.optJSONArray("receipts").dropRows()
-        if (receipts.isNotEmpty()) item { Text("Growth receipts", fontWeight = FontWeight.Bold) }
-        items(receipts, key = { "receipt-" + it.optString("id") }) { receipt ->
+        if (selectedPage == 0 && receipts.isNotEmpty()) item { Text("Giveaway receipts", fontWeight = FontWeight.Bold) }
+        if (selectedPage == 0) items(receipts, key = { "receipt-" + it.optString("id") }) { receipt ->
             Text("${receipt.optString("item_name")} · ${receipt.optLong("amount")} coins · Balance ${receipt.optLong("balance_after")}")
         }
     }
     pendingCancel?.let { id ->
         AlertDialog(
             onDismissRequest = { if (!busy) pendingCancel = null },
-            title = { Text("Cancel this Drop?") },
-            text = { Text("Future claims stop, and the server refunds any unclaimed reserved Coins.") },
+            title = { Text("End this Giveaway?") },
+            text = { Text("This stops new entries. The amount committed at publication is non-refundable.") },
             confirmButton = {
                 Button(enabled = !busy, onClick = {
                     perform { rpc.cancelDrop(id); pendingCancel = null }
                 }) { Text("Confirm cancellation") }
             },
             dismissButton = {
-                TextButton(enabled = !busy, onClick = { pendingCancel = null }) { Text("Keep Drop") }
+                TextButton(enabled = !busy, onClick = { pendingCancel = null }) { Text("Keep Giveaway") }
             },
         )
     }
     confirm?.let { request ->
-        AlertDialog(onDismissRequest = { if (!busy) confirm = null }, title = { Text("Reserve coins for this Drop?") },
-            text = { Text("${request.reward.toLong()*request.recipients} coins for ${request.recipients} followers. Unused coins are refunded when the Drop ends.") },
+        AlertDialog(onDismissRequest = { if (!busy) confirm = null }, title = { Text("Publish this Giveaway?") },
+            text = { Text("${request.reward.toLong()*request.recipients} BLINK Coins committed for ${request.recipients} winners. This amount is non-refundable after publication.") },
             confirmButton = { Button(enabled = !busy, onClick = {
                 val fingerprint = request.fingerprint()
                 if (pendingId == null || pendingFingerprint != fingerprint) { pendingId = UUID.randomUUID().toString(); pendingFingerprint = fingerprint }
                 val requestId = pendingId.orEmpty()
                 perform { rpc.createDrop(request, requestId); pendingId = null; confirm = null; quote = null }
-            }) { Text("Reserve and start") } },
+            }) { Text("Confirm and publish") } },
             dismissButton = { TextButton(enabled = !busy, onClick = { confirm = null }) { Text("Cancel") } })
     }
 }
