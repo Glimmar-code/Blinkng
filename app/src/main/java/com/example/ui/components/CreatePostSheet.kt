@@ -1989,7 +1989,7 @@ fun CreatePostSheet(
                 BlinkReferenceComposerToolbar(
                     enabled = !isSubmitting,
                     onPhoto = {
-                        if (selectedVideo != null || showPoll) {
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
                             // Confirm content replacement before changing types.
                             pendingMediaSwitch = "gallery"
                         } else {
@@ -2006,7 +2006,7 @@ fun CreatePostSheet(
                         )
                     },
                     onPoll = {
-                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        if (selectedVideo != null || videoClips.isNotEmpty() || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
                         else {
                             pollPendingReplacement = false
                             showPollCreator = true
@@ -2023,7 +2023,7 @@ fun CreatePostSheet(
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
-                        if (selectedVideo != null || showPoll) {
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
                             pendingMediaSwitch = "gallery"
                         } else {
                             galleryReturnToEditor = true
@@ -2037,7 +2037,7 @@ fun CreatePostSheet(
                         )
                     },
                     onPoll = {
-                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        if (selectedVideo != null || videoClips.isNotEmpty() || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
                         else if (useClassicComposer) {
                             // Classic editor retains its existing inline poll form.
                             showPoll = !showPoll
