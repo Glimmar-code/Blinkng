@@ -72,7 +72,7 @@ fun DesktopBoostGrowthScreen(state: DesktopAppState) {
             )
             DesktopGrowthTab(
                 selected = column == DesktopBoostColumn.DROPS,
-                label = "Drops", icon = Icons.Rounded.CardGiftcard,
+                label = "Giveaway", icon = Icons.Rounded.CardGiftcard,
                 onClick = { column = DesktopBoostColumn.DROPS }, modifier = Modifier.weight(1f),
             )
         }
