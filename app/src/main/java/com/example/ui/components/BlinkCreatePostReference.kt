@@ -701,9 +701,12 @@ internal fun BlinkReferencePostDetails(
                         color = Color.White, maxLines = 2,
                         overflow = TextOverflow.Ellipsis, fontSize = 13.sp
                     )
-                    if (tags.isNotEmpty()) {
+                    val displayTags = remember(text, tags) {
+                        BlinkPostTagPresentation.extraTags(text, tags)
+                    }
+                    if (displayTags.isNotEmpty()) {
                         Text(
-                            tags.joinToString(" ") { "#" + it },
+                            displayTags.joinToString(" "),
                             color = Color(0xFF6C92FF), maxLines = 1,
                             overflow = TextOverflow.Ellipsis, fontSize = 12.sp
                         )
