@@ -37,7 +37,7 @@ import com.example.ui.components.blinkSelectedClipDurationLabel
 internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: MessagePalette) {
     val videos = remember(messages) {
         messages.sortedBy { it.imageAlbumPosition }
-            .filter { !it.attachedVideoUrl.isNullOrBlank() && !it.deletedForEveryone }
+            .filter(BlinkChatVideoAlbumMedia::available)
             .distinctBy { it.id }
     }
     if (videos.isEmpty()) return
@@ -64,6 +64,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                     // recording Uri to obtain duration; never invent 0:28.
                     val localVideo = message.localAttachmentUri
                         ?.takeIf { it.startsWith("content://") || it.startsWith("file://") }
+                    val thumbnail = BlinkChatVideoAlbumMedia.thumbnail(message)
                     val duration by produceState<Long?>(
                         initialValue = null, key1 = localVideo
                     ) {
@@ -82,15 +83,25 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                             .testTag("chat_reference_album_video_" + index),
                         contentAlignment = Alignment.Center
                     ) {
-                        AsyncImage(
-                            model = remember(message.attachedVideoUrl) {
-                                ImageRequest.Builder(context)
-                                    .data(message.attachedVideoUrl)
-                                    .videoFrameMillis(800L).build()
-                            },
-                            contentDescription = "Video " + (index + 1),
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-                        )
+                        if (thumbnail != null) {
+                            AsyncImage(
+                                model = remember(thumbnail) {
+                                    ImageRequest.Builder(context)
+                                        .data(thumbnail)
+                                        .videoFrameMillis(800L).build()
+                                },
+                                contentDescription = "Video " + (index + 1),
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Video thumbnail unavailable",
+                                tint = Color(0xFFB4C3D8),
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
                         Box(Modifier.size(38.dp).background(Color.Black.copy(alpha = .55f), CircleShape),
                             contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null,
@@ -170,7 +181,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     var playing by remember(selected) { mutableStateOf(false) }
                     BlinkChatInlineVideo(
-                        url = videos[selected].attachedVideoUrl.orEmpty(),
+                        url = BlinkChatVideoAlbumMedia.playback(videos[selected]).orEmpty(),
                         isActive = playing,
                         onActivate = { playing = true },
                         onDeactivate = { playing = false },
