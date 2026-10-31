@@ -339,8 +339,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
             .performTextReplacement("Tech meetup")
         rule.onNodeWithTag("blink_poll_option_1")
             .performTextReplacement("Sports day")
-        rule.onNodeWithTag("blink_poll_duration").performClick()
-        rule.onNodeWithText("3 days").performClick()
+        rule.onNodeWithTag("blink_poll_duration").performScrollTo().performClick()
+        rule.onNodeWithText("3 days").performScrollTo().performClick()
         capture("create-post-poll-fullscreen-staging.png", "blink_create_post_full_screen")
         rule.onNodeWithTag("blink_poll_done").performClick()
         rule.waitUntil(10_000) {
