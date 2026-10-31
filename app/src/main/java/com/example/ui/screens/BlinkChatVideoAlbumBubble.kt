@@ -97,15 +97,31 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(latest.timestamp, color = palette.textSecondary,
-                fontSize = 10.sp)
-            if (isMine && latest.status !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
+            Text(
+                when (albumStatus) {
+                    MessageStatus.FAILED -> "Waiting to retry"
+                    MessageStatus.SENDING -> "Sending…"
+                    else -> latest.timestamp
+                },
+                color = if (albumStatus == MessageStatus.FAILED) palette.danger
+                    else palette.textSecondary,
+                fontSize = 10.sp
+            )
+            if (isMine && albumStatus !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
                 Spacer(Modifier.width(3.dp))
-                Icon(if (delivered) Icons.Default.DoneAll else Icons.Default.Check,
-                    contentDescription = if (read) "Read" else if (delivered) "Delivered" else "Sent",
-                    tint = if (read) Color(BlinkChatReferenceStyle.BlueBright)
-                        else palette.textSecondary,
-                    modifier = Modifier.size(14.dp))
+                Icon(
+                    if (albumStatus == MessageStatus.SENT) Icons.Default.Check
+                    else Icons.Default.DoneAll,
+                    contentDescription = when (albumStatus) {
+                        MessageStatus.READ -> "Read"
+                        MessageStatus.DELIVERED -> "Delivered"
+                        else -> "Sent"
+                    },
+                    tint = if (albumStatus == MessageStatus.READ)
+                        Color(BlinkChatReferenceStyle.BlueBright)
+                    else palette.textSecondary,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
       }
