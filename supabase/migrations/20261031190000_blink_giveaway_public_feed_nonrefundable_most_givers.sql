@@ -637,14 +637,14 @@ begin
   into v_top
   from (
     select d.creator_id,
-      sum(greatest(d.total_budget-d.coin_refunded,0))::bigint coins_spent,
+      sum(greatest(d.total_budget-coalesce(d.coin_refunded,0),0))::bigint coins_spent,
       count(*)::integer giveaways_created,
       sum(d.claimed_count)::integer people_rewarded,
       jsonb_build_object(
         'creator_id',d.creator_id,
         'username',coalesce(p.username,''),
         'name',coalesce(p.full_name,p.username,'BLINK creator'),
-        'coins_spent',sum(greatest(d.total_budget-d.coin_refunded,0))::bigint,
+        'coins_spent',sum(greatest(d.total_budget-coalesce(d.coin_refunded,0),0))::bigint,
         'giveaways_created',count(*)::integer,
         'people_rewarded',sum(d.claimed_count)::integer,
         'is_following',exists(
@@ -807,7 +807,8 @@ begin
   where candidate.id<>v_user
     and (
       v_scope='ALL_CAMPUSES'
-      or lower(coalesce(candidate.university,''))=lower(coalesce(v_university,''))
+      or (v_scope='MY_CAMPUS' and v_university is not null
+          and lower(coalesce(candidate.university,''))=lower(v_university))
     )
     and not exists (
       select 1 from public.blocks b
