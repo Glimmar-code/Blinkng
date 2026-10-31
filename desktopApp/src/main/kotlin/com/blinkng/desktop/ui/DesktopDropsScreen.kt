@@ -35,7 +35,9 @@ private fun giveawayErrorMessage(error: Throwable): String {
             "The selected audience has no other eligible accounts yet."
         message.contains("DROP_", ignoreCase = true) ->
             "BLINK Giveaway couldn't complete that request. Refresh and try again."
-        else -> message.ifBlank { "BLINK Giveaway couldn't complete that request." }
+        else -> message.replace("Drops", "Giveaways").replace("Drop", "Giveaway")
+            .replace("drops", "giveaways").replace("drop", "giveaway")
+            .ifBlank { "BLINK Giveaway couldn't complete that request." }
     }
 }
 
