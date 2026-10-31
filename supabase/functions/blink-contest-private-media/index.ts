@@ -87,7 +87,13 @@ Deno.serve(async (req) => {
     const signed = await signedResponse.json() as { signedURL?: string; signedUrl?: string };
     const relative = signed.signedURL || signed.signedUrl;
     if (!relative) return jsonError(404);
-    const downloadUrl = new URL(relative, base);
+    // Storage returns a path relative to /storage/v1 on common deployments,
+    // and may return an absolute URL. Normalize all variants without rewriting
+    // the token, and reject anything outside this project's signed-object path.
+    const absoluteSignedUrl = /^https:\/\//i.test(relative) ? relative :
+      relative.startsWith("/storage/v1/") ? base + relative :
+      base + "/storage/v1/" + relative.replace(/^\//, "");
+    const downloadUrl = new URL(absoluteSignedUrl);
     // No open redirect: only this project's signed object endpoint is permitted.
     if (downloadUrl.origin !== new URL(base).origin ||
         !downloadUrl.pathname.includes("/storage/v1/object/sign/blink-contest-private/"))
