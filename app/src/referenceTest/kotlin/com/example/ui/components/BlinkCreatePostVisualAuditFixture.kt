@@ -25,6 +25,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.models.PostDraft
@@ -99,6 +101,57 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_create_choice_photo").performClick()
         rule.onNodeWithTag("blink_media_review").assertExists()
         capture("create-post-photo-first-entry-staging.png", "blink_create_post_full_screen")
+    }
+
+    @Test fun inlinePhotoOpensSelectMediaAndBackRestoresTextDraft() {
+        rule.setContent {
+            AuditSurface {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-inline-gallery",
+                        fullName = "BLINK Test Student",
+                        username = "blink_inline_photo_test",
+                        university = "FUTA"
+                    ),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true,
+                    trendingTagsLoader = { _, _ -> listOf("FUTA", "Campus") }
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_create_choice_text").performClick()
+        rule.onAllNodes(hasSetTextAction()).onFirst()
+            .performTextReplacement("Draft retained when reviewing photos")
+        rule.onNodeWithTag("blink_compose_action_0").performScrollTo().performClick()
+        rule.onNodeWithTag("blink_media_review").assertExists()
+        capture("create-post-text-to-gallery-staging.png", "blink_create_post_full_screen")
+        rule.onNodeWithTag("blink_media_review_back").performClick()
+        rule.onAllNodes(hasSetTextAction()).onFirst()
+            .assertTextEquals("Draft retained when reviewing photos")
+        rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
+    }
+
+    @Test fun landingPhotoBackReturnsToCreateOptions() {
+        rule.setContent {
+            AuditSurface {
+                CreatePostSheet(
+                    profile = UserProfile(
+                        id = "visual-audit-gallery-back",
+                        fullName = "BLINK Test Student",
+                        username = "blink_gallery_back_test",
+                        university = "FUTA"
+                    ),
+                    onDismiss = {},
+                    onSubmitPost = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+                    isDark = true
+                )
+            }
+        }
+        rule.onNodeWithTag("blink_create_choice_photo").performClick()
+        rule.onNodeWithTag("blink_media_review").assertExists()
+        rule.onNodeWithTag("blink_media_review_back").performClick()
+        rule.onNodeWithTag("blink_create_choice_photo").assertExists()
     }
 
     @Test fun emptyGalleryShowsUsableDevicePickerFixture() {
