@@ -4375,12 +4375,17 @@ private fun MessageContent(
                 )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
-                val pdf = message.attachmentMimeType == "application/pdf" ||
-                    message.attachmentName.orEmpty().endsWith(".pdf", ignoreCase = true)
+                val documentName = BlinkChatDocumentPresentation.filename(message)
+                val documentExtension = BlinkChatDocumentPresentation.extension(
+                    documentName, message.attachmentMimeType
+                )
+                val pdf = BlinkChatDocumentPresentation.isPdf(
+                    documentName, message.attachmentMimeType
+                )
                 var pdfOpen by remember(message.id) { mutableStateOf(false) }
                 if (pdf && pdfOpen) BlinkChatPdfViewer(
                     url = message.attachedDocumentUrl,
-                    filename = message.attachmentName ?: "Document.pdf",
+                    filename = documentName,
                     onDismiss = { pdfOpen = false }
                 )
                 Surface(
@@ -4414,7 +4419,7 @@ private fun MessageContent(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                message.attachmentName ?: message.text.ifBlank { "Document" },
+                                documentName,
                                 color = contentColor,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
@@ -4428,7 +4433,7 @@ private fun MessageContent(
                         BlinkChatDownloadAction(
                             url = message.attachedDocumentUrl,
                             kind = "document",
-                            extension = if (pdf) "pdf" else "bin",
+                            extension = documentExtension,
                             compact = true
                         )
                     }
