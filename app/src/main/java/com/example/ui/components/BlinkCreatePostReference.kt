@@ -618,6 +618,7 @@ internal fun BlinkReferencePostDetails(
     temporary: Boolean,
     onBack: () -> Unit,
     onEditCaption: () -> Unit,
+    onTagPeople: () -> Unit,
     onAudienceChange: (String) -> Unit,
     onLocationChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
@@ -718,7 +719,7 @@ internal fun BlinkReferencePostDetails(
         }
         BlinkPostMenuRow(
             title = "Tag people", detail = "Mention students in your caption",
-            icon = Icons.Default.AlternateEmail, onClick = onEditCaption
+            icon = Icons.Default.AlternateEmail, onClick = onTagPeople
         )
         Surface(
             color = Color(0xFF191D24), shape = RoundedCornerShape(12.dp),
