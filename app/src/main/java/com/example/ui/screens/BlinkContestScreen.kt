@@ -114,6 +114,10 @@ fun BlinkContestScreen(
     var searchTotal by remember { mutableIntStateOf(0) }
     var searchBusy by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var myAppeal by remember { mutableStateOf<JSONObject?>(null) }
+    var appealReason by remember { mutableStateOf("") }
+    var appealBusy by remember { mutableStateOf(false) }
+    var appealError by remember { mutableStateOf<String?>(null) }
 
     // Reset attachment state for each contest, including deep-link navigation.
     LaunchedEffect(selectedId) {
@@ -124,6 +128,16 @@ fun BlinkContestScreen(
         searchOffset = 0
         searchCandidates = emptyList()
         searchError = null
+    }
+    LaunchedEffect(selectedId, detail?.optString("my_entry_id"), revision) {
+        myAppeal = null
+        appealError = null
+        val entry = detail?.optString("my_entry_id")
+            ?.takeUnless { it == "null" }.orEmpty()
+        if (!selectedId.isNullOrBlank() && entry.isNotBlank()) {
+            api.myAppeal(entry).onSuccess { myAppeal = it }
+                .onFailure { appealError = it.message ?: "Could not check appeal status." }
+        }
     }
     LaunchedEffect(selectedId, searchExpanded, searchQuery, searchOffset, revision) {
         val id = selectedId
@@ -345,6 +359,51 @@ fun BlinkContestScreen(
                                         else -> entryStatus
                                     }, color = MaterialTheme.colorScheme.primary
                                 )
+                                if (entryStatus in listOf("rejected", "disqualified")) {
+                                    myAppeal?.let { appeal ->
+                                        Text(
+                                            "Appeal: " + appeal.optString("status")
+                                                .replaceFirstChar { it.uppercase() },
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        val decision = appeal.optString("decision_reason")
+                                            .takeUnless { it == "null" }.orEmpty()
+                                        if (decision.isNotBlank()) Text("Decision: " + decision)
+                                    }
+                                    appealError?.let {
+                                        Text(it, color = MaterialTheme.colorScheme.error)
+                                        TextButton(onClick = { revision++ }) { Text("Retry appeal status") }
+                                    }
+                                    if (myAppeal == null && status !in listOf("cancelled", "completed", "review") &&
+                                        !appealBusy) {
+                                        OutlinedTextField(
+                                            value = appealReason,
+                                            onValueChange = { appealReason = it.take(1000) },
+                                            label = { Text("Why should your application be reconsidered?") },
+                                            minLines = 3,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Button(
+                                            enabled = !busy && appealReason.trim().length in 20..1000,
+                                            onClick = {
+                                                appealBusy = true
+                                                appealError = null
+                                                scope.launch {
+                                                    api.submitAppeal(own, appealReason)
+                                                        .onSuccess {
+                                                            notice = "Your appeal was submitted for review."
+                                                            myAppeal = it
+                                                            appealReason = ""
+                                                        }
+                                                        .onFailure {
+                                                            appealError = it.message ?: "Appeal submission failed."
+                                                        }
+                                                    appealBusy = false
+                                                }
+                                            }
+                                        ) { Text("Submit one appeal") }
+                                    }
+                                }
                                 Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
                                     else "#" + d.optInt("my_rank") +
                                         BlinkContestRankMovement.label(d,"my_rank_delta"))
