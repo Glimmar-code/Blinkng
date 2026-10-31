@@ -4040,7 +4040,10 @@ private fun MessageBubble(
                             Text(
                                 message.text,
                                 color = if (isMine) palette.outgoingText else palette.textPrimary,
-                                fontSize = 14.sp, lineHeight = 19.sp,
+                                fontSize = if (palette.mode == MessageThemeMode.DARK)
+                                    15.sp else 14.sp,
+                                lineHeight = if (palette.mode == MessageThemeMode.DARK)
+                                    21.sp else 19.sp,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                             Text(metadata,
@@ -4316,8 +4319,10 @@ private fun MessageContent(
                 var imageRetry by remember(message.id, message.attachedImageUrl) { mutableIntStateOf(0) }
                 var imageFailed by remember(message.id, message.attachedImageUrl) { mutableStateOf(false) }
                 Box(
-                    modifier = Modifier.width(220.dp).height(170.dp)
-                        .clip(RoundedCornerShape(13.dp)),
+                    modifier = Modifier.width(235.dp).height(190.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color(0xFF12171D))
+                        .testTag("chat_reference_single_photo"),
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
@@ -4328,7 +4333,7 @@ private fun MessageContent(
                                 .build()
                         },
                         contentDescription = "Shared image",
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         onSuccess = { imageFailed = false },
                         onError = { imageFailed = true },
                         modifier = Modifier.fillMaxSize().clickable { if (!imageFailed) onOpenImage(message) }
@@ -4460,8 +4465,10 @@ private fun MessageContent(
                 Text(
                     message.text,
                     color = contentColor,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
+                    fontSize = if (palette.mode == MessageThemeMode.DARK)
+                        15.sp else 14.sp,
+                    lineHeight = if (palette.mode == MessageThemeMode.DARK)
+                        21.sp else 20.sp,
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                 )
                 if (allowLinkPreviews && !message.imageViewOnce && !message.deletedForEveryone) {
@@ -4784,7 +4791,7 @@ internal fun MessageComposer(
                     BasicTextField(
                         value = value,
                         onValueChange = onValueChange,
-                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 14.sp),
+                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 15.sp),
                         cursorBrush = SolidColor(palette.accent),
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(
@@ -4799,7 +4806,7 @@ internal fun MessageComposer(
                         decorationBox = { innerTextField ->
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (value.isBlank()) Text(
-                                    "Message", color = palette.textMuted, fontSize = 14.sp
+                                    "Message", color = palette.textMuted, fontSize = 15.sp
                                 )
                                 innerTextField()
                             }
