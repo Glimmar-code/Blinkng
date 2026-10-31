@@ -10,6 +10,9 @@ const migration = readFileSync(
 const growthMigration = readFileSync(
   new URL('../migrations/20261028200000_blink_contest_growth_v1.sql', import.meta.url), 'utf8'
 );
+const mediaRequirement = readFileSync(
+  new URL('../migrations/20261031060000_blink_contest_require_entry_media.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -46,6 +49,7 @@ try {
   }
   await db.exec(migration);
   await db.exec(growthMigration);
+  await db.exec(mediaRequirement);
   await setUser(creator1);
   await assert.rejects(() => rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
     [null,JSON.stringify(payload)]), /ADMIN_REQUIRED/);
@@ -61,15 +65,17 @@ try {
   await rpc('admin_transition_blink_contest', '$1::uuid,$2::text',[id,'publish']);
 
   await setUser(creator1);
+  await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'I have a contest entry but no media',null]), /blink_contest_entry_media_required/);
   const first = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I make creative campus videos',null])).rows[0].result);
+    [id,'I make creative campus videos','https://example.com/creator-one.jpg'])).rows[0].result);
   assert.equal(first.status,'pending');
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'Another duplicated application',null]), /duplicate|unique|CONTEST_FULL/i);
+    [id,'Another duplicated application','https://example.com/creator-one.jpg']), /duplicate|unique|CONTEST_FULL/i);
 
   await setUser(creator2);
   const second = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I create photography stories',null])).rows[0].result);
+    [id,'I create photography stories','https://example.com/creator-two.jpg'])).rows[0].result);
   assert.notEqual(first.entry_id, second.entry_id);
 
   await setUser(admin);
