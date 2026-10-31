@@ -8,8 +8,13 @@ internal object BlinkChatDocumentPresentation {
         "pptx", "txt", "csv", "rtf", "odt", "ods", "zip")
     fun filename(message: ChatMessage): String {
         val raw = sequenceOf(message.attachmentName, message.attachedDocumentName,
-            message.text.takeUnless { it.equals("document", true) || it.equals("file", true) })
-            .filterNotNull().map { it.trim() }.firstOrNull { it.isNotBlank() } ?: "Document"
+            message.text)
+            .filterNotNull().map { it.trim() }
+            .firstOrNull {
+                it.isNotBlank() && it.lowercase() !in setOf(
+                    "document", "file", "attachment", "document.pdf", "file.bin"
+                )
+            } ?: "Document"
         return raw.replace('\\', '/').substringAfterLast('/')
             .filter { it >= ' ' && it != '\u007f' }
             .take(120).ifBlank { "Document" }
