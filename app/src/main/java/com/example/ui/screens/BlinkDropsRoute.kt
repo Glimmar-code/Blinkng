@@ -1164,8 +1164,8 @@ internal fun TopGiversEmptyState(
                 fontWeight = FontWeight.Bold,
                 color = Color.White)
             Text(
-                "The total committed amount across published Giveaways determines each creator's rank. " +
-                    "No accounts or coin totals are shown until distribution is confirmed.",
+                "The top 20 creators are ranked by total BLINK Coins committed to published Giveaways. " +
+                    "Unclaimed amounts still count because published funding is non-refundable.",
                 color = Color(0xFFCFD3DD),
                 style = MaterialTheme.typography.bodySmall
             )
@@ -1576,7 +1576,7 @@ private fun OrganizeDropDialog(
                                      OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry eligibility check") }
                                  }
                                  if (eligibleFollowers == 0) {
-                                    Text("No eligible followers yet. At least one eligible follower is required to publish.",
+                                    Text("No followers will be notified, but people in your selected audience can still discover and join this Giveaway.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -1620,7 +1620,7 @@ private fun OrganizeDropDialog(
                                         !isOnline -> "Reconnect to publish."
                                          quoteLoading -> "Verifying the rewards and eligibility…"
                                          quoteError != null || quote == null -> "A verified quote is needed before publishing."
-                                         eligibleFollowers < 1 -> "At least one eligible follower is required."
+                                         maximumPossibleRecipients < 1 -> "No other accounts are available in the selected audience."
                                         selectedTarget == null -> "Choose content first."
                                         !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be a multiple of 100."
                                         !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Enter a valid number of recipients."
