@@ -1835,3 +1835,5 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - Merge remains blocked until Android/Windows tests, actual Android screenshot comparisons and relevant live-service checks pass. No production data or environment settings changed in this patch.
 
 - The existing idempotent coin-gift RPC already creates a receiver notification. A stage-only, receipt-keyed trigger now emits a sender receipt without duplicating notifications on retries. Android and Windows use the shared `tip` event alias; a coin-gift notification opens the wallet on Android. The SQL migration is NOT applied until disposable staging/RLS/notification delivery validation succeeds.
+
+- Drops Top Givers now separates the actual followed state from global follow-request busy state; an unrelated account no longer appears as Following. The empty leaderboard offers genuine Browse/Create actions without synthetic rankings. This is Android-specific layout polish over existing shared backend semantics; Windows continues using its own native empty/action presentation.

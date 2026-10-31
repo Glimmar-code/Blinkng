@@ -659,7 +659,12 @@ fun BlinkDropsRoute(
                     item { StatusCard(value, isError = false) }
                 }
                 if (topGivers.isEmpty() && error == null) {
-                    item { EmptyCard("Top Givers will appear after completed Drops.") }
+                    item {
+                        TopGiversEmptyState(
+                            onBrowse = { selectedColumn = DropsColumn.GIVEAWAYS },
+                            onCreate = { showOrganizer = true }
+                        )
+                    }
                 } else if (topGivers.isEmpty()) {
                     item { OutlinedButton(onClick = { refresh() }, enabled = isOnline && !loading) {
                         Icon(Icons.Default.Refresh, contentDescription = null)
@@ -672,9 +677,11 @@ fun BlinkDropsRoute(
                             giver = giver,
                             rank = index + 1,
                             formatter = formatter,
-                            onFollow = if (giver.following || followBusyId != null) null else {
-                                {
-                                    followBusyId = giver.creatorId
+                            following = giver.following,
+                            followBusy = followBusyId != null,
+                            onFollow = {
+                                if (giver.following || followBusyId != null) return@TopGiverCard
+                                followBusyId = giver.creatorId
                                     scope.launch {
                                         service.followCreator(giver.creatorId)
                                             .onSuccess {
@@ -686,7 +693,6 @@ fun BlinkDropsRoute(
                                             }
                                         followBusyId = null
                                     }
-                                }
                             }
                         )
                     }
@@ -1103,11 +1109,52 @@ private fun DropReceiptCard(
 }
 
 @Composable
+private fun TopGiversEmptyState(
+    onBrowse: () -> Unit,
+    onCreate: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Icon(
+                Icons.Default.EmojiEvents,
+                contentDescription = null,
+                modifier = Modifier.size(38.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text("The first Top Givers are coming",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold)
+            Text(
+                "Only BLINK Coins actually rewarded through completed Drops count. " +
+                    "No accounts or coin totals are shown until distribution is confirmed.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onCreate) { Text("Create a Drop") }
+                OutlinedButton(onClick = onBrowse) { Text("Browse Giveaways") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TopGiverCard(
     giver: TopGiver,
     rank: Int,
     formatter: NumberFormat,
-    onFollow: (() -> Unit)?,
+    following: Boolean,
+    followBusy: Boolean,
+    onFollow: () -> Unit,
 ) {
     Card(shape = RoundedCornerShape(18.dp)) {
         Row(
@@ -1136,10 +1183,12 @@ private fun TopGiverCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (onFollow != null) {
-                OutlinedButton(onClick = onFollow) { Text("Follow") }
-            } else {
+            if (following) {
                 Text("Following", style = MaterialTheme.typography.labelMedium)
+            } else {
+                OutlinedButton(onClick = onFollow, enabled = !followBusy) {
+                    Text(if (followBusy) "Please wait" else "Follow")
+                }
             }
         }
     }
