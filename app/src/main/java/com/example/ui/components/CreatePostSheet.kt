@@ -2701,7 +2701,20 @@ fun CreatePostSheet(
         PostPreviewDialog(
             post = scheduledPreviewPost(),
             profile = profile,
-            onDismiss = { showPreviewDialog = false }
+            onDismiss = { showPreviewDialog = false },
+            onEdit = {
+                showPreviewDialog = false
+                showPublishOptions = false
+                showReferenceDetails = false
+            },
+            onDetails = {
+                showPreviewDialog = false
+                showPublishOptions = false
+                showReferenceDetails = true
+            },
+            onSaveDraft = {
+                if (saveDraft()) showPreviewDialog = false
+            }
         )
     }
 
@@ -2737,8 +2750,12 @@ fun CreatePostSheet(
 internal fun PostPreviewDialog(
     post: FeedPost,
     profile: UserProfile,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit = onDismiss,
+    onDetails: () -> Unit = onDismiss,
+    onSaveDraft: () -> Unit = {}
 ) {
+    var actionsExpanded by remember { mutableStateOf(false) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2802,7 +2819,46 @@ internal fun PostPreviewDialog(
                                         color = Color(0xFF7C8591), fontSize = 11.sp
                                     )
                                 }
-                                Icon(Icons.Default.MoreHoriz, "Preview actions unavailable", tint = Color.DarkGray)
+                                Box {
+                                    IconButton(
+                                        onClick = { actionsExpanded = true },
+                                        modifier = Modifier.size(36.dp)
+                                            .testTag("blink_post_preview_more")
+                                    ) {
+                                        Icon(Icons.Default.MoreHoriz,
+                                            contentDescription = "Post preview actions",
+                                            tint = Color.DarkGray)
+                                    }
+                                    DropdownMenu(
+                                        expanded = actionsExpanded,
+                                        onDismissRequest = { actionsExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Edit post") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onEdit()
+                                            },
+                                            modifier = Modifier.testTag("blink_preview_edit")
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Post details") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onDetails()
+                                            },
+                                            modifier = Modifier.testTag("blink_preview_details")
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Save as draft") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onSaveDraft()
+                                            },
+                                            modifier = Modifier.testTag("blink_preview_save_draft")
+                                        )
+                                    }
+                                }
                             }
                             if (post.text.isNotBlank()) {
                                 Text(post.text, color = Color.Black, fontSize = 14.sp)
