@@ -7619,8 +7619,8 @@ private suspend fun restoreSupabaseSession() {
             if (count > currentBaseline) {
                 com.example.data.views.MarketViewDisplayCoordinator.recordExposure(
                     itemId = item.id,
-                    modelCount = currentBaseline.toInt().coerceAtLeast(0),
-                    authoritativeCount = count.toInt().coerceAtLeast(0),
+                    modelCount = currentBaseline,
+                    authoritativeCount = count,
                 )
             }
             val update: (MarketItem) -> MarketItem = { current ->
