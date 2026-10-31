@@ -2354,7 +2354,7 @@ private fun PremiumChatDetail(
                     state = listState,
                     modifier = Modifier.weight(1f).testTag("chat_reference_history_list"),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (isLoadingOlder) {
                         item(key = "message_history_loading") {
@@ -3417,8 +3417,8 @@ private fun ChatHeader(
     Row(
         modifier = Modifier.fillMaxWidth()
             .background(if (referenceDark) Color(BlinkChatReferenceStyle.Header) else palette.glass)
-            .heightIn(min = 70.dp)
-            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .height(68.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
             .testTag("chat_reference_header"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -3431,7 +3431,7 @@ private fun ChatHeader(
             url = conversation.partnerAvatar,
             name = conversation.partnerName,
             palette = palette,
-            size = 44.dp,
+            size = 42.dp,
             emphasizeRing = false,
             modifier = Modifier.clickable(onClick = onProfileClick)
         )
