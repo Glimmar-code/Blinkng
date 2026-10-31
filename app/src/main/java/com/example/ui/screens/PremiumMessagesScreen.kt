@@ -4133,7 +4133,11 @@ private fun MessageBubble(
                 if (message.reactionCounts.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(top = 3.dp).widthIn(max = 260.dp)
+                        modifier = Modifier
+                            .padding(top = 0.dp)
+                            .offset(y = (-3).dp)
+                            .widthIn(max = 260.dp)
+                            .testTag("chat_reference_reaction_row")
                     ) {
                         items(message.reactionCounts.entries.sortedByDescending { it.value }.take(8)) { entry ->
                             Surface(
@@ -4143,13 +4147,18 @@ private fun MessageBubble(
                             ) {
                                 Text(
                                     "${entry.key} ${entry.value}",
-                                    fontSize = 11.sp,
+                                    fontSize = if (palette.mode == MessageThemeMode.DARK) 10.sp else 11.sp,
                                     color = palette.textSecondary,
-                                    modifier = Modifier.clickable(
-                                        role = androidx.compose.ui.semantics.Role.Button,
-                                        onClickLabel = "Manage message reactions",
-                                        onClick = onActions
-                                    ).padding(horizontal = 10.dp, vertical = 9.dp)
+                                    modifier = Modifier
+                                        .testTag("chat_reference_reaction_chip")
+                                        .clickable(
+                                            role = androidx.compose.ui.semantics.Role.Button,
+                                            onClickLabel = "Manage message reactions",
+                                            onClick = onActions
+                                        ).padding(
+                                            horizontal = if (palette.mode == MessageThemeMode.DARK) 7.dp else 10.dp,
+                                            vertical = if (palette.mode == MessageThemeMode.DARK) 4.dp else 9.dp
+                                        )
                                 )
                             }
                         }
