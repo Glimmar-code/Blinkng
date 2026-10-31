@@ -29,6 +29,8 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.blinkng.shared.BlinkChatReferenceStyle
 import com.example.ui.theme.MessagePalette
+import com.example.ui.components.blinkSelectedClipDurationMs
+import com.example.ui.components.blinkSelectedClipDurationLabel
 
 /** An album includes only confirmed videos with the same server-recorded ID. */
 @Composable
@@ -58,6 +60,15 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 row.forEach { message ->
                     val index = videos.indexOfFirst { it.id == message.id }
+                    // Signed remote media can be large. Only inspect a local
+                    // recording Uri to obtain duration; never invent 0:28.
+                    val localVideo = message.localAttachmentUri
+                        ?.takeIf { it.startsWith("content://") || it.startsWith("file://") }
+                    val duration by produceState<Long?>(
+                        initialValue = null, key1 = localVideo
+                    ) {
+                        value = localVideo?.let { blinkSelectedClipDurationMs(context, it) }
+                    }
                     Box(
                         Modifier.weight(1f)
                             .aspectRatio(BlinkChatReferenceStyle.VideoTileAspect)
@@ -84,6 +95,17 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                             contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null,
                                 tint = Color.White, modifier = Modifier.size(27.dp))
+                        }
+                        blinkSelectedClipDurationLabel(duration)?.let { label ->
+                            Surface(
+                                color = Color.Black.copy(alpha = .75f),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.align(Alignment.BottomEnd)
+                                    .padding(4.dp).testTag("chat_video_duration_" + index)
+                            ) {
+                                Text(label, color = Color.White, fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                            }
                         }
                         if (index == 3 && videos.size > 4) {
                             Box(Modifier.fillMaxSize()
