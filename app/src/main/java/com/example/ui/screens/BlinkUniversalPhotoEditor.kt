@@ -79,7 +79,7 @@ fun BlinkUniversalPhotoEditor(
     var workingUri by remember(originalUri) { mutableStateOf(originalUri) }
     val transientCopies = remember(originalUri) { mutableStateListOf<Uri>() }
     var busy by remember { mutableStateOf(false) }
-    var tool by remember { mutableStateOf("ADJUST") }
+    var tool by remember { mutableStateOf("") }
     var exposure by remember { mutableFloatStateOf(0f) }
     var contrast by remember { mutableFloatStateOf(1f) }
     var saturation by remember { mutableFloatStateOf(1f) }
@@ -259,21 +259,23 @@ fun BlinkUniversalPhotoEditor(
                 Modifier.fillMaxWidth().height(52.dp).padding(horizontal=8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick={close()},enabled=!busy) {
-                    Icon(Icons.Default.Close,"Cancel edits",tint=Color.White)
-                    Text("BACK",color=Color.White,fontSize=12.sp)
-                }
-                IconButton(onClick = { undo() }, enabled = !busy && undoHistory.isNotEmpty()) {
-                    Icon(Icons.Default.Undo, "Undo edit", tint = Color.White)
-                }
-                IconButton(onClick = { redo() }, enabled = !busy && redoHistory.isNotEmpty()) {
-                    Icon(Icons.Default.Redo, "Redo edit", tint = Color.White)
+                IconButton(
+                    onClick = { close() },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("blink_photo_editor_back")
+                ) {
+                    Icon(Icons.Default.ChevronLeft, "Back from photo editor", tint = Color.White)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("Edit Photo",color=Color.White,fontWeight=FontWeight.Bold,fontSize=16.sp)
+                Text("Edit Photo", color=Color.White, fontWeight=FontWeight.Bold,
+                    fontSize=16.sp)
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick={commit()},enabled=!busy) {
-                    Text(if(busy) "SAVING" else "NEXT",color=Color(0xFF8D85FF),
+                TextButton(
+                    onClick = { commit() },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("blink_photo_editor_next")
+                ) {
+                    Text(if(busy) "Saving" else "Next",color=Color(0xFF8D85FF),
                         fontSize=13.sp,fontWeight=FontWeight.Bold)
                 }
             }
@@ -388,8 +390,9 @@ fun BlinkUniversalPhotoEditor(
                 horizontalArrangement=Arrangement.spacedBy(2.dp)
             ) {
                 photoControls.forEach { (name,icon) ->
-                    TextButton(onClick={tool=name},enabled=!busy,
-                        modifier=Modifier.weight(1f).heightIn(min=56.dp),
+                    TextButton(onClick={ tool = if (tool == name) "" else name },enabled=!busy,
+                        modifier=Modifier.weight(1f).heightIn(min=56.dp)
+                            .testTag("blink_photo_tool_" + name.lowercase()),
                         contentPadding=PaddingValues(horizontal=1.dp,vertical=4.dp),
                         colors=ButtonDefaults.textButtonColors(
                             contentColor=if(tool==name) Color(0xFF8D85FF) else Color.LightGray)) {
@@ -401,10 +404,31 @@ fun BlinkUniversalPhotoEditor(
                     }
                 }
             }
-            Column(Modifier.fillMaxWidth().heightIn(min=130.dp,max=310.dp)
+            if (tool.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().heightIn(min=130.dp,max=260.dp)
                 .background(Color(0xFF0F0F0F))
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal=16.dp,vertical=8.dp)) {
+                .padding(horizontal=16.dp,vertical=8.dp)
+                .testTag("blink_photo_tool_panel")) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { undo() },
+                        enabled = !busy && undoHistory.isNotEmpty(),
+                        modifier = Modifier.testTag("blink_photo_undo")
+                    ) { Icon(Icons.Default.Undo, "Undo edit", tint = Color.White) }
+                    IconButton(
+                        onClick = { redo() },
+                        enabled = !busy && redoHistory.isNotEmpty(),
+                        modifier = Modifier.testTag("blink_photo_redo")
+                    ) { Icon(Icons.Default.Redo, "Redo edit", tint = Color.White) }
+                    TextButton(onClick = { tool = "" }, enabled = !busy) {
+                        Text("Close tools", color = Color.White, fontSize = 11.sp)
+                    }
+                }
                 when(tool) {
                     "FILTER" -> {
                         Text("FILTERS", color=Color.White, fontSize=12.sp)
@@ -554,6 +578,7 @@ fun BlinkUniversalPhotoEditor(
                         },enabled=newText.isNotBlank()) { Text("Add text",color=Color(0xFF46B7FF)) }
                     }
                 }
+            }
             }
         }
     }
