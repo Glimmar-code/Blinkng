@@ -11,6 +11,8 @@ class BlinkContestPolicyTest {
         assertEquals("Ongoing", BlinkContestPolicy.section("registration"))
         assertEquals("Ongoing", BlinkContestPolicy.section("voting"))
         assertEquals("Completed", BlinkContestPolicy.section("completed"))
+        assertEquals("Completed", BlinkContestPolicy.section("cancelled"))
+        assertEquals("Cancelled", BlinkContestPolicy.statusLabel("cancelled"))
     }
 
     @Test fun statementLengthIsBounded() {
@@ -33,6 +35,7 @@ class BlinkContestPolicyTest {
         assertTrue(BlinkContestPolicy.canVote("voting", null, "mine", "other"))
         assertFalse(BlinkContestPolicy.canVote("registration", null, "mine", "other"))
         assertFalse(BlinkContestPolicy.canVote("review", null, "mine", "other"))
+        assertFalse(BlinkContestPolicy.canVote("cancelled", null, "mine", "other"))
         assertFalse(BlinkContestPolicy.canVote("voting", "already-voted", "mine", "other"))
         assertFalse(BlinkContestPolicy.canVote("voting", null, "mine", "mine"))
     }
