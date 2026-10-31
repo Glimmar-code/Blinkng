@@ -517,6 +517,8 @@ abstract class BlinkCreatePostVisualAuditFixture {
 
     @Test fun previewUsesActualFeedCardProportionsOnAndroid() {
         var dismissed = false
+        var requestedDetails = false
+        var requestedSave = false
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val resource = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
         rule.setContent {
@@ -541,7 +543,9 @@ abstract class BlinkCreatePostVisualAuditFixture {
                         avatarUrl = resource,
                         university = "FUTA"
                     ),
-                    onDismiss = { dismissed = true }
+                    onDismiss = { dismissed = true },
+                    onDetails = { requestedDetails = true },
+                    onSaveDraft = { requestedSave = true }
                 )
             }
         }
@@ -552,6 +556,12 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithText("Preview only · Not published").assertDoesNotExist()
         rule.onNodeWithText("Back to editor").assertDoesNotExist()
         capture("create-post-preview-staging.png", "blink_post_preview_stage")
+        rule.onNodeWithTag("blink_post_preview_more").performClick()
+        rule.onNodeWithTag("blink_preview_details").performClick()
+        rule.runOnIdle { check(requestedDetails) { "Preview details action is inert." } }
+        rule.onNodeWithTag("blink_post_preview_more").performClick()
+        rule.onNodeWithTag("blink_preview_save_draft").performClick()
+        rule.runOnIdle { check(requestedSave) { "Preview save draft action is inert." } }
         rule.onNodeWithTag("blink_post_preview_back").performClick()
         rule.runOnIdle { check(dismissed) { "Preview must allow returning to composer" } }
     }
