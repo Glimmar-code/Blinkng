@@ -97,6 +97,15 @@ try {
   await setViewer(seller);
   assert.equal(await record(event(8)),15,'seller self-views do not inflate listing metrics');
 
+  await setViewer(normal);
+  for (let n = 9; n <= 106; n += 1) {
+    await ageLastEvent(3);
+    await record(event(n));
+  }
+  await ageLastEvent(3);
+  assert.equal(await record(event(107)),113,'daily event cap blocks the 101st normal exposure');
+  assert.equal(await count(),113,'daily cap never changes the authoritative listing counter');
+
   const dailyUnique = (await db.query(
     `select count(*)::integer as n from public.marketplace_views where item_id=$1`,[listing]
   )).rows[0].n;
