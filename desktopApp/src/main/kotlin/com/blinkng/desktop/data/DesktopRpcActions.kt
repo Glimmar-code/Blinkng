@@ -103,6 +103,24 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun contestCandidate(contestId: String, entryId: String): JSONObject =
         rpc("get_blink_contest_candidate", JSONObject().put("p_contest_id", contestId)
             .put("p_entry_id", entryId))
+    suspend fun contestMyAppeal(entryId: String): JSONObject? =
+        rpcAny("my_blink_contest_entry_appeal",
+            JSONObject().put("p_entry_id", entryId)) as? JSONObject
+    suspend fun contestSubmitAppeal(entryId: String, reason: String): JSONObject =
+        rpc("submit_blink_contest_entry_appeal", JSONObject()
+            .put("p_entry_id", entryId).put("p_statement", reason.trim()))
+    suspend fun adminContestAppeals(contestId: String): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_contest_entry_appeals",
+            JSONObject().put("p_contest_id", contestId).put("p_limit", 100)) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestAppealDecision(appealId: String, action: String, reason: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_decide_blink_contest_entry_appeal", JSONObject()
+            .put("p_appeal_id", appealId).put("p_action", action)
+            .put("p_reason", reason.trim()))
+    }
+
     suspend fun contestApply(id: String, statement: String, mediaUrl: String): JSONObject =
         rpc("apply_blink_contest", JSONObject().put("p_contest_id", id)
             .put("p_statement", statement.trim())
