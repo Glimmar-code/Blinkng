@@ -181,8 +181,9 @@ private fun buildPremiumHomeRows(
     var postsSinceDrop = 0
     var nextDropGap = 5
 
-    // The first Giveaway appears before organic Post #1 without replacing it.
-    if (dropDiscovery.isNotEmpty()) {
+    // Only a live Giveaway gets the first slot. Missed/ended Giveaways follow
+    // the same five-organic-post spacing instead of displacing a live feed post.
+    if (dropDiscovery.firstOrNull()?.status?.equals("ACTIVE", ignoreCase = true) == true) {
         rows += PremiumHomeRow.DropDiscoveryRow(dropDiscovery.first(), dropSlot++)
     }
 
@@ -1013,7 +1014,7 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
     }
 
-    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey, refreshRevision) {
         if (laneIndex != 0 || !isOnline) {
             dropDiscovery = emptyList()
             return@LaunchedEffect
