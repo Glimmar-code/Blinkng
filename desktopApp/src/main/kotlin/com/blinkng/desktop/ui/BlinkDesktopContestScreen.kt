@@ -182,10 +182,10 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             OutlinedTextField(statement, { statement = it.take(500) },
                                 label = { Text("Why should people vote for you?") },
                                 modifier = Modifier.fillMaxWidth())
-                            OutlinedTextField(mediaUrl, { mediaUrl = it },
-                                label = { Text("Required entry photo/Reel HTTPS URL") },
+                            OutlinedTextField(mediaUrl, { },
+                                label = { Text("Media URL is created after a private upload") },
                                 modifier = Modifier.fillMaxWidth())
-                            Text("Uploaded media is publicly accessible before approval. Do not attach private documents.", style = MaterialTheme.typography.bodySmall)
+                            Text("Contestant media stays private until approved. Choose a file and upload it before applying.", style = MaterialTheme.typography.bodySmall)
                             OutlinedButton(enabled = !busy, onClick = {
                                 scope.launch {
                                     entryFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -208,7 +208,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     scope.launch {
                                         try {
                                             mediaUrl = api.uploadContestMedia(file)
-                                            message = "Public preview uploaded. Submit your application to finish."
+                                            message = "Private media uploaded. Submit your application to finish."
                                             entryFile = null
                                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                                         catch (failure: Exception) { message = failure.message ?: "Media upload failed. Try again." }
