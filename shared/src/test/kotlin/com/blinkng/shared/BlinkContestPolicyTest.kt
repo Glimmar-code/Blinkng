@@ -31,6 +31,15 @@ class BlinkContestPolicyTest {
         assertFalse(BlinkContestPolicy.canApply("short", true, ""))
     }
 
+    @Test fun voteInvitationsDoNotSolicitClosedContests() {
+        assertTrue(BlinkContestPolicy.canShareVoteInvite("upcoming"))
+        assertTrue(BlinkContestPolicy.canShareVoteInvite("registration"))
+        assertTrue(BlinkContestPolicy.canShareVoteInvite("voting"))
+        for (phase in listOf("review", "completed", "cancelled", "paused", "")) {
+            assertFalse(BlinkContestPolicy.canShareVoteInvite(phase))
+        }
+    }
+
     @Test fun freeVoteMustBeInVotingPhaseAndUnused() {
         assertTrue(BlinkContestPolicy.canVote("voting", null, "mine", "other"))
         assertFalse(BlinkContestPolicy.canVote("registration", null, "mine", "other"))
