@@ -280,7 +280,7 @@ begin
     v_user,
     'DROP_REWARD',
     null,
-    'BLINK Drop reward',
+    'BLINK Giveaway reward',
     v_drop.reward_per_user,
     floor(v_balance)::bigint,
     jsonb_build_object(
@@ -678,7 +678,6 @@ $function$
 create or replace function public.get_blink_giveaway_feed_discovery(p_limit integer default 20)
 returns jsonb
 language plpgsql
-stable
 security definer
 set search_path=''
 as $$
