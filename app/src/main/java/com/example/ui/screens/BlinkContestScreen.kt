@@ -31,6 +31,10 @@ import com.blinkng.shared.BlinkContestPolicy
 import com.example.data.supabase.BlinkContestService
 import com.example.sharing.ContestVoteTarget
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
@@ -39,7 +43,10 @@ import java.util.Locale
 internal fun JSONArray.contestObjects(): List<JSONObject> =
     (0 until length()).mapNotNull { optJSONObject(it) }
 private fun cash(value: Int) = "₦" + NumberFormat.getIntegerInstance(Locale("en", "NG")).format(value)
-private fun dateLabel(value: String) = value.replace('T', ' ').take(16)
+private fun dateLabel(value: String): String = runCatching {
+    OffsetDateTime.parse(value).atZoneSameInstant(ZoneId.of("Africa/Lagos"))
+        .format(DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH)) + " WAT"
+}.getOrDefault("Date unavailable")
 
 /** An explicit preview: uploaded Contest videos never auto-play in the scrolling UI. */
 @Composable
@@ -99,8 +106,22 @@ fun BlinkContestScreen(
     var invitedCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var ownCandidate by remember { mutableStateOf<JSONObject?>(null) }
     var flyerCandidate by remember { mutableStateOf<JSONObject?>(null) }
+    var shareLookupBusy by remember { mutableStateOf(false) }
     var inspectedCandidate by remember { mutableStateOf<JSONObject?>(null) }
 
+    // Reset attachment state for each contest, including deep-link navigation.
+    LaunchedEffect(selectedId) {
+        mediaChoice = null
+        mediaUrl = ""
+        statement = ""
+    }
+    // Keep status and leaderboard state in sync with the server while viewing.
+    LaunchedEffect(selectedId) {
+        while (true) {
+            delay(60_000)
+            revision++
+        }
+    }
     LaunchedEffect(target?.contestId, target?.entryId) {
         if (target != null) {
             selectedId = target.contestId
@@ -141,6 +162,25 @@ fun BlinkContestScreen(
         }
     }
 
+    // Leaderboard rows are intentionally compact. The flyer requires the full
+    // approved candidate record (including contest_id), fetched on demand.
+    val openFlyer: (JSONObject) -> Unit = { candidate ->
+        if (!shareLookupBusy) {
+            val contestId = selectedId.orEmpty()
+            val entryId = candidate.optString("id")
+            if (contestId.isBlank() || entryId.isBlank()) {
+                error = "This contestant is not available for sharing."
+            } else {
+                shareLookupBusy = true
+                scope.launch {
+                    api.candidate(contestId, entryId)
+                        .onSuccess { flyerCandidate = it }
+                        .onFailure { error = it.message ?: "Unable to prepare the voting flyer." }
+                    shareLookupBusy = false
+                }
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().padding(top = 8.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -186,7 +226,7 @@ fun BlinkContestScreen(
                 items(rows, key = { it.optString("id") }) { contest ->
                     BlinkContestHeroCard(contest) {
                         selectedId = contest.optString("id")
-                        statement = ""; mediaUrl = ""; notice = null
+                        statement = ""; mediaUrl = ""; mediaChoice = null; notice = null
                     }
 
                 }
@@ -309,7 +349,7 @@ fun BlinkContestScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = mediaChoice == null
                             )
-                            Text("JPG/PNG/WebP up to 8 MB, or MP4 up to 25 MB. " +
+                            Text("A photo or video is required. JPG/PNG/WebP up to 8 MB, or MP4 up to 25 MB. " +
                                 "Uploading creates a public link; BLINK shows your entry after approval.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp)
@@ -325,12 +365,15 @@ fun BlinkContestScreen(
                                         }.onSuccess {
                                             notice = "Application submitted: " + it.optString("status")
                                             mediaChoice = null
+                                            mediaUrl = ""
+                                            statement = ""
                                             revision++
                                         }.onFailure { error = it.message }
                                         busy = false
                                     }
                                 },
-                                enabled = !busy && BlinkContestPolicy.validStatement(statement),
+                                enabled = !busy && BlinkContestPolicy.validStatement(statement) &&
+                                    (mediaChoice != null || mediaUrl.trim().startsWith("https://")),
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Apply for free") }
                         }
@@ -341,7 +384,7 @@ fun BlinkContestScreen(
                             Column(Modifier.padding(16.dp)) {
                                 Text("Your contestant profile", fontWeight = FontWeight.Bold)
                                 BlinkContestCandidateSpotlight(me) { inspectedCandidate = me }
-                                Button(onClick = { flyerCandidate = me }) { Text("Share my personalized flyer") }
+                                Button(onClick = { openFlyer(me) }) { Text("Share my personalized flyer") }
                             }
                         }
                     }
@@ -370,7 +413,7 @@ fun BlinkContestScreen(
                                             }
                                         }
                                     ) { Text("Vote for this contestant") }
-                                    OutlinedButton(onClick = { flyerCandidate = candidate }) { Text("Share") }
+                                    OutlinedButton(onClick = { openFlyer(candidate) }) { Text("Share") }
                                 }
                             }
                         }
@@ -402,7 +445,7 @@ fun BlinkContestScreen(
                                             inspectedCandidate = candidate
                                         })
                                 }
-                                OutlinedButton(onClick = { flyerCandidate = candidate }) { Text("Share") }
+                                OutlinedButton(onClick = { openFlyer(candidate) }) { Text("Share") }
                                 Spacer(Modifier.width(6.dp))
                                 Button(
                                     enabled = !busy && BlinkContestPolicy.canVote(
@@ -495,7 +538,7 @@ fun BlinkContestScreen(
             },
             dismissButton = {
                 TextButton(onClick = {
-                    flyerCandidate = candidate
+                    openFlyer(candidate)
                     inspectedCandidate = null
                 }) { Text("Share flyer") }
             }
