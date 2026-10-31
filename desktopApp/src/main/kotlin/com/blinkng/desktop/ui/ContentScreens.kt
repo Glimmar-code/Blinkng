@@ -785,7 +785,7 @@ fun HomeScreen(
                             posts = posts.map {
                                 if (it.id == post.id) it.copy(isLiked = beforeLiked, likeCount = beforeCount) else it
                             }
-                            error = "Couldn't update like."
+                            error = "Couldn't update like. A Like used to claim a Giveaway reward cannot be removed."
                         } else if (actual != optimisticLiked) {
                             posts = posts.map {
                                 if (it.id == post.id) {
