@@ -421,7 +421,13 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Text(entry.optString("statement"))
                     val media = entry.optString("media_url")
                     if (media.startsWith("https://")) {
-                        BlinkContestApplicantMediaCard(media) { previewEntryMedia = media }
+                        BlinkContestApplicantMediaCard(media) {
+                            scope.launch {
+                                api.adminMediaPreview(media)
+                                    .onSuccess { previewEntryMedia = it }
+                                    .onFailure { message = it.message ?: "Unable to preview private media." }
+                            }
+                        }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         listOf("approve", "reject", "disqualify")
@@ -522,6 +528,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
 @Composable
 internal fun BlinkContestApplicantMediaCard(media: String, onPreview: () -> Unit) {
     val isVideo = contestMediaExtension(media) == "mp4"
+    val isPrivate = media.contains("/functions/v1/blink-contest-private-media/")
     Surface(
         onClick = onPreview,
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -543,6 +550,15 @@ internal fun BlinkContestApplicantMediaCard(media: String, onPreview: () -> Unit
                             contentDescription = "Video application",
                             tint = Color(0xFFB1D6FF), modifier = Modifier.size(32.dp))
                     }
+                }
+            } else if (isPrivate) {
+                Box(
+                    modifier = Modifier.size(76.dp).clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF19293A)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Private", color = Color(0xFFB1D6FF),
+                        style = MaterialTheme.typography.labelMedium)
                 }
             } else {
                 var imageLoaded by remember(media) { mutableStateOf(false) }
@@ -574,7 +590,9 @@ internal fun BlinkContestApplicantMediaCard(media: String, onPreview: () -> Unit
             Column(Modifier.weight(1f)) {
                 Text(if (isVideo) "View application video" else "View application photo",
                     fontWeight = FontWeight.SemiBold)
-                Text("Inspect before approving", style = MaterialTheme.typography.bodySmall,
+                Text(if (isPrivate) "Private until approved · Tap for secure preview"
+                    else "Inspect before approving",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Default.ChevronRight, contentDescription = null)
