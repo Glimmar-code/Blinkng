@@ -212,10 +212,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle :app:testDebugUnitTest \\
-            --tests com.example.ui.screens.BlinkReelsVisualCaptureTest \\
-            --tests com.example.ui.screens.BlinkGrowthVisualCaptureTest \\
-            -Proborazzi.test.record=true --rerun-tasks --no-daemon
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkReelsVisualCaptureTest --tests com.example.ui.screens.BlinkGrowthVisualCaptureTest -Proborazzi.test.record=true --rerun-tasks --no-daemon
           count=$(find app/src/test/screenshots -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
           echo "Captured $count Reels/Drops/Boost visuals"
           test "$count" -ge 6
