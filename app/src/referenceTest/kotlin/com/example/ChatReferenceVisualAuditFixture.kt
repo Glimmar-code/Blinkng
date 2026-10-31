@@ -29,11 +29,14 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.dp
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.ui.screens.ChatConversationView
+import com.example.ui.screens.MessageComposer
 import com.example.ui.screens.BlinkChatPollResult
 import com.example.ui.screens.BlinkChatPollResultOption
 import com.example.ui.screens.BlinkChatPollResultsCard
@@ -52,6 +55,52 @@ import org.junit.Test
 abstract class ChatReferenceVisualAuditFixture {
     protected abstract fun capture(name: String)
     @get:Rule val rule = createComposeRule()
+
+    @Test fun chatReferenceComposerHasAccessibleMicrophoneAndOutlinedCamera() {
+        var voiceTyping = 0
+        var voiceRecording = 0
+        var cameraOpens = 0
+        var messagesSent = 0
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                Box(Modifier.fillMaxWidth().height(790.dp)
+                    .testTag("chat_conversation_root")) {
+                    MessageComposer(
+                        value = "Sample message",
+                        onValueChange = {},
+                        palette = referenceChatPalette(messagePalette(MessageThemeMode.DARK)),
+                        onAttachment = {},
+                        onCamera = { cameraOpens++ },
+                        onDictation = { voiceTyping++ },
+                        onEmoji = {},
+                        onSubmit = { messagesSent++ },
+                        onQuickLike = {},
+                        isRecording = false,
+                        recordingSeconds = 0,
+                        onVoiceStart = { voiceRecording++ },
+                        onVoiceStop = {},
+                        onVoiceCancel = {}
+                    )
+                }
+            }
+        }
+        rule.onNodeWithTag("chat_reference_message_input").assertExists()
+        rule.onNodeWithTag("chat_reference_camera").assertExists()
+        rule.onNodeWithTag("chat_reference_microphone").assertExists()
+        rule.onNodeWithTag("chat_reference_send").assertExists()
+        capture("chat-reference-composer-controls.png")
+        rule.onNodeWithTag("chat_reference_camera").performClick()
+        rule.onNodeWithTag("chat_reference_microphone").performClick()
+        rule.onNodeWithTag("chat_reference_microphone")
+            .performSemanticsAction(SemanticsActions.OnLongClick)
+        rule.onNodeWithTag("chat_reference_send").performClick()
+        rule.runOnIdle {
+            check(cameraOpens == 1)
+            check(voiceTyping == 1)
+            check(voiceRecording == 1)
+            check(messagesSent == 1)
+        }
+    }
 
     @Test fun outgoingDocumentIsVisibleInDarkAndLightThemes() {
         var dark by mutableStateOf(true)
