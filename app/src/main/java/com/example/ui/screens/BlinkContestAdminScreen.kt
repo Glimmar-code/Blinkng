@@ -129,6 +129,11 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         contestsLoading = false
     }
     LaunchedEffect(selectedContest) {
+        // Entries/metrics from a previously selected contest must not appear in
+        // the new contest's moderation queue, even during the first loading frame.
+        entries = emptyList()
+        appeals = emptyList()
+        insights = null
         reviewHistoryEntry = null
         previewEntryMedia = null
         applicantFilter = "All"
@@ -306,7 +311,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Text(contest.optString("title"), fontWeight = FontWeight.Bold)
                     Text(contest.optString("status"))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TextButton(onClick = { selectedContest = contest.optString("id") }) { Text("Entries") }
+                        TextButton(onClick = {
+                            entries = emptyList()
+                            appeals = emptyList()
+                            insights = null
+                            selectedContest = contest.optString("id")
+                        }) { Text("Entries") }
                         if (contest.optString("status") == "draft") {
                             TextButton(enabled = !busy, onClick = {
                                 editingContestId = contest.optString("id")
@@ -394,7 +404,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Managing: " + (activeContest?.optString("title") ?: "Selected contest"),
                     modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                TextButton(onClick = { selectedContest = null }) { Text("Close entries") }
+                TextButton(onClick = {
+                    selectedContest = null
+                    entries = emptyList()
+                    appeals = emptyList()
+                    insights = null
+                }) { Text("Close entries") }
             }
             Text("Contestant appeals", style = MaterialTheme.typography.titleLarge)
             Text("A single appeal is allowed for a rejected or disqualified entry. Accepting reinstates the applicant through audited moderation; denying preserves the decision.",
