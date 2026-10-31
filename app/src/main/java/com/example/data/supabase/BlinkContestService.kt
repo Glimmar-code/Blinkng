@@ -103,6 +103,10 @@ class BlinkContestService {
     suspend fun adminEntries(id: String): Result<JSONArray> = contestResult {
         JSONArray(call("admin_list_blink_contest_entries", JSONObject().put("p_contest_id", id)))
     }
+    suspend fun adminEntryHistory(entryId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("admin_get_blink_contest_entry_review_history", JSONObject()
+            .put("p_entry_id", entryId).put("p_limit", 30)))
+    }
     suspend fun adminSave(data: JSONObject, id: String? = null): Result<JSONObject> = contestResult {
         JSONObject(call("admin_save_blink_contest", JSONObject()
             .put("p_id", id ?: JSONObject.NULL).put("p_data", data)))
