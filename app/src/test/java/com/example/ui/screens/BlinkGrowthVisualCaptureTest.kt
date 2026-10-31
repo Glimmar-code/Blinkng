@@ -11,6 +11,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import java.time.Duration
+import java.time.Instant
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.BlinkTheme
@@ -99,7 +101,7 @@ class BlinkGrowthVisualCaptureTest {
             status = "COMPLETED",
             action = "LIKE",
             createdAt = "2026-10-30T18:00:00Z",
-            endsAt = "2026-10-30T20:00:00Z",
+            endsAt = Instant.now().minus(Duration.ofHours(2)).toString(),
         )
         scene {
             BlinkDropDiscoveryCard(item, onFollow = {}, onOpenDrops = {}, following = false)
