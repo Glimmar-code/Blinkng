@@ -20,6 +20,15 @@ class BlinkContestPolicyTest {
         assertFalse(BlinkContestPolicy.validStatement("  "))
     }
 
+    @Test fun applicationRequiresValidPhotoOrVideoLink() {
+        assertFalse(BlinkContestPolicy.canApply("My contest statement", false, ""))
+        assertFalse(BlinkContestPolicy.canApply("My contest statement", false, "http://unsafe.example/photo.jpg"))
+        assertFalse(BlinkContestPolicy.canApply("My contest statement", false, "https://"))
+        assertTrue(BlinkContestPolicy.canApply("My contest statement", false, "https://blink.com.ng/photo.jpg"))
+        assertTrue(BlinkContestPolicy.canApply("My contest statement", true, ""))
+        assertFalse(BlinkContestPolicy.canApply("short", true, ""))
+    }
+
     @Test fun freeVoteMustBeInVotingPhaseAndUnused() {
         assertTrue(BlinkContestPolicy.canVote("voting", null, "mine", "other"))
         assertFalse(BlinkContestPolicy.canVote("registration", null, "mine", "other"))
