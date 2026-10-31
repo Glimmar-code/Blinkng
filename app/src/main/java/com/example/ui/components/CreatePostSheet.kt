@@ -2026,7 +2026,11 @@ fun CreatePostSheet(
                     },
                     onPoll = {
                         if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
-                        else {
+                        else if (useClassicComposer) {
+                            // Classic editor retains its existing inline poll form.
+                            showPoll = !showPoll
+                            if (showPoll) mode = "post"
+                        } else {
                             showPoll = true
                             showPollCreator = true
                             pollReturnToEditor = true
