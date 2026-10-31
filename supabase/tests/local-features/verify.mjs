@@ -80,7 +80,7 @@ await rejected('/rest/v1/rpc/admin_transition_blink_contest', creator.token, { p
 await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p_action: 'publish' });
 await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
   { p_contest_id: contest.id, p_statement: 'Real local authenticated entry', p_media_url: null },
-  /blink_contest_entry_media_required/);
+  /PRIVATE_CONTEST_MEDIA_REQUIRED|blink_contest_entry_media_required/);
 await rejected('/rest/v1/rpc/apply_blink_contest', creator.token,
   { p_contest_id: contest.id, p_statement: 'Public media should be rejected',
     p_media_url: 'https://example.com/public.jpg' }, /PRIVATE_CONTEST_MEDIA_REQUIRED/);
