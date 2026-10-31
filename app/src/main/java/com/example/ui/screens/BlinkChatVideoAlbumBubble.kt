@@ -42,8 +42,7 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
     val context = LocalContext.current
     val isMine = videos.first().isFromMe
     val latest = videos.last()
-    val read = videos.all { it.status == MessageStatus.READ }
-    val delivered = videos.all { it.status in setOf(MessageStatus.READ, MessageStatus.DELIVERED) }
+    val albumStatus = BlinkChatAlbumStatus.aggregate(videos.map { it.status })
     val groups = when (videos.size) {
         1 -> listOf(videos)
         2 -> listOf(videos)
