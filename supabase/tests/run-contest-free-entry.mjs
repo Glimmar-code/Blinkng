@@ -16,12 +16,12 @@ const mediaRequirement = readFileSync(
 const privateMedia = readFileSync(
   new URL('../migrations/20261031070000_blink_contest_private_submissions.sql', import.meta.url), 'utf8'
 );
-const mediaOne = `https://example.test/functions/v1/blink-contest-private-media/${creator1}/11111111-1111-4111-8111-111111111111.jpg`;
-const mediaTwo = `https://example.test/functions/v1/blink-contest-private-media/${creator2}/22222222-2222-4222-8222-222222222222.jpg`;
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const voter = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const mediaOne = `https://example.test/functions/v1/blink-contest-private-media/${creator1}/11111111-1111-4111-8111-111111111111.jpg`;
+const mediaTwo = `https://example.test/functions/v1/blink-contest-private-media/${creator2}/22222222-2222-4222-8222-222222222222.jpg`;
 const later = (days) => new Date(Date.now() + days * 86400000).toISOString();
 const payload = {
   title: 'BLINK Creator Challenge',
