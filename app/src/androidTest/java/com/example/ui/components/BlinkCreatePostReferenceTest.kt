@@ -230,8 +230,9 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("Public").performClick()
         composeRule.onNodeWithText("Followers").performClick()
         composeRule.onNodeWithText("Next: Post options").performScrollTo().performClick()
+        composeRule.onNodeWithTag("blink_post_details_back").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("audience:Followers", "next"), selected)
+            assertEquals(listOf("audience:Followers", "next", "back"), selected)
         }
     }
 
