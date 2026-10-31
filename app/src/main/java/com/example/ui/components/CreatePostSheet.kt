@@ -277,6 +277,8 @@ fun CreatePostSheet(
     var allowComments by rememberSaveable { mutableStateOf(true) }
     var showPoll by rememberSaveable { mutableStateOf(false) }
     var showPollCreator by rememberSaveable { mutableStateOf(false) }
+    // Poll replacement is committed only on a valid Done, never on Continue.
+    var pollPendingReplacement by rememberSaveable { mutableStateOf(false) }
     var pollReturnToEditor by rememberSaveable { mutableStateOf(false) }
     var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
@@ -1089,6 +1091,7 @@ fun CreatePostSheet(
             showReferenceDetails && !useClassicComposer -> showReferenceDetails = false
             showPollCreator && !useClassicComposer -> {
                 showPollCreator = false
+                pollPendingReplacement = false
                 showCreateLanding = !pollReturnToEditor
                 pollReturnToEditor = false
             }
@@ -1145,9 +1148,9 @@ fun CreatePostSheet(
                 .imePadding()
         ) {
             val referenceStage = when {
-                videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
-                showMediaReview -> "gallery"
                 showPollCreator -> "poll"
+                showMediaReview -> "gallery"
+                videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
                 showCreateLanding -> "landing"
                 showReferenceDetails -> "details"
                 showPublishOptions -> "publish"
@@ -1308,6 +1311,16 @@ fun CreatePostSheet(
                     enabled = !isSubmitting,
                     onBack = ::navigateBack,
                     onDone = {
+                        if (pollPendingReplacement) {
+                            selectedImages = emptyList()
+                            selectedVideo = null
+                            videoClips = emptyList()
+                            selectedCoverUri = null
+                            coverFrameIndex = -1
+                            reelHasPendingEdits = false
+                            reelEditorStage = false
+                        }
+                        pollPendingReplacement = false
                         showPollCreator = false
                         pollReturnToEditor = false
                         showCreateLanding = false
@@ -1372,7 +1385,7 @@ fun CreatePostSheet(
                             pickerOpenedFromLanding = true
                             pendingMediaSwitch = "poll"
                         } else {
-                            showPoll = true
+                            pollPendingReplacement = false
                             showPollCreator = true
                             pollReturnToEditor = false
                             showCreateLanding = false
@@ -1995,10 +2008,9 @@ fun CreatePostSheet(
                     onPoll = {
                         if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
                         else {
-                            showPoll = true
+                            pollPendingReplacement = false
                             showPollCreator = true
                             pollReturnToEditor = true
-                            mode = "post"
                         }
                     },
                     onEmoji = { if (text.length < 4998) text += " 😊" },
@@ -2031,10 +2043,9 @@ fun CreatePostSheet(
                             showPoll = !showPoll
                             if (showPoll) mode = "post"
                         } else {
-                            showPoll = true
+                            pollPendingReplacement = false
                             showPollCreator = true
                             pollReturnToEditor = true
-                            mode = "post"
                         }
                     },
                     onMention = {
@@ -2602,17 +2613,11 @@ fun CreatePostSheet(
                         "poll" -> {
                             val openedFromLanding = pickerOpenedFromLanding
                             pickerOpenedFromLanding = false
-                            videoClips = emptyList()
-                            selectedVideo = null
-                            selectedImages = emptyList()
-                            selectedCoverUri = null
-                            coverFrameIndex = -1
-                            reelHasPendingEdits = false
-                            reelEditorStage = false
+                            // Preserve photo/Reel selection until a finished poll
+                            // is attached. Cancel/Back leaves the old draft usable.
+                            pollPendingReplacement = true
                             showMediaReview = false
                             showCreateLanding = false
-                            mode = "post"
-                            showPoll = true
                             pollReturnToEditor = !openedFromLanding
                             showPollCreator = true
                         }
