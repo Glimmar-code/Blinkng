@@ -968,12 +968,12 @@ private fun DropCard(
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        drop.creatorName.ifBlank { "@${giveaway.creatorUsername}" },
+                        drop.creatorName.ifBlank { "@${drop.creatorUsername}" },
                         fontWeight = FontWeight.Bold,
                     )
                     if (drop.creatorUsername.isNotBlank()) {
                         Text(
-                            "@${giveaway.creatorUsername}",
+                            "@${drop.creatorUsername}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1003,17 +1003,17 @@ private fun DropCard(
                 )
             }
             Text(
-                "${formatter.format(giveaway.rewardPerUser)} coins each · ${giveaway.winnerCount} people",
+                "${formatter.format(drop.rewardPerUser)} coins each · ${drop.winnerCount} people",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black,
             )
             Text(
-                "${actionLabel(giveaway.action)} · ${giveaway.targetTitle.ifBlank { targetLabel(giveaway.targetType) }}",
+                "${actionLabel(drop.action)} · ${drop.targetTitle.ifBlank { targetLabel(drop.targetType) }}",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
                 if (drop.audienceScope == "MY_CAMPUS") {
-                    "Campus only · ${giveaway.targetUniversity}"
+                    "Campus only · ${drop.targetUniversity}"
                 } else {
                     "All campuses"
                 },
@@ -1029,12 +1029,12 @@ private fun DropCard(
             )
             val reservedRemaining = (drop.totalCoins - drop.coinDistributed - drop.coinRefunded).coerceAtLeast(0L)
             Text(
-                "${giveaway.claimedCount}/${giveaway.winnerCount} claimed · $remaining reward${if (remaining == 1) "" else "s"} remaining",
+                "${drop.claimedCount}/${drop.winnerCount} claimed · $remaining reward${if (remaining == 1) "" else "s"} remaining",
                 style = MaterialTheme.typography.labelMedium,
             )
             Text(
-                "Distributed ${formatter.format(giveaway.coinDistributed)} · Reserved ${formatter.format(reservedRemaining)}" +
-                    if (drop.coinRefunded > 0) " · Refunded ${formatter.format(giveaway.coinRefunded)}" else "",
+                "Distributed ${formatter.format(drop.coinDistributed)} · Reserved ${formatter.format(reservedRemaining)}" +
+                    if (drop.coinRefunded > 0) " · Refunded ${formatter.format(drop.coinRefunded)}" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
