@@ -476,6 +476,7 @@ abstract class BlinkCreatePostVisualAuditFixture {
     }
 
     @Test fun previewUsesActualFeedCardProportionsOnAndroid() {
+        var dismissed = false
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val resource = "android.resource://${context.packageName}/${com.example.R.drawable.app_icon}"
         rule.setContent {
@@ -500,11 +501,16 @@ abstract class BlinkCreatePostVisualAuditFixture {
                         avatarUrl = resource,
                         university = "FUTA"
                     ),
-                    onDismiss = {}
+                    onDismiss = { dismissed = true }
                 )
             }
         }
+        rule.onNodeWithTag("blink_post_preview_back").assertExists()
+        rule.onNodeWithText("Preview only · Not published").assertExists()
+        rule.onNodeWithText("Back to editor").assertDoesNotExist()
         capture("create-post-preview-staging.png", "blink_post_preview_stage")
+        rule.onNodeWithTag("blink_post_preview_back").performClick()
+        rule.runOnIdle { check(dismissed) { "Preview must allow returning to composer" } }
     }
 
     @Test fun photoEditorUsesActualSelectedPhotoAndNativeTools() {
