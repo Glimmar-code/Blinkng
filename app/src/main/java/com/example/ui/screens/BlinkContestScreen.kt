@@ -89,6 +89,8 @@ fun BlinkContestScreen(
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
+    // A previous contest must never render during navigation to a new contest.
+    var detailContestId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf("Ongoing") }
     var statement by remember { mutableStateOf("") }
     var mediaChoice by remember { mutableStateOf<Uri?>(null) }
@@ -97,6 +99,7 @@ fun BlinkContestScreen(
     ) { selected -> mediaChoice = selected }
     var error by remember { mutableStateOf<String?>(null) }
     var loadingContests by remember { mutableStateOf(true) }
+    var listError by remember { mutableStateOf<String?>(null) }
     var detailLoadError by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -127,7 +130,18 @@ fun BlinkContestScreen(
         searchQuery = ""
         searchOffset = 0
         searchCandidates = emptyList()
+        searchTotal = 0
         searchError = null
+        inspectedCandidate = null
+        flyerCandidate = null
+        shareLookupBusy = false
+        notice = null
+        error = null
+        // The selected contest's detail remains visible only when its ID matches.
+        if (detailContestId != selectedId) {
+            detail = null
+            detailContestId = null
+        }
     }
     LaunchedEffect(selectedId, detail?.optString("my_entry_id"), revision) {
         myAppeal = null
@@ -144,6 +158,7 @@ fun BlinkContestScreen(
         if (!searchExpanded || id == null || searchQuery.trim().length == 1) {
             searchCandidates = emptyList()
             searchTotal = 0
+            searchError = null
             searchBusy = false
         } else {
             searchBusy = true
@@ -195,16 +210,31 @@ fun BlinkContestScreen(
 
     LaunchedEffect(revision) {
         loadingContests = true
-        api.contests().onSuccess { contests = it.contestObjects(); error = null }
-            .onFailure { error = it.message ?: "Unable to load contests." }
+        api.contests().onSuccess {
+            contests = it.contestObjects()
+            listError = null
+        }.onFailure { listError = it.message ?: "Unable to load contests." }
         loadingContests = false
     }
     LaunchedEffect(selectedId, revision) {
-        detail = null
-        detailLoadError = null
-        selectedId?.let { id ->
-            api.detail(id).onSuccess { detail = it }
-                .onFailure { detailLoadError = it.message ?: "Unable to open contest." }
+        val id = selectedId
+        if (id == null) {
+            detail = null
+            detailContestId = null
+            detailLoadError = null
+        } else {
+            // Refresh in place: no full-screen loading flicker every 60 seconds.
+            // A different ID never reuses the previous contest's details.
+            if (detailContestId != id) {
+                detail = null
+                detailContestId = null
+            }
+            detailLoadError = null
+            api.detail(id).onSuccess {
+                detail = it
+                detailContestId = id
+                detailLoadError = null
+            }.onFailure { detailLoadError = it.message ?: "Unable to refresh contest." }
         }
     }
 
@@ -220,9 +250,20 @@ fun BlinkContestScreen(
                 shareLookupBusy = true
                 scope.launch {
                     api.candidate(contestId, entryId)
-                        .onSuccess { flyerCandidate = it }
-                        .onFailure { error = it.message ?: "Unable to prepare the voting flyer." }
-                    shareLookupBusy = false
+                        .onSuccess { resolved ->
+                            if (selectedId == contestId &&
+                                resolved.optString("contest_id") == contestId &&
+                                resolved.optString("id") == entryId) {
+                                flyerCandidate = resolved
+                            } else if (selectedId == contestId) {
+                                error = "This contestant is no longer available for sharing."
+                            }
+                        }
+                        .onFailure {
+                            if (selectedId == contestId)
+                                error = it.message ?: "Unable to prepare the voting flyer."
+                        }
+                    if (selectedId == contestId) shareLookupBusy = false
                 }
             }
         }
@@ -260,17 +301,19 @@ fun BlinkContestScreen(
                 if (rows.isEmpty()) item {
                     if (loadingContests) {
                         CircularProgressIndicator(modifier = Modifier.padding(18.dp))
-                    } else if (error == null) {
+                    } else if (listError == null) {
                         Text("No " + tab.lowercase() + " contests yet. Check again soon.",
                             modifier = Modifier.padding(18.dp))
                     } else {
-                        Button(onClick = { revision++ }, modifier = Modifier.padding(18.dp)) {
-                            Text("Retry loading contests")
+                        Column(Modifier.padding(18.dp)) {
+                            Text(listError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                            Button(onClick = { revision++ }) { Text("Retry loading contests") }
                         }
                     }
                 }
                 items(rows, key = { it.optString("id") }) { contest ->
                     BlinkContestHeroCard(contest) {
+                        invitedEntryId = null
                         selectedId = contest.optString("id")
                         statement = ""; mediaChoice = null; notice = null
                     }
@@ -278,7 +321,7 @@ fun BlinkContestScreen(
                 }
             }
         } else {
-            val d = detail
+            val d = detail.takeIf { detailContestId == selectedId }
             if (d == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                 if (detailLoadError == null) {
                     CircularProgressIndicator()
@@ -289,6 +332,13 @@ fun BlinkContestScreen(
                     }
                 }
             } else {
+                detailLoadError?.let { failure ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(failure, Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { revision++ }) { Text("Retry") }
+                    }
+                }
                 val c = d.optJSONObject("contest") ?: JSONObject()
                 val status = c.optString("status")
                 val own = d.optString("my_entry_id", "").takeUnless { it == "null" }.orEmpty()
