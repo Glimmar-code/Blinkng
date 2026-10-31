@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.net.Uri
@@ -60,6 +62,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var pendingEntryDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
     var pendingEntryReason by remember { mutableStateOf("") }
+    var reviewHistoryEntry by remember { mutableStateOf<String?>(null) }
+    var reviewHistoryName by remember { mutableStateOf("") }
+    var reviewHistoryRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var reviewHistoryTotal by remember { mutableIntStateOf(0) }
+    var reviewHistoryBusy by remember { mutableStateOf(false) }
+    var reviewHistoryError by remember { mutableStateOf<String?>(null) }
     var previewEntryMedia by remember { mutableStateOf<String?>(null) }
     var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
 
@@ -103,6 +111,25 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     LaunchedEffect(revision) {
         api.adminContests().onSuccess { contests = it.contestObjects() }
             .onFailure { message = it.message ?: "Cannot load contests." }
+    }
+    LaunchedEffect(selectedContest) {
+        reviewHistoryEntry = null
+    }
+    LaunchedEffect(reviewHistoryEntry, revision) {
+        reviewHistoryRows = emptyList()
+        reviewHistoryTotal = 0
+        reviewHistoryError = null
+        val entryId = reviewHistoryEntry
+        if (entryId != null) {
+            reviewHistoryBusy = true
+            api.adminEntryHistory(entryId)
+                .onSuccess { record ->
+                    reviewHistoryRows = record.optJSONArray("history")?.contestObjects().orEmpty()
+                    reviewHistoryTotal = record.optInt("total")
+                }
+                .onFailure { reviewHistoryError = it.message ?: "Unable to load moderation history." }
+            reviewHistoryBusy = false
+        }
     }
     LaunchedEffect(selectedContest, revision) {
         entries = emptyList()
@@ -420,6 +447,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     Text("@" + entry.optString("username") + " · " + entry.optString("status"),
                         fontWeight = FontWeight.SemiBold)
                     Text(entry.optString("statement"))
+                    TextButton(enabled = !busy, onClick = {
+                        reviewHistoryName = entry.optString("username")
+                        reviewHistoryEntry = entry.optString("id")
+                    }) { Text("Review history") }
                     val media = entry.optString("media_url")
                     if (media.startsWith("https://")) {
                         BlinkContestApplicantMediaCard(media) {
@@ -454,6 +485,59 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    reviewHistoryEntry?.let { entryId ->
+        AlertDialog(
+            onDismissRequest = { reviewHistoryEntry = null },
+            title = { Text("Review history · @" + reviewHistoryName) },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (reviewHistoryBusy) CircularProgressIndicator()
+                    reviewHistoryError?.let { fault ->
+                        Text(fault, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = {
+                            scope.launch {
+                                reviewHistoryBusy = true
+                                api.adminEntryHistory(entryId)
+                                    .onSuccess { response ->
+                                        reviewHistoryRows = response.optJSONArray("history")
+                                            ?.contestObjects().orEmpty()
+                                        reviewHistoryTotal = response.optInt("total")
+                                        reviewHistoryError = null
+                                    }.onFailure {
+                                        reviewHistoryError = it.message ?: "Unable to refresh history."
+                                    }
+                                reviewHistoryBusy = false
+                            }
+                        }) { Text("Retry") }
+                    }
+                    if (!reviewHistoryBusy && reviewHistoryError == null) {
+                        Text("$reviewHistoryTotal recorded decision(s) · displaying the latest 30",
+                            style = MaterialTheme.typography.bodySmall)
+                        if (reviewHistoryRows.isEmpty()) Text("No moderation decisions recorded yet.")
+                        reviewHistoryRows.forEach { audit ->
+                            HorizontalDivider()
+                            Text(
+                                audit.optString("previous_status").replaceFirstChar { it.uppercase() } +
+                                    " → " + audit.optString("next_status").replaceFirstChar { it.uppercase() },
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(audit.optString("reason"))
+                            Text("By @" + audit.optString("actor_username") +
+                                " · " + audit.optString("created_at").replace('T',' ').take(19) + " UTC",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { reviewHistoryEntry = null }) { Text("Close") }
+            }
+        )
     }
     previewEntryMedia?.let { media ->
         AlertDialog(
