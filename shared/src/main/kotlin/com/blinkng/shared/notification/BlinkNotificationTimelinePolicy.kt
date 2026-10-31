@@ -16,8 +16,8 @@ object BlinkNotificationTimelinePolicy {
         return "&or=(created_at.lt.$time,and(created_at.eq.$time,id.lt.$id))"
     }
 
-    fun belongsInActivityTimeline(targetType: String?): Boolean =
-        !targetType.equals("CHAT", ignoreCase = true)
+    // Chat activity must be visible alongside social, wallet and official notifications.
+    fun belongsInActivityTimeline(targetType: String?): Boolean = true
 
     fun isOfficialMirror(
         legacyTargetType: String?,

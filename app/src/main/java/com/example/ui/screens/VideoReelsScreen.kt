@@ -639,7 +639,7 @@ private fun ReelsContent(
         // Compact viewports adapt banner size without clipping the video preview.
         val compactViewport = maxHeight < 700.dp
         val showFeatured = maxHeight >= 560.dp
-        val featuredHeight = if (compactViewport) 100.dp else 144.dp
+        val featuredHeight = if (!showFeatured) 0.dp else if (compactViewport) 100.dp else 144.dp
         val chromeTop = (
             WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
                 108.dp + (if (showFeatured) featuredHeight else 0.dp)
@@ -816,7 +816,7 @@ private fun ReelsContent(
                         reel = reel,
                         isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
                         shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
-                        isMuted = !expanded || reelsMuted,
+                        isMuted = reelShouldBeMuted(expanded = expanded, manuallyMuted = reelsMuted),
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
                             resumePrefs.edit().putBoolean("reels_muted:$resumeUserKey", reelsMuted).apply()
@@ -873,7 +873,7 @@ private fun ReelsContent(
                         reel = reel,
                         isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
                         shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
-                        isMuted = !expanded || reelsMuted,
+                        isMuted = reelShouldBeMuted(expanded = expanded, manuallyMuted = reelsMuted),
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
                             resumePrefs.edit().putBoolean("reels_muted:$resumeUserKey", reelsMuted).apply()

@@ -20,7 +20,7 @@ class ReelsReferenceChromeTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
-    fun emptyFeaturedListDoesNotReserveAnEmptyHighlightBanner() {
+    fun emptyFeaturedListReservesAnHonestTopReelsFallback() {
         composeRule.setContent {
             MaterialTheme {
                 ReelsReferenceChrome(
@@ -43,74 +43,36 @@ class ReelsReferenceChromeTest {
                 )
             }
         }
-        composeRule.onNodeWithText("Top Reels · New highlights every 12 hours").assertDoesNotExist()
+        composeRule.onNodeWithText("Top Reels · New highlights appear as videos gain views").assertExists()
         composeRule.onNodeWithContentDescription("Refresh reels").assertExists()
         composeRule.onNodeWithContentDescription("Create reel").assertExists()
     }
 
     @Test
-    fun storyStripOnlyRingsRealUploadsAndOpensTheRealStory() {
-        val actions = mutableListOf<String>()
-        composeRule.setContent {
-            MaterialTheme {
-                ReelsReferenceChrome(
-                    stories = listOf(
-                        Story(id = "story_me", username = "current", avatar = ""),
-                        Story(id = "friend1", username = "aisha", avatar = "",
-                            storyImage = "https://example.com/story.jpg", displayName = "Aisha",
-                            hasUnseen = true)
-                    ),
-                    userAvatar = "",
-                    currentUsername = "current",
-                    isDark = false,
-                    hasUnreadNotifications = false,
-                    selectedTab = "Reels",
-                    onSelectTab = {},
-                    onAddStory = { actions += "add" },
-                    onStoryClick = { actions += it.id },
-                    onProfileClick = {},
-                    onSearch = {},
-                    onGame = {},
-                    onNotifications = {},
-                    onMenu = {},
-                    autoSlideEnabled = false
-                )
-            }
-        }
-        composeRule.onNodeWithContentDescription("Add story").assertExists()
-        composeRule.onNodeWithContentDescription("Open Aisha's story").performClick()
-        composeRule.runOnIdle { assertEquals(listOf("friend1"), actions) }
-    }
-
-    @Test
-    fun uploadedMyStoryOpensViewerInsteadOfAddStory() {
-        val actions = mutableListOf<String>()
+    fun storyStripIsAbsentEvenWhenHomeStoriesExist() {
         composeRule.setContent {
             MaterialTheme {
                 ReelsReferenceChrome(
                     stories = listOf(
                         Story(id = "story_me", username = "current", avatar = "",
-                            isUser = true, storyImage = "https://example.com/mine.jpg")
+                            storyImage = "https://example.com/mine.jpg"),
+                        Story(id = "friend1", username = "aisha", avatar = "",
+                            storyImage = "https://example.com/story.jpg", displayName = "Aisha")
                     ),
-                    userAvatar = "",
-                    currentUsername = "current",
-                    isDark = false,
-                    hasUnreadNotifications = false,
-                    selectedTab = "Reels",
-                    onSelectTab = {},
-                    onAddStory = { actions += "add" },
-                    onStoryClick = { actions += "open:${it.id}" },
-                    onProfileClick = {},
-                    onSearch = {},
-                    onGame = {},
-                    onNotifications = {},
-                    onMenu = {},
-                    autoSlideEnabled = false
+                    userAvatar = "", currentUsername = "current", isDark = false,
+                    hasUnreadNotifications = false, selectedTab = "Reels",
+                    onSelectTab = {}, onAddStory = {}, onStoryClick = {},
+                    onProfileClick = {}, onSearch = {}, onGame = {},
+                    onNotifications = {}, onMenu = {}, autoSlideEnabled = false
                 )
             }
         }
-        composeRule.onNodeWithContentDescription("Open my story").performClick()
-        composeRule.runOnIdle { assertEquals(listOf("open:story_me"), actions) }
+        composeRule.onNodeWithContentDescription("Add story").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Open my story").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Open Aisha's story").assertDoesNotExist()
+        composeRule.onNodeWithText(
+            "Top Reels · New highlights appear as videos gain views"
+        ).assertExists()
     }
 
     @Test

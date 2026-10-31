@@ -274,7 +274,7 @@ internal fun BlinkPremiumProfileDashboard(
             PremiumProfileShortcut(
                 text = "HP Level", icon = Icons.Default.AutoAwesome,
                 modifier = Modifier.weight(1f),
-                onClick = if (isMe) onCreatorStudio else { { showDetails = true } }
+                onClick = { if (isMe) onCreatorStudio() else showDetails = true }
             )
         }
         if (isMe) {

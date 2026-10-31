@@ -274,7 +274,7 @@ internal fun ReelsReferenceChrome(
             }
         }
         }
-        if (featured.isEmpty()) {
+        if (featured.isEmpty() && featuredCardHeight > 0.dp) {
             // No fabricated thumbnails: keep a genuine, useful empty state until
             // the last-12-hours Top Reels service has eligible video views.
             Box(
