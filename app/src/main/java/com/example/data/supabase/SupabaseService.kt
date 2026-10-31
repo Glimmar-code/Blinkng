@@ -3987,10 +3987,15 @@ suspend fun uploadPostMedia(
         }
     }
 
-    suspend fun recordMarketView(itemId: String): Long? = withContext(Dispatchers.IO) {
-        if (!isValidUuid(itemId)) return@withContext null
+    suspend fun recordMarketView(
+        itemId: String,
+        eventId: String = java.util.UUID.randomUUID().toString()
+    ): Long? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId) || !isValidUuid(eventId)) return@withContext null
         runCatching {
-            val body = JSONObject().put("p_item_id", itemId)
+            val body = JSONObject()
+                .put("p_item_id", itemId)
+                .put("p_event_id", eventId)
             executeRequest(
                 newRequestBuilder("/rest/v1/rpc/record_marketplace_view", true)
                     .post(body.toString().toRequestBody(jsonMediaType)).build()

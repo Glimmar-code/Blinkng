@@ -7605,8 +7605,24 @@ private suspend fun restoreSupabaseSession() {
         )
         if (item.id.isBlank() || !_uiState.value.isOnline) return
         viewModelScope.launch {
+            // Opening a detail route is only a candidate exposure. Count it after
+            // two seconds with the same listing still genuinely on screen.
+            kotlinx.coroutines.delay(2_000L)
+            if (_uiState.value.viewingProduct?.id != item.id || !_uiState.value.isOnline) {
+                return@launch
+            }
             val count = supabaseService.recordMarketView(item.id) ?: return@launch
             val latest = _uiState.value
+            val currentBaseline = latest.viewingProduct
+                ?.takeIf { it.id == item.id }?.viewsCount
+                ?: item.viewsCount
+            if (count > currentBaseline) {
+                com.example.data.views.MarketViewDisplayCoordinator.recordExposure(
+                    itemId = item.id,
+                    modelCount = currentBaseline,
+                    authoritativeCount = count,
+                )
+            }
             val update: (MarketItem) -> MarketItem = { current ->
                 if (current.id == item.id) current.copy(viewsCount = count) else current
             }
@@ -7635,9 +7651,9 @@ private suspend fun restoreSupabaseSession() {
             }
             val current = _uiState.value
             _uiState.value = current.copy(
-                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id }),
-                viewingProduct = item
+                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id })
             )
+            openProductDetail(item)
         }
     }
 
