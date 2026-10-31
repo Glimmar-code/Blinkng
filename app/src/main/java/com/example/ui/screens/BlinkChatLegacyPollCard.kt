@@ -8,6 +8,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +51,8 @@ internal fun BlinkChatLegacyPollCard(
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("▥", color = palette.accent, fontSize = 15.sp)
+                Icon(Icons.Default.BarChart, contentDescription = null,
+                    tint = palette.accent, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(7.dp))
                 Text("Quick Poll", fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     color = textColor)
@@ -85,7 +89,7 @@ internal fun BlinkChatLegacyPollCard(
                 }
             }
             Text(
-                "Tap a choice to reply · Vote totals unavailable",
+                "Tap a choice to reply · Live vote results unavailable",
                 color = palette.textMuted,
                 fontSize = 9.sp,
                 maxLines = 2
