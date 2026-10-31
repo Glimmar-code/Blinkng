@@ -7614,7 +7614,7 @@ private suspend fun restoreSupabaseSession() {
             val count = supabaseService.recordMarketView(item.id) ?: return@launch
             com.example.data.views.MarketViewDisplayCoordinator.recordExposure(
                 itemId = item.id,
-                modelCount = item.viewsCount,
+                modelCount = item.viewsCount.toInt().coerceAtLeast(0),
                 authoritativeCount = count.toInt().coerceAtLeast(0),
             )
             val latest = _uiState.value
