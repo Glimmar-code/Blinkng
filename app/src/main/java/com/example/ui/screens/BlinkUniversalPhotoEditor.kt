@@ -108,6 +108,7 @@ fun BlinkUniversalPhotoEditor(
     var labelSize by remember { mutableFloatStateOf(.07f) }
     var precisionCropRatio by remember { mutableStateOf<Float?>(null) }
     var precisionCropScale by remember { mutableFloatStateOf(1f) }
+    var adjustingSlider by remember { mutableStateOf(false) }
     var straightenAngle by remember { mutableFloatStateOf(0f) }
     val undoHistory = remember(originalUri) { mutableStateListOf<PhotoStudioHistory>() }
     val redoHistory = remember(originalUri) { mutableStateListOf<PhotoStudioHistory>() }
@@ -157,7 +158,10 @@ fun BlinkUniversalPhotoEditor(
     fun close() {
         if (busy) return
         val dirty = transientCopies.isNotEmpty() || strokes.isNotEmpty() ||
-            labels.isNotEmpty() || exposure != 0f || contrast != 1f || saturation != 1f
+            labels.isNotEmpty() || exposure != 0f || contrast != 1f ||
+            saturation != 1f || straightenAngle != 0f ||
+            precisionCropScale != 1f || precisionCropRatio != null ||
+            newText.isNotBlank()
         if (dirty) showDiscard = true else onDismiss()
     }
     BackHandler(enabled = true) { close() }
@@ -498,11 +502,18 @@ fun BlinkUniversalPhotoEditor(
                                     modifier=Modifier.width(110.dp))
                                 Slider(
                                     value=when(index){0->exposure;1->contrast;else->saturation},
-                                    onValueChange={
+                                    onValueChange = {
+                                        if (!adjustingSlider) {
+                                            saveUndo()
+                                            adjustingSlider = true
+                                        }
                                         when(index){0->exposure=it;1->contrast=it;else->saturation=it}
                                     },
+                                    onValueChangeFinished = { adjustingSlider = false },
                                     valueRange=when(index){0->-1f..1f;1->.5f..1.5f;else->0f..2f},
-                                    enabled=!busy,modifier=Modifier.weight(1f)
+                                    enabled=!busy,
+                                    modifier=Modifier.weight(1f)
+                                        .testTag("blink_photo_adjust_" + index)
                                 )
                             }
                         }
