@@ -63,10 +63,16 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var paymentNote by remember { mutableStateOf("") }
     var selectedContest by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var contestsLoading by remember { mutableStateOf(true) }
+    var entriesLoading by remember { mutableStateOf(false) }
+    var entriesError by remember { mutableStateOf<String?>(null) }
+    var insightsError by remember { mutableStateOf<String?>(null) }
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var pendingEntryDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
     var pendingEntryReason by remember { mutableStateOf("") }
+    var pendingEntryError by remember { mutableStateOf<String?>(null) }
     var reviewHistoryEntry by remember { mutableStateOf<String?>(null) }
     var reviewHistoryName by remember { mutableStateOf("") }
     var reviewHistoryRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -113,12 +119,24 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         listOf(prizeOne, prizeTwo, prizeThree), maxEntries, cover, coverChoice != null
     )
 
+    LaunchedEffect(message) {
+        if (message.isNotBlank()) snackbarHostState.showSnackbar(message)
+    }
     LaunchedEffect(revision) {
+        contestsLoading = true
         api.adminContests().onSuccess { contests = it.contestObjects() }
             .onFailure { message = it.message ?: "Cannot load contests." }
+        contestsLoading = false
     }
     LaunchedEffect(selectedContest) {
         reviewHistoryEntry = null
+        previewEntryMedia = null
+        applicantFilter = "All"
+        appealReviewReason = ""
+        appealReviewError = null
+        voteReviewNote = ""
+        paymentReference = ""
+        paymentNote = ""
     }
     LaunchedEffect(reviewHistoryEntry, revision) {
         reviewHistoryRows = emptyList()
@@ -137,20 +155,30 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         }
     }
     LaunchedEffect(selectedContest, revision) {
-        entries = emptyList()
-        appeals = emptyList()
-        insights = null
-        selectedContest?.let { id ->
+        val id = selectedContest
+        if (id == null) {
+            entries = emptyList()
+            appeals = emptyList()
+            insights = null
+            entriesError = null
+            insightsError = null
+        } else {
+            // Keep successful data on refresh, but never display another contest's.
+            entriesLoading = true
+            entriesError = null
+            insightsError = null
             api.adminAppeals(id)
                 .onSuccess { appeals = it.contestObjects(); appealReviewError = null }
                 .onFailure { appealReviewError = it.message ?: "Cannot load appeals." }
             api.adminEntries(id).onSuccess { entries = it.contestObjects() }
-                .onFailure { message = it.message ?: "Cannot load applications." }
+                .onFailure { entriesError = it.message ?: "Cannot load applications." }
+            entriesLoading = false
             api.adminInsights(id).onSuccess { insights = it }
-                .onFailure { message = it.message ?: "Cannot load contest insights." }
+                .onFailure { insightsError = it.message ?: "Cannot load contest insights." }
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
@@ -268,6 +296,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("Manage contests", style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(vertical = 10.dp))
+            if (contestsLoading && contests.isEmpty()) CircularProgressIndicator()
+            if (!contestsLoading && contests.isEmpty()) Text("No contests available. Create a draft above.")
+            TextButton(enabled = !contestsLoading, onClick = { revision++ }) { Text("Refresh manager") }
         }
         items(contests, key = { it.optString("id") }) { contest ->
             ElevatedCard(Modifier.fillMaxWidth()) {
@@ -359,6 +390,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         }
         if (selectedContest != null) item {
             HorizontalDivider()
+            val activeContest = contests.firstOrNull { it.optString("id") == selectedContest }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Managing: " + (activeContest?.optString("title") ?: "Selected contest"),
+                    modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                TextButton(onClick = { selectedContest = null }) { Text("Close entries") }
+            }
             Text("Contestant appeals", style = MaterialTheme.typography.titleLarge)
             Text("A single appeal is allowed for a rejected or disqualified entry. Accepting reinstates the applicant through audited moderation; denying preserves the decision.",
                 style = MaterialTheme.typography.bodySmall)
@@ -366,7 +403,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Text(it, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = { revision++ }) { Text("Retry appeals") }
             }
-            if (appeals.isEmpty() && appealReviewError == null) {
+            if (appeals.isEmpty() && appealReviewError == null && !entriesLoading) {
                 Text("No pending appeals.", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedTextField(
@@ -425,12 +462,21 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             }
             Text("$visibleCount matching applications",
                 style = MaterialTheme.typography.bodySmall)
+            if (entriesLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            entriesError?.let { failure ->
+                Text(failure, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { revision++ }) { Text("Retry applications") }
+            }
         }
         if (selectedContest != null) item {
             val stats = insights
             Text("Share and voting analytics",style=MaterialTheme.typography.titleLarge)
+            insightsError?.let { failure ->
+                Text(failure, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { revision++ }) { Text("Retry analytics") }
+            }
             if (stats == null) {
-                Text("Loading contest metrics…")
+                if (insightsError == null) Text("Loading contest metrics…")
             } else {
                 Text("Recorded shares: " + stats.optInt("shares") +
                     " · Unique sharers: " + stats.optInt("unique_sharers"))
@@ -555,6 +601,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                             TextButton(enabled = !busy, onClick = {
                                 if (action != "approve") {
                                     pendingEntryReason = ""
+                                    pendingEntryError = null
                                     pendingEntryDecision = entry.optString("id") to action
                                 } else {
                                     busy = true
@@ -572,6 +619,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
     reviewHistoryEntry?.let { entryId ->
         BlinkContestReviewHistoryDialog(
@@ -637,6 +686,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                         minLines = 2,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    pendingEntryError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             },
             confirmButton = {
@@ -644,11 +694,18 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     busy = true
                     scope.launch {
                         api.adminReview(entryId, action, pendingEntryReason)
-                            .onSuccess { message = "Application updated."; revision++ }
-                            .onFailure { message = it.message ?: "Review failed." }
+                            .onSuccess {
+                                message = "Application updated."
+                                pendingEntryDecision = null
+                                pendingEntryReason = ""
+                                pendingEntryError = null
+                                revision++
+                            }
+                            .onFailure {
+                                pendingEntryError = it.message ?: "Review failed. Try again."
+                                message = pendingEntryError.orEmpty()
+                            }
                         busy = false
-                        pendingEntryDecision = null
-                        pendingEntryReason = ""
                     }
                 }) { Text("Confirm " + action) }
             },
