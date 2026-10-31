@@ -5,6 +5,11 @@ import android.media.MediaPlayer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.TextButton
@@ -82,8 +87,17 @@ internal fun BlinkChatVoicePlayer(
             modifier = Modifier.size(40.dp)
                 .background(Color(0xFF0879F8), CircleShape)
                 .testTag("chat_reference_voice_play"),
-            enabled = url?.startsWith("https://") == true && !preparing && !failed,
+            // Failed preparations must remain retriable; previously the
+            // button became permanently disabled until leaving the chat.
+            enabled = url?.startsWith("https://") == true && !preparing,
             onClick = {
+                if (failed) {
+                    player?.let { runCatching { it.reset(); it.release() } }
+                    player = null
+                    ready = false
+                    failed = false
+                    elapsed = 0
+                }
                 val live = player
                 if (live != null && ready) {
                     runCatching {
@@ -97,6 +111,9 @@ internal fun BlinkChatVoicePlayer(
                     }.onFailure {
                         isPlaying = false
                         failed = true
+                        runCatching { live.reset(); live.release() }
+                        player = null
+                        ready = false
                     }
                 } else if (live == null && !url.isNullOrBlank()) {
                     val next = MediaPlayer()
@@ -119,6 +136,9 @@ internal fun BlinkChatVoicePlayer(
                         preparing = false
                         isPlaying = false
                         failed = true
+                        ready = false
+                        // MediaPlayer error state must be discarded before retry.
+                        // Release is deferred to the next explicit attempt/dispose.
                         true
                     }
                     runCatching {
@@ -133,6 +153,7 @@ internal fun BlinkChatVoicePlayer(
                     }.onFailure {
                         preparing = false
                         failed = true
+                        ready = false
                         runCatching { next.release() }
                         player = null
                     }
@@ -146,7 +167,7 @@ internal fun BlinkChatVoicePlayer(
                     else -> Icons.Default.PlayArrow
                 },
                 contentDescription = when {
-                    failed -> "Voice note failed to play"
+                    failed -> "Retry voice note playback"
                     isPlaying -> "Pause voice note"
                     preparing -> "Loading voice note"
                     url.isNullOrBlank() -> "Voice note unavailable"
@@ -164,7 +185,22 @@ internal fun BlinkChatVoicePlayer(
         // Real measured samples replace stable placeholders when available.
         Row(
             Modifier.weight(1f).height(24.dp)
-                .testTag("chat_reference_voice_waveform"),
+                .testTag("chat_reference_voice_waveform")
+                .semantics {
+                    contentDescription = if (ready) "Seek within voice message"
+                        else "Voice message waveform"
+                }
+                .pointerInput(player, duration, ready) {
+                    if (ready && duration > 0) detectTapGestures { position ->
+                        val fraction = (position.x / size.width.coerceAtLeast(1))
+                            .coerceIn(0f, 1f)
+                        val toMs = blinkVoiceSeekPositionMs(fraction, duration)
+                        player?.let { runCatching {
+                            it.seekTo(toMs)
+                            elapsed = toMs
+                        } }
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
@@ -232,3 +268,7 @@ internal fun formatBlinkVoiceDuration(milliseconds: Int): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
     return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 }
+
+/** Maps a touch position to the bounded MediaPlayer seek time. */
+internal fun blinkVoiceSeekPositionMs(fraction: Float, durationMs: Int): Int =
+    (fraction.coerceIn(0f, 1f) * durationMs.coerceAtLeast(0)).toInt()
