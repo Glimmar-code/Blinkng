@@ -4844,7 +4844,10 @@ internal fun MessageComposer(
             Box(contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Send,
                     contentDescription = if (isRecording) "Send voice note" else "Send message",
-                    tint = Color.White, modifier = Modifier.size(22.dp))
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                        .graphicsLayer { rotationZ = -45f }
+                        .testTag("chat_reference_send_plane"))
             }
         }
     }
