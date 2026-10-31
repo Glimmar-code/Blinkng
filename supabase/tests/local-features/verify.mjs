@@ -146,6 +146,23 @@ const entry = await rpc('apply_blink_contest', creator, {
   p_contest_id: contest.id, p_statement: 'Real local authenticated entry',
   p_media_url: privateMediaUrl
 });
+// A private upload older than retention is only a cleanup candidate when
+// no Contest application refers to it. Keep all cleanup actions read-only.
+const orphanCandidate = creator.id + '/' + randomUUID() + '.png';
+ok(await request('/storage/v1/object/blink-contest-private/' + orphanCandidate,
+  creator.token, picture, 'POST', { 'Content-Type': 'image/png' }),
+  'Orphan audit upload fixture');
+sql("update storage.objects set created_at=now()-interval '5 days' " +
+  "where bucket_id='blink-contest-private';");
+await rejected('/rest/v1/rpc/admin_list_blink_contest_orphan_media', creator.token,
+  { p_min_age_hours:72, p_limit:50 }, /ADMIN_REQUIRED/);
+const orphanReport = await rpc('admin_list_blink_contest_orphan_media', admin,
+  { p_min_age_hours:72, p_limit:50 });
+assert.equal(orphanReport.dry_run, true);
+assert.ok(orphanReport.objects.some(row => row.path === orphanCandidate));
+assert.ok(!orphanReport.objects.some(row => row.path === privatePath));
+await rejected('/rest/v1/rpc/admin_list_blink_contest_orphan_media', admin.token,
+  { p_min_age_hours:12, p_limit:50 }, /INVALID_MEDIA_RETENTION/);
 const beforeApproval = await rpc('search_blink_contest_candidates', voter, {
   p_contest_id: contest.id, p_query: 'creator', p_limit: 20, p_offset: 0
 });
