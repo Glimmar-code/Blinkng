@@ -1448,7 +1448,17 @@ fun CreatePostSheet(
                     hideLikes = hideLikes,
                     temporary = isDisappearing,
                     onBack = { showReferenceDetails = false },
-                    onEditCaption = { showReferenceDetails = false },
+                    onEditCaption = {
+                        showReferenceDetails = false
+                        focusTextOnEntry = textPresentation != "color"
+                    },
+                    onTagPeople = {
+                        if (text.length < 4999 && !text.trimEnd().endsWith("@")) {
+                            text = text.trimEnd() + if (text.isBlank()) "@" else " @"
+                        }
+                        showReferenceDetails = false
+                        focusTextOnEntry = textPresentation != "color"
+                    },
                     onAudienceChange = { audience = it },
                     onLocationChange = { location = it },
                     onCategoryChange = { category = it },
@@ -1658,23 +1668,19 @@ fun CreatePostSheet(
                 }
 
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
-                if (textOnlyComposer) {
-                    // The Text tile should open a ready-to-type composer, as in
-                    // the reference. Request focus only after the editor field is
-                    // actually composed; never open the keyboard for media or polls.
-                    if (!useClassicComposer && focusTextOnEntry) {
-                        LaunchedEffect(focusTextOnEntry) {
-                            // Focus the Android view hosting this Dialog before
-                            // the Compose text field, avoiding a keyboard request
-                            // directed at an unfocused native window.
-                            androidx.compose.runtime.withFrameNanos { }
-                            composerDialogView.requestFocus()
-                            textEntryFocusRequester.requestFocus()
-                            androidx.compose.runtime.withFrameNanos { }
-                            keyboardController?.show()
-                            focusTextOnEntry = false
-                        }
+                // Details → Tag people returns to the same editable caption,
+                // including photo/Reel captions, without dropping media drafts.
+                if (!useClassicComposer && focusTextOnEntry) {
+                    LaunchedEffect(focusTextOnEntry, showReferenceDetails) {
+                        androidx.compose.runtime.withFrameNanos { }
+                        composerDialogView.requestFocus()
+                        textEntryFocusRequester.requestFocus()
+                        androidx.compose.runtime.withFrameNanos { }
+                        keyboardController?.show()
+                        focusTextOnEntry = false
                     }
+                }
+                if (textOnlyComposer) {
                     if (useClassicComposer) {
                     Row(
                         modifier = Modifier
@@ -1747,6 +1753,7 @@ fun CreatePostSheet(
                         enabled = !isSubmitting,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .focusRequester(textEntryFocusRequester)
                             .testTag("blink_create_post_media_caption_field")
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         minLines = 4,
