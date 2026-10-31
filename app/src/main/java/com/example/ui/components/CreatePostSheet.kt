@@ -3281,7 +3281,8 @@ internal fun PollComposer(
     onOptionsChanged: (List<String>) -> Unit,
     durationHours: Int,
     onDurationChanged: (Int) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    standalone: Boolean = false
 ) {
     var durationChoicesExpanded by rememberSaveable { mutableStateOf(false) }
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -3306,13 +3307,15 @@ internal fun PollComposer(
             border = BorderStroke(1.dp, Color(0xFF30333C))
         ) {
         Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Poll, contentDescription = null)
-                Spacer(Modifier.width(7.dp))
-                Text("Poll", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(options.size.toString() + " / 4 options",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!standalone) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Poll, contentDescription = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("Poll", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(options.size.toString() + " / 4 options",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
 
             OutlinedTextField(
