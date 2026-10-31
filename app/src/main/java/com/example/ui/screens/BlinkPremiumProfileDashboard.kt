@@ -227,10 +227,10 @@ internal fun BlinkPremiumProfileDashboard(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                PremiumProfileStat(if (metricsComplete) "Posts" else "Loaded", postCount.toLong(), Modifier.weight(1f))
+                PremiumProfileStat("Posts", postCount.toLong(), Modifier.weight(1f))
                 PremiumProfileStat("Followers", profile.followerCount.toLong(), Modifier.weight(1f).clickable(onClick = onFollowers))
+                PremiumProfileStat("Following", profile.followingCount.toLong(), Modifier.weight(1f).clickable(onClick = onFollowing))
                 PremiumProfileStat("Views", totalLoadedViews, Modifier.weight(1f))
-                PremiumProfileStat("Likes", totalLoadedLikes, Modifier.weight(1f))
             }
         }
         Text(if (metricsComplete) "Totals from all active content" else "Engagement reflects loaded posts",
@@ -260,28 +260,33 @@ internal fun BlinkPremiumProfileDashboard(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        // Exactly three public rank/progress cards. The owner gets two more
+        // private actions without exposing coin balance to profile visitors.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             PremiumProfileShortcut(
-                text = "Campus Rank ${profileRankLabel(profile.campusRank)}",
-                icon = Icons.Default.EmojiEvents,
-                modifier = Modifier.weight(1f),
-                onClick = onCampusRank
+                text = "Campus Rank", icon = Icons.Default.EmojiEvents,
+                modifier = Modifier.weight(1f), onClick = onCampusRank
             )
-            if (isMe) {
+            PremiumProfileShortcut(
+                text = "World Rank", icon = Icons.Default.Public,
+                modifier = Modifier.weight(1f), onClick = onCampusRank
+            )
+            PremiumProfileShortcut(
+                text = "HP Level", icon = Icons.Default.AutoAwesome,
+                modifier = Modifier.weight(1f),
+                onClick = if (isMe) onCreatorStudio else { { showDetails = true } }
+            )
+        }
+        if (isMe) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 PremiumProfileShortcut(
                     text = "Earn Coins", icon = Icons.Default.Paid,
                     modifier = Modifier.weight(1f), onClick = onEarnCoins
                 )
-                if (profile.verificationBadge == VerificationBadge.NONE) {
-                    PremiumProfileShortcut(
-                        text = "Get Verified", icon = Icons.Default.Verified,
-                        modifier = Modifier.weight(1f), onClick = onVerify
-                    )
-                }
+                PremiumProfileShortcut(
+                    text = "Get Verified", icon = Icons.Default.Verified,
+                    modifier = Modifier.weight(1f), onClick = onVerify
+                )
             }
         }
 
@@ -308,7 +313,7 @@ internal fun BlinkPremiumProfileDashboard(
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val xp = xpProgress(profile.totalXp, profile.xpLevel)
-                    Text("World ${profileRankLabel(profile.worldRank)} · Level ${xp.level} · ${xp.tierLabel}",
+                    Text("Campus ${profileRankLabel(profile.campusRank)} · World ${profileRankLabel(profile.worldRank)} · HP Level ${xp.level} · ${xp.tierLabel}",
                         color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Text("Following ${profile.followingCount}", color = softInk,
                         fontSize = 11.sp, modifier = Modifier.clickable(onClick = onFollowing))

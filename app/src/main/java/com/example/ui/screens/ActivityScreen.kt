@@ -94,6 +94,8 @@ private enum class NotificationCategory(val label: String) {
     REELS("Reels"),
     STORIES("Stories"),
     REWARDS("Rewards"),
+    MESSAGES("Messages"),
+    CONTESTS("Contests"),
     BLINK("BLINK")
 }
 
@@ -481,8 +483,9 @@ fun ActivityScreen(
                                     profile = actorProfiles[item.user],
                                     onProfileClick = onProfileClick,
                                     onNotificationClick = { tapped ->
-                                        if (!tapped.targetType.equals("notification", ignoreCase = true) &&
-                                            !tapped.targetType.equals("system", ignoreCase = true)) {
+                                        if (!com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+                                                tapped.targetType, tapped.eventType, tapped.action
+                                            )) {
                                             onNotificationClick(tapped)
                                         } else if (!adminMessageLoading) {
                                             scope.launch {
@@ -890,8 +893,9 @@ private fun NotificationCard(
     onNotificationClick: (ActivityItem) -> Unit
 ) {
     val isContactMatch = item.action.contains("possible contact", ignoreCase = true)
-    val isOfficial = item.targetType.equals("notification", ignoreCase = true) ||
-        item.targetType.equals("system", ignoreCase = true)
+    val isOfficial = com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+        item.targetType, item.eventType, item.action
+    )
     val safeAction = item.action.takeUnless {
         it.isBlank() || it.trim().equals("null", ignoreCase = true)
     } ?: "New activity"
@@ -930,8 +934,9 @@ private fun NotificationCard(
             )
     ) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.fillMaxWidth().heightIn(min = 86.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.Top
         ) {
             Box(
                 Modifier
@@ -994,7 +999,7 @@ private fun NotificationCard(
             }
 
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(top = 1.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         displayName,
@@ -1003,7 +1008,7 @@ private fun NotificationCard(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
-                            .weight(1f, fill = false)
+                            .weight(1f)
                             .clickable(enabled = canOpenProfile) { onProfileClick(username) }
                     )
                     if (verificationBadge != VerificationBadge.NONE) {
@@ -1073,7 +1078,8 @@ private fun NotificationCard(
 
             if (item.isUnread) {
                 Spacer(Modifier.width(10.dp))
-                Surface(shape = CircleShape, color = accent, modifier = Modifier.size(9.dp)) {}
+                Surface(shape = CircleShape, color = accent,
+                    modifier = Modifier.padding(top = 19.dp).size(9.dp)) {}
             }
         }
     }
@@ -1159,50 +1165,72 @@ private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter
     NotificationCategory.REELS -> Icons.Default.Repeat
     NotificationCategory.STORIES -> Icons.Default.Bookmark
     NotificationCategory.REWARDS -> Icons.Default.DoneAll
+    NotificationCategory.MESSAGES -> Icons.Default.ChatBubble
+    NotificationCategory.CONTESTS -> Icons.Default.EmojiEvents
     NotificationCategory.BLINK -> Icons.Default.Campaign
 }
 
 private fun notificationIcon(item: ActivityItem): ImageVector {
+    val event = item.eventType.orEmpty().lowercase()
     val action = item.action.lowercase()
     return when {
-        action.contains("possible contact") -> Icons.Default.PersonAdd
-        item.targetType.equals("notification", ignoreCase = true) ||
-            item.targetType.equals("system", ignoreCase = true) -> Icons.Default.Campaign
-        item.targetType.equals("market", ignoreCase = true) || action.contains("market") -> Icons.Default.Storefront
-        action.contains("mention") -> Icons.Default.AlternateEmail
-        action.contains("reply") -> Icons.Default.Reply
-        action.contains("comment") -> Icons.Default.ChatBubble
-        action.contains("follow") -> Icons.Default.PersonAdd
-        action.contains("save") || action.contains("bookmark") -> Icons.Default.Bookmark
-        action.contains("repost") -> Icons.Default.Repeat
-        action.contains("view") -> Icons.Default.Visibility
-        action.contains("like") -> Icons.Default.Favorite
+        event.contains("coin") || event.contains("gift") || action.contains("coin") ||
+            action.contains("gift") -> Icons.Default.Paid
+        event.contains("contest") || action.contains("contest") || action.contains("vote") ->
+            Icons.Default.EmojiEvents
+        event.contains("message") || item.targetType.equals("CHAT", true) ->
+            Icons.Default.ChatBubble
+        com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+            item.targetType, item.eventType, item.action
+        ) -> Icons.Default.Campaign
+        item.targetType.equals("market", true) || event.contains("market") ||
+            action.contains("order") -> Icons.Default.Storefront
+        event.contains("mention") || action.contains("mention") -> Icons.Default.AlternateEmail
+        event.contains("reply") || action.contains("reply") -> Icons.Default.Reply
+        event.contains("comment") || action.contains("comment") -> Icons.Default.ChatBubble
+        event.contains("follow") || action.contains("follow") -> Icons.Default.PersonAdd
+        event.contains("save") || action.contains("bookmark") -> Icons.Default.Bookmark
+        event.contains("repost") -> Icons.Default.Repeat
+        event.contains("view") -> Icons.Default.Visibility
+        event.contains("like") || action.contains("like") -> Icons.Default.Favorite
         else -> Icons.Default.Notifications
     }
 }
 
-
 private fun resolvedNotificationCategory(item: ActivityItem): NotificationCategory {
+    val event = item.eventType.orEmpty().lowercase()
     val action = item.action.lowercase()
     return when {
-        item.targetType.equals("notification", ignoreCase = true) ||
-            item.targetType.equals("system", ignoreCase = true) -> NotificationCategory.BLINK
-        item.targetType.equals("reel", ignoreCase = true) || action.contains("reel") -> NotificationCategory.REELS
-        item.targetType.equals("story", ignoreCase = true) || action.contains("story") -> NotificationCategory.STORIES
-        action.contains("coin") || action.contains("reward") || action.contains("rank point") -> NotificationCategory.REWARDS
-        item.targetType.equals("market", ignoreCase = true) || action.contains("market") || action.contains("order") ->
-            NotificationCategory.MARKET
-        action.contains("mention") -> NotificationCategory.MENTIONS
-        action.contains("comment") || action.contains("reply") -> NotificationCategory.COMMENTS
-        action.contains("follow") -> NotificationCategory.FOLLOWS
-        action.contains("like") || action.contains("save") || action.contains("bookmark") || action.contains("repost") ->
+        event.contains("coin") || event.contains("gift") || event.contains("drop") ||
+            event.contains("referral") || action.contains("coin") || action.contains("reward") ||
+            action.contains("gift") || action.contains("rank point") -> NotificationCategory.REWARDS
+        event.contains("contest") || action.contains("contest") || action.contains("vote") ->
+            NotificationCategory.CONTESTS
+        event.contains("message") || item.targetType.equals("CHAT", true) ->
+            NotificationCategory.MESSAGES
+        event.contains("mention") || action.contains("mention") -> NotificationCategory.MENTIONS
+        event.contains("comment") || event.contains("reply") ||
+            action.contains("comment") || action.contains("reply") -> NotificationCategory.COMMENTS
+        event.contains("follow") || action.contains("follow") -> NotificationCategory.FOLLOWS
+        event.contains("like") || event.contains("save") || event.contains("repost") ||
+            action.contains("like") || action.contains("save") || action.contains("repost") ->
             NotificationCategory.LIKES
+        item.targetType.equals("reel", true) || event.contains("reel") || action.contains("reel") ->
+            NotificationCategory.REELS
+        item.targetType.equals("story", true) || event.contains("story") || action.contains("story") ->
+            NotificationCategory.STORIES
+        item.targetType.equals("market", true) || event.contains("market") ||
+            action.contains("market") || action.contains("order") -> NotificationCategory.MARKET
+        com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+            item.targetType, item.eventType, item.action
+        ) -> NotificationCategory.BLINK
         item.category == NotificationFilter.MARKET -> NotificationCategory.MARKET
         item.category == NotificationFilter.COMMENTS -> NotificationCategory.COMMENTS
         item.category == NotificationFilter.LIKES -> NotificationCategory.LIKES
         else -> NotificationCategory.ALL
     }
 }
+
 
 private fun looksLikeUuid(value: String): Boolean =
     value.length == 36 && value.count { it == '-' } == 4

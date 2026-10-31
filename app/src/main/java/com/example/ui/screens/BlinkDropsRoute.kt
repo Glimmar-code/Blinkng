@@ -368,7 +368,7 @@ fun BlinkDropsRoute(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = { refresh() }) {
+            IconButton(onClick = { refresh() }, enabled = isOnline && !loading) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh Drops")
             }
             IconButton(onClick = onClose) {
@@ -658,8 +658,14 @@ fun BlinkDropsRoute(
                 message?.let { value ->
                     item { StatusCard(value, isError = false) }
                 }
-                if (topGivers.isEmpty()) {
+                if (topGivers.isEmpty() && error == null) {
                     item { EmptyCard("Top Givers will appear after completed Drops.") }
+                } else if (topGivers.isEmpty()) {
+                    item { OutlinedButton(onClick = { refresh() }, enabled = isOnline && !loading) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Retry Top Givers")
+                    } }
                 } else {
                     itemsIndexed(topGivers, key = { _, giver -> "giver-${giver.creatorId}" }) { index, giver ->
                         TopGiverCard(

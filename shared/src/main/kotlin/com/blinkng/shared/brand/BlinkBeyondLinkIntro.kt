@@ -122,7 +122,7 @@ fun BlinkBeyondLinkIntro(
 
             val dp = density.density * artworkScale
             val linkHeight = 42f * dp
-            val bHeight = linkHeight // use the same cap-height and baseline as LINK; no undersized/scattered B
+            val bHeight = linkHeight * 0.89f // optical correction: oversized B now matches the visible LINK glyph height
             val bWidth = bHeight * 555f / 785f
             val linkWidth = 242f * linkHeight / 171f
             val dotsWidth = dots.size.width.toFloat()

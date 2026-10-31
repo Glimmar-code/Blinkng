@@ -677,6 +677,7 @@ fun ProfileScreen(
                         isDark = isDark,
                         textPrimary = textPrimary,
                         textSecondary = textSecondary,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
                         onLike = onLikePost,
                         onComment = onCommentPost,
                         onBookmark = onBookmarkPost,
@@ -1635,6 +1636,7 @@ private fun LazyListScope.profilePostItems(
     isDark: Boolean,
     textPrimary: Color,
     textSecondary: Color,
+    themeCardColor: Color? = null,
     emptyTitle: String = "No posts yet",
     emptySubtitle: String = "Posts published by @${profile.username} will show up here.",
     onLike: (String) -> Unit,
@@ -1707,7 +1709,8 @@ private fun LazyListScope.profilePostItems(
                 isAuthor = canDelete && authoredByProfile,
                 onDelete = { onDelete(post.id) },
                 onOpenPost = { onOpenPost?.invoke(post.id) },
-                xFeedStyle = true
+                xFeedStyle = true,
+                profileSurfaceColor = themeCardColor
             )
 
             if (canDelete && authoredByProfile && onPin != null) {

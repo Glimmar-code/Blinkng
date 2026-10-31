@@ -474,6 +474,11 @@ private fun BoostCampaignColumn(
             service.boostableContentPage(type,0).onSuccess { payload ->
                 ownedPages = ownedPages + (type to payload.optJSONArray("items").objectList())
                 ownedMore = if (payload.optBoolean("has_more")) ownedMore + type else ownedMore - type
+            }.onFailure {
+                // Do not silently report an empty content picker when the page RPC fails.
+                contentError = "Some ${type.lowercase()} content could not load. Retry to refresh."
+                ownedPages = ownedPages - type
+                ownedMore = ownedMore - type
             }
         }
         contentLoading = false

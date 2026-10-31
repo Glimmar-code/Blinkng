@@ -1824,3 +1824,12 @@ own run and manual artifact review; capture completion alone is not visual appro
 ### PARITY-EXCEPTION: android-reference-loader-isolation
 
 The Android composer accepts an optional trending-tag loader so native and Robolectric fixtures can supply test-only tags without the default repository request. Production continues to use its existing loader. This changes no user feature, permission, payload or backend contract. The Windows equivalent is its existing injected HTTP tests and explicit account-free packaged GUI diagnostic; Android's native IME/Media3 capture assertions are platform-specific. Mention visibility is now asserted on screen in addition to loading results.
+
+## Testlab — notifications, profile, splash, Drops/Boost and Reels (2026-10-31)
+
+- Notification display and event type improvements use shared notification presentation and classification rules for Android/Windows. The Android activity list gets readable rows, real social actor labels and new message/contest/reward filters; Windows uses the same wire aliases and notification classification contract.
+- The approved splash drawing receives a proportional B correction in the shared brand Compose asset, so Android/Windows surfaces using that asset agree. Android-only startup animation timing remains platform-specific.
+- Android Reels removes the Home Stories strip, uses the existing server-ranked featured-video carousel and expands with preview-muted/immersive-audio playback. Desktop has its own layout and native audio controls; this is an explicit form-factor exception, not a change to shared ranking data.
+- Profile stat ordering and owner/public action visibility remain server-derived; Android applies the saved profile card color to the owner's posts. Desktop uses its own layout while preserving the same public rank/HP information and owner-only coin controls.
+- Drops and Boost keep the same secure backend contracts. Android now exposes refresh and page errors rather than falsely treating failed calls as empty data; Windows' corresponding failure/empty states remain separately implemented.
+- Merge remains blocked until Android/Windows tests, actual Android screenshot comparisons and relevant live-service checks pass. No production data or environment settings changed in this patch.
