@@ -470,16 +470,25 @@ private fun BoostCampaignColumn(
         service.boostableContent()
             .onSuccess { ownedContent = it; contentError = null }
             .onFailure { contentError = "Unable to load all your content. Showing cached posts." }
+        var pageFetchFailed = false
         for (type in listOf("POST","REEL","LISTING")) {
             service.boostableContentPage(type,0).onSuccess { payload ->
                 ownedPages = ownedPages + (type to payload.optJSONArray("items").objectList())
                 ownedMore = if (payload.optBoolean("has_more")) ownedMore + type else ownedMore - type
             }.onFailure {
-                // Do not silently report an empty content picker when the page RPC fails.
-                contentError = "Some ${type.lowercase()} content could not load. Retry to refresh."
+                // Some production versions only expose the original authenticated
+                // content RPC. Preserve its results instead of falsely saying
+                // the user has no posts, Reels or listings to promote.
+                pageFetchFailed = true
                 ownedPages = ownedPages - type
                 ownedMore = ownedMore - type
             }
+        }
+        if (pageFetchFailed) {
+            contentError = if (ownedContent == null)
+                "Your content could not load. Check your connection and try again."
+            else
+                "Showing available content. Older content may require a server update."
         }
         contentLoading = false
     }
@@ -805,8 +814,19 @@ private fun BoostCampaignColumn(
                                         ) { Text(if (contentPageBusy) "Loading…" else "Load more of your content") }
                                     }
                                 }
-                                contentError?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodySmall) }
+                                contentError?.let { warning ->
+                                    Text(warning, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(
+                                        onClick = { refreshNonce += 1 },
+                                        enabled = isOnline && !contentLoading,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Retry loading content")
+                                    }
+                                }
                             }
                             1 -> {
                                 SectionTitle("2. Audience", "Choose your campus or expand across BLINK.")

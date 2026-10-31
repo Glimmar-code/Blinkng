@@ -680,8 +680,8 @@ fun BlinkDropsRoute(
                             following = giver.following,
                             followBusy = followBusyId != null,
                             onFollow = {
-                                if (giver.following || followBusyId != null) return@TopGiverCard
-                                followBusyId = giver.creatorId
+                                if (!giver.following && followBusyId == null) {
+                                    followBusyId = giver.creatorId
                                     scope.launch {
                                         service.followCreator(giver.creatorId)
                                             .onSuccess {
@@ -693,6 +693,7 @@ fun BlinkDropsRoute(
                                             }
                                         followBusyId = null
                                     }
+                                }
                             }
                         )
                     }
@@ -1139,9 +1140,11 @@ private fun TopGiversEmptyState(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCreate) { Text("Create a Drop") }
-                OutlinedButton(onClick = onBrowse) { Text("Browse Giveaways") }
+            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
+                Text("Create a Drop")
+            }
+            OutlinedButton(onClick = onBrowse, modifier = Modifier.fillMaxWidth()) {
+                Text("Browse Giveaways")
             }
         }
     }
