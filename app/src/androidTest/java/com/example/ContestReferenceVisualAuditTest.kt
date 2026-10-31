@@ -23,6 +23,7 @@ import com.example.ui.screens.BlinkContestReviewHistoryDialog
 import com.example.ui.screens.BlinkContestPodium
 import com.example.ui.screens.BlinkContestWinnerCard
 import com.example.ui.screens.BlinkContestShareDialog
+import com.example.ui.screens.BlinkContestLeaderboardRow
 import com.example.ui.theme.BlinkTheme
 import org.json.JSONObject
 import org.junit.Rule
@@ -160,6 +161,40 @@ class ContestReferenceVisualAuditTest {
         org.junit.Assert.assertEquals(
             "Results confirmed" to "", contestDeadline(contest, beforeVoting)
         )
+    }
+
+    @Test fun compactContestLeaderboardKeepsShareVoteAndProfileAccessible() {
+        val candidate = JSONObject()
+            .put("id", "77777777-7777-4777-8777-777777777777")
+            .put("rank", 8).put("votes", 98).put("rank_delta", 2)
+            .put("username", "long_campus_username_sample")
+            .put("statement", "My university deserves excellent student-led community projects.")
+        var viewed = false
+        var shared = false
+        var voted = false
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                Box(Modifier.width(320.dp).padding(8.dp)) {
+                    BlinkContestLeaderboardRow(
+                        candidate = candidate,
+                        onView = { viewed = true },
+                        onShare = { shared = true },
+                        onVote = { voted = true }
+                    )
+                }
+            }
+        }
+        rule.onNodeWithText("Share flyer").assertExists()
+        rule.onNodeWithText("Vote free").assertExists()
+        rule.onNodeWithText("View").performClick()
+        rule.onNodeWithText("Share flyer").performClick()
+        rule.onNodeWithText("Vote free").performClick()
+        rule.runOnIdle {
+            org.junit.Assert.assertTrue(viewed)
+            org.junit.Assert.assertTrue(shared)
+            org.junit.Assert.assertTrue(voted)
+        }
+        capture("contest-compact-leaderboard-staging.png")
     }
 
     @Test fun contestantShareDialogRendersRealPersonalizedFlyer() {
