@@ -297,7 +297,9 @@ internal fun BlinkPremiumProfileDashboard(
             OutlinedButton(
                 onClick = onCreatorStudio,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                border = BorderStroke(1.dp, accent.copy(alpha = .52f))
             ) {
                 Icon(Icons.Default.Insights, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
