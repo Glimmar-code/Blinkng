@@ -14,10 +14,12 @@ internal object BlinkChatVideoAlbumMedia {
     private fun remote(uri: String?): String? = uri?.takeIf { it.startsWith("https://") }
 
     fun playback(message: ChatMessage): String? =
-        remote(message.attachedVideoUrl) ?: local(message.localAttachmentUri)
+        remote(message.attachedVideoUrl) ?: local(message.attachedVideoUrl)
+            ?: remote(message.localAttachmentUri) ?: local(message.localAttachmentUri)
 
     fun thumbnail(message: ChatMessage): String? =
-        remote(message.imagePreviewUrl) ?: local(message.localAttachmentUri)
+        remote(message.imagePreviewUrl) ?: local(message.imagePreviewUrl)
+            ?: local(message.attachedVideoUrl) ?: local(message.localAttachmentUri)
 
     fun available(message: ChatMessage): Boolean =
         !message.deletedForEveryone && playback(message) != null
