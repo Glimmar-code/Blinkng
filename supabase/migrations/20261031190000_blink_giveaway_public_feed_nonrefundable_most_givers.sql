@@ -733,8 +733,104 @@ begin
 end;
 $$;
 
+CREATE OR REPLACE FUNCTION public.quote_blink_drop(p_target_type text, p_target_id uuid, p_action text, p_reward_per_user integer, p_winner_count integer, p_audience_scope text, p_duration_hours integer DEFAULT 24)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_user uuid := auth.uid();
+  v_target_type text := upper(btrim(coalesce(p_target_type,'')));
+  v_action text := upper(btrim(coalesce(p_action,'')));
+  v_scope text := upper(btrim(coalesce(p_audience_scope,'')));
+  v_university text;
+  v_budget bigint;
+  v_balance bigint := 0;
+  v_eligible integer := 0;
+  v_audience_size integer := 0;
+begin
+  if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
+
+  if p_reward_per_user < 100
+     or p_reward_per_user > 100000
+     or p_reward_per_user % 100 <> 0 then
+    raise exception 'DROP_REWARD_INVALID';
+  end if;
+  if p_winner_count < 1 or p_winner_count > 500 then raise exception 'DROP_WINNER_COUNT_INVALID'; end if;
+  v_budget := p_reward_per_user::bigint * p_winner_count::bigint;
+  if v_budget > 10000000 then raise exception 'DROP_BUDGET_TOO_LARGE'; end if;
+  if p_duration_hours not in (1,6,12,24,72,168) then raise exception 'DROP_DURATION_INVALID'; end if;
+  if not private.blink_drop_target_owned(v_user,v_target_type,p_target_id) then raise exception 'DROP_TARGET_NOT_OWNED'; end if;
+
+  if v_target_type in ('POST','REEL') and v_action not in ('LIKE','COMMENT','REPOST') then
+    raise exception 'DROP_ACTION_INVALID';
+  elsif v_target_type='LISTING' and v_action<>'SAVE_LISTING' then
+    raise exception 'DROP_ACTION_INVALID';
+  end if;
+
+  if v_scope='MY_CAMPUS' then
+    select nullif(btrim(coalesce(p.university,'')),'') into v_university
+    from public.profiles p where p.id=v_user;
+    if v_university is null then raise exception 'UNIVERSITY_REQUIRED_FOR_DROP'; end if;
+  elsif v_scope='ALL_CAMPUSES' then
+    v_university := null;
+  else
+    raise exception 'DROP_AUDIENCE_INVALID';
+  end if;
+
+  select coalesce(floor(b.spendable_coin_balance),0)::bigint into v_balance
+  from public.user_balances b where b.user_id=v_user;
+  v_balance := coalesce(v_balance,0);
+
+  select count(*)::integer into v_eligible
+  from public.follows f
+  join public.profiles recipient on recipient.id=f.follower_id
+  where f.following_id=v_user
+    and f.follower_id<>v_user
+    and (
+      v_scope='ALL_CAMPUSES'
+      or lower(coalesce(recipient.university,''))=lower(coalesce(v_university,''))
+    )
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id=v_user and b.blocked_id=f.follower_id)
+         or (b.blocker_id=f.follower_id and b.blocked_id=v_user)
+    );
+
+  select count(*)::integer into v_audience_size
+  from public.profiles candidate
+  where candidate.id<>v_user
+    and (
+      v_scope='ALL_CAMPUSES'
+      or lower(coalesce(candidate.university,''))=lower(coalesce(v_university,''))
+    )
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id=v_user and b.blocked_id=candidate.id)
+         or (b.blocker_id=candidate.id and b.blocked_id=v_user)
+    );
+
+  return jsonb_build_object(
+    'total_budget',v_budget,
+    'balance',v_balance,
+    'remaining_balance_after_reserve',v_balance-v_budget,
+    'eligible_followers',v_eligible,
+    'audience_size',v_audience_size,
+    'requested_recipients',p_winner_count,
+    'maximum_possible_recipients',least(v_audience_size,p_winner_count),
+    'audience_scope',v_scope,
+    'target_university',coalesce(v_university,''),
+    'ends_in_hours',p_duration_hours
+  );
+end;
+$function$
+
+
 revoke all on function private.blink_drop_expire_stale() from public,anon,authenticated;
 revoke all on function private.blink_drop_safe_card(public.blink_drops) from public,anon,authenticated;
+revoke all on function public.quote_blink_drop(text,uuid,text,integer,integer,text,integer) from public,anon;
+grant execute on function public.quote_blink_drop(text,uuid,text,integer,integer,text,integer) to authenticated;
 revoke all on function public.get_blink_drop_page(text,integer,integer) from public,anon;
 grant execute on function public.get_blink_drop_page(text,integer,integer) to authenticated;
 revoke all on function public.get_blink_drop_by_id(uuid) from public,anon;
