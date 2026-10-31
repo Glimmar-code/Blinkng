@@ -45,8 +45,11 @@ internal object BlinkChatPollResultPolicy {
             options.add(BlinkChatPollResultOption(label, votes))
         }
         if (options.sumOf { it.votes.toLong() } != total.toLong()) return null
-        val mine = if (!json.has("my_vote") || json.isNull("my_vote")) null
-            else json.optInt("my_vote", -1).takeIf { it in options.indices } ?: return null
+        val mine: Int? = if (!json.has("my_vote") || json.isNull("my_vote")) {
+            null
+        } else {
+            json.optInt("my_vote", -1).takeIf { it in options.indices } ?: return null
+        }
         return BlinkChatPollResult(
             question = question, options = options, totalVotes = total,
             myVote = mine, closed = json.optBoolean("closed")
