@@ -27,7 +27,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.models.PostDraft
@@ -124,8 +124,12 @@ abstract class BlinkCreatePostVisualAuditFixture {
         rule.onNodeWithTag("blink_create_choice_text").performClick()
         rule.onNodeWithTag("blink_create_post_caption_field")
             .performTextReplacement("Draft retained when reviewing photos")
-        rule.onNodeWithTag("blink_create_post_caption_field")
-            .assertTextEquals("Draft retained when reviewing photos")
+        check(
+            rule.onNodeWithTag("blink_create_post_caption_field")
+                .fetchSemanticsNode().config
+                .getOrNull(SemanticsProperties.EditableText)?.text ==
+                "Draft retained when reviewing photos"
+        ) { "The actual caption editor lost its typed draft." }
         rule.onNodeWithTag("blink_compose_action_0").performScrollTo().performClick()
         rule.waitUntil(10_000) {
             rule.onAllNodesWithTag("blink_media_review").fetchSemanticsNodes().isNotEmpty()
@@ -138,8 +142,12 @@ abstract class BlinkCreatePostVisualAuditFixture {
             rule.onAllNodesWithTag("blink_create_post_caption_field")
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithTag("blink_create_post_caption_field")
-            .assertTextEquals("Draft retained when reviewing photos")
+        check(
+            rule.onNodeWithTag("blink_create_post_caption_field")
+                .fetchSemanticsNode().config
+                .getOrNull(SemanticsProperties.EditableText)?.text ==
+                "Draft retained when reviewing photos"
+        ) { "The actual caption editor lost its typed draft." }
         rule.onNodeWithTag("blink_create_post_editor_header").assertExists()
     }
 
