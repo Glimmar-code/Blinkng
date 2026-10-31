@@ -122,7 +122,9 @@ fun BlinkBeyondLinkIntro(
 
             val dp = density.density * artworkScale
             val linkHeight = 42f * dp
-            val bHeight = linkHeight * (171f - 54f) / 171f // B matches LINK's visible glyph height, not the empty top inset
+            // The approved B has an ascender that rises above the LINK letterforms.
+            // Matching visible ink heights shrank its stem and changed the real logo.
+            val bHeight = linkHeight
             val bWidth = bHeight * 555f / 785f
             val linkWidth = 242f * linkHeight / 171f
             val dotsWidth = dots.size.width.toFloat()

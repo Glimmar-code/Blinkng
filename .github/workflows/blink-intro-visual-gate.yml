@@ -71,8 +71,8 @@ jobs:
               assert yellow < len(sample) * 0.003, f"{image_path}: legacy accessibility overlay, not real pixels"
               print(image_path, im.size, "black", dark, "white", white, "blue", blue)
 
-              # Verify pixels after Compose rendering rather than assuming equal
-              # Canvas sizes imply equal ink. LINK's source contour begins at y=54.
+              # Verify pixel proportions of the owner-approved BLINK vector. Its B
+              # includes a tall ascender above the other lower-case letters.
               if image_path.stem in {"intro-320dp", "intro-412dp", "intro-600dp"}:
                   ink = [(x, y) for y in range(im.height) for x in range(im.width)
                          if min(im.getpixel((x, y))) > 220]
@@ -85,9 +85,12 @@ jobs:
                   assert b_y and link_y, f"{image_path}: missing B or LINK glyph"
                   b_ink = max(b_y) - min(b_y) + 1
                   link_ink = max(link_y) - min(link_y) + 1
-                  assert abs(b_ink - link_ink) <= max(4, link_ink * .08), (
-                      f"{image_path}: B is {b_ink}px high, LINK is {link_ink}px; "
-                      "the wordmark requires matching optical glyph heights"
+                  # Approved previous APK screenshot: the B rises roughly 45%
+                  # above the shorter lower-case letterforms. Keep real geometry.
+                  ratio = b_ink / link_ink
+                  assert 1.30 <= ratio <= 1.65, (
+                      f"{image_path}: B is {b_ink}px, LINK is {link_ink}px; "
+                      "the approved B ascender must remain visibly taller"
                   )
           PY
 
