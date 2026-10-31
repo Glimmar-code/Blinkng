@@ -684,58 +684,28 @@ fun BlinkContestScreen(
                     if (top.isEmpty()) item { Text("No approved contestants yet.") }
                     items(top.filterNot { it.optString("id") == invitedEntryId && invitedCandidate != null },
                         key = { it.optString("id") }) { candidate ->
-                        ElevatedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.fillMaxWidth().padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("#" + candidate.optInt("rank"), fontWeight = FontWeight.Bold)
-                                    BlinkContestAvatar(candidate.optString("avatar_url"),
-                                        candidate.optString("username"), 42.dp)
-                                    Column(Modifier.weight(1f)) {
-                                        Text("@" + candidate.optString("username"),
-                                            fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        Text(candidate.optInt("votes").toString() + " votes" +
-                                            BlinkContestRankMovement.label(candidate),
-                                            fontSize = 12.sp)
-                                        Text(candidate.optString("statement"),
-                                            fontSize = 12.sp, maxLines = 2)
-                                    }
-                                    TextButton(onClick = { inspectedCandidate = candidate }) {
-                                        Text("View")
-                                    }
-                                }
-                                // Buttons live on their own row. The previous layout
-                                // overflowed at 320dp and large accessibility fonts.
-                                Row(Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    OutlinedButton(
-                                        onClick = { openFlyer(candidate) },
-                                        enabled = !shareLookupBusy,
-                                        modifier = Modifier.weight(1f)
-                                    ) { Text("Share flyer") }
-                                    Button(
-                                        enabled = !busy && BlinkContestPolicy.canVote(
-                                            status, myVote, own, candidate.optString("id")),
-                                        modifier = Modifier.weight(1f),
-                                        onClick = {
-                                            busy = true; error = null; notice = null
-                                            scope.launch {
-                                                api.vote(c.optString("id"), candidate.optString("id"))
-                                                    .onSuccess {
-                                                        notice = if (it.optString("vote_status") == "under_review")
-                                                            "Vote received; awaiting integrity review."
-                                                        else "Your free vote was counted."
-                                                        revision++
-                                                    }
-                                                    .onFailure { error = it.message }
-                                                busy = false
-                                            }
+                        BlinkContestLeaderboardRow(
+                            candidate = candidate,
+                            sharingEnabled = !shareLookupBusy,
+                            votingEnabled = !busy && BlinkContestPolicy.canVote(
+                                status, myVote, own, candidate.optString("id")),
+                            onView = { inspectedCandidate = candidate },
+                            onShare = { openFlyer(candidate) },
+                            onVote = {
+                                busy = true; error = null; notice = null
+                                scope.launch {
+                                    api.vote(c.optString("id"), candidate.optString("id"))
+                                        .onSuccess {
+                                            notice = if (it.optString("vote_status") == "under_review")
+                                                "Vote received; awaiting integrity review."
+                                            else "Your free vote was counted."
+                                            revision++
                                         }
-                                    ) { Text("Vote free") }
+                                        .onFailure { error = it.message }
+                                    busy = false
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -817,3 +787,43 @@ fun BlinkContestScreen(
         BlinkContestShareDialog(candidate = candidate, onDismiss = { flyerCandidate = null })
     }
 }
+ 
+
+/** Shared live leaderboard row and compact-device screenshot fixture. */
+@Composable
+internal fun BlinkContestLeaderboardRow(
+    candidate: JSONObject,
+    sharingEnabled: Boolean = true,
+    votingEnabled: Boolean = true,
+    onView: () -> Unit,
+    onShare: () -> Unit,
+    onVote: () -> Unit
+) {
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("#" + candidate.optInt("rank"), fontWeight = FontWeight.Bold)
+                BlinkContestAvatar(candidate.optString("avatar_url"),
+                    candidate.optString("username"), 42.dp)
+                Column(Modifier.weight(1f)) {
+                    Text("@" + candidate.optString("username"),
+                        fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(candidate.optInt("votes").toString() + " votes" +
+                        BlinkContestRankMovement.label(candidate), fontSize = 12.sp)
+                    Text(candidate.optString("statement"), fontSize = 12.sp, maxLines = 2)
+                }
+                TextButton(onClick = onView) { Text("View") }
+            }
+            // Actions occupy a separate row so both remain operable at 320dp.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onShare, enabled = sharingEnabled,
+                    modifier = Modifier.weight(1f)) { Text("Share flyer") }
+                Button(onClick = onVote, enabled = votingEnabled,
+                    modifier = Modifier.weight(1f)) { Text("Vote free") }
+            }
+        }
+    }
+}
+
