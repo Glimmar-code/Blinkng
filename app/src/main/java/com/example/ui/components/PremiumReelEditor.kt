@@ -452,17 +452,24 @@ internal fun PremiumReelEditor(
                     }
                 }
                 if (showAdvanced) {
-                    OutlinedTextField(
+                    Text(activeTool.lowercase().replaceFirstChar { it.uppercase() } + " controls",
+                        color = Color.White, fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag("blink_video_active_tool"))
+                    if (activeTool == "TEXT") OutlinedTextField(
                         value = overlayText,
                         onValueChange = { overlayText = it.take(120) },
                         label = { Text("Text on video") }, singleLine = true,
-                        enabled = !isExporting, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(
+                        enabled = !isExporting, modifier = Modifier.fillMaxWidth()
+                            .testTag("blink_video_overlay_text"))
+                    if (activeTool == "STICKERS") OutlinedTextField(
                         value = sticker,
                         onValueChange = { sticker = it.take(16) },
                         label = { Text("Sticker / emoji") }, singleLine = true,
-                        enabled = !isExporting, modifier = Modifier.fillMaxWidth())
-                    if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+                        enabled = !isExporting, modifier = Modifier.fillMaxWidth()
+                            .testTag("blink_video_overlay_sticker"))
+                    if ((activeTool == "TEXT" || activeTool == "STICKERS") &&
+                        (overlayText.isNotBlank() || sticker.isNotBlank())) {
                         Text("Drag the words or sticker over the video to position them.",
                             color = Color.LightGray, fontSize = 12.sp)
                         Text("Overlay size: ${(overlayScale * 100).toInt()}%",
@@ -490,10 +497,23 @@ internal fun PremiumReelEditor(
                         Text("${display(overlayStart)} – ${display(overlayEnd)}",
                             fontSize = 12.sp, color = white)
                     }
+                    if (activeTool == "EFFECTS") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { grayscale = !grayscale },
+                                enabled = !isExporting) {
+                                Text(if (grayscale) "Remove B&W" else "Black & white")
+                            }
+                            OutlinedButton(onClick = {
+                                rotation = (rotation + 90f) % 360f
+                            }, enabled = !isExporting) { Text("Rotate 90°") }
+                        }
+                    }
+                    if (activeTool == "MUSIC" || activeTool == "ADJUST") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             enabled = !isExporting,
-                            onClick = { audioPicker.launch(arrayOf("audio/*")) }
+                            onClick = { audioPicker.launch(arrayOf("audio/*")) },
+                            modifier = Modifier.testTag("blink_video_pick_music")
                         ) { Text(if (musicUri == null) "Add music" else "Change music") }
                         if (musicUri != null) TextButton(onClick = { musicUri = null }) {
                             Text("Remove music")
@@ -518,6 +538,7 @@ internal fun PremiumReelEditor(
                         )
                         Text("Audio balance previews with your video and is applied on export.",
                             color = Color.LightGray, fontSize = 12.sp)
+                    }
                     }
                 }
                 if (grayscale || rotation != 0f) {
