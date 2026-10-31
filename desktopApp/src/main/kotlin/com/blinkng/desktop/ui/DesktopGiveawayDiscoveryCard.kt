@@ -27,7 +27,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Locale
 
-private fun giveawayEndedLabel(endsAt: String): String {
+internal fun giveawayEndedLabel(endsAt: String): String {
     val endedAt = runCatching { Instant.parse(endsAt) }.getOrNull() ?: return "Giveaway ended"
     val seconds = Duration.between(endedAt, Instant.now()).seconds.coerceAtLeast(0)
     val age = when {
