@@ -132,6 +132,11 @@ verify_jwt = true
 [functions.blink-view-once-image]
 verify_jwt = true
 
+# Approved submissions may be publicly viewed; pending media requires user or admin auth.
+# The function performs explicit record and session authorization before signing a 60s URL.
+[functions.blink-contest-private-media]
+verify_jwt = false
+
 # Transactional email worker has a private, high-entropy header credential;
 # only trusted server-side scheduling may call this endpoint.
 [functions.send-essential-email]

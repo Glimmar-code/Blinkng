@@ -10,10 +10,36 @@ const migration = readFileSync(
 const growthMigration = readFileSync(
   new URL('../migrations/20261028200000_blink_contest_growth_v1.sql', import.meta.url), 'utf8'
 );
+const mediaRequirement = readFileSync(
+  new URL('../migrations/20261031060000_blink_contest_require_entry_media.sql', import.meta.url), 'utf8'
+);
+const privateMedia = readFileSync(
+  new URL('../migrations/20261031070000_blink_contest_private_submissions.sql', import.meta.url), 'utf8'
+);
+const candidateSearchMigration = readFileSync(
+  new URL('../migrations/20261031080000_blink_contest_candidate_search.sql', import.meta.url), 'utf8'
+);
+const moderationAuditMigration = readFileSync(
+  new URL('../migrations/20261031090000_blink_contest_moderation_audit.sql', import.meta.url), 'utf8'
+);
+const moderationHistoryMigration = readFileSync(
+  new URL('../migrations/20261031100000_blink_contest_review_history.sql', import.meta.url), 'utf8'
+);
+const cancelledVisibilityMigration = readFileSync(
+  new URL('../migrations/20261031110000_blink_contest_cancelled_visibility.sql', import.meta.url), 'utf8'
+);
+const appealsMigration = readFileSync(
+  new URL('../migrations/20261031120000_blink_contest_entry_appeals.sql', import.meta.url), 'utf8'
+);
+const orphanAuditMigration = readFileSync(
+  new URL('../migrations/20261031130000_blink_contest_orphan_media_audit.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const voter = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const mediaOne = `https://example.test/functions/v1/blink-contest-private-media/${creator1}/11111111-1111-4111-8111-111111111111.jpg`;
+const mediaTwo = `https://example.test/functions/v1/blink-contest-private-media/${creator2}/22222222-2222-4222-8222-222222222222.jpg`;
 const later = (days) => new Date(Date.now() + days * 86400000).toISOString();
 const payload = {
   title: 'BLINK Creator Challenge',
@@ -46,7 +72,27 @@ try {
   }
   await db.exec(migration);
   await db.exec(growthMigration);
+  await db.exec(mediaRequirement);
+  await db.exec(privateMedia);
+  await db.exec(candidateSearchMigration);
+  await db.exec(moderationAuditMigration);
+  await db.exec(moderationHistoryMigration);
+  await db.exec(cancelledVisibilityMigration);
+  await db.exec(appealsMigration);
+  await db.exec(orphanAuditMigration);
+  await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
+    'blink-contest-private',
+    creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
+    creator2 + '/22222222-2222-4222-8222-222222222222.jpg'
+  ]);
+  const orphanPath = creator1 + '/33333333-3333-4333-8333-333333333333.jpg';
+  await q(`insert into storage.objects(bucket_id,name,created_at)
+    values('blink-contest-private',$1,now()-interval '6 days')`,[orphanPath]);
+  await q(`update storage.objects set created_at=now()-interval '6 days'
+    where bucket_id='blink-contest-private'`);
   await setUser(creator1);
+  await assert.rejects(() => rpc('admin_list_blink_contest_orphan_media',
+    '$1::integer,$2::integer',[72,100]), /ADMIN_REQUIRED/);
   await assert.rejects(() => rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
     [null,JSON.stringify(payload)]), /ADMIN_REQUIRED/);
 
@@ -59,24 +105,155 @@ try {
   await assert.rejects(() => rpc('admin_finalize_blink_contest','$1::uuid',[created.id]),
     /RESULTS_NOT_READY/);
   await rpc('admin_transition_blink_contest', '$1::uuid,$2::text',[id,'publish']);
+  // A cancelled draft must never appear publicly, while a cancelled published
+  // contest stays visible in Completed (without reopening voting/entry).
+  const unpublished = json((await rpc('admin_save_blink_contest', '$1::uuid,$2::jsonb',
+    [null,JSON.stringify({...payload,title:'Secret cancelled draft'})])).rows[0].result);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[unpublished.id,'cancel']);
+  const launched = json((await rpc('admin_save_blink_contest','$1::uuid,$2::jsonb',
+    [null,JSON.stringify({...payload,title:'Public cancelled challenge'})])).rows[0].result);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[launched.id,'publish']);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[launched.id,'cancel']);
+  await setUser(voter);
+  const publicList = json((await rpc('list_blink_contests','',[])).rows[0].result);
+  assert.ok(publicList.some(c=>c.id===launched.id && c.status==='cancelled'));
+  assert.ok(!publicList.some(c=>c.id===unpublished.id));
+  const ended = json((await rpc('get_blink_contest','$1::uuid',[launched.id])).rows[0].result);
+  assert.equal(ended.contest.status,'cancelled');
+  await assert.rejects(() => rpc('get_blink_contest','$1::uuid',[unpublished.id]),
+    /CONTEST_NOT_AVAILABLE/);
+  await assert.rejects(() => rpc('vote_blink_contest','$1::uuid,$2::uuid',
+    [launched.id,'99999999-9999-4999-8999-999999999999']),/VOTING_CLOSED/);
 
   await setUser(creator1);
-  const first = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I make creative campus videos',null])).rows[0].result);
-  assert.equal(first.status,'pending');
   await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'Another duplicated application',null]), /duplicate|unique|CONTEST_FULL/i);
+    [id,'I have a contest entry but no media',null]), /PRIVATE_CONTEST_MEDIA_REQUIRED|blink_contest_entry_media_required/);
+  await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'I have a contest entry with public media','https://example.com/public.jpg']),
+    /PRIVATE_CONTEST_MEDIA_REQUIRED/);
+  await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'I have another user private media',mediaTwo]), /PRIVATE_CONTEST_MEDIA_REQUIRED/);
+  const first = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'I make creative campus videos',mediaOne])).rows[0].result);
+  assert.equal(first.status,'pending');
+  await setUser(admin);
+  const orphans = json((await rpc('admin_list_blink_contest_orphan_media',
+    '$1::integer,$2::integer',[72,100])).rows[0].result);
+  assert.equal(orphans.dry_run,true);
+  assert.ok(orphans.objects.some(o=>o.path===orphanPath));
+  assert.ok(!orphans.objects.some(o=>o.path===creator1+'/11111111-1111-4111-8111-111111111111.jpg'),
+    'Referenced applicant media must never appear in orphan suggestions');
+  await assert.rejects(() => rpc('admin_list_blink_contest_orphan_media',
+    '$1::integer,$2::integer',[1,100]), /INVALID_MEDIA_RETENTION/);
+  await setUser(creator1);
+  await assert.rejects(() => rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
+    [id,'Another duplicated application',mediaOne]), /duplicate|unique|CONTEST_FULL/i);
 
   await setUser(creator2);
   const second = json((await rpc('apply_blink_contest', '$1::uuid,$2::text,$3::text',
-    [id,'I create photography stories',null])).rows[0].result);
+    [id,'I create photography stories',mediaTwo])).rows[0].result);
   assert.notEqual(first.entry_id, second.entry_id);
 
+  await setUser(voter);
+  const noneBeforeApproval = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',20,0])).rows[0].result);
+  assert.equal(noneBeforeApproval.total, 0);
   await setUser(admin);
   const entries = json((await rpc('admin_list_blink_contest_entries', '$1::uuid', [id])).rows[0].result);
   assert.equal(entries.length, 2);
-  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text', [first.entry_id,'approve']);
-  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text', [second.entry_id,'approve']);
+  await assert.rejects(
+    () => rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+      [first.entry_id,'approve','short']),
+    /CONTEST_REVIEW_REASON_REQUIRED/
+  );
+  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+    [first.entry_id,'approve','Application meets contest eligibility rules']);
+  await rpc('admin_review_blink_contest_entry', '$1::uuid,$2::text,$3::text',
+    [second.entry_id,'approve','Submission approved by moderator']);
+  const rejection = json((await rpc('admin_review_blink_contest_entry',
+    '$1::uuid,$2::text,$3::text',
+    [second.entry_id,'reject','Submission violates the published competition rules'])
+  ).rows[0].result);
+  assert.equal(rejection.status,'rejected');
+  await setUser(voter);
+  const afterRejection = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',20,0])).rows[0].result);
+  assert.equal(afterRejection.total,1);
+  await assert.rejects(() => rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'An appeal for another user']),
+    /ENTRY_NOT_AVAILABLE/);
+  await setUser(creator2);
+  await assert.rejects(() => rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'short']), /APPEAL_REASON_LENGTH/);
+  const appeal = json((await rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'I have supplied proof that my contest entry complies with the rules'])
+  ).rows[0].result);
+  assert.equal(appeal.status,'pending');
+  await assert.rejects(() => rpc('submit_blink_contest_entry_appeal',
+    '$1::uuid,$2::text',[second.entry_id,'A duplicate appeal should be rejected by the unique constraint']),
+    /duplicate|unique/i);
+  const ownedAppeal = json((await rpc('my_blink_contest_entry_appeal','$1::uuid',
+    [second.entry_id])).rows[0].result);
+  assert.equal(ownedAppeal.status,'pending');
+  await setUser(voter);
+  await assert.rejects(() => rpc('my_blink_contest_entry_appeal','$1::uuid',
+    [second.entry_id]), /ENTRY_NOT_AVAILABLE/);
+  await assert.rejects(() => rpc('admin_list_blink_contest_entry_appeals',
+    '$1::uuid,$2::integer',[id,100]), /ADMIN_REQUIRED/);
+  await setUser(admin);
+  const appealQueue = json((await rpc('admin_list_blink_contest_entry_appeals',
+    '$1::uuid,$2::integer',[id,100])).rows[0].result);
+  assert.equal(appealQueue.length,1);
+  assert.equal(appealQueue[0].entry_id,second.entry_id);
+  await assert.rejects(() => rpc('admin_decide_blink_contest_entry_appeal',
+    '$1::uuid,$2::text,$3::text',[appeal.id,'accept','no']),/INVALID_APPEAL_DECISION/);
+  await assert.rejects(() => rpc('admin_review_blink_contest_entry',
+    '$1::uuid,$2::text,$3::text', [second.entry_id,'reject','Repeated rejection of same entry']),
+    /ENTRY_ALREADY_IN_STATUS/);
+  const accepted = json((await rpc('admin_decide_blink_contest_entry_appeal',
+    '$1::uuid,$2::text,$3::text',
+    [appeal.id,'accept','Appeal reviewed and application reinstated'])).rows[0].result);
+  assert.equal(accepted.status,'accepted');
+  await assert.rejects(() => rpc('admin_decide_blink_contest_entry_appeal',
+    '$1::uuid,$2::text,$3::text',[appeal.id,'deny','Repeated decision is not allowed']),
+    /APPEAL_NOT_PENDING/);
+  const appealDecisionNotice = (await q(`select metadata->>'status' as status from public.notifications
+    where user_id=$1 and metadata->>'kind'='blink_contest_appeal_decision'`,
+    [creator2])).rows;
+  assert.equal(appealDecisionNotice.length,1);
+  assert.equal(appealDecisionNotice[0].status,'accepted');
+  const audits=(await q('select previous_status,next_status,reason from public.blink_contest_entry_review_audit where entry_id=$1 order by created_at',
+    [second.entry_id])).rows;
+  assert.equal(audits.length,3);
+  assert.equal(audits.filter(r=>r.next_status==='rejected').length,1);
+  const rejectionNotice=(await q(`select metadata->>'new_status' as status,sub_text
+    from public.notifications where user_id=$1
+    and metadata->>'kind'='blink_contest_application_review'
+    and metadata->>'new_status'='rejected'`,[creator2])).rows;
+  assert.equal(rejectionNotice.length,1);
+  assert.match(rejectionNotice[0].sub_text,/competition rules/);
+  const fullHistory = json((await rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,30])).rows[0].result);
+  assert.equal(fullHistory.total,3);
+  assert.equal(fullHistory.history.length,3);
+  assert.equal(fullHistory.history[0].actor_id,admin);
+  assert.equal(fullHistory.history[0].actor_username,'contestadmin');
+  assert.equal(fullHistory.history.filter(h=>h.next_status==='rejected').length,1);
+  assert.match(fullHistory.history.find(h=>h.next_status==='rejected').reason,/competition rules/);
+  const oneHistory = json((await rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,1])).rows[0].result);
+  assert.equal(oneHistory.total,3);
+  assert.equal(oneHistory.history.length,1);
+  const cappedHistory = json((await rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,1000])).rows[0].result);
+  assert.equal(cappedHistory.limit,50);
+  await setUser(creator2);
+  await assert.rejects(() => rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',[second.entry_id,30]), /ADMIN_REQUIRED/);
+  await setUser(admin);
+  await assert.rejects(() => rpc('admin_get_blink_contest_entry_review_history',
+    '$1::uuid,$2::integer',['99999999-9999-4999-8999-999999999999',30]),
+    /ENTRY_NOT_FOUND/);
 
   // Every approved contestant has a validated public share destination.
   await setUser(voter);
@@ -87,6 +264,21 @@ try {
   assert.equal(approved.name, 'CREATORONE');
   assert.equal(approved.rank, 1);
   assert.equal(approved.votes, 0);
+  const pageOne = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',1,0])).rows[0].result);
+  assert.equal(pageOne.total,2);
+  assert.equal(pageOne.entries.length,1);
+  assert.equal(pageOne.entries[0].rank,1);
+  const pageTwo = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'',1,1])).rows[0].result);
+  assert.equal(pageTwo.entries.length,1);
+  assert.equal(pageTwo.entries[0].rank,2);
+  const foundByName = json((await rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'CREATORTWO',20,0])).rows[0].result);
+  assert.equal(foundByName.total,1);
+  assert.equal(foundByName.entries[0].username,'creatortwo');
+  await assert.rejects(() => rpc('search_blink_contest_candidates',
+    '$1::uuid,$2::text,$3::integer,$4::integer', [id,'x',20,0]), /CANDIDATE_SEARCH_TERM_INVALID/);
   await assert.rejects(() => rpc('record_blink_contest_share','$1::uuid,$2::uuid,$3::text',
     [id,'99999999-9999-4999-8999-999999999999','copy']), /CANDIDATE_NOT_AVAILABLE/);
   const shared = json((await rpc('record_blink_contest_share','$1::uuid,$2::uuid,$3::text',

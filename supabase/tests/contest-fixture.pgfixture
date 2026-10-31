@@ -36,3 +36,20 @@ create function private.require_blink_admin() returns uuid
     return auth.uid();
   end;
   $func$;
+
+-- Local fake Storage metadata for validating the private-approval guard.
+create schema storage;
+create table storage.buckets(
+  id text primary key, name text not null, public boolean not null,
+  file_size_limit bigint, allowed_mime_types text[]
+);
+create table storage.objects(
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text not null, name text not null,
+  created_at timestamptz not null default now(),
+  unique(bucket_id,name)
+);
+create function storage.foldername(path text) returns text[]
+language sql immutable as $$
+  select string_to_array(split_part(path, '/', 1), '/');
+$$;

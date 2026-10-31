@@ -107,6 +107,11 @@ jobs:
             test -s app/build/visual-audit/contest-hero-podium-winners-staging.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-applicant-card-staging.png app/build/visual-audit/contest-applicant-card-staging.png
             test -s app/build/visual-audit/contest-applicant-card-staging.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-review-history-staging.png app/build/visual-audit/contest-review-history-staging.png
+            test -s app/build/visual-audit/contest-review-history-staging.png
+            # Explicitly collect the actual flyer dialog and 320dp leaderboard
+            # images. A passing assertion alone does not preserve screenshots.
+            for view in personalized-flyer compact-leaderboard; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/contest-${view}-staging.png" "app/build/visual-audit/contest-${view}-staging.png" && test -s "app/build/visual-audit/contest-${view}-staging.png" || exit 1; done
             # Reference composer screenshots are produced on the emulator, not fabricated.
             # android-emulator-runner executes each script line separately. Keep the loop on one line.
             for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done

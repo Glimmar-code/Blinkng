@@ -204,14 +204,22 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
         BlinkContestShare.message(name, candidate.optString("contest_title"),
             candidate.optInt("rank"), candidate.optInt("votes"), link)
     }
-    var rendered by remember(id, candidate.optInt("votes"), candidate.optInt("rank")) {
+    // Prefer the contestant's approved submitted PHOTO over an unrelated
+    // profile avatar; videos use the profile avatar as the still-image fallback.
+    val entryPhoto = candidate.optString("media_url")
+    val portraitUrl = if (contestMediaExtension(entryPhoto) in
+        setOf("jpg", "jpeg", "png", "webp")) entryPhoto
+        else candidate.optString("avatar_url")
+    val candidateSnapshot = candidate.toString()
+    var rendered by remember(contestId, id, candidateSnapshot) {
         mutableStateOf<Bitmap?>(null)
     }
     var sharing by remember { mutableStateOf(false) }
-    LaunchedEffect(id, candidate.optString("avatar_url"), candidate.optInt("votes"), candidate.optInt("rank")) {
+    LaunchedEffect(contestId, id, candidateSnapshot, portraitUrl) {
         rendered = withContext(Dispatchers.IO) {
-            val avatar = loadAvatar(candidate.optString("avatar_url"))
-            try { createContestFlyer(candidate, link, avatar) } finally { avatar?.recycle() }
+            val portrait = loadAvatar(portraitUrl)
+            try { createContestFlyer(candidate, link, portrait) }
+            finally { portrait?.recycle() }
         }
     }
 
@@ -237,35 +245,60 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
                     onClick = {
                         val image = rendered ?: return@Button
                         sharing = true
-                        try {
-                            val folder = File(context.cacheDir, "blink-share").apply { mkdirs() }
-                            val file = File(folder, "blink-contest-$contestId-$id.png")
-                            FileOutputStream(file).use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                            val content = FileProvider.getUriForFile(context,
-                                context.packageName + ".chatfiles", file)
-                            val send = Intent(Intent.ACTION_SEND).apply {
-                                type = "image/png"
-                                putExtra(Intent.EXTRA_STREAM, content)
-                                putExtra(Intent.EXTRA_TEXT, caption)
-                                putExtra(Intent.EXTRA_TITLE, "Vote for " + name)
-                                clipData = ClipData.newUri(context.contentResolver, "BLINK Contest", content)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        scope.launch {
+                            try {
+                                // Encoding a 1080×1350 PNG on the Compose UI thread
+                                // freezes low-memory devices. Write it on Dispatchers.IO.
+                                val content = withContext(Dispatchers.IO) {
+                                    val folder = File(context.cacheDir, "blink-share").apply {
+                                        check(exists() || mkdirs()) { "Cannot create share cache" }
+                                    }
+                                    val file = File(folder, "blink-contest-$contestId-$id.png")
+                                    val saved = FileOutputStream(file).use {
+                                        image.compress(Bitmap.CompressFormat.PNG, 100, it)
+                                    }
+                                    check(saved) { "Contest flyer could not be saved" }
+                                    FileProvider.getUriForFile(
+                                        context, context.packageName + ".chatfiles", file
+                                    )
+                                }
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "image/png"
+                                    putExtra(Intent.EXTRA_STREAM, content)
+                                    putExtra(Intent.EXTRA_TEXT, caption)
+                                    putExtra(Intent.EXTRA_TITLE, "Vote for " + name)
+                                    clipData = ClipData.newUri(context.contentResolver, "BLINK Contest", content)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(send, "Share BLINK Contest flyer"))
+                                scope.launch { eventApi.recordShare(contestId, id, "native") }
+                            } catch (_: Exception) {
+                                Toast.makeText(context,
+                                    "Couldn't share flyer. Copy the voting link instead.",
+                                    Toast.LENGTH_LONG).show()
+                            } finally {
+                                sharing = false
                             }
-                            context.startActivity(Intent.createChooser(send, "Share BLINK Contest flyer"))
-                            scope.launch { eventApi.recordShare(contestId, id, "native") }
-                        } catch (error: Exception) {
-                            Toast.makeText(context, "Couldn't share flyer. Copy the voting link instead.",
-                                Toast.LENGTH_LONG).show()
-                        } finally { sharing = false }
+                        }
                     }
                 ) { Text("Share flyer and voting link") }
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
-                        context.getSystemService(ClipboardManager::class.java)
-                            ?.setPrimaryClip(ClipData.newPlainText("BLINK contestant voting link", caption))
-                        Toast.makeText(context, "Voting message copied", Toast.LENGTH_SHORT).show()
-                        scope.launch { eventApi.recordShare(contestId, id, "copy") }
+                        val copied = runCatching {
+                            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                ?: error("Clipboard is unavailable")
+                            clipboard.setPrimaryClip(ClipData.newPlainText(
+                                "BLINK contestant voting link", caption
+                            ))
+                        }.isSuccess
+                        Toast.makeText(context,
+                            if (copied) "Voting message copied" else "Unable to copy voting link",
+                            Toast.LENGTH_SHORT).show()
+                        // Do not inflate share analytics when clipboard access failed.
+                        if (copied) scope.launch {
+                            eventApi.recordShare(contestId, id, "copy")
+                        }
                     }
                 ) { Text("Copy voting message") }
                 TextButton(onClick = onDismiss) { Text("Close") }
