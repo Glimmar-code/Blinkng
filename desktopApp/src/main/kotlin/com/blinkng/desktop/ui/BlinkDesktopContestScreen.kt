@@ -210,7 +210,15 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                         Text("Your rank: " + if (d.isNull("my_rank")) "Not ranked yet"
                             else "#" + d.optInt("my_rank") +
                                 DesktopContestRankMovement.label(d,"my_rank_delta"))
-                        if (own.isNotBlank()) Text("Your application: " + d.optString("my_entry_status"))
+                        if (own.isNotBlank()) {
+                            val current = d.optString("my_entry_status")
+                            Text("Your application: " + current)
+                            if (current == "rejected" || current == "disqualified") {
+                                Text("Check Notifications for the moderator's reason.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                         if (voted.isNotBlank()) Text("You've already used your free vote.")
                     }
                     if (status == "registration" && own.isBlank()) item {
