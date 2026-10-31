@@ -1,5 +1,8 @@
 package com.example.data.views
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,7 +98,8 @@ internal object MarketViewDisplayCoordinator {
     }
 }
 
+@Composable
 fun rememberDelayedMarketViewCount(itemId: String, modelCount: Int): Int {
-    val displayState by androidx.compose.runtime.collectAsState(MarketViewDisplayCoordinator.state)
+    val displayState by MarketViewDisplayCoordinator.state.collectAsState()
     return displayState.displayedCount(itemId, modelCount)
 }
