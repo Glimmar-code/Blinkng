@@ -1,3 +1,21 @@
+## 2026-10-31 — Android Chat composer touch/hold accessibility and reference icons
+
+- **PARITY-EXCEPTION: android-chat-composer-touch-microphone-20261031** — Android Compose's inline microphone supports touch tap (voice typing) and long press (start voice-note recording). The fix gives the control proper click/long-click accessibility semantics and matches the supplied outlined camera/microphone artwork. These are native Android gesture/accessibility affordances; applying an Android long-press modifier to the Windows desktop composer would be inappropriate.
+- **Desktop scope:** Windows composer and its existing send/attachment actions remain unchanged. This exception does **not** certify full voice recording/dictation parity on Windows.
+- **Validation hold:** An Android instrumentation screenshot fixture and real semantic-action assertions cover camera, tap-to-dictate, long-press-to-record, and send. Latest-head CI, updated screenshot comparison and native device functionality must pass before main merge.
+
+## 2026-10-30 — Compact native Android Chat voice player (reference fidelity)
+
+- **PARITY-EXCEPTION: android-native-compact-voice-player-20261030** — The small-screen Android `BlinkChatVoicePlayer` renders the selected reference's compact single-row waveform, duration and playback-speed control using Android MediaPlayer. Android native DownloadManager remains available from the message action menu, not an extra button consuming inline waveform space.
+- **Desktop equivalent and gap:** The Windows conversation is a desktop-native surface with a different layout and file actions. This Testlab change does not implement or certify Windows voice playback/download parity. Existing desktop conversations remain unchanged; any missing desktop voice feature still requires a separately validated implementation before claiming full cross-platform feature parity.
+- **Validation hold:** The Android emulator fixture must show waveform, time and 1× control together; Android playback/download functionality and keyboard tests, Windows quality and full device visual comparison must pass before merge into `main`. Do not treat a source-only visual edit as exact reference screenshot evidence.
+
+## 2026-10-30 — Create Post recent gallery: Android-specific local MediaStore discovery
+
+- **PARITY-EXCEPTION: android-recent-mediastore-thumbnails-20261030** — Android may display a limited, newest-first row of real camera-roll thumbnails **only if the user has already granted media permission**. Without that permission, the app displays explicitly saved-draft images and offers the Android Photo Picker. Windows does not have Android's MediaStore or runtime permission API, so attempting to duplicate this code on desktop would be incorrect.
+- **Windows equivalent:** `DesktopCreatePostDialog.kt` already uses a native `JFileChooser` for selecting multiple photos, previews the selected images, and supports reorder, removal, editor and publishing. This user-facing selection pathway remains unchanged; unlike Android's permission-scoped recent row, Windows does not automatically enumerate local photos.
+- This exception is only for the **operating-system-specific recent thumbnail affordance**. It does not exempt missing posting functionality, content security or visual verification. Android Compose tests, emulator captures and actual reference-image comparisons are still release blockers; no merge or deployment is authorized by this entry.
+
 ## 2026-10-29 — Combined Contest, Create Post and Chat repair
 
 - Preserves PR #638, #639 and #644 histories on `Testlab/contest-create-post-chat-20261029`.

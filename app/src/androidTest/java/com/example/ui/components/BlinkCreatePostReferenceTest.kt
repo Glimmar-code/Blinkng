@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -45,6 +46,32 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun recentSeeAllRoutesToMediaReviewWithoutPublishing() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkCreatePostLanding(
+                    drafts = emptyList(),
+                    onClose = {},
+                    onText = {},
+                    onPhoto = { actions += "picker" },
+                    onVideo = {},
+                    onPoll = {},
+                    onClassic = {},
+                    onCamera = {},
+                    onDraft = {},
+                    onRecentPhoto = { actions += "photo:" + it },
+                    onRecentSeeAll = { actions += "gallery" }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_recent_see_all").performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf("gallery"), actions)
+        }
+    }
+
+    @Test
     fun savedDraftIsRealAndSelectableWithoutFakeGalleryRows() {
         var openedId = ""
         composeRule.setContent {
@@ -56,8 +83,66 @@ class BlinkCreatePostReferenceTest {
                 )
             }
         }
-        composeRule.onNodeWithText("My campus update").performClick()
+        composeRule.onNodeWithTag("blink_create_saved_drafts").assertDoesNotExist()
+        composeRule.onNodeWithText("Drafts").performClick()
+        composeRule.onNodeWithTag("blink_create_saved_drafts").assertExists()
+        composeRule.onNodeWithTag("blink_create_saved_draft_draft123").performClick()
         composeRule.runOnIdle { assertEquals("draft123", openedId) }
+    }
+
+    @Test
+    fun classicComposerRemainsAvailableWithoutExtraLandingRow() {
+        var opened = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkCreatePostLanding(
+                    drafts = emptyList(),
+                    onClose = {}, onText = {}, onPhoto = {}, onVideo = {}, onPoll = {},
+                    onClassic = { opened++ }, onCamera = {}, onDraft = {}
+                )
+            }
+        }
+        composeRule.onNodeWithText("Classic composer").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_create_post_more_menu").performClick()
+        composeRule.onNodeWithTag("blink_create_post_classic").performClick()
+        composeRule.runOnIdle { assertEquals(1, opened) }
+    }
+
+    @Test
+    fun emptyGalleryOffersWorkingPhotoPickerAndOptionalGalleryAccess() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkMediaEmptyGallery(
+                    canBrowse = false,
+                    onPick = { actions += "picker" },
+                    onRequestLibrary = { actions += "permission" }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_gallery_empty_state").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_browse_photos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_allow_access").performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf("picker", "permission"), actions)
+        }
+    }
+
+    @Test
+    fun referenceHashtagCardsAreClickableAndSelectable() {
+        var taps = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferenceTagCard(
+                    tag = "FUTA",
+                    selected = true,
+                    enabled = true,
+                    onClick = { taps++ }
+                )
+            }
+        }
+        composeRule.onNodeWithText("#FUTA").assertExists().performClick()
+        composeRule.runOnIdle { assertEquals(1, taps) }
     }
 
     @Test
@@ -81,12 +166,43 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("2 / 10").assertExists()
         composeRule.onNodeWithTag("blink_gallery_photo_0").performClick()
         composeRule.onNodeWithTag("blink_gallery_edit_preview").performClick()
-        composeRule.onNodeWithText("Add more photos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_add_more").performClick()
         composeRule.onNodeWithTag("blink_media_tab_videos").performClick()
-        composeRule.onNodeWithText("Next (2)").performClick()
+        composeRule.onNodeWithTag("blink_gallery_video_selection").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_next").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_gallery_choose_videos").performClick()
+        // Canceling video selection doesn't destroy selected photos.
+        composeRule.onNodeWithTag("blink_media_tab_photos").performClick()
+        composeRule.onNodeWithTag("blink_gallery_selected_strip").assertExists()
+        composeRule.onNodeWithTag("blink_gallery_next").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("edit:content://sample/1", "add", "video", "next"), actions)
+            assertEquals(listOf("edit:content://sample/1", "add", "video", "video", "next"), actions)
         }
+    }
+
+    @Test
+    fun galleryStripRemovesOnlyTheTappedPhotoAndKeepsSelectedOrder() {
+        val removed = mutableListOf<Int>()
+        var nextCalls = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferenceMediaReview(
+                    images = listOf("content://sample/photo-a", "content://sample/photo-b"),
+                    onBack = {},
+                    onRemove = { removed += it },
+                    onMove = { _, _ -> },
+                    onEdit = {},
+                    onAddMore = {},
+                    onPickVideos = {},
+                    onNext = { nextCalls++ }
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_gallery_remove_selected_1").performClick()
+        composeRule.runOnIdle { assertEquals(listOf(1), removed) }
+        composeRule.onNodeWithTag("blink_gallery_next").performClick()
+        composeRule.runOnIdle { assertEquals(1, nextCalls) }
     }
 
     @Test
@@ -120,9 +236,63 @@ class BlinkCreatePostReferenceTest {
         composeRule.onNodeWithText("Public").performClick()
         composeRule.onNodeWithText("Followers").performClick()
         composeRule.onNodeWithText("Next: Post options").performScrollTo().performClick()
+        composeRule.onNodeWithTag("blink_post_details_back").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("audience:Followers", "next"), selected)
+            assertEquals(listOf("audience:Followers", "next", "back"), selected)
         }
+    }
+
+    @Test
+    fun postDetailsDefaultIsCompactButExistingAdvancedSettingsStillWork() {
+        val changes = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferencePostDetails(
+                    text = "FUTA update",
+                    mediaUri = null, tags = emptyList(),
+                    audience = "Everyone", location = "",
+                    category = "Campus Life",
+                    allowComments = true, hideLikes = false, temporary = false,
+                    onBack = {}, onEditCaption = {},
+                    onAudienceChange = {}, onLocationChange = {},
+                    onCategoryChange = { changes += "category:$it" },
+                    onCommentsChange = { changes += "comments:$it" },
+                    onHideLikesChange = { changes += "likes:$it" },
+                    onTemporaryChange = { changes += "temporary:$it" },
+                    onNext = {}
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_post_details_advanced_settings").assertDoesNotExist()
+        composeRule.onNodeWithText("Allow comments").assertExists()
+        composeRule.onNodeWithTag("blink_post_details_more_settings").performScrollTo().performClick()
+        composeRule.onNodeWithTag("blink_post_details_advanced_settings").assertExists()
+        composeRule.onNodeWithText("Post category").assertExists()
+        composeRule.onNodeWithText("Academic").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("category:Academic"), changes) }
+        composeRule.onNodeWithTag("blink_post_details_more_settings").performScrollTo().performClick()
+        composeRule.onNodeWithTag("blink_post_details_advanced_settings").assertDoesNotExist()
+    }
+
+    @Test
+    fun tagPeopleOpensMentionActionWithoutMisroutingToEditCaption() {
+        val events = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkReferencePostDetails(
+                    text = "A FUTA post", mediaUri = null, tags = emptyList(),
+                    audience = "Everyone", location = "", category = "Campus Life",
+                    allowComments = true, hideLikes = false, temporary = false,
+                    onBack = {}, onEditCaption = { events += "edit" },
+                    onTagPeople = { events += "mention" },
+                    onAudienceChange = {}, onLocationChange = {}, onCategoryChange = {},
+                    onCommentsChange = {}, onHideLikesChange = {},
+                    onTemporaryChange = {}, onNext = {}
+                )
+            }
+        }
+        composeRule.onNodeWithText("Tag people").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("mention"), events) }
     }
 
     @Test
@@ -148,6 +318,37 @@ class BlinkCreatePostReferenceTest {
     }
 
     @Test
+    fun postOptionsKeepPreviewAccessibleAndDisableEmptyDrafts() {
+        var previewCount = 0
+        var savedCount = 0
+        composeRule.setContent {
+            MaterialTheme {
+                BlinkCreatePostPublishOptions(
+                    onBack = {},
+                    onPost = {},
+                    onSaveDraft = { savedCount++ },
+                    onPreview = { previewCount++ },
+                    onShareWhatsApp = {},
+                    onShareOtherApps = {},
+                    onCopyCaption = {},
+                    canCopyCaption = false,
+                    isSubmitting = false,
+                    canPublish = false,
+                    canSaveDraft = false,
+                    uploadProgress = null
+                )
+            }
+        }
+        composeRule.onNodeWithTag("blink_post_options_preview").performClick()
+        composeRule.onNodeWithText("Save as Draft").assertExists()
+        composeRule.onNodeWithText("Save as Draft").assertIsNotEnabled()
+        composeRule.runOnIdle {
+            assertEquals(1, previewCount)
+            assertEquals(0, savedCount)
+        }
+    }
+
+    @Test
     fun finalOptionsAreSeparateActionsAndNeverAutoPublish() {
         val selected = mutableListOf<String>()
         composeRule.setContent {
@@ -168,7 +369,7 @@ class BlinkCreatePostReferenceTest {
             }
         }
         composeRule.onNodeWithTag("blink_create_post_publish_options").assertExists()
-        composeRule.onNodeWithText("Preview Post").performClick()
+        composeRule.onNodeWithTag("blink_post_options_preview").performClick()
         composeRule.onNodeWithText("Save as Draft").performClick()
         composeRule.onNodeWithText("WhatsApp").performScrollTo().performClick()
         composeRule.onNodeWithText("Copy caption").performScrollTo().performClick()

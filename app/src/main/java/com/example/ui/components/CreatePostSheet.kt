@@ -40,6 +40,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -146,6 +148,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.font.FontWeight
@@ -225,6 +231,8 @@ fun CreatePostSheet(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     val composerCoroutineScope = rememberCoroutineScope()
+    val textEntryFocusRequester = remember { FocusRequester() }
+    var focusTextOnEntry by remember { mutableStateOf(false) }
     val composerScope = profile.id.ifBlank { profile.username }
 
     var text by rememberPersistentTextState(
@@ -270,6 +278,10 @@ fun CreatePostSheet(
     var category by rememberSaveable { mutableStateOf("Campus Life") }
     var allowComments by rememberSaveable { mutableStateOf(true) }
     var showPoll by rememberSaveable { mutableStateOf(false) }
+    var showPollCreator by rememberSaveable { mutableStateOf(false) }
+    // Poll replacement is committed only on a valid Done, never on Continue.
+    var pollPendingReplacement by rememberSaveable { mutableStateOf(false) }
+    var pollReturnToEditor by rememberSaveable { mutableStateOf(false) }
     var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
     var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
@@ -295,6 +307,9 @@ fun CreatePostSheet(
     var showPublishOptions by rememberSaveable { mutableStateOf(false) }
     var showReferenceDetails by rememberSaveable { mutableStateOf(false) }
     var showMediaReview by rememberSaveable { mutableStateOf(false) }
+    // Opening media from the composer must return to the composer on Back.
+    // The same media screen opened from Create Options returns to landing.
+    var galleryReturnToEditor by rememberSaveable { mutableStateOf(false) }
     var showLegacyPostActions by rememberSaveable { mutableStateOf(false) }
     var pickerOpenedFromLanding by rememberSaveable { mutableStateOf(false) }
     var showCameraActions by rememberSaveable { mutableStateOf(false) }
@@ -412,6 +427,9 @@ fun CreatePostSheet(
                 .take(10)
             selectedVideo = null
             videoClips = emptyList()
+            selectedCoverUri = null
+            coverFrameIndex = -1
+            reelHasPendingEdits = false
             showPoll = false
             reelEditorStage = false
             mode = "post"
@@ -437,6 +455,7 @@ fun CreatePostSheet(
             val clips = (videoClips + picked.map(Uri::toString)).distinct()
                 .take(BlinkReelClipPolicy.MAX_CLIPS)
             selectedImages = emptyList()
+            showMediaReview = false
             showPoll = false
             mode = "reel"
             if (clips.size == 1) {
@@ -1072,9 +1091,16 @@ fun CreatePostSheet(
                 showReferenceDetails = true
             }
             showReferenceDetails && !useClassicComposer -> showReferenceDetails = false
+            showPollCreator && !useClassicComposer -> {
+                showPollCreator = false
+                pollPendingReplacement = false
+                showCreateLanding = !pollReturnToEditor
+                pollReturnToEditor = false
+            }
             showMediaReview && !useClassicComposer -> {
                 showMediaReview = false
-                showCreateLanding = true
+                showCreateLanding = !galleryReturnToEditor
+                galleryReturnToEditor = false
             }
             videoClips.isNotEmpty() && !showCreateLanding && !useClassicComposer ->
                 showCreateLanding = true
@@ -1088,6 +1114,10 @@ fun CreatePostSheet(
         onDismissRequest = ::navigateBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        // Dialog has its own native window; obtain the IME controller from this
+        // composition, not the Activity behind the full-screen composer.
+        val keyboardController = LocalSoftwareKeyboardController.current
+        val composerDialogView = LocalView.current
         val outerScheme = MaterialTheme.colorScheme
         MaterialTheme(
             colorScheme = if (useClassicComposer && selectedVideo == null && mode != "reel") {
@@ -1120,8 +1150,9 @@ fun CreatePostSheet(
                 .imePadding()
         ) {
             val referenceStage = when {
-                videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
+                showPollCreator -> "poll"
                 showMediaReview -> "gallery"
+                videoClips.size >= 2 && selectedVideo == null && !showCreateLanding -> "clips"
                 showCreateLanding -> "landing"
                 showReferenceDetails -> "details"
                 showPublishOptions -> "publish"
@@ -1130,7 +1161,7 @@ fun CreatePostSheet(
             AnimatedContent(
                 targetState = referenceStage,
                 transitionSpec = {
-                    val order = listOf("landing", "gallery", "clips", "editor", "details", "publish")
+                    val order = listOf("landing", "gallery", "poll", "clips", "editor", "details", "publish")
                     val direction = if (order.indexOf(targetState) >= order.indexOf(initialState)) 1 else -1
                     if (reduceReferenceMotion) {
                         fadeIn(animationSpec = tween(0)) togetherWith
@@ -1209,13 +1240,28 @@ fun CreatePostSheet(
                 BlinkReferenceMediaReview(
                     images = selectedImages,
                     onSelectPhoto = { uri ->
-                        if (!isSubmitting && uri !in selectedImages && selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                        if (!isSubmitting && uri !in selectedImages &&
+                            selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                            // Only commit the media-type switch after a real photo
+                            // is chosen. Back or cancelled picker keeps the prior
+                            // Reel/poll content and its unsaved draft intact.
+                            if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                                selectedVideo = null
+                                videoClips = emptyList()
+                                selectedCoverUri = null
+                                coverFrameIndex = -1
+                                reelHasPendingEdits = false
+                                reelEditorStage = false
+                                showPoll = false
+                                mode = "post"
+                            }
                             selectedImages = selectedImages + uri
                         }
                     },
                     onBack = {
                         showMediaReview = false
-                        showCreateLanding = true
+                        showCreateLanding = !galleryReturnToEditor
+                        galleryReturnToEditor = false
                     },
                     onRemove = { index ->
                         selectedImages = selectedImages.filterIndexed { i, _ -> i != index }
@@ -1238,11 +1284,51 @@ fun CreatePostSheet(
                         )
                     },
                     onPickVideos = {
-                        // Confirm a media-type change before replacing selected photos.
                         pickerOpenedFromLanding = false
-                        pendingMediaSwitch = "reel"
+                        if (selectedImages.isEmpty()) {
+                            // No content is being replaced. Opening Videos must
+                            // not display a misleading destructive confirmation.
+                            multiVideoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            )
+                        } else {
+                            // Keep the selected photo album until the user
+                            // confirms switching to a video post.
+                            pendingMediaSwitch = "reel"
+                        }
                     },
-                    onNext = { showMediaReview = false }
+                    onNext = {
+                        showMediaReview = false
+                        galleryReturnToEditor = false
+                    }
+                )
+            } else if (visibleStage == "poll") {
+                BlinkReferencePollScreen(
+                    question = pollQuestion,
+                    onQuestionChanged = { pollQuestion = it.take(240) },
+                    options = pollOptions,
+                    onOptionsChanged = { pollOptions = it },
+                    durationHours = pollDurationHours,
+                    onDurationChanged = { pollDurationHours = it },
+                    enabled = !isSubmitting,
+                    onBack = ::navigateBack,
+                    onDone = {
+                        if (pollPendingReplacement) {
+                            selectedImages = emptyList()
+                            selectedVideo = null
+                            videoClips = emptyList()
+                            selectedCoverUri = null
+                            coverFrameIndex = -1
+                            reelHasPendingEdits = false
+                            reelEditorStage = false
+                        }
+                        pollPendingReplacement = false
+                        showPollCreator = false
+                        pollReturnToEditor = false
+                        showCreateLanding = false
+                        showPoll = true
+                        mode = "post"
+                    }
                 )
             } else if (visibleStage == "landing") {
                 BlinkCreatePostLanding(
@@ -1254,29 +1340,35 @@ fun CreatePostSheet(
                         } else {
                             mode = "post"
                             showPoll = false
+                            // An existing media draft is not a blank text entry.
+                            // Do not pop the keyboard over photo/video editing.
+                            focusTextOnEntry = selectedImages.isEmpty() && selectedVideo == null
                             showCreateLanding = false
                         }
                     },
                     onPhoto = {
-                        pickerOpenedFromLanding = true
-                        showCreateLanding = false
-                        when (BlinkPhotoEntryPolicy.decide(
+                        galleryReturnToEditor = false
+                        val entryAction = BlinkPhotoEntryPolicy.decide(
                             hasVideo = selectedVideo != null,
                             hasPoll = showPoll,
                             hasVideoClips = videoClips.isNotEmpty(),
                             hasPhotos = selectedImages.isNotEmpty()
-                        )) {
-                            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT ->
+                        )
+                        when (entryAction) {
+                            BlinkPhotoEntryAction.CONFIRM_REPLACEMENT -> {
+                                // A cancelled type switch must preserve the previous draft.
+                                pickerOpenedFromLanding = true
                                 pendingMediaSwitch = "gallery"
-                            BlinkPhotoEntryAction.REVIEW_EXISTING -> {
+                            }
+                            BlinkPhotoEntryAction.REVIEW_EXISTING,
+                            BlinkPhotoEntryAction.OPEN_MEDIA_REVIEW -> {
+                                // Open the in-app gallery first. Its empty state has
+                                // a permission-free photo picker action.
                                 pickerOpenedFromLanding = false
                                 mode = "post"
+                                showCreateLanding = false
                                 showMediaReview = true
                             }
-                            BlinkPhotoEntryAction.OPEN_SYSTEM_PICKER ->
-                                imagePicker.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
                         }
                     },
                     onVideo = {
@@ -1291,12 +1383,14 @@ fun CreatePostSheet(
                         }
                     },
                     onPoll = {
-                        showCreateLanding = false
                         if (selectedVideo != null || selectedImages.isNotEmpty() || videoClips.isNotEmpty()) {
                             pickerOpenedFromLanding = true
                             pendingMediaSwitch = "poll"
                         } else {
-                            showPoll = true
+                            pollPendingReplacement = false
+                            showPollCreator = true
+                            pollReturnToEditor = false
+                            showCreateLanding = false
                             mode = "post"
                         }
                     },
@@ -1311,7 +1405,36 @@ fun CreatePostSheet(
                             pendingMediaSwitch = "camera"
                         } else openCameraActions()
                     },
-                    onDraft = { restoreDraft(it) }
+                    onDraft = { restoreDraft(it) },
+                    onRecentPhoto = { photoUri ->
+                        galleryReturnToEditor = false
+                        // Preserve existing content instead of silently replacing a Reel or poll.
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                            pickerOpenedFromLanding = true
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            if (photoUri !in selectedImages &&
+                                selectedImages.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                                selectedImages = selectedImages + photoUri
+                            }
+                            pickerOpenedFromLanding = false
+                            mode = "post"
+                            showCreateLanding = false
+                            showMediaReview = true
+                        }
+                    },
+                    onRecentSeeAll = {
+                        galleryReturnToEditor = false
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                            pickerOpenedFromLanding = true
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            pickerOpenedFromLanding = false
+                            mode = "post"
+                            showCreateLanding = false
+                            showMediaReview = true
+                        }
+                    }
                 )
             } else if (visibleStage == "details") {
                 BlinkReferencePostDetails(
@@ -1325,7 +1448,17 @@ fun CreatePostSheet(
                     hideLikes = hideLikes,
                     temporary = isDisappearing,
                     onBack = { showReferenceDetails = false },
-                    onEditCaption = { showReferenceDetails = false },
+                    onEditCaption = {
+                        showReferenceDetails = false
+                        focusTextOnEntry = textPresentation != "color"
+                    },
+                    onTagPeople = {
+                        if (text.length < 4999 && !text.trimEnd().endsWith("@")) {
+                            text = text.trimEnd() + if (text.isBlank()) "@" else " @"
+                        }
+                        showReferenceDetails = false
+                        focusTextOnEntry = textPresentation != "color"
+                    },
                     onAudienceChange = { audience = it },
                     onLocationChange = { location = it },
                     onCategoryChange = { category = it },
@@ -1365,6 +1498,7 @@ fun CreatePostSheet(
                     canCopyCaption = BlinkPostShareActions.caption(text, if (showPoll) pollQuestion else "").isNotBlank(),
                     isSubmitting = isSubmitting,
                     canPublish = canSubmit,
+                    canSaveDraft = hasComposerInput,
                     uploadProgress = uploadProgress
                 )
             } else {
@@ -1534,6 +1668,18 @@ fun CreatePostSheet(
                 }
 
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
+                // Details → Tag people returns to the same editable caption,
+                // including photo/Reel captions, without dropping media drafts.
+                if (!useClassicComposer && focusTextOnEntry) {
+                    LaunchedEffect(focusTextOnEntry, showReferenceDetails) {
+                        androidx.compose.runtime.withFrameNanos { }
+                        composerDialogView.requestFocus()
+                        textEntryFocusRequester.requestFocus()
+                        androidx.compose.runtime.withFrameNanos { }
+                        keyboardController?.show()
+                        focusTextOnEntry = false
+                    }
+                }
                 if (textOnlyComposer) {
                     if (useClassicComposer) {
                     Row(
@@ -1575,8 +1721,10 @@ fun CreatePostSheet(
                             enabled = !isSubmitting,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .focusRequester(textEntryFocusRequester)
+                                .testTag("blink_create_post_caption_field")
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
-                            minLines = if (useClassicComposer) 7 else 4,
+                            minLines = if (useClassicComposer) 7 else 2,
                             maxLines = 14,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = if (useClassicComposer) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -1605,6 +1753,8 @@ fun CreatePostSheet(
                         enabled = !isSubmitting,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .focusRequester(textEntryFocusRequester)
+                            .testTag("blink_create_post_media_caption_field")
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         minLines = 4,
                         maxLines = 10,
@@ -1799,25 +1949,64 @@ fun CreatePostSheet(
                     exit = fadeOut(tween(BlinkDesignTokens.Motion.Interaction)) + shrinkVertically(tween(BlinkDesignTokens.Motion.Interaction)),
                     label = "composerPollReveal"
                 ) {
-                    PollComposer(
-                        question = pollQuestion,
-                        onQuestionChanged = { pollQuestion = it.take(240) },
-                        options = pollOptions,
-                        onOptionsChanged = { pollOptions = it },
-                        durationHours = pollDurationHours,
-                        onDurationChanged = { pollDurationHours = it },
-                        enabled = !isSubmitting
-                    )
+                    if (useClassicComposer) {
+                        PollComposer(
+                            question = pollQuestion,
+                            onQuestionChanged = { pollQuestion = it.take(240) },
+                            options = pollOptions,
+                            onOptionsChanged = { pollOptions = it },
+                            durationHours = pollDurationHours,
+                            onDurationChanged = { pollDurationHours = it },
+                            enabled = !isSubmitting
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
+                                .testTag("blink_poll_attached_card"),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF1D2028),
+                            border = BorderStroke(1.dp, Color(0xFF353844))
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Poll, contentDescription = null,
+                                    tint = Color(0xFF8E88FF), modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Poll attached", color = Color.White,
+                                        fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Text(pollQuestion.ifBlank { "Finish your question and answers" },
+                                        color = Color(0xFFBAC0CC), fontSize = 11.sp,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                TextButton(
+                                    onClick = {
+                                        pollReturnToEditor = true
+                                        showPollCreator = true
+                                    },
+                                    enabled = !isSubmitting,
+                                    modifier = Modifier.testTag("blink_edit_attached_poll")
+                                ) { Text("Edit", color = Color(0xFFABA4FF)) }
+                            }
+                        }
+                    }
                 }
 
                 if (!useClassicComposer) {
                 BlinkReferenceComposerToolbar(
                     enabled = !isSubmitting,
                     onPhoto = {
-                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
-                        else imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                            // Confirm content replacement before changing types.
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            // Keep the text draft and open BLINK Select Media,
+                            // the same permission-scoped gallery as Create Options.
+                            galleryReturnToEditor = true
+                            showMediaReview = true
+                        }
                     },
                     onVideo = {
                         if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
@@ -1826,10 +2015,11 @@ fun CreatePostSheet(
                         )
                     },
                     onPoll = {
-                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        if (selectedVideo != null || videoClips.isNotEmpty() || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
                         else {
-                            showPoll = !showPoll
-                            if (showPoll) mode = "post"
+                            pollPendingReplacement = false
+                            showPollCreator = true
+                            pollReturnToEditor = true
                         }
                     },
                     onEmoji = { if (text.length < 4998) text += " 😊" },
@@ -1837,20 +2027,17 @@ fun CreatePostSheet(
                     onMention = { if (text.length < 4999) text += if (text.isBlank()) "@" else " @" },
                     onLocation = { showAdvancedSettings = true }
                 )
-                TextButton(
-                    onClick = { showLegacyPostActions = !showLegacyPostActions },
-                    enabled = !isSubmitting,
-                    modifier = Modifier.padding(start = 8.dp)
-                ) { Text(if (showLegacyPostActions) "Hide more tools" else "More tools") }
                 }
                 if (useClassicComposer || showLegacyPostActions) {
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
-                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
-                        else imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        if (selectedVideo != null || videoClips.isNotEmpty() || showPoll) {
+                            pendingMediaSwitch = "gallery"
+                        } else {
+                            galleryReturnToEditor = true
+                            showMediaReview = true
+                        }
                     },
                     onVideo = {
                         if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
@@ -1859,10 +2046,15 @@ fun CreatePostSheet(
                         )
                     },
                     onPoll = {
-                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
-                        else {
+                        if (selectedVideo != null || videoClips.isNotEmpty() || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        else if (useClassicComposer) {
+                            // Classic editor retains its existing inline poll form.
                             showPoll = !showPoll
                             if (showPoll) mode = "post"
+                        } else {
+                            pollPendingReplacement = false
+                            showPollCreator = true
+                            pollReturnToEditor = true
                         }
                     },
                     onMention = {
@@ -1982,23 +2174,61 @@ fun CreatePostSheet(
                 }
 
                 } else {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Trending tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        if (trendingTags.isEmpty()) Text("Add #topics to your caption", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                        else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(trendingTags.take(7), key = { it }) { tag ->
-                                AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                    // Reference composition uses compact, filled tag cards,
+                    // not Material outlined chips. View totals are intentionally
+                    // omitted because the loader supplies only real tag names.
+                    Column(
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Text("Trending tags", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        if (trendingTags.isEmpty()) {
+                            Text("Add #topics to your caption", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        } else {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(trendingTags.take(7), key = { it }) { tag ->
+                                    BlinkReferenceTagCard(
+                                        tag = tag,
+                                        selected = tag in effectiveTags,
+                                        enabled = !isSubmitting,
+                                        modifier = Modifier.testTag("blink_ref_trending_" + tag),
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            else addSelectedTag(tag)
+                                        }
+                                    )
+                                }
                             }
                         }
                         if (recentUsedTags.isNotEmpty()) {
-                            Text("Recent tags", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Recent tags", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 items(recentUsedTags, key = { it }) { tag ->
-                                    AssistChip(onClick = { addSelectedTag(tag) }, enabled = !isSubmitting, label = { Text("#$tag") })
+                                    BlinkReferenceTagCard(
+                                        tag = tag,
+                                        selected = tag in effectiveTags,
+                                        enabled = !isSubmitting,
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            else addSelectedTag(tag)
+                                        }
+                                    )
                                 }
                             }
                         }
                         tagWarning?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                }
+                if (!useClassicComposer) {
+                    TextButton(
+                        onClick = { showLegacyPostActions = !showLegacyPostActions },
+                        enabled = !isSubmitting,
+                        modifier = Modifier.padding(start = 8.dp)
+                            .testTag("blink_create_post_more_tools")
+                    ) {
+                        Text(if (showLegacyPostActions) "Hide more tools" else "More tools", fontSize = 12.sp)
                     }
                 }
 
@@ -2390,20 +2620,27 @@ fun CreatePostSheet(
                             showPoll = false
                         }
                         "poll" -> {
+                            val openedFromLanding = pickerOpenedFromLanding
                             pickerOpenedFromLanding = false
-                            videoClips = emptyList()
-                            selectedVideo = null
-                            selectedImages = emptyList()
-                            reelHasPendingEdits = false
-                            reelEditorStage = false
-                            mode = "post"
-                            showPoll = true
+                            // Preserve photo/Reel selection until a finished poll
+                            // is attached. Cancel/Back leaves the old draft usable.
+                            pollPendingReplacement = true
+                            showMediaReview = false
+                            showCreateLanding = false
+                            pollReturnToEditor = !openedFromLanding
+                            showPollCreator = true
                         }
                         "camera" -> openCameraActions()
-                        "gallery" -> imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                        "reel" -> if (pickerOpenedFromLanding) multiVideoPicker.launch(
+                        "gallery" -> {
+                            // A confirmation opens BLINK's own Select Media
+                            // screen. Keep the previous poll/Reel until the
+                            // user actually picks a photo; cancelling is safe.
+                            galleryReturnToEditor = !pickerOpenedFromLanding
+                            pickerOpenedFromLanding = false
+                            showCreateLanding = false
+                            showMediaReview = true
+                        }
+                        "reel" -> if (pickerOpenedFromLanding || showMediaReview) multiVideoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         ) else videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
@@ -2464,7 +2701,24 @@ fun CreatePostSheet(
         PostPreviewDialog(
             post = scheduledPreviewPost(),
             profile = profile,
-            onDismiss = { showPreviewDialog = false }
+            onDismiss = { showPreviewDialog = false },
+            onEdit = {
+                showPreviewDialog = false
+                showPublishOptions = false
+                showReferenceDetails = false
+            },
+            onDetails = {
+                showPreviewDialog = false
+                showPublishOptions = false
+                if (useClassicComposer) {
+                    showAdvancedSettings = true
+                } else {
+                    showReferenceDetails = true
+                }
+            },
+            onSaveDraft = {
+                if (!isSubmitting && saveDraft()) showPreviewDialog = false
+            }
         )
     }
 
@@ -2500,8 +2754,12 @@ fun CreatePostSheet(
 internal fun PostPreviewDialog(
     post: FeedPost,
     profile: UserProfile,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit = onDismiss,
+    onDetails: () -> Unit = onDismiss,
+    onSaveDraft: () -> Unit = {}
 ) {
+    var actionsExpanded by remember { mutableStateOf(false) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2511,12 +2769,16 @@ internal fun PostPreviewDialog(
                 Modifier.fillMaxSize().background(Color.Black)
                     .statusBarsPadding().navigationBarsPadding()
                     .testTag("blink_post_preview_stage")
+                    .semantics { contentDescription = "Post preview; not published" }
             ) {
                 Row(
                     Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onDismiss) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("blink_post_preview_back")
+                    ) {
                         Icon(Icons.Default.KeyboardArrowLeft, "Back to editor", tint = Color.White)
                     }
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -2561,15 +2823,58 @@ internal fun PostPreviewDialog(
                                         color = Color(0xFF7C8591), fontSize = 11.sp
                                     )
                                 }
-                                Icon(Icons.Default.MoreHoriz, "Preview actions unavailable", tint = Color.DarkGray)
+                                Box {
+                                    IconButton(
+                                        onClick = { actionsExpanded = true },
+                                        modifier = Modifier.size(36.dp)
+                                            .testTag("blink_post_preview_more")
+                                    ) {
+                                        Icon(Icons.Default.MoreHoriz,
+                                            contentDescription = "Post preview actions",
+                                            tint = Color.DarkGray)
+                                    }
+                                    DropdownMenu(
+                                        expanded = actionsExpanded,
+                                        onDismissRequest = { actionsExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Edit post") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onEdit()
+                                            },
+                                            modifier = Modifier.testTag("blink_preview_edit")
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Post details") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onDetails()
+                                            },
+                                            modifier = Modifier.testTag("blink_preview_details")
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Save as draft") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onSaveDraft()
+                                            },
+                                            modifier = Modifier.testTag("blink_preview_save_draft")
+                                        )
+                                    }
+                                }
                             }
                             if (post.text.isNotBlank()) {
                                 Text(post.text, color = Color.Black, fontSize = 14.sp)
                             }
-                            if (post.tags.isNotEmpty()) {
+                            val additionalHashtags = remember(post.text, post.tags) {
+                                BlinkPostTagPresentation.extraTags(post.text, post.tags)
+                            }
+                            if (additionalHashtags.isNotEmpty()) {
                                 Text(
-                                    post.tags.joinToString(" ") { "#" + it.removePrefix("#") },
-                                    color = Color(0xFF4C62D9), fontSize = 12.sp
+                                    additionalHashtags.joinToString(" "),
+                                    color = Color(0xFF4C62D9), fontSize = 12.sp,
+                                    modifier = Modifier.testTag("blink_preview_extra_hashtags")
                                 )
                             }
                             if (post.images.isNotEmpty()) {
@@ -2583,11 +2888,14 @@ internal fun PostPreviewDialog(
                                         AsyncImage(
                                             model = uri,
                                             contentDescription = post.altText ?: "Post photo",
-                                            contentScale = ContentScale.Crop,
+                                            // Do not crop portrait/landscape photos in the
+                                            // preview. Match BLINK's ratio-preserving policy.
+                                            contentScale = ContentScale.Fit,
                                             modifier = Modifier.fillParentMaxWidth()
-                                                .height(254.dp)
+                                                .aspectRatio(1.65f)
                                                 .clip(RoundedCornerShape(11.dp))
-                                                .background(Color(0xFFE7E9EF))
+                                                .background(Color(0xFF171B23))
+                                                .testTag("blink_post_preview_photo")
                                         )
                                     }
                                 }
@@ -2702,18 +3010,9 @@ internal fun PostPreviewDialog(
                             }
                         }
                     }
-                    Text(
-                        "Preview only · Your post has not been published",
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                        textAlign = TextAlign.Center,
-                        color = Color(0xFFBFC2D2), fontSize = 11.sp
-                    )
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = .55f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                    ) { Text("Back to editor") }
+                    // The reference ends directly after the post-card
+                    // actions. Unpublished status remains accessible on the
+                    // preview stage itself, without a visible extra footer.
                 }
             }
         }
@@ -2978,6 +3277,7 @@ private fun SelectedImagePreview(
         Modifier
             .size(116.dp)
             .clip(RoundedCornerShape(16.dp))
+            .testTag("blink_selected_media_thumbnail_" + index)
     ) {
         AsyncImage(
             model = uri,
@@ -3064,7 +3364,8 @@ internal fun PollComposer(
     onOptionsChanged: (List<String>) -> Unit,
     durationHours: Int,
     onDurationChanged: (Int) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    standalone: Boolean = false
 ) {
     var durationChoicesExpanded by rememberSaveable { mutableStateOf(false) }
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -3083,19 +3384,26 @@ internal fun PollComposer(
         onSurfaceVariant = Color(0xFFADB4C2)
     )) {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = if (standalone) 6.dp else 8.dp,
+                    vertical = if (standalone) 2.dp else 10.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF15181F), contentColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFF30333C))
+            colors = CardDefaults.cardColors(
+                containerColor = if (standalone) Color.Transparent else Color(0xFF15181F),
+                contentColor = Color.White
+            ),
+            border = if (standalone) null else BorderStroke(1.dp, Color(0xFF30333C))
         ) {
         Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Poll, contentDescription = null)
-                Spacer(Modifier.width(7.dp))
-                Text("Poll", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(options.size.toString() + " / 4 options",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!standalone) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Poll, contentDescription = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("Poll", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(options.size.toString() + " / 4 options",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
 
             OutlinedTextField(
@@ -3105,7 +3413,8 @@ internal fun PollComposer(
                 enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = 8.dp)
+                    .testTag("blink_poll_question_input"),
                 placeholder = { Text("Ask a question") },
                 singleLine = true,
                 colors = fieldColors,
@@ -3129,30 +3438,32 @@ internal fun PollComposer(
                             )
                         },
                         enabled = enabled,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f)
+                            .testTag("blink_poll_option_" + index),
                         placeholder = { Text("Option ${index + 1}") },
                         singleLine = true,
                         colors = fieldColors,
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    if (options.size > 2) {
-                        IconButton(
-                            onClick = {
-                                onOptionsChanged(
-                                    options.toMutableList().also {
-                                        it.removeAt(index)
-                                    }
-                                )
-                            },
-                            enabled = enabled
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Remove option",
-                                tint = Color(0xFFB4BBC8)
+                    // Keep every option's X aligned with the Poll reference.
+                    // The first two cannot be deleted because at least two
+                    // answers must remain; their X is visibly disabled.
+                    IconButton(
+                        onClick = {
+                            onOptionsChanged(
+                                options.toMutableList().also { it.removeAt(index) }
                             )
-                        }
+                        },
+                        enabled = enabled && options.size > 2,
+                        modifier = Modifier.testTag("blink_poll_remove_" + index)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove option ${index + 1}",
+                            tint = if (enabled && options.size > 2)
+                                Color(0xFFB4BBC8) else Color(0xFF636976)
+                        )
                     }
                 }
             }
@@ -3168,7 +3479,7 @@ internal fun PollComposer(
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("Add option")
+                    Text("Add option (up to 4)")
                 }
             }
             Text(
@@ -3184,6 +3495,7 @@ internal fun PollComposer(
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF20242D))
                     .clickable(enabled = enabled) { durationChoicesExpanded = !durationChoicesExpanded }
+                    .testTag("blink_poll_duration")
                     .padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

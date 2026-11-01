@@ -68,10 +68,12 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          force-avd-creation: false
+          # Avoid stale cached AVD/snapshot state that previously allowed a
+          # Pixel Launcher ANR to steal native window focus from the IME test.
+          force-avd-creation: true
           # Exercise real Compose transitions; the old smoke suite forcibly disabled them.
           disable-animations: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             # Build time can exceed the fresh emulator's display timeout. The IME
             # requires an interactive, unlocked device even when Compose renders.
@@ -79,6 +81,11 @@ jobs:
             adb shell settings put system screen_off_timeout 1800000
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
+            # Ensure the launcher has actually initialized before a long
+            # 75-test UI suite. A system launcher ANR must never be mistaken
+            # for a Create Post keyboard/Compose regression.
+            adb shell input keyevent KEYCODE_HOME
+            adb shell input keyevent KEYCODE_BACK
             adb shell settings put global window_animation_scale 1.0
             adb shell settings put global transition_animation_scale 1.0
             adb shell settings put global animator_duration_scale 1.0
@@ -110,7 +117,10 @@ jobs:
             for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
             # These captures use the actual full CreatePostSheet, not isolated toolbar fixtures.
             for view in full-text full-mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
-            for view in keyboard-mentions video-preview video-timeline gallery-library; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            for view in keyboard-mentions video-preview video-timeline gallery-library gallery-video-tab video-editor photo-crop-panel photo-filters; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # Full-route screenshot fixtures: retain actual emulator renders from
+            # Photo/Poll transitions, not only isolated component snapshots.
+            for view in poll-fullscreen text-to-gallery poll-switch-gallery photo-first-entry gallery-empty; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
             # Capture native dark conversation chrome for the reference audit.
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-staging-dark.png app/build/visual-audit/chat-reference-staging-dark.png
             test -s app/build/visual-audit/chat-reference-staging-dark.png
@@ -120,8 +130,10 @@ jobs:
             test -s app/build/visual-audit/chat-reference-full-top.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-media.png app/build/visual-audit/chat-reference-full-media.png
             test -s app/build/visual-audit/chat-reference-full-media.png
+            for name in photos videos; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-${name}.png" "app/build/visual-audit/chat-reference-full-${name}.png" && test -s "app/build/visual-audit/chat-reference-full-${name}.png" || exit 1; done
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
             test -s app/build/visual-audit/chat-reference-full-bottom.png
+            for view in chat-reference-composer-controls chat-native-poll-synthetic-fixture chat-native-poll-retry-fixture; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/${view}.png" "app/build/visual-audit/${view}.png" && test -s "app/build/visual-audit/${view}.png" || exit 1; done
             for theme in dark light; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-outgoing-document-${theme}.png" "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" && test -s "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" || exit 1; done
 
       - name: Expose actual runtime failures through check annotations

@@ -42,6 +42,8 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.InsertEmoticon
@@ -49,6 +51,8 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
@@ -71,6 +75,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.LinearProgressIndicator
@@ -120,10 +126,22 @@ internal fun BlinkCreatePostLanding(
     onPoll: () -> Unit,
     onClassic: () -> Unit,
     onCamera: () -> Unit,
-    onDraft: (PostDraft) -> Unit
+    onDraft: (PostDraft) -> Unit,
+    onRecentPhoto: (String) -> Unit = {},
+    onRecentSeeAll: () -> Unit = onPhoto
 ) {
     val white = Color.White
-    var showAllDrafts by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var showSavedDrafts by remember { mutableStateOf(false) }
+    var showCreateMenu by remember { mutableStateOf(false) }
+    var recentPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Only display real device photos when gallery access has already been granted.
+    // Android Photo Picker remains the privacy-preserving fallback.
+    LaunchedEffect(context) {
+        recentPhotos = if (hasGalleryPermission(context)) {
+            readAvailableGalleryPhotos(context).take(12).map { it.uri.toString() }
+        } else emptyList()
+    }
     Column(
         Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas)).verticalScroll(rememberScrollState())
             .testTag("blink_create_post_landing")
@@ -138,6 +156,25 @@ internal fun BlinkCreatePostLanding(
                 "Create Post", color = white, fontWeight = FontWeight.Bold,
                 fontSize = 18.sp, modifier = Modifier.align(Alignment.Center)
             )
+            Box(Modifier.align(Alignment.CenterEnd)) {
+                IconButton(
+                    onClick = { showCreateMenu = true },
+                    modifier = Modifier.testTag("blink_create_post_more_menu")
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More create post options",
+                        tint = white)
+                }
+                DropdownMenu(
+                    expanded = showCreateMenu,
+                    onDismissRequest = { showCreateMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Classic composer") },
+                        onClick = { showCreateMenu = false; onClassic() },
+                        modifier = Modifier.testTag("blink_create_post_classic")
+                    )
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BlinkPostChoice("Text", "Share your thoughts", Icons.Default.TextFields,
@@ -154,20 +191,30 @@ internal fun BlinkCreatePostLanding(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Recent", color = white, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
-            if (drafts.size > 8) {
-                TextButton(onClick = { showAllDrafts = !showAllDrafts }) {
-                    Text(if (showAllDrafts) "Show less" else "See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
-                }
-            } else {
-                Text("Saved drafts", color = Color(0xFF7D83F9), fontSize = 12.sp)
+            TextButton(onClick = onRecentSeeAll, modifier = Modifier.testTag("blink_recent_see_all")) {
+                Text("See all", color = Color(0xFF7D83F9), fontSize = 12.sp)
             }
         }
-        // Only show media the user already selected for a local draft. Android's
-        // Photo Picker controls access to any other gallery photos.
         val mediaDrafts = drafts.filter { !it.imageUri.isNullOrBlank() }
-        if (mediaDrafts.isNotEmpty()) {
+        if (recentPhotos.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.testTag("blink_recent_device_photos")) {
+                items(recentPhotos.take(8), key = { it }) { photoUri ->
+                    AsyncImage(
+                        model = photoUri,
+                        contentDescription = "Select recent gallery photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(width = 78.dp, height = 72.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onRecentPhoto(photoUri) }
+                    )
+                }
+            }
+        } else if (mediaDrafts.isNotEmpty()) {
+            // When full gallery access is unavailable, previews are restricted to
+            // photos the user explicitly selected and saved as local drafts.
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(mediaDrafts.take(if (showAllDrafts) 30 else 8), key = { it.id }) { draft ->
+                items(mediaDrafts.take(8), key = { it.id }) { draft ->
                     val raw = draft.imageUri.orEmpty()
                     val first = if (raw.startsWith("[")) {
                         runCatching { JSONArray(raw).optString(0) }.getOrDefault("")
@@ -176,38 +223,37 @@ internal fun BlinkCreatePostLanding(
                         model = first,
                         contentDescription = "Resume recent photo draft",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(width = 88.dp, height = 80.dp)
+                        modifier = Modifier.size(width = 78.dp, height = 72.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .clickable { onDraft(draft) }
                     )
                 }
             }
-            Text("Recent photos from saved drafts", color = Color(BlinkPostReferenceStyle.Muted),
-                fontSize = 11.sp)
         }
-        if (drafts.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Color(0xFF12151C),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color(0xFF2D3139))
+        BlinkPostMenuRow(
+            title = "Drafts", detail = when {
+                drafts.isEmpty() -> "No saved drafts"
+                drafts.size == 1 -> "1 saved draft"
+                else -> "${drafts.size} saved drafts"
+            },
+            icon = Icons.Default.Save,
+            onClick = { showSavedDrafts = !showSavedDrafts },
+            enabled = drafts.isNotEmpty()
+        )
+        if (showSavedDrafts && drafts.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                modifier = Modifier.testTag("blink_create_saved_drafts")
             ) {
-                Text(
-                    "No drafts yet. Your selected photos and videos stay in the editor.",
-                    color = Color(BlinkPostReferenceStyle.Muted), fontSize = 12.sp,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-        } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                items(if (showAllDrafts) drafts else drafts.take(8), key = { it.id }) { draft ->
+                items(drafts, key = { it.id }) { draft ->
                     val rawImage = draft.imageUri.orEmpty()
                     val previewImage = if (rawImage.startsWith("[")) {
                         runCatching { JSONArray(rawImage).optString(0) }.getOrDefault("")
                     } else rawImage
                     Surface(
                         modifier = Modifier.size(width = 92.dp, height = 100.dp)
-                            .clickable { onDraft(draft) },
+                            .clickable { onDraft(draft) }
+                            .testTag("blink_create_saved_draft_" + draft.id),
                         shape = RoundedCornerShape(12.dp),
                         color = Color(0xFF1B1E26)
                     ) {
@@ -229,11 +275,12 @@ internal fun BlinkCreatePostLanding(
                                 )
                             }
                             Text(
-                                draft.text.ifBlank { "Draft" }, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                draft.text.ifBlank { "Draft" },
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 fontSize = 10.sp, color = white,
                                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                                    .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f)).padding(5.dp)
+                                    .background(Color(BlinkPostReferenceStyle.Canvas).copy(alpha = .72f))
+                                    .padding(5.dp)
                             )
                         }
                     }
@@ -241,23 +288,8 @@ internal fun BlinkCreatePostLanding(
             }
         }
         BlinkPostMenuRow(
-            title = "Drafts", detail = if (drafts.isEmpty()) "No saved drafts" else "Tap a draft above to resume",
-            icon = Icons.Default.Save, onClick = {
-                drafts.firstOrNull()?.let(onDraft)
-            }, enabled = drafts.isNotEmpty()
-        )
-        BlinkPostMenuRow(
             title = "Camera", detail = "Take a photo or record a Reel",
             icon = Icons.Default.CameraAlt, onClick = onCamera
-        )
-        BlinkPostMenuRow(
-            title = "Classic composer", detail = "Use BLINK's original posting screen",
-            icon = Icons.Default.Description, onClick = onClassic
-        )
-        Text(
-            "Posts can include text, photos or polls. Videos are published as Reels.",
-            color = Color(0xFF9BA2B1), fontSize = 12.sp,
-            modifier = Modifier.padding(top = 4.dp)
         )
     }
 }
@@ -351,7 +383,8 @@ internal fun BlinkCreatePostPublishOptions(
     canCopyCaption: Boolean,
     isSubmitting: Boolean,
     canPublish: Boolean,
-    uploadProgress: Int?
+    uploadProgress: Int?,
+    canSaveDraft: Boolean = true
 ) {
     Column(
         Modifier.fillMaxSize().background(Color(BlinkPostReferenceStyle.Canvas))
@@ -368,6 +401,17 @@ internal fun BlinkCreatePostPublishOptions(
             Text("Post Options", color = Color.White,
                 fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center))
+            // Keep Preview accessible without adding a full-height extra card
+            // that pushes the reference's sharing group below the fold.
+            TextButton(
+                onClick = onPreview,
+                enabled = !isSubmitting,
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .testTag("blink_post_options_preview")
+            ) {
+                Text("Preview", color = if (isSubmitting) Color(0xFF8D929A)
+                    else Color(0xFFB9B6FF), fontSize = 12.sp)
+            }
         }
         Button(
             onClick = onPost,
@@ -393,7 +437,7 @@ internal fun BlinkCreatePostPublishOptions(
             Text("Review your post details before publishing.", color = Color(0xFFFFC7C7), fontSize = 12.sp)
         }
         OutlinedButton(
-            onClick = onSaveDraft, enabled = !isSubmitting,
+            onClick = onSaveDraft, enabled = !isSubmitting && canSaveDraft,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(13.dp),
             border = BorderStroke(1.dp, Color(0xFF30333A)),
@@ -405,12 +449,7 @@ internal fun BlinkCreatePostPublishOptions(
             Spacer(Modifier.width(8.dp))
             Text("Save as Draft")
         }
-        OutlinedButton(
-            onClick = onPreview, enabled = !isSubmitting,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(13.dp)
-        ) { Text("Preview Post") }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text("Also share to", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
         // The reference design presents these actions as one continuous
         // grouped card, rather than three disconnected floating surfaces.
@@ -457,7 +496,7 @@ private fun BlinkPostShareRow(
 ) {
     Surface(
         color = Color(0xFF1A1D24), shape = RoundedCornerShape(0.dp),
-        modifier = Modifier.fillMaxWidth().height(55.dp)
+        modifier = Modifier.fillMaxWidth().height(52.dp)
             .clickable(enabled = enabled, onClick = onClick)
     ) {
         Row(
@@ -478,6 +517,35 @@ private fun BlinkPostShareRow(
                 Text("After posting", color = Color(0xFF9399A7), fontSize = 11.sp)
             }
         }
+    }
+}
+
+/** Compact hashtag card for the dark reference composer; counts are never fabricated. */
+@Composable
+internal fun BlinkReferenceTagCard(
+    tag: String,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        color = if (selected) Color(0xFF29234C) else Color(0xFF191C24),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) Color(0xFF766EFF) else Color(0xFF30343D)
+        )
+    ) {
+        Text(
+            text = "#" + tag,
+            color = if (enabled) Color.White else Color(0xFF999EAD),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
     }
 }
 
@@ -550,6 +618,7 @@ internal fun BlinkReferencePostDetails(
     temporary: Boolean,
     onBack: () -> Unit,
     onEditCaption: () -> Unit,
+    onTagPeople: () -> Unit = onEditCaption,
     onAudienceChange: (String) -> Unit,
     onLocationChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
@@ -559,6 +628,7 @@ internal fun BlinkReferencePostDetails(
     onNext: () -> Unit,
 ) {
     var showAudienceChooser by remember { mutableStateOf(false) }
+    var showAdvancedPostSettings by remember { mutableStateOf(false) }
     if (showAudienceChooser) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showAudienceChooser = false },
@@ -598,15 +668,17 @@ internal fun BlinkReferencePostDetails(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.Close, contentDescription = "Back to composer", tint = Color.White)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag("blink_post_details_back")
+            ) {
+                Icon(Icons.Default.ChevronLeft,
+                    contentDescription = "Back to composer", tint = Color.White)
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text("Post Details", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
-            TextButton(onClick = onNext) {
-                Text("Next", color = Color(0xFF8B81FF), fontWeight = FontWeight.Bold)
-            }
+            Spacer(Modifier.width(48.dp))
         }
         Surface(
             color = Color(0xFF13161C), shape = RoundedCornerShape(13.dp),
@@ -630,9 +702,12 @@ internal fun BlinkReferencePostDetails(
                         color = Color.White, maxLines = 2,
                         overflow = TextOverflow.Ellipsis, fontSize = 13.sp
                     )
-                    if (tags.isNotEmpty()) {
+                    val displayTags = remember(text, tags) {
+                        BlinkPostTagPresentation.extraTags(text, tags)
+                    }
+                    if (displayTags.isNotEmpty()) {
                         Text(
-                            tags.joinToString(" ") { "#" + it },
+                            displayTags.joinToString(" "),
                             color = Color(0xFF6C92FF), maxLines = 1,
                             overflow = TextOverflow.Ellipsis, fontSize = 12.sp
                         )
@@ -644,7 +719,7 @@ internal fun BlinkReferencePostDetails(
         }
         BlinkPostMenuRow(
             title = "Tag people", detail = "Mention students in your caption",
-            icon = Icons.Default.AlternateEmail, onClick = onEditCaption
+            icon = Icons.Default.AlternateEmail, onClick = onTagPeople
         )
         Surface(
             color = Color(0xFF191D24), shape = RoundedCornerShape(12.dp),
@@ -674,35 +749,67 @@ internal fun BlinkReferencePostDetails(
                 Icon(Icons.Default.ChevronRight, "Choose post audience", tint = Color.White)
             }
         }
-        Text("Post category", color = Color.White, fontWeight = FontWeight.SemiBold)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            com.blinkng.shared.BlinkPostGrowthTips.feedCategories.forEach { option ->
-                FilterChip(
-                    selected = category == option,
-                    onClick = { onCategoryChange(option) },
-                    label = { Text(option) }
-                )
-            }
-        }
         Surface(
             color = Color(0xFF171B22), shape = RoundedCornerShape(13.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
                 BlinkReferenceSettingRow("Allow comments", allowComments, onCommentsChange)
-                HorizontalDivider(color = Color(0xFF343944))
-                BlinkReferenceSettingRow("Hide like count", hideLikes, onHideLikesChange)
-                HorizontalDivider(color = Color(0xFF343944))
-                BlinkReferenceSettingRow("Temporary post", temporary, onTemporaryChange)
             }
         }
-        Text(
-            "Post visibility uses your existing BLINK audience rules. Other posting tools remain in the editor.",
-            color = Color(0xFFADB3BF), fontSize = 11.sp
-        )
+        // The user's reference keeps the primary settings short. Preserve
+        // supported privacy and category controls in an expandable section,
+        // rather than deleting features or displaying unsupported toggles.
+        TextButton(
+            onClick = { showAdvancedPostSettings = !showAdvancedPostSettings },
+            modifier = Modifier.testTag("blink_post_details_more_settings")
+        ) {
+            Text(
+                if (showAdvancedPostSettings) "Hide more post settings" else "More post settings",
+                color = Color(0xFFAAA6FF), fontSize = 12.sp
+            )
+            Icon(
+                if (showAdvancedPostSettings) Icons.Default.KeyboardArrowUp
+                else Icons.Default.KeyboardArrowDown,
+                contentDescription = null, tint = Color(0xFFAAA6FF)
+            )
+        }
+        if (showAdvancedPostSettings) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .testTag("blink_post_details_advanced_settings"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Post category", color = Color.White,
+                    fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    com.blinkng.shared.BlinkPostGrowthTips.feedCategories.forEach { option ->
+                        FilterChip(
+                            selected = category == option,
+                            onClick = { onCategoryChange(option) },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+                Surface(
+                    color = Color(0xFF171B22), shape = RoundedCornerShape(13.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
+                        BlinkReferenceSettingRow("Hide like count", hideLikes, onHideLikesChange)
+                        HorizontalDivider(color = Color(0xFF343944))
+                        BlinkReferenceSettingRow("Temporary post", temporary, onTemporaryChange)
+                    }
+                }
+                Text(
+                    "Post visibility follows your existing BLINK audience rules.",
+                    color = Color(0xFFADB3BF), fontSize = 11.sp
+                )
+            }
+        }
         Button(
             onClick = onNext, modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2)),
@@ -761,9 +868,13 @@ internal fun BlinkReferenceMediaReview(
     LaunchedEffect(permissionVersion, canBrowse) {
         library = if (canBrowse) readAvailableGalleryPhotos(context).map { it.uri.toString() } else emptyList()
     }
-    val visiblePhotos = (library + images).distinct()
-    var previewIndex by remember { mutableIntStateOf(-1) }
     var selectedTab by remember { mutableStateOf("All") }
+    // Images and Reels use different validated publishing pipelines.
+    // Videos is a real video-selection page, not the same photos grid under
+    // a misleading label. The scoped Android picker remains permission-free.
+    val visiblePhotos = if (selectedTab == "Videos") emptyList()
+        else (library + images).distinct()
+    var previewIndex by remember { mutableIntStateOf(-1) }
     if (previewIndex in images.indices) {
         Dialog(onDismissRequest = { previewIndex = -1 }) {
             Column(
@@ -830,16 +941,19 @@ internal fun BlinkReferenceMediaReview(
             Modifier.fillMaxWidth().height(56.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag("blink_media_review_back")
+            ) {
                 Icon(Icons.Default.ChevronLeft, contentDescription = "Back from selected photos", tint = Color.White)
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text("Select Media", color = Color.White,
                     fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
-            TextButton(onClick = onNext, enabled = images.isNotEmpty()) {
-                Text("Next", color = Color(0xFF8F87FF), fontWeight = FontWeight.Bold)
-            }
+            // Only the bottom-right Next (count) action advances the gallery.
+            // Duplicating Next in this header caused mismatched visual hierarchy.
+            Spacer(Modifier.width(48.dp))
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -851,13 +965,19 @@ internal fun BlinkReferenceMediaReview(
                     shape = RoundedCornerShape(22.dp),
                     modifier = Modifier.weight(1f).height(36.dp)
                         .clickable {
+                            selectedTab = tab
                             if (tab == "Videos") {
                                 // Keep Android's system picker in charge of device-library access.
+                                // The current photo draft is retained if cancelled.
                                 onPickVideos()
                             } else {
-                                selectedTab = tab
-                                if (!hasGalleryPermission(context)) requestLibrary()
-                                else { canBrowse = true; permissionVersion++ }
+                                // Tabs only filter or refresh permitted media.
+                                // Asking for all-gallery access is a separate,
+                                // explicit action in the empty-gallery state.
+                                if (hasGalleryPermission(context)) {
+                                    canBrowse = true
+                                    permissionVersion++
+                                }
                             }
                         }
                         .testTag("blink_media_tab_" + tab.lowercase())
@@ -876,83 +996,212 @@ internal fun BlinkReferenceMediaReview(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (canBrowse) "Recent photos" else "Selected photos", color = Color.White, fontWeight = FontWeight.SemiBold,
+                when {
+                    selectedTab == "Videos" -> "Video selection"
+                    canBrowse -> "Recent photos"
+                    else -> "Selected photos"
+                }, color = Color.White, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
-            Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            itemsIndexed(visiblePhotos, key = { _, uri -> uri }) { _, uri ->
-                val index = images.indexOf(uri)
-                Box(
-                    Modifier.fillMaxWidth().aspectRatio(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF20242B))
-                ) {
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = if (index >= 0) "Selected photo " + (index + 1) else "Available device photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().testTag(if (index >= 0) "blink_gallery_photo_" + index else "blink_gallery_available_" + uri)
-                            .clickable {
-                                if (index >= 0) previewIndex = index
-                                else if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) onSelectPhoto(uri)
-                            }
-                    )
-                    if (index >= 0) Surface(
-                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
-                        color = Color(0xFF5448F5), shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text(
-                            (index + 1).toString(), color = Color.White,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                            fontSize = 12.sp
-                        )
-                    }
-
-                }
+            if (selectedTab != "Videos") {
+                Text(images.size.toString() + " / 10", color = Color(0xFFB9C0CE))
             }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (selectedTab == "Videos") {
+            Column(
+                Modifier.fillMaxWidth().weight(1f)
+                    .testTag("blink_gallery_video_selection"),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.Videocam, contentDescription = null,
+                    tint = Color(0xFFB7ADFF), modifier = Modifier.size(36.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("Select videos for your Reel", color = Color.White,
+                    fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Videos open in the Reel editor. Photos and Reels are separate post types.",
+                    color = Color(0xFFABB4C3), fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 15.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Button(onClick = onPickVideos,
+                    modifier = Modifier.testTag("blink_gallery_choose_videos")) {
+                    Text("Choose videos", color = Color.White)
+                }
+            }
+        } else if (visiblePhotos.isEmpty()) {
+            BlinkMediaEmptyGallery(
+                canBrowse = canBrowse,
+                onPick = onAddMore,
+                onRequestLibrary = ::requestLibrary,
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                itemsIndexed(visiblePhotos, key = { _, uri -> uri }) { _, uri ->
+                    val index = images.indexOf(uri)
+                    Box(
+                        Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF20242B))
+                    ) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = if (index >= 0) "Selected photo " + (index + 1) else "Available device photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().testTag(if (index >= 0) "blink_gallery_photo_" + index else "blink_gallery_available_" + uri)
+                                .clickable {
+                                    if (index >= 0) previewIndex = index
+                                    else if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) onSelectPhoto(uri)
+                                }
+                        )
+                        if (index >= 0) Surface(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp),
+                            color = Color(0xFF5448F5), shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(
+                                (index + 1).toString(), color = Color.White,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                    }
+                }
+            }
+            }
+        if (selectedTab != "Videos") {
+        Row(
+            modifier = Modifier.fillMaxWidth().testTag("blink_gallery_selected_strip"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
             LazyRow(
-                modifier = Modifier.weight(1f).height(56.dp),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                modifier = Modifier.weight(1f).height(64.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 items(count = images.size, key = { index -> images[index] }) { index ->
                     val uri = images[index]
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Preview selected photo " + (index + 1),
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
-                            .clickable { previewIndex = index }
-                    )
+                    Box(Modifier.size(56.dp)) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = "Preview selected photo " + (index + 1),
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(52.dp).align(Alignment.BottomStart)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { previewIndex = index }
+                        )
+                        Box(
+                            Modifier.align(Alignment.TopEnd).size(20.dp)
+                                .clip(RoundedCornerShape(100.dp))
+                                .background(Color(0xFF292C35))
+                                .clickable { onRemove(index) }
+                                .testTag("blink_gallery_remove_selected_" + index),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove selected photo " + (index + 1),
+                                tint = Color.White, modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
+                }
+                if (images.size < BlinkPostComposerPolicy.MAX_PHOTOS) {
+                    item(key = "add-photo") {
+                        Box(
+                            Modifier.size(52.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0xFF252A34))
+                                .clickable(onClick = onAddMore)
+                                .testTag("blink_gallery_add_more"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Add more photos",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                 }
             }
-            Text(images.size.toString() + " selected",
-                modifier = Modifier.padding(start = 8.dp),
-                color = Color(0xFFD3D6DE), fontSize = 12.sp)
+            Text(
+                images.size.toString() + " selected",
+                color = Color(0xFFD3D6DE), fontSize = 12.sp,
+                modifier = Modifier.testTag("blink_gallery_selected_count")
+            )
         }
-        Text(
-            "Tap a photo to preview, edit or change its order.",
-            color = Color(0xFFB0B7C4), fontSize = 11.sp
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Button(
+                onClick = onNext,
+                enabled = images.isNotEmpty(),
+                modifier = Modifier.width(136.dp).height(44.dp)
+                    .testTag("blink_gallery_next"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
+            ) { Text("Next (" + images.size + ")", color = Color.White) }
+        }
+        }
+        Spacer(Modifier.height(3.dp))
+    }
+}
+
+/**
+ * Dedicated empty-gallery surface: Android Photo Picker works without broad
+ * media permission. The second action is optional and only requests recent
+ * thumbnail access when the user chooses to grant it.
+ */
+@Composable
+internal fun BlinkMediaEmptyGallery(
+    canBrowse: Boolean,
+    onPick: () -> Unit,
+    onRequestLibrary: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.testTag("blink_gallery_empty_state"),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            Icons.Default.PhotoLibrary, contentDescription = null,
+            tint = Color(0xFF9299AD), modifier = Modifier.size(36.dp)
         )
-        OutlinedButton(
-            onClick = onAddMore, enabled = images.size < 10,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Add more photos") }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            if (canBrowse) "No photos found" else "Choose photos from your device",
+            color = Color.White, fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            if (canBrowse) "Choose photos with Android's photo picker."
+            else "You can select photos without allowing access to your whole gallery.",
+            color = Color(0xFFAFB5C4), fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+        Spacer(Modifier.height(16.dp))
         Button(
-            onClick = onNext,
-            enabled = images.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            onClick = onPick,
+            modifier = Modifier.testTag("blink_gallery_browse_photos"),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5148F2))
-        ) { Text("Next (" + images.size + ")", color = Color.White) }
-        Spacer(Modifier.height(4.dp))
+        ) { Text("Choose photos", color = Color.White) }
+        if (!canBrowse) {
+            TextButton(
+                onClick = onRequestLibrary,
+                modifier = Modifier.testTag("blink_gallery_allow_access")
+            ) { Text("Show recent gallery photos", color = Color(0xFFABAAFF)) }
+        }
     }
 }
 
@@ -986,6 +1235,10 @@ internal fun BlinkReelClipReview(
         Text("Select 2–4 videos. Arrange them and combine into a single Reel (maximum 3 minutes).",
             color = Color(0xFFB3BAC6), fontSize = 12.sp)
         clips.forEachIndexed { index, clip ->
+            val context = LocalContext.current
+            val duration by produceState<Long?>(initialValue = null, key1 = clip) {
+                value = blinkSelectedClipDurationMs(context, clip)
+            }
             Surface(color = Color(0xFF1B1F28), shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -996,6 +1249,11 @@ internal fun BlinkReelClipReview(
                             fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Text(clip.substringAfterLast('/').take(24),
                             color = Color(0xFF9DA5B3), fontSize = 10.sp, maxLines = 1)
+                        blinkSelectedClipDurationLabel(duration)?.let { label ->
+                            Text(label, color = Color(0xFFD7D8E4),
+                                fontSize = 11.sp,
+                                modifier = Modifier.testTag("blink_clip_duration_" + index))
+                        }
                     }
                     IconButton(
                         onClick = { onMove(index, index - 1) },

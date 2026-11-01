@@ -55,9 +55,11 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -78,6 +80,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -101,6 +104,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
@@ -125,6 +130,8 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Search
@@ -168,6 +175,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -2122,24 +2130,25 @@ private fun PremiumChatDetail(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f).clickable {
-                            pendingReplyTargetId = pinnedPreview.id
-                            lastRequestedReplyOldestId = null
-                        }.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                        modifier = Modifier.weight(1f)
+                            .testTag("chat_reference_pinned_jump")
+                            .clickable(
+                                role = Role.Button,
+                                onClickLabel = "Jump to pinned message"
+                            ) {
+                                pendingReplyTargetId = pinnedPreview.id
+                                lastRequestedReplyOldestId = null
+                            }
+                            .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Canvas(Modifier.size(17.dp)) {
-                            val c = palette.accent
-                            drawLine(c, Offset(size.width * .27f, size.height * .22f),
-                                Offset(size.width * .76f, size.height * .22f), 3.dp.toPx(), StrokeCap.Round)
-                            drawLine(c, Offset(size.width * .40f, size.height * .22f),
-                                Offset(size.width * .40f, size.height * .52f), 3.dp.toPx(), StrokeCap.Round)
-                            drawLine(c, Offset(size.width * .22f, size.height * .54f),
-                                Offset(size.width * .79f, size.height * .54f), 3.dp.toPx(), StrokeCap.Round)
-                            drawLine(c, Offset(size.width * .53f, size.height * .54f),
-                                Offset(size.width * .46f, size.height * .92f), 2.dp.toPx(), StrokeCap.Round)
-                        }
-                        Spacer(Modifier.width(12.dp))
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = null,
+                            tint = palette.accent,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
                         Text(
                             "Pinned: " + pinnedPreview.text.ifBlank { "Pinned media" }
                                 .replace(Regex("^Pinned:\\s*", RegexOption.IGNORE_CASE), ""),
@@ -2147,8 +2156,12 @@ private fun PremiumChatDetail(
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        Text("›", color = palette.textPrimary, fontSize = 23.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp))
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = palette.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                     IconButton(onClick = { showReferencePinBar = false },
                         modifier = Modifier.size(38.dp)) {
@@ -2341,7 +2354,7 @@ private fun PremiumChatDetail(
                     state = listState,
                     modifier = Modifier.weight(1f).testTag("chat_reference_history_list"),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (isLoadingOlder) {
                         item(key = "message_history_loading") {
@@ -3404,8 +3417,8 @@ private fun ChatHeader(
     Row(
         modifier = Modifier.fillMaxWidth()
             .background(if (referenceDark) Color(BlinkChatReferenceStyle.Header) else palette.glass)
-            .heightIn(min = 70.dp)
-            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .height(68.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
             .testTag("chat_reference_header"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -3418,7 +3431,7 @@ private fun ChatHeader(
             url = conversation.partnerAvatar,
             name = conversation.partnerName,
             palette = palette,
-            size = 44.dp,
+            size = 42.dp,
             emphasizeRing = false,
             modifier = Modifier.clickable(onClick = onProfileClick)
         )
@@ -3782,6 +3795,15 @@ private fun MessageBubble(
     onLegacyPollChoice: (Int) -> Unit
 ) {
     val isMine = message.isFromMe
+    val showReferenceTail = palette.mode == MessageThemeMode.DARK &&
+        message.messageType == "text" &&
+        message.text.isNotBlank() && !message.deletedForEveryone &&
+        !message.isPinned && !message.isStarred && !message.isForwarded &&
+        message.replyToMessageId == null && message.reactionCounts.isEmpty() &&
+        message.attachedImageUrl.isNullOrBlank() &&
+        message.attachedVideoUrl.isNullOrBlank() &&
+        message.attachedAudioUrl.isNullOrBlank() &&
+        message.attachedDocumentUrl.isNullOrBlank()
     val density = LocalDensity.current
     val threshold = with(density) { BlinkReplySwipePhysics.activationDp.dp.toPx() }
     val haptic = LocalHapticFeedback.current
@@ -3856,6 +3878,9 @@ private fun MessageBubble(
             if (!isMine && palette.mode != MessageThemeMode.DARK) {
                 RingAvatar(url = partnerAvatar, name = partnerName, palette = palette, size = 31.dp)
                 Spacer(Modifier.width(8.dp))
+            }
+            if (showReferenceTail && !isMine) {
+                BlinkReferenceTextBubbleTail(isMine = false, color = palette.incomingBubble)
             }
 
             Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
@@ -3935,11 +3960,11 @@ private fun MessageBubble(
                                 .clickable(onClick = onReplyTargetClick)
                         ) {
                             Row(
-                                modifier = Modifier.padding(start = 5.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                                modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
-                                    Modifier.width(3.dp).height(33.dp)
+                                    Modifier.width(3.dp).height(30.dp)
                                         .background(palette.accent, RoundedCornerShape(3.dp))
                                 )
                                 Spacer(Modifier.width(7.dp))
@@ -3987,16 +4012,38 @@ private fun MessageBubble(
                         !message.isVoiceNote && !message.imageViewOnce &&
                         !message.text.contains("https://") &&
                         !message.text.contains("http://")
-                    if (compactTextOnly) {
+                    // Quoted short text uses the same inline metadata layout
+                    // as ordinary text bubbles. Avoid a separate footer row that
+                    // adds excess height below the compact quoted-message card.
+                    val compactReplyText = message.replyToMessageId != null &&
+                        message.text.isNotBlank() && message.text.length <= 120 &&
+                        !message.isForwarded && !message.deletedForEveryone &&
+                        message.messageType == "text" &&
+                        message.attachedImageUrl.isNullOrBlank() &&
+                        message.attachedVideoUrl.isNullOrBlank() &&
+                        message.attachedAudioUrl.isNullOrBlank() &&
+                        message.attachedDocumentUrl.isNullOrBlank() &&
+                        !message.isVoiceNote && !message.imageViewOnce &&
+                        !message.text.contains("https://") &&
+                        !message.text.contains("http://")
+                    if (compactTextOnly || compactReplyText) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .then(if (compactReplyText)
+                                    Modifier.testTag("chat_reference_reply_inline_text")
+                                else Modifier)
+                                .padding(horizontal = 11.dp,
+                                    vertical = if (compactReplyText) 6.dp else 8.dp),
                             verticalAlignment = Alignment.Bottom,
                             horizontalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
                             Text(
                                 message.text,
                                 color = if (isMine) palette.outgoingText else palette.textPrimary,
-                                fontSize = 14.sp, lineHeight = 19.sp,
+                                fontSize = if (palette.mode == MessageThemeMode.DARK)
+                                    15.sp else 14.sp,
+                                lineHeight = if (palette.mode == MessageThemeMode.DARK)
+                                    21.sp else 19.sp,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                             Text(metadata,
@@ -4090,7 +4137,11 @@ private fun MessageBubble(
                 if (message.reactionCounts.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(top = 3.dp).widthIn(max = 260.dp)
+                        modifier = Modifier
+                            .padding(top = 0.dp)
+                            .offset(y = (-3).dp)
+                            .widthIn(max = 260.dp)
+                            .testTag("chat_reference_reaction_row")
                     ) {
                         items(message.reactionCounts.entries.sortedByDescending { it.value }.take(8)) { entry ->
                             Surface(
@@ -4100,22 +4151,53 @@ private fun MessageBubble(
                             ) {
                                 Text(
                                     "${entry.key} ${entry.value}",
-                                    fontSize = 11.sp,
+                                    fontSize = if (palette.mode == MessageThemeMode.DARK) 10.sp else 11.sp,
                                     color = palette.textSecondary,
-                                    modifier = Modifier.clickable(
-                                        role = androidx.compose.ui.semantics.Role.Button,
-                                        onClickLabel = "Manage message reactions",
-                                        onClick = onActions
-                                    ).padding(horizontal = 10.dp, vertical = 9.dp)
+                                    modifier = Modifier
+                                        .testTag("chat_reference_reaction_chip")
+                                        .clickable(
+                                            role = androidx.compose.ui.semantics.Role.Button,
+                                            onClickLabel = "Manage message reactions",
+                                            onClick = onActions
+                                        ).padding(
+                                            horizontal = if (palette.mode == MessageThemeMode.DARK) 7.dp else 10.dp,
+                                            vertical = if (palette.mode == MessageThemeMode.DARK) 4.dp else 9.dp
+                                        )
                                 )
                             }
                         }
                     }
                 }
 
-
+            }
+            if (showReferenceTail && isMine) {
+                BlinkReferenceTextBubbleTail(isMine = true, color = palette.outgoingBubble)
             }
         }
+    }
+}
+
+/** Tiny outward-pointing tails on plain charcoal-reference chat bubbles only. */
+@Composable
+private fun BlinkReferenceTextBubbleTail(isMine: Boolean, color: Color) {
+    Canvas(
+        Modifier.size(width = 7.dp, height = 10.dp)
+            .testTag(if (isMine) "chat_reference_text_tail_outgoing"
+                else "chat_reference_text_tail_incoming")
+    ) {
+        val tail = Path().apply {
+            if (isMine) {
+                moveTo(0f, 0f)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+            } else {
+                moveTo(size.width, 0f)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+            }
+            close()
+        }
+        drawPath(path = tail, color = color)
     }
 }
 
@@ -4237,8 +4319,10 @@ private fun MessageContent(
                 var imageRetry by remember(message.id, message.attachedImageUrl) { mutableIntStateOf(0) }
                 var imageFailed by remember(message.id, message.attachedImageUrl) { mutableStateOf(false) }
                 Box(
-                    modifier = Modifier.width(220.dp).height(170.dp)
-                        .clip(RoundedCornerShape(13.dp)),
+                    modifier = Modifier.width(235.dp).height(190.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color(0xFF12171D))
+                        .testTag("chat_reference_single_photo"),
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
@@ -4249,7 +4333,7 @@ private fun MessageContent(
                                 .build()
                         },
                         contentDescription = "Shared image",
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         onSuccess = { imageFailed = false },
                         onError = { imageFailed = true },
                         modifier = Modifier.fillMaxSize().clickable { if (!imageFailed) onOpenImage(message) }
@@ -4291,12 +4375,17 @@ private fun MessageContent(
                 )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
-                val pdf = message.attachmentMimeType == "application/pdf" ||
-                    message.attachmentName.orEmpty().endsWith(".pdf", ignoreCase = true)
+                val documentName = BlinkChatDocumentPresentation.filename(message)
+                val documentExtension = BlinkChatDocumentPresentation.extension(
+                    documentName, message.attachmentMimeType
+                )
+                val pdf = BlinkChatDocumentPresentation.isPdf(
+                    documentName, message.attachmentMimeType
+                )
                 var pdfOpen by remember(message.id) { mutableStateOf(false) }
                 if (pdf && pdfOpen) BlinkChatPdfViewer(
                     url = message.attachedDocumentUrl,
-                    filename = message.attachmentName ?: "Document.pdf",
+                    filename = documentName,
                     onDismiss = { pdfOpen = false }
                 )
                 Surface(
@@ -4314,13 +4403,13 @@ private fun MessageContent(
                         .testTag("chat_reference_document_card")
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 9.dp, top = 7.dp, bottom = 7.dp, end = 2.dp),
+                        modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
                             shape = RoundedCornerShape(5.dp),
                             color = if (pdf) Color(0xFFEB404D) else palette.accent,
-                            modifier = Modifier.size(width = 35.dp, height = 43.dp)
+                            modifier = Modifier.size(width = 36.dp, height = 44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(if (pdf) "PDF" else "FILE", color = Color.White,
@@ -4330,20 +4419,21 @@ private fun MessageContent(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                message.attachmentName ?: message.text.ifBlank { "Document" },
+                                documentName,
                                 color = contentColor,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(if (pdf) "PDF document" else "Document",
-                                color = contentColor.copy(alpha = .55f), fontSize = 10.sp)
+                            Text(if (pdf) "PDF · Tap to view" else "Document · Tap to open",
+                                color = contentColor.copy(alpha = .60f), fontSize = 10.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         BlinkChatDownloadAction(
                             url = message.attachedDocumentUrl,
                             kind = "document",
-                            extension = if (pdf) "pdf" else "bin",
+                            extension = documentExtension,
                             compact = true
                         )
                     }
@@ -4380,8 +4470,10 @@ private fun MessageContent(
                 Text(
                     message.text,
                     color = contentColor,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
+                    fontSize = if (palette.mode == MessageThemeMode.DARK)
+                        15.sp else 14.sp,
+                    lineHeight = if (palette.mode == MessageThemeMode.DARK)
+                        21.sp else 20.sp,
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                 )
                 if (allowLinkPreviews && !message.imageViewOnce && !message.deletedForEveryone) {
@@ -4521,6 +4613,19 @@ private fun MessageActionsPopover(
                         }
                     }
 
+                    if (!message.attachedAudioUrl.isNullOrBlank()) {
+                        // The compact waveform matches the reference. Downloads
+                        // remain available from message actions on deliberate tap.
+                        BlinkChatDownloadAction(
+                            url = message.attachedAudioUrl,
+                            kind = "voice",
+                            extension = "m4a",
+                            compact = true,
+                            menuLabel = "Download voice note",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                    }
+
                     MessageActionRow("⇧", "Share", palette, onClick = onShare)
 
                     if (!message.isFromMe) {
@@ -4619,8 +4724,9 @@ private fun EmojiRail(palette: MessagePalette, onEmoji: (String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageComposer(
+internal fun MessageComposer(
     value: String,
     onValueChange: (String) -> Unit,
     palette: MessagePalette,
@@ -4690,7 +4796,7 @@ private fun MessageComposer(
                     BasicTextField(
                         value = value,
                         onValueChange = onValueChange,
-                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 14.sp),
+                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 15.sp),
                         cursorBrush = SolidColor(palette.accent),
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(
@@ -4700,32 +4806,39 @@ private fun MessageComposer(
                         keyboardActions = KeyboardActions(
                             onSend = { if (value.isNotBlank()) onSubmit() }
                         ),
-                        modifier = Modifier.weight(1f).heightIn(min = 22.dp, max = 94.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 22.dp, max = 94.dp)
+                            .testTag("chat_reference_message_input"),
                         decorationBox = { innerTextField ->
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (value.isBlank()) Text(
-                                    "Message", color = palette.textMuted, fontSize = 14.sp
+                                    "Message", color = palette.textMuted, fontSize = 15.sp
                                 )
                                 innerTextField()
                             }
                         }
                     )
-                    IconButton(onClick = onCamera, modifier = Modifier.size(33.dp)) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Open camera",
-                            tint = palette.textPrimary, modifier = Modifier.size(21.dp))
+                    IconButton(
+                        onClick = onCamera,
+                        modifier = Modifier.size(33.dp).testTag("chat_reference_camera")
+                    ) {
+                        Icon(Icons.Outlined.CameraAlt, contentDescription = "Open camera",
+                            tint = palette.textPrimary, modifier = Modifier.size(22.dp))
                     }
                     Box(
-                        modifier = Modifier.size(33.dp).pointerInput(onDictation, onVoiceStart) {
-                            detectTapGestures(
-                                onTap = { onDictation() },
-                                onLongPress = { onVoiceStart() }
-                            )
-                        },
+                        modifier = Modifier.size(33.dp)
+                            .testTag("chat_reference_microphone")
+                            .combinedClickable(
+                                role = Role.Button,
+                                onClickLabel = "Start voice typing",
+                                onLongClickLabel = "Record voice note",
+                                onClick = onDictation,
+                                onLongClick = onVoiceStart
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Mic,
-                            contentDescription = "Tap for voice typing, hold for voice note",
-                            tint = palette.textPrimary, modifier = Modifier.size(21.dp))
+                        Icon(Icons.Outlined.Mic,
+                            contentDescription = null,
+                            tint = palette.textPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
@@ -4743,7 +4856,10 @@ private fun MessageComposer(
             Box(contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Send,
                     contentDescription = if (isRecording) "Send voice note" else "Send message",
-                    tint = Color.White, modifier = Modifier.size(22.dp))
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                        .graphicsLayer { rotationZ = -45f }
+                        .testTag("chat_reference_send_plane"))
             }
         }
     }

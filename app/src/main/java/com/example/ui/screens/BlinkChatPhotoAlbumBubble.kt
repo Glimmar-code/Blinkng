@@ -18,11 +18,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkChatReferenceStyle
 import com.example.data.models.ChatMessage
@@ -42,8 +45,16 @@ internal fun BlinkChatPhotoAlbumBubble(
 ) {
     if (messages.isEmpty()) return
     val ordered = remember(messages) {
-        messages.sortedWith(compareBy<ChatMessage> { it.imageAlbumPosition }.thenBy { it.id })
+        messages.filter { photo ->
+            !photo.deletedForEveryone && listOf(
+                photo.imagePreviewUrl,
+                photo.attachedImageUrl,
+                photo.localAttachmentUri
+            ).any { !it.isNullOrBlank() }
+        }.distinctBy { it.id }
+            .sortedWith(compareBy<ChatMessage> { it.imageAlbumPosition }.thenBy { it.id })
     }
+    if (ordered.isEmpty()) return
     val anchor = ordered.first()
     val isMine = anchor.isFromMe
     val groupedCount = maxOf(anchor.imageAlbumSize, ordered.size)
@@ -51,18 +62,12 @@ internal fun BlinkChatPhotoAlbumBubble(
     val caption = ordered.firstNotNullOfOrNull { photo ->
         photo.text.takeUnless { it.isBlank() || it.equals("Image", true) || it.equals("Photo", true) }
     }.orEmpty()
-    val status = when {
-        ordered.any { it.status == MessageStatus.FAILED } -> MessageStatus.FAILED
-        ordered.any { it.status == MessageStatus.SENDING } -> MessageStatus.SENDING
-        ordered.all { it.status == MessageStatus.READ } -> MessageStatus.READ
-        ordered.all { it.status in setOf(MessageStatus.READ, MessageStatus.DELIVERED) } -> MessageStatus.DELIVERED
-        else -> MessageStatus.SENT
-    }
+    val status = BlinkChatAlbumStatus.aggregate(ordered.map { it.status })
     val corner = RoundedCornerShape(16.dp)
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
         Column(
-            Modifier.widthIn(max = 306.dp).clip(corner)
+            Modifier.widthIn(max = 312.dp).clip(corner)
                 .background(if (palette.mode == MessageThemeMode.DARK && caption.isBlank())
                         androidx.compose.ui.graphics.Brush.linearGradient(
                             listOf(Color.Transparent, Color.Transparent)
@@ -178,15 +183,24 @@ private fun AlbumPhotoTile(
     modifier: Modifier,
     onOpen: (ChatMessage) -> Unit
 ) {
+    val context = LocalContext.current
+    val photoSource = listOf(photo.imagePreviewUrl, photo.attachedImageUrl, photo.localAttachmentUri)
+        .firstOrNull { !it.isNullOrBlank() }
     Box(
         modifier.clip(RoundedCornerShape(9.dp))
             .background(Color(BlinkChatReferenceStyle.Incoming))
-            .clickable { onOpen(photo) },
+            .clickable(
+                role = androidx.compose.ui.semantics.Role.Button,
+                onClickLabel = "Open photo ${position + 1} of $total",
+                onClick = { onOpen(photo) }
+            )
+            .testTag("chat_reference_album_photo_" + position),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
-            model = photo.imagePreviewUrl ?: photo.attachedImageUrl
-                ?: photo.localAttachmentUri,
+            model = remember(photoSource) {
+                ImageRequest.Builder(context).data(photoSource).crossfade(140).build()
+            },
             contentDescription = "Photo ${position + 1} of $total",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
