@@ -442,6 +442,11 @@ class MainActivity : ComponentActivity() {
                 itemsOpenSignal += 1
             }
 
+            BlinkNotificationHelper.ACTION_OPEN_CONTEST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(2)
+            }
+
             BlinkNotificationHelper.ACTION_OPEN_BOOST -> {
                 viewModel.setTab(MainTab.HOME)
                 viewModel.setFeedSubTab(0)
@@ -515,6 +520,11 @@ class MainActivity : ComponentActivity() {
                         putExtra(BlinkDropsActivity.EXTRA_DROP_ID, event.targetId)
                     }
                 )
+            }
+
+            BlinkInAppNotificationDestination.CONTEST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(2)
             }
 
             BlinkInAppNotificationDestination.BOOST -> {
@@ -1316,10 +1326,23 @@ fun MainAppContent(
     val adminService = remember { AdminSupabaseService() }
     val adminContext = androidx.compose.ui.platform.LocalContext.current
     var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
-    LaunchedEffect(uiState.myProfile.id) {
+    // Re-check when the menu opens as well as when the signed-in account changes.
+    // A transient auth/session restore failure must not permanently hide the owner entry.
+    LaunchedEffect(uiState.myProfile.id, uiState.isMenuOpen) {
         canOpenAdmin = false
         if (uiState.myProfile.id.isNotBlank()) {
-            canOpenAdmin = adminService.fetchCapability().getOrNull()?.isAdmin == true
+            var resolved = false
+            var attempt = 0
+            while (!resolved && attempt < 3) {
+                val capability = adminService.fetchCapability()
+                if (capability.isSuccess) {
+                    canOpenAdmin = capability.getOrNull()?.isAdmin == true
+                    resolved = true
+                } else {
+                    attempt += 1
+                    if (attempt < 3) delay(750)
+                }
+            }
         }
     }
     LaunchedEffect(feedUtilitySheet) {
@@ -3069,6 +3092,10 @@ fun MainAppContent(
                 onNotificationClick = { activity ->
                     viewModel.handleNotificationClick(activity)
                     when (activity.targetType?.lowercase()) {
+                        "contest" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(2)
+                        }
                         "channel" -> {
                             val id = activity.targetResourceId.orEmpty()
                             if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {

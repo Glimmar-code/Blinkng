@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 type Kind =
   | "welcome" | "new_device" | "suspicious_activity"
   | "new_follower" | "unread_messages" | "post_engagement"
-  | "reel_milestone" | "leaderboard";
+  | "reel_milestone" | "leaderboard" | "contest_launch" | "referral_confirmed" | "referral_milestone";
 const SOCIAL_FLAGS = {
   new_follower: "new_follower_enabled",
   unread_messages: "unread_messages_enabled",
@@ -22,6 +22,7 @@ type QueueRow = {
   user_id: string;
   kind: Kind;
   attempts: number;
+  event_key: string;
 };
 
 type Message = { subject: string; heading: string; intro: string; noteHeading: string; note: string };
@@ -83,6 +84,27 @@ const MESSAGES: Record<Kind, Message> = {
     noteHeading: "Play at your own pace",
     note: "Weekly email summaries are optional. Turn them off any time in BLINK settings.",
   },
+  contest_launch: {
+    subject: "A new BLINK Contest is LIVE!",
+    heading: "A new BLINK Contest is LIVE!",
+    intro: "A new BLINK Contest has officially started. Open BLINK, visit Contest, and join the competition.",
+    noteHeading: "Showcase your talent",
+    note: "Take part, invite your friends to vote, and compete for the prizes announced in the app. You can turn off BLINK email notifications any time in Settings.",
+  },
+  referral_confirmed: {
+    subject: "Someone joined BLINK with your referral!",
+    heading: "Your BLINK network is growing!",
+    intro: "Someone joined BLINK using your referral link and confirmed their email address. Your referral dashboard has been updated.",
+    noteHeading: "Keep growing your network",
+    note: "Invite more people to join BLINK and follow your referral achievements in Refer & Grow. Referral rewards are governed by the rules shown in the app.",
+  },
+  referral_milestone: {
+    subject: "You reached a BLINK referral milestone!",
+    heading: "Your referrals are making an impact!",
+    intro: "You reached a new confirmed-referral milestone on BLINK. Open Refer & Grow to see your achievement.",
+    noteHeading: "Your progress",
+    note: "Thank you for helping more people discover BLINK. Any rewards or benefits are shown in the app and follow its published rules.",
+  },
 };
 
 const json = (body: unknown, status = 200) =>
@@ -105,25 +127,35 @@ async function secretEquals(provided: string, expected: string): Promise<boolean
   return mismatch === 0;
 }
 
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
 function render(message: Message, unsubscribeUrl: string | null = null): string {
+  const subject = escapeHtml(message.subject);
+  const heading = escapeHtml(message.heading);
+  const intro = escapeHtml(message.intro);
+  const noteHeading = escapeHtml(message.noteHeading);
+  const note = escapeHtml(message.note);
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${message.subject}</title></head>
+<title>${subject}</title></head>
 <body style="margin:0;background:#000000;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#000000;">
 <tr><td align="center" style="padding:25px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#0a0a0a;border:1px solid #252525;border-radius:22px;">
 <tr><td style="padding:32px 26px 16px;font-size:27px;line-height:35px;font-weight:800;color:#ffffff;">BLINK</td></tr>
 <tr><td style="padding:14px 26px 10px;">
-<h1 style="font-size:29px;line-height:38px;margin:0;color:#ffffff;">${message.heading}</h1>
-<p style="font-size:15px;line-height:25px;color:#bcbcbc;margin:12px 0 0;">${message.intro}</p>
+<h1 style="font-size:29px;line-height:38px;margin:0;color:#ffffff;">${heading}</h1>
+<p style="font-size:15px;line-height:25px;color:#bcbcbc;margin:12px 0 0;">${intro}</p>
 </td></tr>
 <tr><td style="padding:16px 26px;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#111111;border:1px solid #292929;border-radius:16px;">
 <tr><td style="padding:19px;">
-<strong style="font-size:14px;color:#ffffff;">${message.noteHeading}</strong>
-<p style="font-size:14px;line-height:24px;color:#b8b8b8;margin:8px 0 0;">${message.note}</p>
+<strong style="font-size:14px;color:#ffffff;">${noteHeading}</strong>
+<p style="font-size:14px;line-height:24px;color:#b8b8b8;margin:8px 0 0;">${note}</p>
 </td></tr></table>
 </td></tr>
 <tr><td style="padding:10px 26px 30px;color:#999999;font-size:12px;line-height:20px;">
@@ -161,13 +193,26 @@ Deno.serve(async (req: Request) => {
 
   const internalSecret = Deno.env.get("BLINK_EMAIL_WORKER_SECRET") ?? "";
   const incomingSecret = req.headers.get("x-blink-email-worker-secret") ?? "";
-  // Don't accept default/missing secrets or weaker untrusted client tokens.
-  if (internalSecret.length < 32 || !(await secretEquals(incomingSecret, internalSecret))) {
+  const role = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const serviceAuthorized = role.length > 32 && req.headers.get("Authorization") === `Bearer ${role}`;
+  // Internal secret remains supported; service-role bearer is accepted only for server-to-server workers.
+  if (!serviceAuthorized &&
+      (internalSecret.length < 32 || !(await secretEquals(incomingSecret, internalSecret)))) {
     return json({ error: "Unauthorized" }, 401);
+  }
+  let kindFilter: Kind | null = null;
+  try {
+    const payload = await req.json();
+    const requested = String(payload?.kind_filter ?? "");
+    if (requested) {
+      if (!serviceAuthorized || !["contest_launch", "referral_confirmed", "referral_milestone"].includes(requested)) return json({ error: "Invalid queue filter" }, 403);
+      kindFilter = requested as Kind;
+    }
+  } catch {
+    // Empty body is valid for the existing full outbox worker.
   }
 
   const url = Deno.env.get("SUPABASE_URL");
-  const role = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const brevoKey = Deno.env.get("BREVO_API_KEY");
   const from = Deno.env.get("BLINK_EMAIL_SENDER_ADDRESS");
   if (!url || !role || !brevoKey || !from || !from.includes("@")) {
@@ -178,20 +223,44 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  if (serviceAuthorized) {
+    const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
+    const nowIso = new Date().toISOString();
+    let recoverQuery = admin.from("blink_essential_email_outbox")
+      .update({ status: "pending", available_at: nowIso, last_error: "stale_delivery_recovered", updated_at: nowIso })
+      .eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
+    let expireQuery = admin.from("blink_essential_email_outbox")
+      .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
+      .eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
+    if (kindFilter) {
+      recoverQuery = recoverQuery.eq("kind", kindFilter);
+      expireQuery = expireQuery.eq("kind", kindFilter);
+    } else {
+      const dispatchKinds = ["contest_launch", "referral_confirmed", "referral_milestone"];
+      recoverQuery = recoverQuery.in("kind", dispatchKinds);
+      expireQuery = expireQuery.in("kind", dispatchKinds);
+    }
+    const { error: recoverError } = await recoverQuery;
+    if (recoverError) return json({ error: "Could not recover stale email claims" }, 503);
+    const { error: expireError } = await expireQuery;
+    if (expireError) return json({ error: "Could not expire stale email claims" }, 503);
+  }
+
   async function setStatus(
     row: QueueRow,
     status: "sent" | "pending" | "failed",
     error: string | null = null,
   ) {
-    const nextAttempts = row.attempts + 1;
+    const nextAttempts = Math.min(10, row.attempts + 1);
+    const finalStatus = status === "pending" && nextAttempts >= 4 ? "failed" : status;
     const minutes = Math.min(240, 15 * 2 ** Math.max(0, nextAttempts - 1));
     await admin.from("blink_essential_email_outbox")
       .update({
-        status,
+        status: finalStatus,
         last_error: error,
         updated_at: new Date().toISOString(),
-        available_at: status === "pending" ? new Date(Date.now() + minutes * 60_000).toISOString() : new Date().toISOString(),
-        ...(status === "sent" ? { sent_at: new Date().toISOString() } : {}),
+        available_at: finalStatus === "pending" ? new Date(Date.now() + minutes * 60_000).toISOString() : new Date().toISOString(),
+        ...(finalStatus === "sent" ? { sent_at: new Date().toISOString() } : {}),
       })
       .eq("id", row.id)
       .eq("status", "sending");
@@ -226,13 +295,15 @@ Deno.serve(async (req: Request) => {
   if ((count ?? 0) >= 75) return json({ ok: true, skipped: "daily_internal_cap" });
 
   const max = Math.max(0, Math.min(10, 75 - (count ?? 0)));
-  const { data, error: dueError } = await admin.from("blink_essential_email_outbox")
-    .select("id,user_id,kind,attempts")
+  let dueQuery = admin.from("blink_essential_email_outbox")
+    .select("id,user_id,kind,attempts,event_key")
     .eq("status", "pending")
     .lte("available_at", new Date().toISOString())
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(max);
+  if (kindFilter) dueQuery.eq("kind", kindFilter);
+  const { data, error: dueError } = await dueQuery;
   if (dueError) return json({ error: "Queue query failed" }, 503);
 
   let sent = 0, failed = 0, skipped = 0;
@@ -251,7 +322,100 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (claimError || !claimed) { skipped++; continue; }
-    const message = MESSAGES[row.kind];
+    let message = MESSAGES[row.kind];
+    if (row.kind === "contest_launch") {
+      const contestId = row.event_key.startsWith("contest_launch:")
+        ? row.event_key.slice("contest_launch:".length) : "";
+      if (!/^[a-f0-9-]{36}$/i.test(contestId)) {
+        await setStatus(row, "failed", "invalid_contest_event_key");
+        failed++;
+        continue;
+      }
+      const { data: contest, error: contestError } = await admin
+        .from("blink_contests").select("title,status").eq("id", contestId).maybeSingle();
+      if (contestError || !contest) {
+        await setStatus(row, "failed", "contest_lookup_failed");
+        failed++;
+        continue;
+      }
+      if (contest.status !== "published") {
+        await setStatus(row, "failed", "contest_no_longer_published");
+        skipped++;
+        continue;
+      }
+      const contestName = String(contest.title).trim().slice(0, 120);
+      message = {
+        ...message!,
+        subject: `${contestName} is LIVE on BLINK!`,
+        heading: `${contestName} is LIVE!`,
+        intro: `The contest "${contestName}" has officially started. Open BLINK, visit Contest, and join the competition.`,
+      };
+    }
+    if (row.kind === "referral_confirmed" || row.kind === "referral_milestone") {
+      const isMilestone = row.kind === "referral_milestone";
+      const referredUserId = !isMilestone && row.event_key.startsWith("referral_confirmed:")
+        ? row.event_key.slice("referral_confirmed:".length) : "";
+      if (!isMilestone && !/^[a-f0-9-]{36}$/i.test(referredUserId)) {
+        await setStatus(row, "failed", "invalid_referral_event_key");
+        failed++;
+        continue;
+      }
+      if (isMilestone) {
+        const milestone = Number(row.event_key.startsWith("referral_milestone:")
+          ? row.event_key.slice("referral_milestone:".length) : "");
+        if (![1, 5, 10, 25, 50, 100].includes(milestone)) {
+          await setStatus(row, "failed", "invalid_referral_milestone");
+          failed++;
+          continue;
+        }
+        const { data: achievement, error: achievementError } = await admin
+          .from("blink_referral_achievements")
+          .select("confirmed_referrals")
+          .eq("user_id", row.user_id)
+          .maybeSingle();
+        if (achievementError || !achievement || Number(achievement.confirmed_referrals) < milestone) {
+          await setStatus(row, "failed", "referral_milestone_not_verified");
+          failed++;
+          continue;
+        }
+        message = {
+          ...message!,
+          subject: `You reached ${milestone} confirmed BLINK referrals!`,
+          heading: `${milestone} confirmed referrals!`,
+          intro: `Your BLINK network has reached ${milestone} confirmed referrals. Open Refer & Grow to see your achievement.`,
+        };
+      } else {
+        const { data: referral, error: referralError } = await admin
+          .from("blink_referrals")
+          .select("referrer_user_id,status")
+          .eq("referred_user_id", referredUserId)
+          .maybeSingle();
+        if (referralError || !referral) {
+          await setStatus(row, "failed", "referral_lookup_failed");
+          failed++;
+          continue;
+        }
+        if (referral.status !== "confirmed" || referral.referrer_user_id !== row.user_id) {
+          await setStatus(row, "failed", "referral_not_confirmed_or_wrong_recipient");
+          skipped++;
+          continue;
+        }
+      }
+      const { data: userSettings, error: settingsError } = await admin
+        .from("user_settings").select("email_notifs_enabled")
+        .eq("user_id", row.user_id).maybeSingle();
+      if (settingsError) {
+        await setStatus(row, "pending", "email_preferences_lookup_failed");
+        failed++;
+        continue;
+      }
+      if (userSettings?.email_notifs_enabled !== true) {
+        await setStatus(row, "failed", "referral_email_not_opted_in");
+        skipped++;
+        continue;
+      }
+    }
+
     if (isSocial(row.kind) && !socialEnabled) {
       await setStatus(row, "failed", "social_delivery_disabled");
       skipped++;
@@ -267,8 +431,10 @@ Deno.serve(async (req: Request) => {
       const { data: fetched, error: userError } = await admin.auth.admin.getUserById(row.user_id);
       const user = fetched?.user;
       const recipientEmail = user?.email;
-      const bannedUntil = (user as (typeof user & { banned_until?: string }))?.banned_until;
-      if (userError || !user || !recipientEmail || !user.email_confirmed_at || bannedUntil && new Date(bannedUntil) > new Date()) {
+      const accountState = user as (typeof user & { banned_until?: string; deleted_at?: string });
+      const bannedUntil = accountState?.banned_until;
+      if (userError || !user || !recipientEmail || !user.email_confirmed_at ||
+          accountState?.deleted_at || bannedUntil && new Date(bannedUntil) > new Date()) {
         await setStatus(row, "failed", "recipient_not_eligible");
         failed++;
         continue;
@@ -277,6 +443,21 @@ Deno.serve(async (req: Request) => {
       // Opt-in and master email preference are checked again at send time, so
       // queued messages cannot override a later unsubscribe or account setting.
       let unsubscribeUrl: string | null = null;
+      if (row.kind === "contest_launch") {
+        const { data: userSettings, error: settingsError } = await admin
+          .from("user_settings").select("email_notifs_enabled")
+          .eq("user_id", row.user_id).maybeSingle();
+        if (settingsError) {
+          await setStatus(row, "pending", "email_preferences_lookup_failed");
+          failed++;
+          continue;
+        }
+        if (userSettings?.email_notifs_enabled === false) {
+          await setStatus(row, "failed", "user_opted_out");
+          skipped++;
+          continue;
+        }
+      }
       if (isSocial(row.kind)) {
         const { data: socialPrefs, error: prefsError } = await admin
           .from("blink_social_email_preferences")
