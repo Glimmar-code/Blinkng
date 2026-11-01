@@ -339,8 +339,10 @@ Deno.serve(async (req: Request) => {
       const { data: fetched, error: userError } = await admin.auth.admin.getUserById(row.user_id);
       const user = fetched?.user;
       const recipientEmail = user?.email;
-      const bannedUntil = (user as (typeof user & { banned_until?: string }))?.banned_until;
-      if (userError || !user || !recipientEmail || !user.email_confirmed_at || bannedUntil && new Date(bannedUntil) > new Date()) {
+      const accountState = user as (typeof user & { banned_until?: string; deleted_at?: string });
+      const bannedUntil = accountState?.banned_until;
+      if (userError || !user || !recipientEmail || !user.email_confirmed_at ||
+          accountState?.deleted_at || bannedUntil && new Date(bannedUntil) > new Date()) {
         await setStatus(row, "failed", "recipient_not_eligible");
         failed++;
         continue;
