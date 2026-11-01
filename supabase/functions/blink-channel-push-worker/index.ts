@@ -100,7 +100,7 @@ Deno.serve(async (request: Request) => {
         Authorization: `Bearer ${serviceRole}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ kind_filter: "contest_launch" }),
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(20000),
     });
     email = await response.json() as Record<string, unknown>;
