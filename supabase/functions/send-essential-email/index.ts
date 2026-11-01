@@ -223,16 +223,26 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  if (kindFilter) {
+  if (serviceAuthorized) {
     const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
     const nowIso = new Date().toISOString();
-    const { error: recoverError } = await admin.from("blink_essential_email_outbox")
+    let recoverQuery = admin.from("blink_essential_email_outbox")
       .update({ status: "pending", available_at: nowIso, last_error: "stale_delivery_recovered", updated_at: nowIso })
-      .eq("kind", kindFilter).eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
-    if (recoverError) return json({ error: "Could not recover stale email claims" }, 503);
-    const { error: expireError } = await admin.from("blink_essential_email_outbox")
+      .eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
+    let expireQuery = admin.from("blink_essential_email_outbox")
       .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
-      .in("kind", ["contest_launch", "referral_confirmed", "referral_milestone"]).eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
+      .eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
+    if (kindFilter) {
+      recoverQuery = recoverQuery.eq("kind", kindFilter);
+      expireQuery = expireQuery.eq("kind", kindFilter);
+    } else {
+      const dispatchKinds = ["contest_launch", "referral_confirmed", "referral_milestone"];
+      recoverQuery = recoverQuery.in("kind", dispatchKinds);
+      expireQuery = expireQuery.in("kind", dispatchKinds);
+    }
+    const { error: recoverError } = await recoverQuery;
+    if (recoverError) return json({ error: "Could not recover stale email claims" }, 503);
+    const { error: expireError } = await expireQuery;
     if (expireError) return json({ error: "Could not expire stale email claims" }, 503);
   }
 
