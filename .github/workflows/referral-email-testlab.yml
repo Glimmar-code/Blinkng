@@ -1,0 +1,40 @@
+name: BLINK Referral Email Testlab
+on:
+  pull_request:
+    branches:
+      - main
+      - "Testlab/**"
+    paths:
+      - "supabase/functions/send-essential-email/**"
+      - "supabase/migrations/*referral_email_notifications.sql"
+      - "supabase/tests/referral-email-notification-*.mjs"
+      - "supabase/tests/package.json"
+      - ".github/workflows/referral-email-testlab.yml"
+  push:
+    branches:
+      - "Testlab/**"
+    paths:
+      - "supabase/functions/send-essential-email/**"
+      - "supabase/migrations/*referral_email_notifications.sql"
+      - "supabase/tests/referral-email-notification-*.mjs"
+      - "supabase/tests/package.json"
+      - ".github/workflows/referral-email-testlab.yml"
+permissions:
+  contents: read
+jobs:
+  referral-email:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase/tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned test dependency
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Verify referral email contract
+        run: node --test referral-email-notification-contract.test.mjs
+      - name: Verify referral outbox SQL integration
+        run: node referral-email-notification-integration.mjs
