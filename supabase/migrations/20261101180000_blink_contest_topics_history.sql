@@ -262,7 +262,10 @@ begin
     'votes',(select count(*) from public.blink_contest_votes v
       join public.blink_contest_entries e on e.id=v.entry_id
       where v.contest_id=c.id and e.status='approved' and v.review_status='valid')
-  ) order by case when c.status='published' and now()<c.registration_opens_at then 0\n    when c.status='published' and now()<c.voting_closes_at then 1\n    when c.status='completed' then 2 else 3 end,c.registration_opens_at),'[]'::jsonb)\n  into v_contests from public.blink_contests c
+  ) order by case when c.status='published' and now()<c.registration_opens_at then 0
+    when c.status='published' and now()<c.voting_closes_at then 1
+    when c.status='completed' then 2 else 3 end,c.registration_opens_at),'[]'::jsonb)
+  into v_contests from public.blink_contests c
   where c.topic_id=t.id and c.status in ('published','paused','completed','cancelled');
 
   select coalesce(jsonb_agg(jsonb_build_object(
