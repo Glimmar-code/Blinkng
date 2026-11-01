@@ -202,7 +202,7 @@ from public.blink_contests c
 join public.blink_contest_entries e on e.contest_id=c.id
 left join public.profiles p on p.id=e.user_id
 left join public.blink_contest_votes v on v.entry_id=e.id and v.review_status='valid'
-left join public.blink_contest_prizes w on w.contest_id=e.id and w.entry_id=e.id
+left join public.blink_contest_prizes w on w.contest_id=c.id and w.entry_id=e.id
 where c.status='completed' and e.status in ('approved','disqualified')
 group by c.id,e.id,e.user_id,p.username,p.avatar_url,w.place,w.amount_ngn
 on conflict(contest_id,entry_id) do nothing;
