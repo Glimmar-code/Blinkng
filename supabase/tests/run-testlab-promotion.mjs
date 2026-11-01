@@ -48,6 +48,7 @@ try {
   await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;');
   for (const sql of fixture.policies) await db.exec(sql);
   for (const name of migrations) {
+    console.log('APPLY migration:', name);
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
     console.log('PASS migration:', name);
   }
@@ -59,6 +60,7 @@ try {
   await (await import('./discovery-exhaustion-tests.mjs')).discoveryExhaustionTests(db);
   await (await import('./tag-search-interest-tests.mjs')).tagSearchInterestTests(db);
   for (const name of migrations) {
+    console.log('REAPPLY migration:', name);
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
     console.log('PASS reapply:', name);
   }
