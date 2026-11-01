@@ -43,6 +43,7 @@ begin
     )
   from auth.users u
   where u.deleted_at is null
+    and (u.banned_until is null or u.banned_until <= now())
     and not exists (
       select 1 from public.notifications n
       where n.user_id=u.id
