@@ -113,25 +113,35 @@ async function secretEquals(provided: string, expected: string): Promise<boolean
   return mismatch === 0;
 }
 
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
 function render(message: Message, unsubscribeUrl: string | null = null): string {
+  const subject = escapeHtml(message.subject);
+  const heading = escapeHtml(message.heading);
+  const intro = escapeHtml(message.intro);
+  const noteHeading = escapeHtml(message.noteHeading);
+  const note = escapeHtml(message.note);
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${message.subject}</title></head>
+<title>${subject}</title></head>
 <body style="margin:0;background:#000000;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#000000;">
 <tr><td align="center" style="padding:25px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#0a0a0a;border:1px solid #252525;border-radius:22px;">
 <tr><td style="padding:32px 26px 16px;font-size:27px;line-height:35px;font-weight:800;color:#ffffff;">BLINK</td></tr>
 <tr><td style="padding:14px 26px 10px;">
-<h1 style="font-size:29px;line-height:38px;margin:0;color:#ffffff;">${message.heading}</h1>
-<p style="font-size:15px;line-height:25px;color:#bcbcbc;margin:12px 0 0;">${message.intro}</p>
+<h1 style="font-size:29px;line-height:38px;margin:0;color:#ffffff;">${heading}</h1>
+<p style="font-size:15px;line-height:25px;color:#bcbcbc;margin:12px 0 0;">${intro}</p>
 </td></tr>
 <tr><td style="padding:16px 26px;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#111111;border:1px solid #292929;border-radius:16px;">
 <tr><td style="padding:19px;">
-<strong style="font-size:14px;color:#ffffff;">${message.noteHeading}</strong>
-<p style="font-size:14px;line-height:24px;color:#b8b8b8;margin:8px 0 0;">${message.note}</p>
+<strong style="font-size:14px;color:#ffffff;">${noteHeading}</strong>
+<p style="font-size:14px;line-height:24px;color:#b8b8b8;margin:8px 0 0;">${note}</p>
 </td></tr></table>
 </td></tr>
 <tr><td style="padding:10px 26px 30px;color:#999999;font-size:12px;line-height:20px;">
