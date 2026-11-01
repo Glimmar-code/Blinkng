@@ -17,6 +17,7 @@ const migrations = [
 ];
 const db = new PGlite({ extensions: { pg_trgm } });
 try {
+  console.log('SETUP disposable PostgreSQL fixture');
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create schema private; create schema private_ranking; create schema extensions; create schema cron;
     create table auth.users(id uuid primary key, email text);
@@ -28,14 +29,16 @@ try {
     grant execute on function auth.jwt() to authenticated;
     create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text);
     create function cron.schedule(text,text,text) returns bigint language sql as $insert into cron.job(jobname,schedule,command) values ($1,$2,$3) returning jobid$;
-    create function cron.unschedule(bigint) returns boolean language sql as $delete from cron.job where jobid = $1 returning true$;
+    create function cron.unschedule(p_jobid bigint) returns boolean language plpgsql as $presence$ begin delete from cron.job where jobid = p_jobid; return found; end; $presence$;
     create publication supabase_realtime;
     create extension pg_trgm with schema extensions;`);
   for (const sql of fixture.schema) await db.exec(sql);
+  console.log('PASS fixture schema');
   await db.exec(`create table if not exists public.user_chat_privacy (
     user_id uuid primary key, show_online boolean not null default true,
     show_last_seen boolean not null default true
   );`);
+  console.log('PASS presence privacy fixture');
   const pending = [...fixture.functions];
   while (pending.length) {
     let created = 0;
