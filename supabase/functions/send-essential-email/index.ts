@@ -319,9 +319,12 @@ Deno.serve(async (req: Request) => {
         skipped++;
         continue;
       }
+      const contestName = String(contest.title).trim().slice(0, 120);
       message = {
         ...message!,
-        intro: `The contest "${String(contest.title)}" has officially started. Open BLINK, visit Contest, and join the competition.`,
+        subject: `${contestName} is LIVE on BLINK!`,
+        heading: `${contestName} is LIVE!`,
+        intro: `The contest "${contestName}" has officially started. Open BLINK, visit Contest, and join the competition.`,
       };
     }
     if (isSocial(row.kind) && !socialEnabled) {
