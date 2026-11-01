@@ -20,6 +20,7 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -256,8 +257,10 @@ fun BlinkContestScreen(
         val id = selectedTopicId
         topicDetail = null
         topicFollowed = false
-        if (id != null) api.topicDetail(id).onSuccess { topicDetail = it }
-            .onFailure { error = it.message ?: "Unable to load topic history." }
+        if (id != null) api.topicDetail(id).onSuccess { loaded ->
+            topicDetail = loaded
+            topicFollowed = loaded.optJSONObject("topic")?.optBoolean("following") == true
+        }.onFailure { error = it.message ?: "Unable to load topic history." }
     }
     LaunchedEffect(selectedId, revision) {
         val id = selectedId
