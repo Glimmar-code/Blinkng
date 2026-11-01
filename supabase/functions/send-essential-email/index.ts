@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 type Kind =
   | "welcome" | "new_device" | "suspicious_activity"
   | "new_follower" | "unread_messages" | "post_engagement"
-  | "reel_milestone" | "leaderboard";
+  | "reel_milestone" | "leaderboard" | "contest_launch";
 const SOCIAL_FLAGS = {
   new_follower: "new_follower_enabled",
   unread_messages: "unread_messages_enabled",
@@ -22,6 +22,7 @@ type QueueRow = {
   user_id: string;
   kind: Kind;
   attempts: number;
+  event_key: string;
 };
 
 type Message = { subject: string; heading: string; intro: string; noteHeading: string; note: string };
@@ -82,6 +83,13 @@ const MESSAGES: Record<Kind, Message> = {
     intro: "Your official BLINK leaderboard ranking changed. Open the app to see your current position.",
     noteHeading: "Play at your own pace",
     note: "Weekly email summaries are optional. Turn them off any time in BLINK settings.",
+  },
+  contest_launch: {
+    subject: "A new BLINK Contest is LIVE!",
+    heading: "A new BLINK Contest is LIVE!",
+    intro: "A new BLINK Contest has officially started. Open BLINK, visit Contest, and join the competition.",
+    noteHeading: "Showcase your talent",
+    note: "Take part, invite your friends to vote, and compete for the prizes announced in the app.",
   },
 };
 
@@ -161,13 +169,26 @@ Deno.serve(async (req: Request) => {
 
   const internalSecret = Deno.env.get("BLINK_EMAIL_WORKER_SECRET") ?? "";
   const incomingSecret = req.headers.get("x-blink-email-worker-secret") ?? "";
-  // Don't accept default/missing secrets or weaker untrusted client tokens.
-  if (internalSecret.length < 32 || !(await secretEquals(incomingSecret, internalSecret))) {
+  const role = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const serviceAuthorized = role.length > 32 && req.headers.get("Authorization") === `Bearer ${role}`;
+  // Internal secret remains supported; service-role bearer is accepted only for server-to-server workers.
+  if (!serviceAuthorized &&
+      (internalSecret.length < 32 || !(await secretEquals(incomingSecret, internalSecret)))) {
     return json({ error: "Unauthorized" }, 401);
+  }
+  let kindFilter: Kind | null = null;
+  try {
+    const payload = await req.json();
+    const requested = String(payload?.kind_filter ?? "");
+    if (requested) {
+      if (!serviceAuthorized || requested !== "contest_launch") return json({ error: "Invalid queue filter" }, 403);
+      kindFilter = "contest_launch";
+    }
+  } catch {
+    // Empty body is valid for the existing full outbox worker.
   }
 
   const url = Deno.env.get("SUPABASE_URL");
-  const role = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const brevoKey = Deno.env.get("BREVO_API_KEY");
   const from = Deno.env.get("BLINK_EMAIL_SENDER_ADDRESS");
   if (!url || !role || !brevoKey || !from || !from.includes("@")) {
@@ -226,13 +247,15 @@ Deno.serve(async (req: Request) => {
   if ((count ?? 0) >= 75) return json({ ok: true, skipped: "daily_internal_cap" });
 
   const max = Math.max(0, Math.min(10, 75 - (count ?? 0)));
-  const { data, error: dueError } = await admin.from("blink_essential_email_outbox")
-    .select("id,user_id,kind,attempts")
+  let dueQuery = admin.from("blink_essential_email_outbox")
+    .select("id,user_id,kind,attempts,event_key")
     .eq("status", "pending")
     .lte("available_at", new Date().toISOString())
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(max);
+  if (kindFilter) dueQuery.eq("kind", kindFilter);
+  const { data, error: dueError } = await dueQuery;
   if (dueError) return json({ error: "Queue query failed" }, 503);
 
   let sent = 0, failed = 0, skipped = 0;
@@ -251,7 +274,27 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (claimError || !claimed) { skipped++; continue; }
-    const message = MESSAGES[row.kind];
+    let message = MESSAGES[row.kind];
+    if (row.kind === "contest_launch") {
+      const contestId = row.event_key.startsWith("contest_launch:")
+        ? row.event_key.slice("contest_launch:".length) : "";
+      if (!/^[a-f0-9-]{36}$/i.test(contestId)) {
+        await setStatus(row, "failed", "invalid_contest_event_key");
+        failed++;
+        continue;
+      }
+      const { data: contest, error: contestError } = await admin
+        .from("blink_contests").select("title").eq("id", contestId).maybeSingle();
+      if (contestError || !contest) {
+        await setStatus(row, "failed", "contest_lookup_failed");
+        failed++;
+        continue;
+      }
+      message = {
+        ...message!,
+        intro: `The contest "${String(contest.title)}" has officially started. Open BLINK, visit Contest, and join the competition.`,
+      };
+    }
     if (isSocial(row.kind) && !socialEnabled) {
       await setStatus(row, "failed", "social_delivery_disabled");
       skipped++;
@@ -277,6 +320,21 @@ Deno.serve(async (req: Request) => {
       // Opt-in and master email preference are checked again at send time, so
       // queued messages cannot override a later unsubscribe or account setting.
       let unsubscribeUrl: string | null = null;
+      if (row.kind === "contest_launch") {
+        const { data: userSettings, error: settingsError } = await admin
+          .from("user_settings").select("email_notifs_enabled")
+          .eq("user_id", row.user_id).maybeSingle();
+        if (settingsError) {
+          await setStatus(row, "pending", "email_preferences_lookup_failed");
+          failed++;
+          continue;
+        }
+        if (userSettings?.email_notifs_enabled === false) {
+          await setStatus(row, "failed", "user_opted_out");
+          skipped++;
+          continue;
+        }
+      }
       if (isSocial(row.kind)) {
         const { data: socialPrefs, error: prefsError } = await admin
           .from("blink_social_email_preferences")
