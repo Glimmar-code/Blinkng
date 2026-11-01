@@ -1,29 +1,3 @@
-## 2026-11-01 — Session-accurate messaging presence (Testlab)
-
-- **Backend:** Presence leases are keyed by the Supabase Auth `session_id`, not one account-wide boolean. One device/session going offline cannot mark another active device offline. Revoked sessions cannot resurrect presence with a delayed heartbeat. Server timestamps, monotonic heartbeat updates, a 90-second lease and expiry reconciliation keep status accurate after force-close or network loss.
-- **Privacy:** The conversation summary RPC applies both chat privacy toggles (`show_online`, `show_last_seen`), the global active-status setting and profile visibility (PUBLIC/FOLLOWERS/PRIVATE). Hidden timestamps are returned as null and clients display an unavailable state rather than inventing a recent time.
-- **Android:** Presence heartbeat is every 30 seconds while the app is foregrounded. Backgrounding stops heartbeats without incorrectly ending other devices' sessions; realtime socket loss no longer marks the whole account offline. Messages/chat refresh the authoritative presence projection every 30 seconds.
-- **Windows:** Uses the same authenticated presence RPC and session lease, heartbeats while the desktop window is visible, and refreshes Messages/chat presence every 30 seconds.
-- **Validation hold:** Run Android unit/build/lint and Android 15 runtime checks, Windows tests/build, migration safety and session/privacy regressions on this exact candidate SHA. No production Supabase migration or APK deployment is performed by this source change.
-
-## 2026-10-31 — Android Chat composer touch/hold accessibility and reference icons
-
-- **PARITY-EXCEPTION: android-chat-composer-touch-microphone-20261031** — Android Compose's inline microphone supports touch tap (voice typing) and long press (start voice-note recording). The fix gives the control proper click/long-click accessibility semantics and matches the supplied outlined camera/microphone artwork. These are native Android gesture/accessibility affordances; applying an Android long-press modifier to the Windows desktop composer would be inappropriate.
-- **Desktop scope:** Windows composer and its existing send/attachment actions remain unchanged. This exception does **not** certify full voice recording/dictation parity on Windows.
-- **Validation hold:** An Android instrumentation screenshot fixture and real semantic-action assertions cover camera, tap-to-dictate, long-press-to-record, and send. Latest-head CI, updated screenshot comparison and native device functionality must pass before main merge.
-
-## 2026-10-30 — Compact native Android Chat voice player (reference fidelity)
-
-- **PARITY-EXCEPTION: android-native-compact-voice-player-20261030** — The small-screen Android `BlinkChatVoicePlayer` renders the selected reference's compact single-row waveform, duration and playback-speed control using Android MediaPlayer. Android native DownloadManager remains available from the message action menu, not an extra button consuming inline waveform space.
-- **Desktop equivalent and gap:** The Windows conversation is a desktop-native surface with a different layout and file actions. This Testlab change does not implement or certify Windows voice playback/download parity. Existing desktop conversations remain unchanged; any missing desktop voice feature still requires a separately validated implementation before claiming full cross-platform feature parity.
-- **Validation hold:** The Android emulator fixture must show waveform, time and 1× control together; Android playback/download functionality and keyboard tests, Windows quality and full device visual comparison must pass before merge into `main`. Do not treat a source-only visual edit as exact reference screenshot evidence.
-
-## 2026-10-30 — Create Post recent gallery: Android-specific local MediaStore discovery
-
-- **PARITY-EXCEPTION: android-recent-mediastore-thumbnails-20261030** — Android may display a limited, newest-first row of real camera-roll thumbnails **only if the user has already granted media permission**. Without that permission, the app displays explicitly saved-draft images and offers the Android Photo Picker. Windows does not have Android's MediaStore or runtime permission API, so attempting to duplicate this code on desktop would be incorrect.
-- **Windows equivalent:** `DesktopCreatePostDialog.kt` already uses a native `JFileChooser` for selecting multiple photos, previews the selected images, and supports reorder, removal, editor and publishing. This user-facing selection pathway remains unchanged; unlike Android's permission-scoped recent row, Windows does not automatically enumerate local photos.
-- This exception is only for the **operating-system-specific recent thumbnail affordance**. It does not exempt missing posting functionality, content security or visual verification. Android Compose tests, emulator captures and actual reference-image comparisons are still release blockers; no merge or deployment is authorized by this entry.
-
 ## 2026-10-29 — Combined Contest, Create Post and Chat repair
 
 - Preserves PR #638, #639 and #644 histories on `Testlab/contest-create-post-chat-20261029`.
@@ -1872,15 +1846,7 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - Android-only contrast hardening sets explicit light foreground colors inside the dark Drops empty/podium cards and Boost quote/analytics cards. This is a native Compose presentation correction; it does not change the shared data model, API, eligibility, pricing, balances, transactions or user actions.
 - Windows equivalent: the desktop Drops and Boost surfaces retain their existing native theme-aware text rendering and separate layout. The parity contract is identical data, actions and readable foreground/background contrast, not pixel-identical native card styling. The Windows parity/build gate verifies its existing desktop implementation independently.
 
+### PARITY-EXCEPTION: contest-android-native-compose-presentation-20261101 (latest Contest CTA audit)
 
-## Testlab — repeat-qualified content and Marketplace views (2026-10-31)
-
-- Android Feed and Profile post cards, inline Reels, and active full-screen Reels now qualify a visible exposure after 1.5 seconds at the existing 50% visibility threshold. Existing window-focus, playback-active, off-screen/pager-prefetch and continuous-session guards remain in place. Scrolling fully away and returning starts a new exposure; repeated layouts while still visible do not.
-- Windows content cards use the same 1.5-second visible-dwell rule before recording. The shared server-side record_content_view remains authoritative for 1/3/6 active verification weights, per-content viewer caps and event idempotency.
-- Marketplace listing detail opens wait two seconds before sending a view event and cancel logically when the user has already navigated away. The staged SQL records repeat visits with event IDs, a two-second per-viewer/listing rate limit, 100-event daily cap, 600 weighted-contribution cap, owner-view exclusion, and server-resolved active verification weights. The legacy daily unique-visitor table remains for analytics. The Android listing counter is held at its baseline for the same 120-second presentation delay; writes are immediate.
-- Promoted Market listing delivery remains separate: its existing START/QUALIFIED campaign session is preserved and still requires a sustained visible placement; opening the listing also contributes a normal listing view after the detail dwell.
-- Automated tests are added for Android/Windows dwell gates and the isolated Marketplace SQL contract. These are staged changes only; production Supabase has not been migrated and no APK/EXE has been published. Live Testlab backend integration, full Android/Windows build/runtime checks and latest-head CI remain required before promotion.
-
-### PARITY-EXCEPTION: windows-market-listing-views-not-implemented-20261031
-
-- The current Windows desktop source has no Market listing/detail route, so there is no desktop Market exposure surface to wire in this patch. No placeholder Market UI was invented. The closest Windows equivalent is the existing desktop content-view tracker, which now uses the same 1.5-second visible dwell for Feed/Reels. The shared Marketplace RPC remains compatible with one-argument authenticated callers through its generated event-ID default; when Windows Market detail is implemented, it must adopt the same two-second detail dwell, event idempotency, 1/3/6 weights and 120-second display delay.
+- The Contest PR updates Android's native Compose presentation (animated cards, chips, admin dashboard layout, applicant media preview and share-flyer dialog). These are Android-native screen treatments; contest eligibility, moderation, ranking, voting, prize data and service contracts remain shared/server-authoritative and are unchanged by the presentation work.
+- Windows equivalent: retain the existing Windows-native Contest screens and their equivalent contest data/actions using desktop layout and controls. Pixel-identical Compose animation and Android image-picker/player/dialog behavior are not required on Windows; functional parity remains the same contest lifecycle, candidate moderation, free voting, leaderboard, sharing/link and prize-status capabilities. Windows parity/build checks still run independently.
