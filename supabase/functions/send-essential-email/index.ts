@@ -308,10 +308,15 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       const { data: contest, error: contestError } = await admin
-        .from("blink_contests").select("title").eq("id", contestId).maybeSingle();
+        .from("blink_contests").select("title,status").eq("id", contestId).maybeSingle();
       if (contestError || !contest) {
         await setStatus(row, "failed", "contest_lookup_failed");
         failed++;
+        continue;
+      }
+      if (contest.status !== "published") {
+        await setStatus(row, "failed", "contest_no_longer_published");
+        skipped++;
         continue;
       }
       message = {
