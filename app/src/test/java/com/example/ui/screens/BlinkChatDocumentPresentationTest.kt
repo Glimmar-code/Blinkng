@@ -30,6 +30,8 @@ class BlinkChatDocumentPresentationTest {
         assertEquals("TXT", BlinkChatDocumentPresentation.typeLabel("notes.txt", "text/plain"))
         assertEquals("ZIP", BlinkChatDocumentPresentation.typeLabel("archive.zip", null))
         assertEquals("AUD", BlinkChatDocumentPresentation.typeLabel("voice.bin", "audio/mpeg"))
+        assertEquals("DOC", BlinkChatDocumentPresentation.typeLabel("attachment.bin", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+        assertEquals("TXT", BlinkChatDocumentPresentation.typeLabel("attachment.bin", "text/plain"))
         assertEquals("FILE", BlinkChatDocumentPresentation.typeLabel("unknown.bin", null))
         assertEquals(0xFFE5484D, BlinkChatDocumentPresentation.typeColorArgb("report.pdf", null))
     }
