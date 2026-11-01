@@ -1,4 +1,4 @@
-name: BLINK Referral Email Testlab
+name: BLINK Referral and Contest Email Testlab
 on:
   pull_request:
     branches:
@@ -7,7 +7,10 @@ on:
     paths:
       - "supabase/functions/send-essential-email/**"
       - "supabase/migrations/*referral_email_notifications.sql"
+      - "supabase/migrations/*contest_launch_notifications.sql"
       - "supabase/tests/referral-email-notification-*.mjs"
+      - "supabase/tests/contest-launch-notification-*.mjs"
+      - "supabase/tests/referral-email-notification-contract.test.mjs"
       - "supabase/tests/package.json"
       - ".github/workflows/referral-email-testlab.yml"
   push:
@@ -16,13 +19,16 @@ on:
     paths:
       - "supabase/functions/send-essential-email/**"
       - "supabase/migrations/*referral_email_notifications.sql"
+      - "supabase/migrations/*contest_launch_notifications.sql"
       - "supabase/tests/referral-email-notification-*.mjs"
+      - "supabase/tests/contest-launch-notification-*.mjs"
+      - "supabase/tests/referral-email-notification-contract.test.mjs"
       - "supabase/tests/package.json"
       - ".github/workflows/referral-email-testlab.yml"
 permissions:
   contents: read
 jobs:
-  referral-email:
+  transactional-email:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,7 +40,11 @@ jobs:
           node-version: 22
       - name: Install pinned test dependency
         run: npm install --no-package-lock --no-audit --no-fund
-      - name: Verify referral email contract
+      - name: Verify referral and social-email safety contracts
         run: node --test referral-email-notification-contract.test.mjs
-      - name: Verify referral outbox SQL integration
+      - name: Verify referral outbox migration in isolated PostgreSQL
         run: node referral-email-notification-integration.mjs
+      - name: Verify Contest launch fan-out in isolated PostgreSQL
+        run: node contest-launch-notification-integration.mjs
+      - name: Verify Contest notification contract and client routing
+        run: node --test contest-launch-notification-contract.test.mjs
