@@ -80,11 +80,17 @@ begin
 
     -- Reconcile any other device whose heartbeat lease has expired before
     -- calculating the account-level online projection.
-    update private.user_presence_sessions
+    update private.user_presence_sessions s
     set is_online = false
-    where user_id = v_user_id
-      and is_online = true
-      and last_heartbeat_at < v_now - interval '90 seconds';
+    where s.user_id = v_user_id
+      and s.is_online = true
+      and (
+          s.last_heartbeat_at < v_now - interval '90 seconds'
+          or not exists (
+              select 1 from auth.sessions a
+              where a.id = s.session_id and a.user_id = s.user_id
+          )
+      );
 
     select exists (
         select 1
@@ -92,6 +98,10 @@ begin
         where s.user_id = v_user_id
           and s.is_online = true
           and s.last_heartbeat_at >= v_now - interval '90 seconds'
+          and exists (
+              select 1 from auth.sessions a
+              where a.id = s.session_id and a.user_id = s.user_id
+          )
     ) into v_any_online;
 
     select coalesce(us.show_online_status, true)
@@ -188,6 +198,10 @@ begin
             where s.user_id = p_user_id
               and s.is_online = true
               and s.last_heartbeat_at >= statement_timestamp() - interval '90 seconds'
+              and exists (
+                  select 1 from auth.sessions a
+                  where a.id = s.session_id and a.user_id = s.user_id
+              )
         ) into v_is_online;
         return query select v_is_online, v_last_seen;
         return;
@@ -247,6 +261,10 @@ begin
         where s.user_id = p_user_id
           and s.is_online = true
           and s.last_heartbeat_at >= statement_timestamp() - interval '90 seconds'
+          and exists (
+              select 1 from auth.sessions a
+              where a.id = s.session_id and a.user_id = s.user_id
+          )
     ) into v_is_online;
 
     select greatest(v_last_seen, max(s.last_heartbeat_at))
@@ -416,7 +434,14 @@ begin
         update private.user_presence_sessions
         set is_online = false
         where is_online = true
-          and last_heartbeat_at < v_now - interval '90 seconds'
+          and (
+              last_heartbeat_at < v_now - interval '90 seconds'
+              or not exists (
+                  select 1 from auth.sessions a
+                  where a.id = user_presence_sessions.session_id
+                    and a.user_id = user_presence_sessions.user_id
+              )
+          )
         returning user_id
     )
     select count(*)::integer, array_agg(distinct user_id)
@@ -431,6 +456,10 @@ begin
             where s.user_id = v_user_id
               and s.is_online = true
               and s.last_heartbeat_at >= v_now - interval '90 seconds'
+              and exists (
+                  select 1 from auth.sessions a
+                  where a.id = s.session_id and a.user_id = s.user_id
+              )
         ) into v_any_online;
 
         select max(s.last_heartbeat_at)
