@@ -362,6 +362,50 @@ create trigger blink_contest_topic_follow_notification
 after update of status on public.blink_contests
 for each row execute function private.blink_notify_followed_contest_topic();
 
+create or replace function public.get_blink_contest_participant_profile(p_user_id uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $
+declare v_profile jsonb; v_history jsonb; v_wins integer; v_votes bigint; v_prizes bigint; v_total integer;
+begin
+  if auth.uid() is null then raise exception 'SIGN_IN_REQUIRED' using errcode='42501'; end if;
+  if p_user_id is null then raise exception 'PARTICIPANT_NOT_FOUND'; end if;
+  select jsonb_build_object('user_id',p.id,'username',p.username,'avatar_url',p.avatar_url,
+    'university',p.university,'department',p.department,'level',p.level)
+    into v_profile from public.profiles p where p.id=p_user_id;
+  select coalesce(jsonb_agg(x.row_data order by x.event_at desc),'[]'::jsonb),
+    count(*) filter(where x.place=1)::integer,
+    coalesce(sum(x.votes),0),coalesce(sum(x.prize_ngn),0),count(*)::integer
+  into v_history,v_wins,v_votes,v_prizes,v_total
+  from (
+    select jsonb_build_object('contest_id',h.contest_id,'contest_title',c.title,
+      'topic_id',c.topic_id,'scope',c.competition_scope,'university',c.university,
+      'votes',h.votes,'place',h.final_place,'prize_ngn',h.prize_ngn,
+      'status','completed','season',c.season) row_data,
+      h.captured_at event_at,h.final_place place,h.votes,h.prize_ngn
+    from public.blink_contest_history_participants h
+    join public.blink_contests c on c.id=h.contest_id
+    where h.user_id=p_user_id
+    union all
+    select jsonb_build_object('contest_id',e.contest_id,'contest_title',c.title,
+      'topic_id',c.topic_id,'scope',c.competition_scope,'university',c.university,
+      'votes',(select count(*)::integer from public.blink_contest_votes v
+        where v.entry_id=e.id and v.review_status='valid'),
+      'place',null,'prize_ngn',0,'status',c.status,'season',c.season),
+      e.submitted_at,null::integer,
+      (select count(*)::integer from public.blink_contest_votes v
+        where v.entry_id=e.id and v.review_status='valid'),0::bigint
+    from public.blink_contest_entries e join public.blink_contests c on c.id=e.contest_id
+    where e.user_id=p_user_id and c.status<>'completed' and e.status in ('approved','pending')
+  ) x;
+  if v_profile is null and v_total=0 then raise exception 'PARTICIPANT_NOT_FOUND'; end if;
+  if v_profile is null then
+    select jsonb_build_object('user_id',p_user_id,'username',h.username,'avatar_url',h.avatar_url)
+      into v_profile from public.blink_contest_history_participants h
+      where h.user_id=p_user_id order by h.captured_at desc limit 1;
+  end if;
+  return jsonb_build_object('participant',v_profile,'contests_entered',v_total,
+    'wins',v_wins,'total_votes',v_votes,'prizes_won_ngn',v_prizes,'history',v_history);
+end; $;
+
 create or replace function public.follow_blink_contest_topic(p_topic_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 begin
@@ -456,10 +500,10 @@ returns jsonb language sql stable security definer set search_path='' as $$
   from public.blink_contests c where c.status in ('published','paused','completed');
 $$;
 
-revoke all on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),
+revoke all on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),public.get_blink_contest_participant_profile(uuid),
  public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid),
  public.admin_save_blink_contest_topic(uuid,jsonb),public.admin_set_blink_contest_topic_active(uuid,boolean) from public,anon,authenticated;
-grant execute on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),
+grant execute on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),public.get_blink_contest_participant_profile(uuid),
  public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid) to authenticated;
 grant execute on function public.admin_save_blink_contest_topic(uuid,jsonb),
  public.admin_set_blink_contest_topic_active(uuid,boolean) to authenticated;
