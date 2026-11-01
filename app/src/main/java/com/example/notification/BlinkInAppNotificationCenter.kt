@@ -14,6 +14,7 @@ enum class BlinkInAppNotificationDestination {
     DROPS,
     BOOST,
     ITEMS,
+    CONTEST,
     NOTIFICATIONS
 }
 
