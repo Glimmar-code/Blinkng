@@ -370,7 +370,7 @@ after update of status on public.blink_contests
 for each row execute function private.blink_notify_followed_contest_topic();
 
 create or replace function public.get_blink_contest_participant_profile(p_user_id uuid)
-returns jsonb language plpgsql stable security definer set search_path='' as $
+returns jsonb language plpgsql stable security definer set search_path='' as $profile$
 declare v_profile jsonb; v_history jsonb; v_wins integer; v_votes bigint; v_prizes bigint; v_total integer;
 begin
   if auth.uid() is null then raise exception 'SIGN_IN_REQUIRED' using errcode='42501'; end if;
@@ -411,7 +411,7 @@ begin
   end if;
   return jsonb_build_object('participant',v_profile,'contests_entered',v_total,
     'wins',v_wins,'total_votes',v_votes,'prizes_won_ngn',v_prizes,'history',v_history);
-end; $;
+end; $profile$;
 
 create or replace function public.follow_blink_contest_topic(p_topic_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
