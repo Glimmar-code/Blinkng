@@ -164,7 +164,9 @@ fun BlinkChatAlbumStatusOverlay(
                     }
                     Spacer(Modifier.size(6.dp))
                     Text(
-                        if (state.retryAttempt > 0) "Retrying…" else "${state.safeCompleted}/${state.safeTotal}",
+                        if (state.retryAttempt > 0) "Retrying…"
+                        else if (state.safeTotal == 1) "${(state.safeProgress * 100).toInt()}%"
+                        else "${state.safeCompleted}/${state.safeTotal}",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
