@@ -89,7 +89,7 @@ const MESSAGES: Record<Kind, Message> = {
     heading: "A new BLINK Contest is LIVE!",
     intro: "A new BLINK Contest has officially started. Open BLINK, visit Contest, and join the competition.",
     noteHeading: "Showcase your talent",
-    note: "Take part, invite your friends to vote, and compete for the prizes announced in the app.",
+    note: "Take part, invite your friends to vote, and compete for the prizes announced in the app. You can turn off BLINK email notifications any time in Settings.",
   },
 };
 
