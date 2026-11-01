@@ -50,7 +50,8 @@ try {
       last_error text,
       constraint blink_essential_email_outbox_kind_check
         check (kind in ('welcome','new_device','suspicious_activity','new_follower',
-          'unread_messages','post_engagement','reel_milestone','leaderboard','contest_launch'))
+          'unread_messages','post_engagement','reel_milestone','leaderboard','contest_launch')),
+      unique(user_id,kind,event_key)
     );
   `);
   await db.exec(migration);
@@ -60,18 +61,13 @@ try {
   const optedOut = "30000000-0000-4000-8000-000000000003";
   const referred2 = "40000000-0000-4000-8000-000000000004";
 
-  await db.query(`
-    insert into auth.users(id,email,email_confirmed_at) values
-      ($1,'referrer@example.com',now()),
-      ($2,'referred@example.com',now()),
-      ($3,'optout@example.com',now()),
-      ($4,'second-referred@example.com',now());
-    insert into public.user_settings(user_id,email_notifs_enabled) values ($1,true),($3,false);
-    insert into public.blink_referrals(referred_user_id,referrer_user_id,status) values
-      ($2,$1,'confirmed'),($4,$3,'confirmed');
-    insert into public.blink_referral_achievements(user_id,confirmed_referrals) values
-      ($1,1),($3,5);
-  `, [referrer,referred,optedOut,referred2]);
+  await db.query("insert into auth.users(id,email,email_confirmed_at) values ($1,'referrer@example.com',now())", [referrer]);
+  await db.query("insert into auth.users(id,email,email_confirmed_at) values ($1,'referred@example.com',now())", [referred]);
+  await db.query("insert into auth.users(id,email,email_confirmed_at) values ($1,'optout@example.com',now())", [optedOut]);
+  await db.query("insert into auth.users(id,email,email_confirmed_at) values ($1,'second-referred@example.com',now())", [referred2]);
+  await db.query("insert into public.user_settings(user_id,email_notifs_enabled) values ($1,true),($2,false)", [referrer,optedOut]);
+  await db.query("insert into public.blink_referrals(referred_user_id,referrer_user_id,status) values ($1,$2,'confirmed'),($3,$4,'confirmed')", [referred,referrer,referred2,optedOut]);
+  await db.query("insert into public.blink_referral_achievements(user_id,confirmed_referrals) values ($1,1),($2,5)", [referrer,optedOut]);
 
   await db.query(`
     insert into public.notifications(user_id,actor_id,metadata)
