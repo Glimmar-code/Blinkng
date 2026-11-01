@@ -58,8 +58,8 @@ begin
     user_id,actor_id,type,target_type,target_id,text,sub_text,is_read,metadata
   )
   select u.id,null,'system'::public.notification_type_enum,
-    'contest',new.id,'A new BLINK Contest is LIVE!',
-    left(new.title,240),false,
+    'contest',new.id,'🏆 ' || left(new.title,200) || ' is LIVE!',
+    'Join now, showcase your talent and compete for prizes.',false,
     jsonb_build_object(
       'kind','blink_contest_launch',
       'contest_id',new.id,
