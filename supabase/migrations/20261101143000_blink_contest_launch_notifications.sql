@@ -84,6 +84,7 @@ begin
   insert into public.blink_essential_email_outbox(user_id,kind,event_key,priority)
   select u.id,'contest_launch',v_event_key,8
   from auth.users u
+  join public.profiles p on p.id=u.id
   left join public.user_settings s on s.user_id=u.id
   where u.email_confirmed_at is not null
     and u.deleted_at is null
