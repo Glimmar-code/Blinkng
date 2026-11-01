@@ -95,6 +95,8 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         rpcAny("list_blink_contest_topics", JSONObject()) as? JSONArray ?: JSONArray()
     suspend fun contestTopicDetail(id: String): JSONObject =
         rpc("get_blink_contest_topic", JSONObject().put("p_topic_id", id))
+    suspend fun contestParticipantProfile(id: String): JSONObject =
+        rpc("get_blink_contest_participant_profile", JSONObject().put("p_user_id", id))
     suspend fun contestFollowTopic(id: String): JSONObject =
         rpc("follow_blink_contest_topic", JSONObject().put("p_topic_id", id))
     suspend fun contestUnfollowTopic(id: String): JSONObject =
