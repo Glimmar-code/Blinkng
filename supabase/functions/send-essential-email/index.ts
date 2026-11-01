@@ -205,7 +205,7 @@ Deno.serve(async (req: Request) => {
     const payload = await req.json();
     const requested = String(payload?.kind_filter ?? "");
     if (requested) {
-      if (!serviceAuthorized || !["contest_launch", "referral_confirmed"].includes(requested)) return json({ error: "Invalid queue filter" }, 403);
+      if (!serviceAuthorized || !["contest_launch", "referral_confirmed", "referral_milestone"].includes(requested)) return json({ error: "Invalid queue filter" }, 403);
       kindFilter = requested as Kind;
     }
   } catch {
@@ -232,7 +232,7 @@ Deno.serve(async (req: Request) => {
     if (recoverError) return json({ error: "Could not recover stale email claims" }, 503);
     const { error: expireError } = await admin.from("blink_essential_email_outbox")
       .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
-      .in("kind", ["contest_launch", "referral_confirmed"]).eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
+      .in("kind", ["contest_launch", "referral_confirmed", "referral_milestone"]).eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
     if (expireError) return json({ error: "Could not expire stale email claims" }, 503);
   }
 
