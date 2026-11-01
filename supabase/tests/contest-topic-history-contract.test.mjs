@@ -22,6 +22,7 @@ test("topic detail exposes permanent participant, vote and prize history", () =>
   assert.match(sql, /create table if not exists public\.blink_contest_history_participants/);
   assert.match(sql, /create or replace function private\.blink_snapshot_contest_history/);
   assert.match(sql, /create or replace function public\.get_blink_contest_topic/);
+  assert.match(sql, /create or replace function public\.get_blink_contest_participant_profile/);
   assert.match(sql, /'participants',v_people/);
   assert.match(sql, /'prizes_awarded'/);
   assert.match(sql, /on conflict\(contest_id,entry_id\) do nothing/);
@@ -32,6 +33,7 @@ test("topic follow and admin topic management are authenticated RPCs", () => {
   assert.match(sql, /create or replace function public\.unfollow_blink_contest_topic/);
   assert.match(sql, /create or replace function public\.admin_save_blink_contest_topic/);
   assert.match(sql, /create or replace function private\.blink_notify_followed_contest_topic/);
+  assert.match(sql, /grant execute on function public\.admin_save_blink_contest_topic/);
   assert.match(sql, /grant execute on function public\.list_blink_contest_topics\(\)[\s\S]*public\.get_blink_contest_topic/);
 });
 
