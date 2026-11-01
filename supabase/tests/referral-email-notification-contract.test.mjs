@@ -24,6 +24,7 @@ test("email queue is deduplicated and requires a verified opted-in referrer", ()
 
 test("worker revalidates the referral relationship before sending", () => {
   assert.match(worker, /"referral_confirmed"/);
+  assert.match(worker, /"referral_milestone"/);
   assert.match(worker, /from\("blink_referrals"\)/);
   assert.match(worker, /referral\.status !== "confirmed"/);
   assert.match(worker, /referral\.referrer_user_id !== row\.user_id/);
