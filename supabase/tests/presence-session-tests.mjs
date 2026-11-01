@@ -126,11 +126,26 @@ export async function presenceSessionTests(db) {
   assert.ok(ageMs > 60_000 && ageMs < 4 * 60_000,
     "expired last seen must use the last server heartbeat time");
 
+  await db.exec("reset role");
+  await db.query(
+    "update public.profiles set last_seen_at = statement_timestamp() - interval '1 hour', last_seen = statement_timestamp() - interval '1 hour' where id = $1",
+    [partner],
+  );
+  await db.query(
+    "update public.user_chat_privacy set show_online = false, show_last_seen = true where user_id = $1",
+    [partner],
+  );
+  await db.query(
+    "insert into private.user_presence_sessions(user_id, session_id, last_heartbeat_at, is_online) values ($1, $2, statement_timestamp(), true) on conflict (user_id, session_id) do update set last_heartbeat_at = excluded.last_heartbeat_at, is_online = true",
+    [partner, sessionThree],
+  );
   await db.exec("set role authenticated");
   await setClaims(viewer, sessionOne);
   let current = await presence(partner);
   assert.equal(current.partner_online, false);
   assert.ok(current.partner_last_seen, "last seen is visible when only online status is hidden");
+  assert.ok(Date.now() - new Date(current.partner_last_seen).getTime() > 30 * 60_000,
+    "hiding online status must not leak a fresh heartbeat as last seen");
 
   await db.exec("reset role");
   await db.query(
