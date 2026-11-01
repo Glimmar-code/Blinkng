@@ -1855,3 +1855,8 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 
 - Android's native Compose menu now retries the signed-in user's admin capability lookup when the menu opens, so a transient session-restore/RPC failure does not leave the owner dashboard entry hidden for the rest of the session. Server-side authorization is unchanged.
 - Windows equivalent: `desktopApp/src/main/kotlin/com/blinkng/desktop/ui/BlinkDesktopMenuScreen.kt` already renders its `Switch to Admin Profile` action from `state.adminCapability.allowed`; its separate desktop state lifecycle and admin navigation remain unchanged. This is an Android lifecycle/retry fix, not a new admin capability or a change to shared authorization.
+
+### PARITY-EXCEPTION: contest-launch-notification-routing-20261101
+
+- Android FCM and in-app launch alerts now route to the Contest tab using the existing Home feed subtab destination. The notification event and deep-link target are server-generated and validated against a currently published contest.
+- Windows desktop has no equivalent Android FCM receiver; no desktop navigation or notification behavior is changed by this Android-specific routing.
