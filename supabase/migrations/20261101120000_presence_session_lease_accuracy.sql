@@ -1,4 +1,8 @@
 -- Session-scoped presence leases: one device cannot offline another device.
+-- destructive-change-reviewed
+-- rollback-plan: Restore the prior public presence RPC and conversation-summary
+-- definitions, drop the private presence helper functions and session-lease table,
+-- then let the previous client heartbeat flow repopulate profile presence fields.
 -- Supabase Auth JWTs carry a stable session_id claim; it identifies auth.sessions.id.
 begin;
 
