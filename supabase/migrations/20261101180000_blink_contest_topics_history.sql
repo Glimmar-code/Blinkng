@@ -193,6 +193,20 @@ create trigger blink_contest_snapshot_history
 after update of status on public.blink_contests
 for each row execute function private.blink_snapshot_contest_history();
 
+-- Preserve history for contests completed before this migration is installed.
+insert into public.blink_contest_history_participants(
+  contest_id,entry_id,user_id,username,avatar_url,votes,final_place,prize_ngn)
+select c.id,e.id,e.user_id,coalesce(p.username,'Former BLINK user'),p.avatar_url,
+  count(v.id) filter(where v.review_status='valid')::integer,w.place,coalesce(w.amount_ngn,0)
+from public.blink_contests c
+join public.blink_contest_entries e on e.contest_id=c.id
+left join public.profiles p on p.id=e.user_id
+left join public.blink_contest_votes v on v.entry_id=e.id and v.review_status='valid'
+left join public.blink_contest_prizes w on w.contest_id=e.id and w.entry_id=e.id
+where c.status='completed' and e.status in ('approved','disqualified')
+group by c.id,e.id,e.user_id,p.username,p.avatar_url,w.place,w.amount_ngn
+on conflict(contest_id,entry_id) do nothing;
+
 create or replace function public.list_blink_contest_topics()
 returns jsonb language sql stable security definer set search_path='' as $$
   select coalesce(jsonb_agg(jsonb_build_object(
