@@ -464,6 +464,7 @@ fun BlinkContestScreen(
                 val info = topic.optJSONObject("topic") ?: JSONObject()
                 val topicContests = topic.optJSONArray("contests")?.contestObjects().orEmpty()
                 val people = topic.optJSONArray("participants")?.contestObjects().orEmpty()
+                val hallOfFame = people.filter { it.optBoolean("historical") && it.optInt("place") in 1..3 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 100.dp),
@@ -509,6 +510,26 @@ fun BlinkContestScreen(
                             }
                         }
                     }
+                    item {
+                        Text("${topic.optInt("completed_contests")} completed editions · Permanent records",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    item { Text("Hall of Fame", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
+                    items(hallOfFame) { winner ->
+                        ElevatedCard(Modifier.fillMaxWidth().clickable {
+                            selectedParticipantId = winner.optString("user_id")
+                        }) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (winner.optInt("place") == 1) "🏆" else "🏅", fontSize = 22.sp)
+                                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                    Text("@${winner.optString("username")}", fontWeight = FontWeight.SemiBold)
+                                    Text("${winner.optString("contest_title")} · Place #${winner.optInt("place")}",
+                                        fontSize = 11.sp)
+                                }
+                                Text(cash(winner.optLong("prize_ngn")), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                     item { Text("Contest editions", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
                     items(topicContests, key = { it.optString("id") }) { contest ->
                         ElevatedCard(Modifier.fillMaxWidth().clickable {
@@ -516,6 +537,7 @@ fun BlinkContestScreen(
                         }) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(contest.optString("title"), fontWeight = FontWeight.SemiBold)
+                                if (!contest.optString("season").isNullOrBlank() && contest.optString("season") != "null") Text(contest.optString("season"), fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                                 Text("${contest.optString("competition_scope").replaceFirstChar { it.uppercase() }} · ${contest.optString("university").takeUnless { it == "null" }.orEmpty()}",
                                     fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes · ${contest.optString("status")}",
