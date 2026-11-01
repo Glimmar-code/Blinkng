@@ -225,7 +225,7 @@ Deno.serve(async (req: Request) => {
     if (recoverError) return json({ error: "Could not recover stale Contest email claims" }, 503);
     const { error: expireError } = await admin.from("blink_essential_email_outbox")
       .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
-      .eq("kind", "contest_launch").eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
+      .in("kind", ["contest_launch", "referral_confirmed"]).eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
     if (expireError) return json({ error: "Could not expire stale Contest email claims" }, 503);
   }
 
