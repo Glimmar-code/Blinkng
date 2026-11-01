@@ -2396,7 +2396,12 @@ private fun PremiumChatDetail(
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
                                 videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
-                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty(), palette)
+                                BlinkChatVideoAlbumBubble(
+                                    messages = videoAlbumGroups[message.imageAlbumId].orEmpty(),
+                                    palette = palette,
+                                    onRetry = { onRetry(it) },
+                                    onCancelAttachment = { onCancelAttachment(it) },
+                                )
                             } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
