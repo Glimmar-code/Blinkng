@@ -94,6 +94,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var topicMenu by remember { mutableStateOf(false) }
     var competitionScope by remember { mutableStateOf("campus") }
     var season by remember { mutableStateOf("") }
+    var newTopicName by remember { mutableStateOf("") }
+    var newTopicCategory by remember { mutableStateOf("") }
+    var newTopicDescription by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf("") }
@@ -257,6 +260,29 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             }
             Text("Choose one of the public topics users can browse. You can add new topics through the admin topic library.",
                 style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(newTopicName, { newTopicName = it.take(100) },
+                label = { Text("Create custom topic name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(newTopicCategory, { newTopicCategory = it.take(60) },
+                label = { Text("Topic category") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(newTopicDescription, { newTopicDescription = it.take(500) },
+                label = { Text("Topic description") }, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(enabled = !busy && newTopicName.trim().length >= 3 &&
+                newTopicCategory.trim().length >= 2, onClick = {
+                busy = true
+                scope.launch {
+                    api.adminSaveTopic(JSONObject().put("name", newTopicName.trim())
+                        .put("category", newTopicCategory.trim())
+                        .put("description", newTopicDescription.trim()))
+                        .onSuccess {
+                            topicId = it.optString("id")
+                            category = it.optString("category")
+                            newTopicName = ""; newTopicCategory = ""; newTopicDescription = ""
+                            revision++
+                            message = "Contest topic added to the public directory."
+                        }.onFailure { message = it.message ?: "Unable to add topic." }
+                    busy = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Add topic to library") }
         }
         item {
             Text("Competition coverage", style = MaterialTheme.typography.titleMedium)
