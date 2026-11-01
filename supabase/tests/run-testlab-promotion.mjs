@@ -22,13 +22,13 @@ try {
     create schema auth; create schema private; create schema private_ranking; create schema extensions; create schema cron;
     create table auth.users(id uuid primary key, email text);
     create table auth.sessions(id uuid primary key, user_id uuid not null);
-    create function auth.uid() returns uuid language sql stable as $select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$;
-    create function auth.jwt() returns jsonb language sql stable as $select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$;
+    create function auth.uid() returns uuid language sql stable as $uid$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $uid$;
+    create function auth.jwt() returns jsonb language sql stable as $jwt$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $jwt$;
     grant usage on schema public,auth,extensions,private_ranking to authenticated;
     grant execute on function auth.uid() to authenticated;
     grant execute on function auth.jwt() to authenticated;
     create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text);
-    create function cron.schedule(text,text,text) returns bigint language sql as $insert into cron.job(jobname,schedule,command) values ($1,$2,$3) returning jobid$;
+    create function cron.schedule(p_name text, p_schedule text, p_command text) returns bigint language sql as $schedule$ insert into cron.job(jobname,schedule,command) values (p_name,p_schedule,p_command) returning jobid $schedule$;
     create function cron.unschedule(p_jobid bigint) returns boolean language plpgsql as $presence$ begin delete from cron.job where jobid = p_jobid; return found; end; $presence$;
     create publication supabase_realtime;
     create extension pg_trgm with schema extensions;`);
