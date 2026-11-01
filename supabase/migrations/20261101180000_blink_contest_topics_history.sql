@@ -401,6 +401,7 @@ begin
   v_scope:=coalesce(nullif(p_data->>'competition_scope',''),'campus');
   if v_topic is not null and not exists(select 1 from public.blink_contest_topics where id=v_topic and is_active)
     then raise exception 'INVALID_CONTEST_TOPIC'; end if;
+  if v_topic is null then raise exception 'CONTEST_TOPIC_REQUIRED'; end if;
   if v_scope not in ('campus','nationwide') then raise exception 'INVALID_COMPETITION_SCOPE'; end if;
   if v_scope='campus' and nullif(trim(p_data->>'university'),'') is null
     then raise exception 'CAMPUS_COMPETITION_REQUIRES_UNIVERSITY'; end if;
