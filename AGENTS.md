@@ -134,3 +134,27 @@ Full reusable command: `.github/BLINK_AUTO_FIX_RELEASE_COMMAND.md`.
 A failed PR, or one superseded by another similar PR, must stay open by default. Repair failing checks by adding commits to the same PR/branch wherever practical; rerun relevant tests on the latest SHA. When consolidating, compare every original PR's full diff and functionality against the replacement and target branch. **Do not close an unmerged PR solely because a newer PR has the same goal, title or changed files.** Merge and verify the replacement first, or explicitly document that the owner chose to abandon the unique changes.
 
 This is protected by the trusted GitHub Actions post-close guard `.github/workflows/pr-preserve-unmerged.yml`: unmerged PRs closed without exact-SHA owner evidence and file-blob preservation verification are automatically reopened (subject to GitHub Actions permissions). See `.github/PR_PRESERVATION_POLICY.md` for the three authorized closure cases and required audit. Never falsely describe an unmerged closed PR as merged. Do not delete its working branch before reconciliation.
+
+
+## Coordinated development batch: speed without skipping verification
+
+Before editing, inspect the complete feature and affected Android, shared, Windows,
+backend, and CI contracts. Implement the agreed scope as a cohesive Testlab branch
+and one PR, not a succession of unrelated tiny edits. Group related fixes before
+pushing; create follow-up commits only for real test failures. Do not weaken gates.
+
+Run \`python3 scripts/blink_preflight.py --base origin/main\` before each push.
+Use \`--full\` for relevant local builds when toolchains are available. This
+preflight does not replace GitHub CI, backend staging, emulator/physical-device
+checks, screenshot sign-off or release signing.
+
+For UI changes, capture actual screens with fixed theme, content, viewport and
+font scale. Compare the owner's reference to an actual capture using
+\`python3 scripts/testing/visual_reference_audit.py reference.png actual.png --out-dir build/visual-audit\`.
+Review the overlay and pixel differences, repair any mismatches and recapture.
+Do not declare exact matching based on compilation, generated fixtures alone,
+a resized capture, or missing original reference artwork. Promotion of a UI
+change requires a reviewed artifact, the \`visual-verified\` label and an exact
+current-head \`<!-- BLINK_VISUAL_VERIFIED_SHA: <40-char-SHA> -->\` marker.
+Existing security, staging, device and explicit auto-promotion approval remain
+mandatory. Summarize completed changes, actually run tests and blockers.
