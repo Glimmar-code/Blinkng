@@ -2404,7 +2404,9 @@ private fun PremiumChatDetail(
                                     palette = palette,
                                     onOpen = { viewedImageMessage = it },
                                     onReply = { replyingTo = message; editingMessage = null },
-                                    onActions = { selectedMessage = message }
+                                    onActions = { selectedMessage = message },
+                                    onRetry = { onRetry(it) },
+                                    onCancelAttachment = { onCancelAttachment(it) },
                                 )
                             } else MessageBubble(
                             message = message,
