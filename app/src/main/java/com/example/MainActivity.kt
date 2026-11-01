@@ -517,6 +517,11 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            BlinkInAppNotificationDestination.CONTEST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(2)
+            }
+
             BlinkInAppNotificationDestination.BOOST -> {
                 viewModel.setTab(MainTab.HOME)
                 viewModel.setFeedSubTab(0)
@@ -3082,6 +3087,10 @@ fun MainAppContent(
                 onNotificationClick = { activity ->
                     viewModel.handleNotificationClick(activity)
                     when (activity.targetType?.lowercase()) {
+                        "contest" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(2)
+                        }
                         "channel" -> {
                             val id = activity.targetResourceId.orEmpty()
                             if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
