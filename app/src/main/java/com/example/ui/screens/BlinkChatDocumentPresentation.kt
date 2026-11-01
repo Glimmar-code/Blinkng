@@ -5,7 +5,8 @@ import com.example.data.models.ChatMessage
 /** Display filenames that came from actual attachment metadata, not raw URLs. */
 internal object BlinkChatDocumentPresentation {
     private val supported = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt",
-        "pptx", "txt", "csv", "rtf", "odt", "ods", "zip")
+        "pptx", "txt", "md", "log", "csv", "rtf", "odt", "ods", "odp", "zip",
+        "rar", "7z", "tar", "gz", "mp3", "m4a", "wav", "ogg", "aac", "flac")
     fun filename(message: ChatMessage): String {
         val raw = sequenceOf(message.attachmentName, message.attachedDocumentName,
             message.text)
@@ -27,16 +28,30 @@ internal object BlinkChatDocumentPresentation {
     fun isPdf(name: String, mime: String?): Boolean = extension(name, mime) == "pdf"
 
     /** Short, safe document badge derived only from the validated filename/MIME. */
-    fun typeLabel(name: String, mime: String?): String = when (extension(name, mime)) {
-        "pdf" -> "PDF"
-        "doc", "docx", "odt", "rtf" -> "DOC"
-        "xls", "xlsx", "csv", "ods" -> "XLS"
-        "ppt", "pptx", "odp" -> "PPT"
-        "txt" -> "TXT"
-        "zip" -> "ZIP"
-        else -> when {
-            mime?.startsWith("audio/", ignoreCase = true) == true -> "AUD"
-            else -> "FILE"
+    fun typeLabel(name: String, mime: String?): String {
+        val extension = extension(name, mime)
+        val normalizedMime = mime.orEmpty().lowercase()
+        return when (extension) {
+            "pdf" -> "PDF"
+            "doc", "docx", "odt", "rtf" -> "DOC"
+            "xls", "xlsx", "csv", "ods" -> "XLS"
+            "ppt", "pptx", "odp" -> "PPT"
+            "txt", "md", "log" -> "TXT"
+            "zip", "rar", "7z", "tar", "gz" -> "ZIP"
+            "mp3", "m4a", "wav", "ogg", "aac", "flac" -> "AUD"
+            else -> when {
+                normalizedMime == "application/pdf" -> "PDF"
+                normalizedMime.contains("msword") ||
+                    normalizedMime.contains("wordprocessingml") -> "DOC"
+                normalizedMime.contains("ms-excel") ||
+                    normalizedMime.contains("spreadsheetml") -> "XLS"
+                normalizedMime.contains("ms-powerpoint") ||
+                    normalizedMime.contains("presentationml") -> "PPT"
+                normalizedMime.startsWith("text/") -> "TXT"
+                normalizedMime.contains("zip") || normalizedMime.contains("compressed") -> "ZIP"
+                normalizedMime.startsWith("audio/") -> "AUD"
+                else -> "FILE"
+            }
         }
     }
 
