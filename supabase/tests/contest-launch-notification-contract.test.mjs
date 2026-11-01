@@ -38,6 +38,7 @@ test("email fan-out is verified-email-only and honours the email master switch",
   assert.match(emailWorker, /user\.email_confirmed_at/);
   assert.match(emailWorker, /stale_delivery_recovered/);
   assert.match(emailWorker, /nextAttempts >= 4/);
+  assert.match(emailWorker, /contest\.status !== "published"/);
 });
 
 test("push delivery is durable, preference-gated and validates the live contest server-side", () => {
