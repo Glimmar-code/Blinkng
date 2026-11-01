@@ -1858,5 +1858,5 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 
 ### PARITY-EXCEPTION: contest-launch-notification-routing-20261101
 
-- Android FCM and in-app launch alerts now route to the Contest tab using the existing Home feed subtab destination. The notification event and deep-link target are server-generated and validated against a currently published contest.
-- Windows desktop has no equivalent Android FCM receiver; no desktop navigation or notification behavior is changed by this Android-specific routing.
+- Android FCM and in-app launch alerts route to the Contest tab using the existing Home feed subtab destination. Windows foreground and notification-centre alerts route to the existing `connect` Contest destination.
+- The notification event and target are server-generated and validated against a currently published contest. Windows has no Android FCM receiver; email and the durable in-app notification rows remain cross-platform.
