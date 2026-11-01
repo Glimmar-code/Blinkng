@@ -82,6 +82,14 @@ class BlinkContestService {
     suspend fun unfollowTopic(topicId: String): Result<JSONObject> = contestResult {
         JSONObject(call("unfollow_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
     }
+    suspend fun adminSaveTopic(data: JSONObject, id: String? = null): Result<JSONObject> = contestResult {
+        JSONObject(call("admin_save_blink_contest_topic", JSONObject()
+            .put("p_id", id ?: JSONObject.NULL).put("p_data", data)))
+    }
+    suspend fun adminSetTopicActive(topicId: String, active: Boolean): Result<JSONObject> = contestResult {
+        JSONObject(call("admin_set_blink_contest_topic_active", JSONObject()
+            .put("p_topic_id", topicId).put("p_active", active)))
+    }
     suspend fun detail(id: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
     }
