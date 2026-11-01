@@ -209,20 +209,34 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  if (kindFilter === "contest_launch") {
+    const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
+    const nowIso = new Date().toISOString();
+    const { error: recoverError } = await admin.from("blink_essential_email_outbox")
+      .update({ status: "pending", available_at: nowIso, last_error: "stale_delivery_recovered", updated_at: nowIso })
+      .eq("kind", "contest_launch").eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
+    if (recoverError) return json({ error: "Could not recover stale Contest email claims" }, 503);
+    const { error: expireError } = await admin.from("blink_essential_email_outbox")
+      .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
+      .eq("kind", "contest_launch").eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
+    if (expireError) return json({ error: "Could not expire stale Contest email claims" }, 503);
+  }
+
   async function setStatus(
     row: QueueRow,
     status: "sent" | "pending" | "failed",
     error: string | null = null,
   ) {
-    const nextAttempts = row.attempts + 1;
+    const nextAttempts = Math.min(10, row.attempts + 1);
+    const finalStatus = status === "pending" && nextAttempts >= 4 ? "failed" : status;
     const minutes = Math.min(240, 15 * 2 ** Math.max(0, nextAttempts - 1));
     await admin.from("blink_essential_email_outbox")
       .update({
-        status,
+        status: finalStatus,
         last_error: error,
         updated_at: new Date().toISOString(),
-        available_at: status === "pending" ? new Date(Date.now() + minutes * 60_000).toISOString() : new Date().toISOString(),
-        ...(status === "sent" ? { sent_at: new Date().toISOString() } : {}),
+        available_at: finalStatus === "pending" ? new Date(Date.now() + minutes * 60_000).toISOString() : new Date().toISOString(),
+        ...(finalStatus === "sent" ? { sent_at: new Date().toISOString() } : {}),
       })
       .eq("id", row.id)
       .eq("status", "sending");
