@@ -377,7 +377,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     .put("description", description.trim())
                     .put("rules", rules.trim())
                     .put("category", category.trim().ifBlank { "General" })
-                    .put("topic_id", topicId.ifBlank { JSONObject.NULL })
+                    .put("topic_id", if (topicId.isBlank()) JSONObject.NULL else topicId)
                     .put("competition_scope", competitionScope)
                     .put("season", season.trim())
                     .put("university", university.trim())
