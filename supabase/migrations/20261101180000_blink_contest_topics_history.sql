@@ -1,4 +1,6 @@
 -- BLINK Contest topic directory, campus/nationwide scope and permanent public history.
+-- destructive-change-reviewed: the safety scanner flags the DELETE inside the user-invoked unfollow RPC; this migration itself does not delete existing rows.
+-- rollback-plan: revoke the new RPC grants and restore the replaced admin/list RPC definitions from the prior Contest migration; retain additive topic/history tables and snapshots so permanent history is never discarded.
 -- Apply to Testlab only until backend and client verification pass.
 begin;
 
