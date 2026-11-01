@@ -160,6 +160,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                 val info = topic.optJSONObject("topic") ?: JSONObject()
                 val topicContests = topic.optJSONArray("contests")?.rows().orEmpty()
                 val participants = topic.optJSONArray("participants")?.rows().orEmpty()
+                val hallOfFame = participants.filter { it.optBoolean("historical") && it.optInt("place") in 1..3 }
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
                         Text(info.optString("name"), style = MaterialTheme.typography.headlineMedium)
@@ -178,12 +179,30 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                         }
                         Text("Contests: ${topic.optInt("total_contests")}  ·  Participants: ${topic.optInt("total_participants")}  ·  Votes: ${topic.optLong("total_votes")}  ·  Prizes awarded: ${prize(topic.optInt("prizes_awarded"))}")
                     }
+                    item { Text("${topic.optInt("completed_contests")} completed editions · Permanent history") }
+                    item { Text("Hall of Fame", style = MaterialTheme.typography.titleLarge) }
+                    items(hallOfFame) { winner ->
+                        Surface(Modifier.fillMaxWidth().clickable {
+                            selectedParticipant = winner.optString("user_id")
+                        }, color = Color(0xFF111C2B), shape = RoundedCornerShape(12.dp)) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (winner.optInt("place") == 1) "🏆" else "🏅")
+                                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                    Text("@${winner.optString("username")}", color = Color.White)
+                                    Text("${winner.optString("contest_title")} · Place #${winner.optInt("place")}",
+                                        color = Color(0xFFBDDFFF), fontSize = 11.sp)
+                                }
+                                Text(prize(winner.optInt("prize_ngn")), color = Color.White)
+                            }
+                        }
+                    }
                     item { Text("Contest editions", style = MaterialTheme.typography.titleLarge) }
                     items(topicContests, key = { it.optString("id") }) { contest ->
                         Surface(Modifier.fillMaxWidth().clickable { selected = contest.optString("id") },
                             color = Color(0xFF0B1626), shape = RoundedCornerShape(14.dp)) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(contest.optString("title"), color = Color.White, fontWeight = FontWeight.Bold)
+                                if (contest.optString("season").isNotBlank() && contest.optString("season") != "null") Text(contest.optString("season"), color = Color(0xFF8BCBFF), fontSize = 10.sp)
                                 Text("${contest.optString("competition_scope")} · ${contest.optString("university")} · ${contest.optString("status")}",
                                     color = Color(0xFFBDDFFF), fontSize = 11.sp)
                                 Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes",
