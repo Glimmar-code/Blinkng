@@ -1,3 +1,11 @@
+## 2026-11-01 — Session-accurate messaging presence (Testlab)
+
+- **Backend:** Presence leases are keyed by the Supabase Auth `session_id`, not one account-wide boolean. One device/session going offline cannot mark another active device offline. Revoked sessions cannot resurrect presence with a delayed heartbeat. Server timestamps, monotonic heartbeat updates, a 90-second lease and expiry reconciliation keep status accurate after force-close or network loss.
+- **Privacy:** The conversation summary RPC applies both chat privacy toggles (`show_online`, `show_last_seen`), the global active-status setting and profile visibility (PUBLIC/FOLLOWERS/PRIVATE). Hidden timestamps are returned as null and clients display an unavailable state rather than inventing a recent time.
+- **Android:** Presence heartbeat is every 30 seconds while the app is foregrounded. Backgrounding stops heartbeats without incorrectly ending other devices' sessions; realtime socket loss no longer marks the whole account offline. Messages/chat refresh the authoritative presence projection every 30 seconds.
+- **Windows:** Uses the same authenticated presence RPC and session lease, heartbeats while the desktop window is visible, and refreshes Messages/chat presence every 30 seconds.
+- **Validation hold:** Run Android unit/build/lint and Android 15 runtime checks, Windows tests/build, migration safety and session/privacy regressions on this exact candidate SHA. No production Supabase migration or APK deployment is performed by this source change.
+
 ## 2026-10-31 — Android Chat composer touch/hold accessibility and reference icons
 
 - **PARITY-EXCEPTION: android-chat-composer-touch-microphone-20261031** — Android Compose's inline microphone supports touch tap (voice typing) and long press (start voice-note recording). The fix gives the control proper click/long-click accessibility semantics and matches the supplied outlined camera/microphone artwork. These are native Android gesture/accessibility affordances; applying an Android long-press modifier to the Windows desktop composer would be inappropriate.

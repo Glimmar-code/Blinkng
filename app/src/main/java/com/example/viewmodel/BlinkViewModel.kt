@@ -1969,6 +1969,10 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun refreshMessagePresence() {
+        refreshVisibleConversationsQuietly()
+    }
+
     private fun refreshVisibleConversationsQuietly() {
         if (visibleConversationsRefreshJob?.isActive == true || inboxEntryJob?.isActive == true || !_uiState.value.isOnline) return
         val accountId = _uiState.value.myProfile.id

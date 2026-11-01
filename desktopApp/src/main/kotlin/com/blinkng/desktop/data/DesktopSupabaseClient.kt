@@ -530,6 +530,14 @@ class DesktopSupabaseClient(
         }
     }
 
+    suspend fun setMyPresence(online: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (session == null) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/set_my_presence", JSONObject().put("p_online", online))
+            true
+        }.getOrDefault(false)
+    }
+
     fun signOut() {
         val owner = session?.userId
         clearSession()
