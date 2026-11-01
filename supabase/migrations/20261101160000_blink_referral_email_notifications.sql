@@ -22,7 +22,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $blink_referral_email$
 begin
   if new.metadata->>'kind' <> 'blink_referral_confirmed'
      or new.actor_id is null
@@ -76,7 +76,7 @@ begin
 
   return new;
 end;
-$;
+$blink_referral_email$;
 
 revoke all on function private.blink_queue_referral_confirmation_email()
   from public,anon,authenticated,service_role;
