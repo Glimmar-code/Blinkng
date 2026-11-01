@@ -336,9 +336,6 @@ fun BlinkContestScreen(
                     contests.count { BlinkContestPolicy.section(it.optString("status")) == n }
                 }
             ) { tab = it }
-            TextButton(onClick = onDiscoverPeople, modifier = Modifier.padding(start = 12.dp)) {
-                Text("Find people & campus connections")
-            }
             Crossfade(
                 targetState = tab, modifier = Modifier.fillMaxSize(),
                 animationSpec = tween(260), label = "contestTab"
