@@ -10,7 +10,7 @@ alter table public.blink_essential_email_outbox
   check (kind in (
     'welcome','new_device','suspicious_activity','new_follower',
     'unread_messages','post_engagement','reel_milestone','leaderboard',
-    'contest_launch','referral_confirmed'
+    'contest_launch','referral_confirmed','referral_milestone'
   ));
 
 create index if not exists blink_referral_email_due_idx
@@ -50,9 +50,33 @@ begin
      and coalesce(s.email_notifs_enabled,false) is true
   on conflict(user_id,kind,event_key) do nothing;
 
+  -- Send a second, distinct email only when the lifetime confirmed count reaches
+  -- an official achievement tier. This never awards coins or changes balances.
+  insert into public.blink_essential_email_outbox(user_id,kind,event_key,priority)
+  select a.user_id,
+         'referral_milestone',
+         'referral_milestone:' || a.confirmed_referrals::text,
+         5
+    from public.blink_referral_achievements a
+    join auth.users u on u.id=a.user_id
+    left join public.user_settings s on s.user_id=a.user_id
+   where a.user_id=new.user_id
+     and a.confirmed_referrals in (1,5,10,25,50,100)
+     and u.email_confirmed_at is not null
+     and u.deleted_at is null
+     and (u.banned_until is null or u.banned_until <= now())
+     and coalesce(s.email_notifs_enabled,false) is true
+     and exists (
+       select 1 from public.blink_referrals r
+        where r.referred_user_id=new.actor_id
+          and r.referrer_user_id=new.user_id
+          and r.status='confirmed'
+     )
+  on conflict(user_id,kind,event_key) do nothing;
+
   return new;
 end;
-$$;
+$;
 
 revoke all on function private.blink_queue_referral_confirmation_email()
   from public,anon,authenticated,service_role;
