@@ -294,7 +294,14 @@ begin
     'contests',v_contests,'participants',v_people,
     'total_contests',(select count(*) from public.blink_contests where topic_id=t.id and status in ('published','paused','completed','cancelled')),
     'completed_contests',(select count(*) from public.blink_contests where topic_id=t.id and status='completed'),
-    'total_participants',jsonb_array_length(v_people),
+    'total_participants',(select count(distinct person_id) from (
+      select h.user_id person_id from public.blink_contest_history_participants h
+        join public.blink_contests c on c.id=h.contest_id where c.topic_id=t.id
+      union
+      select e.user_id from public.blink_contest_entries e
+        join public.blink_contests c on c.id=e.contest_id
+        where c.topic_id=t.id and c.status<>'completed' and e.status='approved'
+    ) unique_people),
     'total_votes',coalesce((select sum((x->>'votes')::integer) from jsonb_array_elements(v_people) x),0),
     'prizes_awarded',(select coalesce(sum(prize_ngn),0) from public.blink_contest_history_participants h
       join public.blink_contests c on c.id=h.contest_id where c.topic_id=t.id));
@@ -369,7 +376,7 @@ begin
   if auth.uid() is null then raise exception 'SIGN_IN_REQUIRED' using errcode='42501'; end if;
   if p_user_id is null then raise exception 'PARTICIPANT_NOT_FOUND'; end if;
   select jsonb_build_object('user_id',p.id,'username',p.username,'avatar_url',p.avatar_url,
-    'university',p.university,'department',p.department,'level',p.level)
+    'university',p.university)
     into v_profile from public.profiles p where p.id=p_user_id;
   select coalesce(jsonb_agg(x.row_data order by x.event_at desc),'[]'::jsonb),
     count(*) filter(where x.place=1)::integer,
