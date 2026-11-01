@@ -952,7 +952,7 @@ fun MessagesScreen(state: DesktopAppState) {
             if (outboxPending > 0) {
                 Text(
                     "Uploading ${outboxPending} photo(s)" +
-                        (outboxPercent?.let { " · $it%" } ?: ""),
+                        (outboxPercent?.coerceIn(0, 100)?.let { " · $it%" } ?: ""),
                     fontSize = 11.sp,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp)
                 )

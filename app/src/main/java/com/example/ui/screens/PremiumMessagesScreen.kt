@@ -2396,7 +2396,12 @@ private fun PremiumChatDetail(
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
                                 videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
-                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty(), palette)
+                                BlinkChatVideoAlbumBubble(
+                                    messages = videoAlbumGroups[message.imageAlbumId].orEmpty(),
+                                    palette = palette,
+                                    onRetry = { onRetry(it) },
+                                    onCancelAttachment = { onCancelAttachment(it) },
+                                )
                             } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
@@ -2404,7 +2409,9 @@ private fun PremiumChatDetail(
                                     palette = palette,
                                     onOpen = { viewedImageMessage = it },
                                     onReply = { replyingTo = message; editingMessage = null },
-                                    onActions = { selectedMessage = message }
+                                    onActions = { selectedMessage = message },
+                                    onRetry = { onRetry(it) },
+                                    onCancelAttachment = { onCancelAttachment(it) },
                                 )
                             } else MessageBubble(
                             message = message,
@@ -4406,13 +4413,21 @@ private fun MessageContent(
                         modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val documentType = BlinkChatDocumentPresentation.typeLabel(
+                            documentName, message.attachmentMimeType
+                        )
+                        val documentTypeColor = Color(
+                            BlinkChatDocumentPresentation.typeColorArgb(
+                                documentName, message.attachmentMimeType
+                            ).toInt()
+                        )
                         Surface(
                             shape = RoundedCornerShape(5.dp),
-                            color = if (pdf) Color(0xFFEB404D) else palette.accent,
+                            color = documentTypeColor,
                             modifier = Modifier.size(width = 36.dp, height = 44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(if (pdf) "PDF" else "FILE", color = Color.White,
+                                Text(documentType, color = Color.White,
                                     fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -4426,7 +4441,7 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(if (pdf) "PDF · Tap to view" else "Document · Tap to open",
+                            Text(if (pdf) "PDF · Tap to view" else "$documentType · Tap to open",
                                 color = contentColor.copy(alpha = .60f), fontSize = 10.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
