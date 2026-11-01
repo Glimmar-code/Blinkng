@@ -83,18 +83,16 @@ export async function presenceSessionTests(db) {
     new Date(lastSeenBeforeOneDeviceStops).getTime(),
     "last seen must not advance while another device remains online");
 
-  await setClaims(partner, sessionTwo);
-  await db.query("select public.set_my_presence(false)");
-  const afterAllDevicesStop = await profile(partner);
-  assert.equal(afterAllDevicesStop.online_now, false,
-    "the account must become offline after its final active device stops");
-  assert.ok(new Date(afterAllDevicesStop.last_seen_at).getTime() >=
-    new Date(lastSeenBeforeOneDeviceStops).getTime(),
-    "last seen must advance when the final active device stops");
-
+  // Revoking the final device session must make the user offline immediately,
+  // even if that device's last heartbeat is still inside the lease window.
   await db.exec("reset role");
-  await db.query("delete from auth.sessions where id = $1", [sessionTwo]);
+  await db.query("update auth.sessions set user_id = $1 where id = $2", [viewer, sessionTwo]);
   await db.exec("set role authenticated");
+  await setClaims(viewer, sessionOne);
+  const revokedPresence = await presence(partner);
+  assert.equal(revokedPresence.partner_online, false,
+    "a revoked Auth session must not remain online during the remaining lease window");
+
   await setClaims(partner, sessionTwo);
   await assert.rejects(
     () => db.query("select public.set_my_presence(true)"),
@@ -102,6 +100,13 @@ export async function presenceSessionTests(db) {
     "a revoked Supabase session must not be able to resurrect online presence",
   );
   await db.exec("reset role");
+  await db.query("select private.reconcile_presence_lease()");
+  const afterAllDevicesStop = await profile(partner);
+  assert.equal(afterAllDevicesStop.online_now, false,
+    "the account must become offline after its final active Auth session is revoked");
+  assert.ok(new Date(afterAllDevicesStop.last_seen_at).getTime() >=
+    new Date(lastSeenBeforeOneDeviceStops).getTime(),
+    "last seen must advance when the final active device stops");
 
   // A stale lease is reconciled using its last server heartbeat, not a device clock.
   await db.exec(`update public.profiles
