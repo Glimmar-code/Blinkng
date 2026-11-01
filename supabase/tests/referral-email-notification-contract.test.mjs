@@ -40,3 +40,14 @@ test("referral emails do not create or award coins and do not change Auth confir
   assert.doesNotMatch(migration, /update auth\\.users/i);
   assert.match(referral, /status text not null default 'pending'/i);
 });
+
+
+test("social digest delivery stays hard-disabled until separate consent and unsubscribe verification", () => {
+  assert.match(worker, /const socialEnabled = false;/);
+  assert.match(worker, /Social digest migrations are not in this rollout: fail closed/i);
+  assert.match(worker, /if \(socialEnabled\) \{/);
+  assert.match(worker, /BLINK_EMAIL_UNSUBSCRIBE_SECRET/);
+  assert.match(worker, /BLINK_EMAIL_UNSUBSCRIBE_URL/);
+  assert.match(worker, /unsubscribe_link_not_ready/);
+  assert.match(worker, /social_delivery_disabled/);
+});
