@@ -170,6 +170,11 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         return rpcAny("admin_list_blink_contest_entries",
             JSONObject().put("p_contest_id", id)) as? JSONArray ?: JSONArray()
     }
+    suspend fun adminContestSaveTopic(data: JSONObject): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_contest_topic",
+            JSONObject().put("p_id", JSONObject.NULL).put("p_data", data))
+    }
     suspend fun adminContestSave(data: JSONObject): JSONObject {
         requireAdmin()
         return rpc("admin_save_blink_contest",
