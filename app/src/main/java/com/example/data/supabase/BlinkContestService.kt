@@ -76,6 +76,9 @@ class BlinkContestService {
     suspend fun topicDetail(topicId: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
     }
+    suspend fun participantProfile(userId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("get_blink_contest_participant_profile", JSONObject().put("p_user_id", userId)))
+    }
     suspend fun followTopic(topicId: String): Result<JSONObject> = contestResult {
         JSONObject(call("follow_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
     }
