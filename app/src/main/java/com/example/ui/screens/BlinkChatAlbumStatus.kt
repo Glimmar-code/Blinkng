@@ -198,10 +198,10 @@ fun BlinkChatAlbumStatusPill(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (state.failed) {
-            Icon(Icons.Filled.Refresh, null, tint = BlinkChatColors.Danger, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.Refresh, null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(18.dp))
             Text("Failed · tap to retry", color = Color.White, fontSize = 12.sp)
         } else {
-            AlbumProgressRing(state.safeProgress, BlinkChatColors.Accent, 18.dp, 2.dp)
+            AlbumProgressRing(state.safeProgress, Color(0xFF1685FF), 18.dp, 2.dp)
             Text(
                 if (state.retryAttempt > 0) "Retrying…" else "Sending ${state.safeCompleted}/${state.safeTotal}",
                 color = Color.White,
@@ -211,7 +211,7 @@ fun BlinkChatAlbumStatusPill(
             Icon(
                 Icons.Filled.Close,
                 "Cancel",
-                tint = BlinkChatColors.Muted,
+                tint = Color(0xFF9CA3AF),
                 modifier = Modifier.size(16.dp).clickable(onClick = onCancel),
             )
         }
