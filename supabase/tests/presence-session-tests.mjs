@@ -11,6 +11,13 @@ export async function presenceSessionTests(db) {
   const expirySession = "00000000-0000-4000-8000-000000000304";
 
   await db.exec(`reset role;
+    insert into auth.users(id, email)
+    values
+      ('${viewer}', 'presence-viewer@example.test'),
+      ('${partner}', 'presence-partner@example.test'),
+      ('${expiryUser}', 'presence-expiry@example.test')
+    on conflict (id) do nothing;
+
     insert into public.profiles(id, username, presence_visibility)
     values
       ('${viewer}', 'presence_viewer', 'PUBLIC'),
