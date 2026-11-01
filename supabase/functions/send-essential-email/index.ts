@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 type Kind =
   | "welcome" | "new_device" | "suspicious_activity"
   | "new_follower" | "unread_messages" | "post_engagement"
-  | "reel_milestone" | "leaderboard" | "contest_launch";
+  | "reel_milestone" | "leaderboard" | "contest_launch" | "referral_confirmed";
 const SOCIAL_FLAGS = {
   new_follower: "new_follower_enabled",
   unread_messages: "unread_messages_enabled",
@@ -90,6 +90,13 @@ const MESSAGES: Record<Kind, Message> = {
     intro: "A new BLINK Contest has officially started. Open BLINK, visit Contest, and join the competition.",
     noteHeading: "Showcase your talent",
     note: "Take part, invite your friends to vote, and compete for the prizes announced in the app. You can turn off BLINK email notifications any time in Settings.",
+  },
+  referral_confirmed: {
+    subject: "Someone joined BLINK with your referral!",
+    heading: "Your BLINK network is growing!",
+    intro: "Someone joined BLINK using your referral link and confirmed their email address. Your referral dashboard has been updated.",
+    noteHeading: "Keep growing your network",
+    note: "Invite more people to join BLINK and follow your referral achievements in Refer & Grow. Referral rewards are governed by the rules shown in the app.",
   },
 };
 
@@ -191,7 +198,7 @@ Deno.serve(async (req: Request) => {
     const payload = await req.json();
     const requested = String(payload?.kind_filter ?? "");
     if (requested) {
-      if (!serviceAuthorized || requested !== "contest_launch") return json({ error: "Invalid queue filter" }, 403);
+      if (!serviceAuthorized || !["contest_launch", "referral_confirmed"].includes(requested)) return json({ error: "Invalid queue filter" }, 403);
       kindFilter = "contest_launch";
     }
   } catch {
@@ -214,7 +221,7 @@ Deno.serve(async (req: Request) => {
     const nowIso = new Date().toISOString();
     const { error: recoverError } = await admin.from("blink_essential_email_outbox")
       .update({ status: "pending", available_at: nowIso, last_error: "stale_delivery_recovered", updated_at: nowIso })
-      .eq("kind", "contest_launch").eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
+      .in("kind", ["contest_launch", "referral_confirmed"]).eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
     if (recoverError) return json({ error: "Could not recover stale Contest email claims" }, 503);
     const { error: expireError } = await admin.from("blink_essential_email_outbox")
       .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
@@ -327,6 +334,44 @@ Deno.serve(async (req: Request) => {
         intro: `The contest "${contestName}" has officially started. Open BLINK, visit Contest, and join the competition.`,
       };
     }
+    if (row.kind === "referral_confirmed") {
+      const referredUserId = row.event_key.startsWith("referral_confirmed:")
+        ? row.event_key.slice("referral_confirmed:".length) : "";
+      if (!/^[a-f0-9-]{36}$/i.test(referredUserId)) {
+        await setStatus(row, "failed", "invalid_referral_event_key");
+        failed++;
+        continue;
+      }
+      const { data: referral, error: referralError } = await admin
+        .from("blink_referrals")
+        .select("referrer_user_id,status")
+        .eq("referred_user_id", referredUserId)
+        .maybeSingle();
+      if (referralError || !referral) {
+        await setStatus(row, "failed", "referral_lookup_failed");
+        failed++;
+        continue;
+      }
+      if (referral.status !== "confirmed" || referral.referrer_user_id !== row.user_id) {
+        await setStatus(row, "failed", "referral_not_confirmed_or_wrong_recipient");
+        skipped++;
+        continue;
+      }
+      const { data: userSettings, error: settingsError } = await admin
+        .from("user_settings").select("email_notifs_enabled")
+        .eq("user_id", row.user_id).maybeSingle();
+      if (settingsError) {
+        await setStatus(row, "pending", "email_preferences_lookup_failed");
+        failed++;
+        continue;
+      }
+      if (userSettings?.email_notifs_enabled !== true) {
+        await setStatus(row, "failed", "referral_email_not_opted_in");
+        skipped++;
+        continue;
+      }
+    }
+
     if (isSocial(row.kind) && !socialEnabled) {
       await setStatus(row, "failed", "social_delivery_disabled");
       skipped++;
