@@ -113,6 +113,8 @@ fun BlinkContestScreen(
     var topicDetail by remember { mutableStateOf<JSONObject?>(null) }
     var topicQuery by remember { mutableStateOf("") }
     var topicFollowed by remember { mutableStateOf(false) }
+    var selectedParticipantId by remember { mutableStateOf<String?>(null) }
+    var participantProfile by remember { mutableStateOf<JSONObject?>(null) }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
     // A previous contest must never render during navigation to a new contest.
@@ -252,6 +254,13 @@ fun BlinkContestScreen(
             listError = null
         }.onFailure { listError = it.message ?: "Unable to load contests." }
         loadingContests = false
+    }
+    LaunchedEffect(selectedParticipantId) {
+        participantProfile = null
+        selectedParticipantId?.let { id ->
+            api.participantProfile(id).onSuccess { participantProfile = it }
+                .onFailure { error = it.message ?: "Unable to load participant history." }
+        }
     }
     LaunchedEffect(selectedTopicId, revision) {
         val id = selectedTopicId
@@ -516,8 +525,8 @@ fun BlinkContestScreen(
                     }
                     item { Text("All participants and voting records", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
                     items(people) { person ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().clickable { selectedParticipantId = person.optString("user_id") }
+                            .padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                             AsyncImage(model = person.optString("avatar_url").takeIf { it.startsWith("https://") },
                                 contentDescription = null, modifier = Modifier.size(42.dp).clip(CircleShape))
                             Column(Modifier.weight(1f).padding(start = 10.dp)) {
@@ -1034,6 +1043,34 @@ fun BlinkContestScreen(
                         inspectedCandidate = null
                     }
                 ) { Text("Share flyer") }
+            }
+        )
+    }
+    participantProfile?.let { profile ->
+        val person = profile.optJSONObject("participant") ?: JSONObject()
+        val history = profile.optJSONArray("history")?.contestObjects().orEmpty()
+        AlertDialog(
+            onDismissRequest = { selectedParticipantId = null; participantProfile = null },
+            title = { Text("Contest profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BlinkContestAvatar(person.optString("avatar_url"), person.optString("username"), 56.dp)
+                        Column(Modifier.padding(start = 10.dp)) {
+                            Text("@" + person.optString("username"), fontWeight = FontWeight.Bold)
+                            Text(person.optString("university"), fontSize = 11.sp)
+                        }
+                    }
+                    Text("${profile.optInt("contests_entered")} contests · ${profile.optInt("wins")} wins")
+                    Text("${NumberFormat.getNumberInstance(Locale.US).format(profile.optLong("total_votes"))} career votes")
+                    Text("Prizes won: ${cash(profile.optLong("prizes_won_ngn"))}")
+                    history.take(8).forEach { row ->
+                        Text("${row.optString("contest_title")} · ${row.optString("status")} · ${row.optInt("votes")} votes · ${if (row.isNull("place")) "No final rank" else "Place #${row.optInt("place")}"}")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedParticipantId = null; participantProfile = null }) { Text("Close") }
             }
         )
     }
