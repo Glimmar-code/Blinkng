@@ -37,6 +37,7 @@ declare
     v_session_id uuid;
     v_now timestamptz := statement_timestamp();
     v_any_online boolean := false;
+    v_show_online_status boolean := true;
 begin
     if v_user_id is null then
         raise exception 'AUTHENTICATION_REQUIRED';
@@ -93,9 +94,17 @@ begin
           and s.last_heartbeat_at >= v_now - interval '90 seconds'
     ) into v_any_online;
 
+    select coalesce(us.show_online_status, true)
+    into v_show_online_status
+    from public.user_settings us
+    where us.user_id = v_user_id;
+    if not found then
+        v_show_online_status := true;
+    end if;
+
     update public.profiles p
-    set online_now = v_any_online,
-        is_online = v_any_online,
+    set online_now = (v_any_online and v_show_online_status),
+        is_online = (v_any_online and v_show_online_status),
         last_seen_at = case
             when v_any_online then p.last_seen_at
             when coalesce(p_online, false) then coalesce(
@@ -390,6 +399,7 @@ declare
     v_affected_users uuid[];
     v_user_id uuid;
     v_any_online boolean;
+    v_show_online_status boolean;
     v_last_active timestamptz;
 begin
     with expired as (
@@ -418,9 +428,17 @@ begin
         from private.user_presence_sessions s
         where s.user_id = v_user_id;
 
+        select coalesce(us.show_online_status, true)
+        into v_show_online_status
+        from public.user_settings us
+        where us.user_id = v_user_id;
+        if not found then
+            v_show_online_status := true;
+        end if;
+
         update public.profiles p
-        set online_now = v_any_online,
-            is_online = v_any_online,
+        set online_now = (v_any_online and v_show_online_status),
+            is_online = (v_any_online and v_show_online_status),
             last_seen_at = case
                 when v_any_online then p.last_seen_at
                 else greatest(v_last_active, p.last_seen_at, p.last_seen)
