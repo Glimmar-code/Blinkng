@@ -199,7 +199,7 @@ Deno.serve(async (req: Request) => {
     const requested = String(payload?.kind_filter ?? "");
     if (requested) {
       if (!serviceAuthorized || !["contest_launch", "referral_confirmed"].includes(requested)) return json({ error: "Invalid queue filter" }, 403);
-      kindFilter = "contest_launch";
+      kindFilter = requested as Kind;
     }
   } catch {
     // Empty body is valid for the existing full outbox worker.
@@ -216,17 +216,17 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  if (kindFilter === "contest_launch") {
+  if (kindFilter) {
     const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
     const nowIso = new Date().toISOString();
     const { error: recoverError } = await admin.from("blink_essential_email_outbox")
       .update({ status: "pending", available_at: nowIso, last_error: "stale_delivery_recovered", updated_at: nowIso })
-      .in("kind", ["contest_launch", "referral_confirmed"]).eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
-    if (recoverError) return json({ error: "Could not recover stale Contest email claims" }, 503);
+      .eq("kind", kindFilter).eq("status", "sending").lt("attempts", 4).lt("updated_at", staleBefore);
+    if (recoverError) return json({ error: "Could not recover stale email claims" }, 503);
     const { error: expireError } = await admin.from("blink_essential_email_outbox")
       .update({ status: "failed", last_error: "delivery_attempt_limit_reached", updated_at: nowIso })
       .in("kind", ["contest_launch", "referral_confirmed"]).eq("status", "sending").gte("attempts", 4).lt("updated_at", staleBefore);
-    if (expireError) return json({ error: "Could not expire stale Contest email claims" }, 503);
+    if (expireError) return json({ error: "Could not expire stale email claims" }, 503);
   }
 
   async function setStatus(
