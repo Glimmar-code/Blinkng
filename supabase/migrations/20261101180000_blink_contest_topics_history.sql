@@ -442,9 +442,12 @@ returns jsonb language sql stable security definer set search_path='' as $$
 $$;
 
 revoke all on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),
- public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid),\n public.admin_save_blink_contest_topic(uuid,jsonb),public.admin_set_blink_contest_topic_active(uuid,boolean) from public,anon,authenticated;
+ public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid),
+ public.admin_save_blink_contest_topic(uuid,jsonb),public.admin_set_blink_contest_topic_active(uuid,boolean) from public,anon,authenticated;
 grant execute on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),
- public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid) to authenticated;\ngrant execute on function public.admin_save_blink_contest_topic(uuid,jsonb),\n public.admin_set_blink_contest_topic_active(uuid,boolean) to authenticated;
+ public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid) to authenticated;
+grant execute on function public.admin_save_blink_contest_topic(uuid,jsonb),
+ public.admin_set_blink_contest_topic_active(uuid,boolean) to authenticated;
 revoke all on function public.admin_save_blink_contest(uuid,jsonb) from public,anon,authenticated;
 grant execute on function public.admin_save_blink_contest(uuid,jsonb) to authenticated;
 revoke all on function public.list_blink_contests() from public,anon;
