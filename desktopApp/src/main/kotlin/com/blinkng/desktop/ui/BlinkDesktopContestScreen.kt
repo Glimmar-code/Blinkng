@@ -613,6 +613,15 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     val api = remember(state.client) { DesktopRpcActions(state.client) }
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topics by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicId by remember { mutableStateOf("") }
+    var topicMenu by remember { mutableStateOf(false) }
+    var scopeType by remember { mutableStateOf("campus") }
+    var university by remember { mutableStateOf("") }
+    var season by remember { mutableStateOf("") }
+    var customTopicName by remember { mutableStateOf("") }
+    var customTopicCategory by remember { mutableStateOf("") }
+    var customTopicDescription by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var appeals by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var cleanupPreview by remember { mutableStateOf<JSONObject?>(null) }
@@ -648,6 +657,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var third by remember { mutableStateOf("0") }
 
     LaunchedEffect(revision) {
+        runCatching { api.contestTopicDirectory() }.onSuccess { topics = it.rows() }
         runCatching { api.adminContestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
     }
@@ -691,6 +701,45 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
         OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(description, { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(rules, { rules = it }, label = { Text("Rules and eligibility") }, modifier = Modifier.fillMaxWidth())
+        Box {
+            OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(topics.firstOrNull { it.optString("id") == topicId }?.optString("name") ?: "Select contest topic")
+            }
+            DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
+                topics.forEach { topic ->
+                    DropdownMenuItem(text = { Text(topic.optString("name")) }, onClick = {
+                        topicId = topic.optString("id"); topicMenu = false
+                    })
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = scopeType == "campus", onClick = { scopeType = "campus" }, label = { Text("Campus") })
+            FilterChip(selected = scopeType == "nationwide", onClick = { scopeType = "nationwide"; university = "" },
+                label = { Text("Nationwide") })
+        }
+        if (scopeType == "campus") OutlinedTextField(university, { university = it },
+            label = { Text("University (required)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(season, { season = it }, label = { Text("Season (optional)") }, modifier = Modifier.fillMaxWidth())
+        Text("Add a custom topic", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(customTopicName, { customTopicName = it }, label = { Text("Topic name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(customTopicCategory, { customTopicCategory = it }, label = { Text("Topic category") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(customTopicDescription, { customTopicDescription = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(enabled = !busy && customTopicName.trim().length >= 3 &&
+            customTopicCategory.trim().length >= 2, onClick = {
+            busy = true
+            scope.launch {
+                runCatching { api.adminContestSaveTopic(JSONObject().put("name", customTopicName.trim())
+                    .put("category", customTopicCategory.trim()).put("description", customTopicDescription.trim())) }
+                    .onSuccess {
+                        topicId = it.optString("id")
+                        customTopicName = ""; customTopicCategory = ""; customTopicDescription = ""
+                        message = "Topic added to the public directory."
+                        revision++
+                    }.onFailure { message = it.message ?: "Unable to add topic." }
+                busy = false
+            }
+        }) { Text("Add topic") }
         listOf(
             "Applications open" to regStart, "Applications close" to regEnd,
             "Voting opens" to voteStart, "Voting closes" to voteEnd, "Results announced" to results
@@ -713,7 +762,10 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
         Button(enabled = !busy && title.length >= 4, onClick = {
             busy = true
             val data = JSONObject().put("title", title).put("description", description)
-                .put("rules", rules).put("category", "General")
+                .put("rules", rules).put("category", topics.firstOrNull { it.optString("id") == topicId }?.optString("category") ?: "General")
+                .put("topic_id", topicId.ifBlank { JSONObject.NULL })
+                .put("competition_scope", scopeType).put("university", university.trim())
+                .put("season", season.trim())
                 .put("registration_opens_at", regStart).put("registration_closes_at", regEnd)
                 .put("voting_opens_at", voteStart).put("voting_closes_at", voteEnd)
                 .put("results_at", results).put("prize_first", first.toIntOrNull() ?: 0)
