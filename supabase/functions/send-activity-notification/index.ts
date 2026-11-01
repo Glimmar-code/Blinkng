@@ -303,6 +303,17 @@ Deno.serve(async (req) => {
   if (preferenceDecision === "skip") {
     return json({ ok: true, skipped: "recipient_preferences" });
   }
+  if (notification.metadata?.kind === "blink_contest_launch") {
+    const { data: settings, error: settingsError } = await admin
+      .from("user_settings").select("push_notifs_enabled")
+      .eq("user_id", recipientId).maybeSingle();
+    if (settingsError) {
+      return json({ error: "push_preferences_unavailable", retryable: true }, 503);
+    }
+    if (settings?.push_notifs_enabled === false) {
+      return json({ ok: true, skipped: "recipient_preferences" });
+    }
+  }
 
   const claim = await claimDispatch(admin, notificationId);
   if (!claim.proceed) {
