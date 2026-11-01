@@ -22,6 +22,18 @@ class BlinkChatDocumentPresentationTest {
         assertEquals("docx", BlinkChatDocumentPresentation.extension(
             BlinkChatDocumentPresentation.filename(m), null))
     }
+    @Test fun classifiesCommonDocumentTypesForTheChatCard() {
+        assertEquals("PDF", BlinkChatDocumentPresentation.typeLabel("report.pdf", null))
+        assertEquals("DOC", BlinkChatDocumentPresentation.typeLabel("brief.docx", null))
+        assertEquals("XLS", BlinkChatDocumentPresentation.typeLabel("budget.xlsx", null))
+        assertEquals("PPT", BlinkChatDocumentPresentation.typeLabel("slides.pptx", null))
+        assertEquals("TXT", BlinkChatDocumentPresentation.typeLabel("notes.txt", "text/plain"))
+        assertEquals("ZIP", BlinkChatDocumentPresentation.typeLabel("archive.zip", null))
+        assertEquals("AUD", BlinkChatDocumentPresentation.typeLabel("voice.bin", "audio/mpeg"))
+        assertEquals("FILE", BlinkChatDocumentPresentation.typeLabel("unknown.bin", null))
+        assertEquals(0xFFE5484D, BlinkChatDocumentPresentation.typeColorArgb("report.pdf", null))
+    }
+
     @Test fun usesRealMimeAndSafeExtensions() {
         assertEquals("pdf", BlinkChatDocumentPresentation.extension("attachment", "application/pdf"))
         assertEquals("xlsx", BlinkChatDocumentPresentation.extension("budget.xlsx", null))
