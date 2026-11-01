@@ -323,7 +323,7 @@ begin
     if v_id is null then raise exception 'CONTEST_TOPIC_NOT_FOUND'; end if;
   end if;
   return (select to_jsonb(t) from public.blink_contest_topics t where id=v_id);
-end; $;
+end; $$;
 
 create or replace function public.admin_set_blink_contest_topic_active(p_topic_id uuid,p_active boolean)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -332,7 +332,7 @@ begin
   update public.blink_contest_topics set is_active=p_active where id=p_topic_id;
   if not found then raise exception 'CONTEST_TOPIC_NOT_FOUND'; end if;
   return jsonb_build_object('id',p_topic_id,'is_active',p_active);
-end; $;
+end; $$;
 
 create or replace function private.blink_notify_followed_contest_topic()
 returns trigger language plpgsql security definer set search_path='' as $$
@@ -355,7 +355,7 @@ begin
           and n.metadata->>'kind'='blink_contest_topic_update');
   end if;
   return new;
-end; $;
+end; $$;
 revoke all on function private.blink_notify_followed_contest_topic() from public,anon,authenticated;
 drop trigger if exists blink_contest_topic_follow_notification on public.blink_contests;
 create trigger blink_contest_topic_follow_notification
