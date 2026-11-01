@@ -203,7 +203,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(contest.optString("title"), color = Color.White, fontWeight = FontWeight.Bold)
                                 if (contest.optString("season").isNotBlank() && contest.optString("season") != "null") Text(contest.optString("season"), color = Color(0xFF8BCBFF), fontSize = 10.sp)
-                                Text("${contest.optString("competition_scope")} · ${contest.optString("university")} · ${contest.optString("status")}",
+                                Text("${contest.optString("competition_scope")} · ${contest.optString("university")} · ${contest.optString("status")} · Applications: ${dt(contest.optString("registration_opens_at"))} · Voting closes: ${dt(contest.optString("voting_closes_at"))}",
                                     color = Color(0xFFBDDFFF), fontSize = 11.sp)
                                 Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes",
                                     color = Color.White, fontSize = 11.sp)
@@ -240,7 +240,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                         color = Color(0xFF111C2B), shape = RoundedCornerShape(12.dp)) {
                         Column(Modifier.padding(10.dp)) {
                             Text(topic.optString("name"), color = Color.White, fontWeight = FontWeight.SemiBold)
-                            Text("${topic.optString("category")} · ${topic.optInt("contests_total")} contests · ${topic.optInt("participants")} participants · ${topic.optLong("votes")} votes · ${prize(topic.optInt("prizes_awarded"))} prizes",
+                            Text("${topic.optString("category")} · ${topic.optInt("contests_total")} contests (${topic.optInt("completed_contests")} completed) · ${topic.optInt("participants")} participants · ${topic.optInt("followers")} following · ${topic.optLong("votes")} votes · ${prize(topic.optInt("prizes_awarded"))} prizes",
                                 color = Color(0xFFBDDFFF), fontSize = 11.sp)
                         }
                     }
