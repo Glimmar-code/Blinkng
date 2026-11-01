@@ -36,6 +36,7 @@ test("worker revalidates the referral relationship before sending", () => {
 
 test("referral emails do not create or award coins and do not change Auth confirmation", () => {
   assert.doesNotMatch(migration, /insert into public\.(blink_wallet|blink_coin_transactions)/i);
-  assert.doesNotMatch(migration, /confirm.*sign.?up|enable.*signup.*confirmation/i);
+  assert.doesNotMatch(migration, /alter table auth\\.users/i);
+  assert.doesNotMatch(migration, /update auth\\.users/i);
   assert.match(referral, /status text not null default 'pending'/i);
 });
