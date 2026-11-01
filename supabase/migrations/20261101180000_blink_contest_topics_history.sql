@@ -301,7 +301,7 @@ begin
 end; $$;
 
 create or replace function public.admin_save_blink_contest_topic(p_id uuid,p_data jsonb)
-returns jsonb language plpgsql security definer set search_path='' as $
+returns jsonb language plpgsql security definer set search_path='' as $$
 declare v_id uuid; v_slug text; v_name text; v_category text; v_description text;
 begin
   perform private.require_blink_admin();
@@ -326,7 +326,7 @@ begin
 end; $;
 
 create or replace function public.admin_set_blink_contest_topic_active(p_topic_id uuid,p_active boolean)
-returns jsonb language plpgsql security definer set search_path='' as $
+returns jsonb language plpgsql security definer set search_path='' as $$
 begin
   perform private.require_blink_admin();
   update public.blink_contest_topics set is_active=p_active where id=p_topic_id;
@@ -335,7 +335,7 @@ begin
 end; $;
 
 create or replace function private.blink_notify_followed_contest_topic()
-returns trigger language plpgsql security definer set search_path='' as $
+returns trigger language plpgsql security definer set search_path='' as $$
 declare v_topic_name text;
 begin
   if new.status='published' and old.status is distinct from 'published'
