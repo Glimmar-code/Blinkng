@@ -267,10 +267,15 @@ begin
           )
     ) into v_is_online;
 
-    select greatest(v_last_seen, max(s.last_heartbeat_at))
-    into v_last_seen
-    from private.user_presence_sessions s
-    where s.user_id = p_user_id;
+    -- If the user is currently active but has hidden online status, expose
+    -- only their previous offline timestamp; never turn a heartbeat into a
+    -- "last seen just now" signal that defeats show_online=false.
+    if not v_is_online then
+        select greatest(v_last_seen, max(s.last_heartbeat_at))
+        into v_last_seen
+        from private.user_presence_sessions s
+        where s.user_id = p_user_id;
+    end if;
 
     return query
     select
