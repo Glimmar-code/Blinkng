@@ -812,7 +812,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
             busy = true
             val data = JSONObject().put("title", title).put("description", description)
                 .put("rules", rules).put("category", topics.firstOrNull { it.optString("id") == topicId }?.optString("category") ?: "General")
-                .put("topic_id", topicId.ifBlank { JSONObject.NULL })
+                .put("topic_id", if (topicId.isBlank()) JSONObject.NULL else topicId)
                 .put("competition_scope", scopeType).put("university", university.trim())
                 .put("season", season.trim())
                 .put("registration_opens_at", regStart).put("registration_closes_at", regEnd)
