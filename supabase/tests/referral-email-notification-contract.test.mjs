@@ -20,6 +20,8 @@ test("email queue is deduplicated and requires a verified opted-in referrer", ()
   assert.match(migration, /coalesce\(s\.email_notifs_enabled,false\) is true/i);
   assert.match(migration, /on conflict\(user_id,kind,event_key\) do nothing/i);
   assert.match(migration, /referral_confirmed:/);
+  assert.match(migration, /referral_milestone:/);
+  assert.match(migration, /confirmed_referrals in \\(1,5,10,25,50,100\\)/i);
 });
 
 test("worker revalidates the referral relationship before sending", () => {
