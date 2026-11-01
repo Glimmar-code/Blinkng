@@ -70,6 +70,18 @@ class BlinkContestService {
     }
 
     suspend fun contests(): Result<JSONArray> = contestResult { JSONArray(call("list_blink_contests")) }
+    suspend fun topicDirectory(): Result<JSONArray> = contestResult {
+        JSONArray(call("list_blink_contest_topics"))
+    }
+    suspend fun topicDetail(topicId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("get_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
+    }
+    suspend fun followTopic(topicId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("follow_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
+    }
+    suspend fun unfollowTopic(topicId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("unfollow_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
+    }
     suspend fun detail(id: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
     }
