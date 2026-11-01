@@ -1,6 +1,7 @@
 package com.blinkng.desktop.ui
 
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkChatReferenceStyle
 
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -474,13 +475,13 @@ fun MessagesScreen(state: DesktopAppState) {
         Column(modifier = Modifier.fillMaxSize()
             .background(
                 if (MaterialTheme.colorScheme.background.luminance() < .4f)
-                    Color(0xFF060D16) else MaterialTheme.colorScheme.background
+                    Color(BlinkChatReferenceStyle.Canvas) else MaterialTheme.colorScheme.background
             )) {
             Box(
                 modifier = Modifier.fillMaxWidth()
                     .background(
                         if (MaterialTheme.colorScheme.background.luminance() < .4f)
-                            Color(0xFF09131E) else MaterialTheme.colorScheme.surface
+                            Color(BlinkChatReferenceStyle.Header) else MaterialTheme.colorScheme.surface
                     ).padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 IconButton(
@@ -645,10 +646,16 @@ fun MessagesScreen(state: DesktopAppState) {
                                     detectTapGestures(onLongPress = { actionMessageId = message.id })
                                 },
                                 shape = RoundedCornerShape(16.dp),
+                                contentColor = if (MaterialTheme.colorScheme.background.luminance() < .4f) {
+                                    if (mine) Color(BlinkChatReferenceStyle.OutgoingText)
+                                    else Color(BlinkChatReferenceStyle.Text)
+                                } else if (mine) Color(BlinkChatReferenceStyle.OutgoingText)
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                                 color = if (MaterialTheme.colorScheme.background.luminance() < .4f) {
-                                    if (mine) Color(0xFF0879F8) else Color(0xFF1C2A3B)
-                                } else if (mine) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceVariant
+                                    if (mine) Color(BlinkChatReferenceStyle.Outgoing)
+                                    else Color(BlinkChatReferenceStyle.Incoming)
+                                } else if (mine) Color(BlinkChatReferenceStyle.LightOutgoing)
+                                else Color(BlinkChatReferenceStyle.LightIncoming)
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
                                     message.replyToMessageId?.let { reference ->
@@ -783,11 +790,25 @@ fun MessagesScreen(state: DesktopAppState) {
                                             Text(
                                                 com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
                                                 fontSize = 11.sp,
-                                                color = if (receipt == "READ") Color(0xFF1685FF)
+                                                color = if (receipt == "READ") Color(BlinkChatReferenceStyle.BlueBright)
+                                                    else if (mine && MaterialTheme.colorScheme.background.luminance() < .4f)
+                                                        Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .55f)
+                                                    else if (mine) Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .8f)
                                                     else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
-                                        if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
+                                        Text(
+                                            runCatching {
+                                                java.time.format.DateTimeFormatter.ofPattern("h:mm a")
+                                                    .withZone(java.time.ZoneId.systemDefault())
+                                                    .format(Instant.parse(message.createdAt))
+                                            }.getOrDefault(""),
+                                            fontSize = 10.sp,
+                                            color = if (mine && MaterialTheme.colorScheme.background.luminance() < .4f)
+                                                Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .6f)
+                                            else if (mine) Color(BlinkChatReferenceStyle.OutgoingText).copy(alpha = .85f)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
                                 }
                             }
@@ -933,7 +954,7 @@ fun MessagesScreen(state: DesktopAppState) {
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF0879F8),
+                    color = Color(BlinkChatReferenceStyle.Input),
                     modifier = Modifier.size(42.dp)
                         .clickable { attachmentMenuOpen = true }
                 ) {

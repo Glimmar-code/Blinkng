@@ -587,6 +587,11 @@ private fun ReelsContent(
     var expanded by remember(resumeUserKey) {
         mutableStateOf(!initialReelId.isNullOrBlank())
     }
+    LaunchedEffect(expanded) {
+        // Preview always stays silent. Opening immersive playback enables sound,
+        // while the visible fullscreen volume button can still mute manually.
+        if (expanded) reelsMuted = false
+    }
     val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
     // A single synchronous, draw-linked state replaces a coroutine per drag sample.
     // NaN means no gesture is in progress and the settled Animatable owns motion.
@@ -630,15 +635,14 @@ private fun ReelsContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(if (isDark) Color(0xFF121214) else Color.White)) {
         val density = LocalDensity.current
         val viewportHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
-        // Header (56dp) + Stories (72dp) + tabs (52dp) + optional
-        // featured banner. On short viewports use a compact banner, or omit it
-        // to avoid placing an invisible control behind the video preview.
+        // Header (56dp) + tabs (52dp) + Top Reels banner, no Stories strip.
+        // Compact viewports adapt banner size without clipping the video preview.
         val compactViewport = maxHeight < 700.dp
-        val showFeatured = featuredReels.isNotEmpty() && maxHeight >= 560.dp
-        val featuredHeight = if (compactViewport) 100.dp else 144.dp
+        val showFeatured = maxHeight >= 560.dp
+        val featuredHeight = if (!showFeatured) 0.dp else if (compactViewport) 100.dp else 144.dp
         val chromeTop = (
             WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-                180.dp + (if (showFeatured) featuredHeight else 0.dp)
+                108.dp + (if (showFeatured) featuredHeight else 0.dp)
         ).coerceAtMost(maxHeight * 0.52f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
         val progress = if (dragProgress.isFinite()) dragProgress.coerceIn(0f, 1f)
@@ -700,7 +704,9 @@ private fun ReelsContent(
                             minimumDistancePx = with(density) { 28.dp.toPx() },
                             velocityThresholdPxPerSecond = with(density) { 1100.dp.toPx() }
                         )
-                        settleExpansion(!fastDownwardFlick)
+                        settleExpansion(!ReelExpansionMotion.shouldCollapseFromFullscreen(
+                            dragProgress, fastDownwardFlick
+                        ))
                         return available
                     }
                     return Velocity.Zero
@@ -737,7 +743,9 @@ private fun ReelsContent(
                                         minimumDistancePx = 28.dp.toPx(),
                                         velocityThresholdPxPerSecond = 1100.dp.toPx()
                                     )
-                                settleExpansion(fastFlick)
+                                settleExpansion(ReelExpansionMotion.shouldExpandFromPreview(
+                                    dragProgress, fastFlick
+                                ))
                             },
                             onDragCancel = { settleExpansion(false) }
                         )
@@ -812,7 +820,7 @@ private fun ReelsContent(
                         reel = reel,
                         isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
                         shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
-                        isMuted = reelsMuted,
+                        isMuted = reelShouldBeMuted(expanded = expanded, manuallyMuted = reelsMuted),
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
                             resumePrefs.edit().putBoolean("reels_muted:$resumeUserKey", reelsMuted).apply()
@@ -869,7 +877,7 @@ private fun ReelsContent(
                         reel = reel,
                         isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
                         shouldPreload = isScreenActive && expanded && shouldPreloadReelPage(index, pager.currentPage),
-                        isMuted = reelsMuted,
+                        isMuted = reelShouldBeMuted(expanded = expanded, manuallyMuted = reelsMuted),
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
                             resumePrefs.edit().putBoolean("reels_muted:$resumeUserKey", reelsMuted).apply()

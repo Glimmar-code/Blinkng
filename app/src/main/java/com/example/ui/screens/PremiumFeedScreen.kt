@@ -179,10 +179,11 @@ private fun buildPremiumHomeRows(
     var marketSponsoredSlot = 0
     var dropSlot = 0
     var postsSinceDrop = 0
-    var nextDropGap = random.nextInt(8, 13)
+    var nextDropGap = 5
 
-    // The first missed-Drop module appears before organic Post #1 without replacing it.
-    if (dropDiscovery.isNotEmpty()) {
+    // Only a live Giveaway gets the first slot. Missed/ended Giveaways follow
+    // the same five-organic-post spacing instead of displacing a live feed post.
+    if (dropDiscovery.firstOrNull()?.status?.equals("ACTIVE", ignoreCase = true) == true) {
         rows += PremiumHomeRow.DropDiscoveryRow(dropDiscovery.first(), dropSlot++)
     }
 
@@ -204,7 +205,7 @@ private fun buildPremiumHomeRows(
             )
             dropSlot += 1
             postsSinceDrop = 0
-            nextDropGap = random.nextInt(8, 13)
+            nextDropGap = 5
         }
         val shouldInsertBoosted =
             promotedSlot < promotedPosts.size &&
@@ -274,11 +275,13 @@ private fun mergeStablePremiumFeed(
  * Premium feed shell.
  *
  * For You and Following stay inside Home. Reels and Connect use the persistent
- * bottom navigation, while Rank, Game, Store, Boost and Drops remain visible Home shortcuts.
+ * bottom navigation, while Rank, Game, Store, Boost and BLINK Giveaway remain visible Home shortcuts.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PremiumFeedScreen(
+    contestTarget: com.example.sharing.ContestVoteTarget? = null,
+    onContestTargetOpened: () -> Unit = {},
     posts: List<FeedPost>,
     followingPosts: List<FeedPost> = emptyList(),
     reels: List<FeedPost>,
@@ -341,6 +344,7 @@ fun PremiumFeedScreen(
     onStoreClick: () -> Unit = {},
     onBoostClick: () -> Unit = {},
     onDropsClick: () -> Unit = {},
+    onOpenGiveaway: (String) -> Unit = { onDropsClick() },
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit = {},
@@ -378,6 +382,7 @@ fun PremiumFeedScreen(
     // A new app process always lands on For You; rememberSaveable still retains
     // Following during activity recreation and normal in-app navigation.
     var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
+    var showContestPeople by rememberSaveable(resumeUserKey) { mutableStateOf(false) }
     // An explicit Following visit fetches only that lane. The ViewModel's
     // per-account cooldown handles repeat composition or quick tab changes.
     LaunchedEffect(feedLane, currentSubTab, isMainPageActive, resumeUserKey) {
@@ -479,6 +484,7 @@ fun PremiumFeedScreen(
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
+            onOpenGiveaway = onOpenGiveaway,
             onOpenMarketListing = onOpenMarketListing,
             onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
             onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
@@ -559,7 +565,9 @@ fun PremiumFeedScreen(
             initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
         )
 
-        2 -> PremiumConnectHost(
+        2 -> if (showContestPeople) {
+            Box(Modifier.fillMaxSize()) {
+                PremiumConnectHost(
             posts = posts,
             profiles = profiles,
             currentUserProfile = currentUserProfile,
@@ -591,7 +599,24 @@ fun PremiumFeedScreen(
             onRepostPost = onRepostPost,
             onOptionsClick = onOptionsClick,
             hasUnreadNotifications = hasUnreadNotifications
-        )
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = { showContestPeople = false },
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                ) { androidx.compose.material3.Text("Back to Contest") }
+            }
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+            ) {
+                BlinkContestScreen(
+                    onDiscoverPeople = { showContestPeople = true },
+                    target = contestTarget,
+                    onTargetHandled = onContestTargetOpened
+                )
+            }
+        }
 
         3 -> PremiumGameHost(
             userAvatar = userAvatar,
@@ -674,6 +699,7 @@ private fun PremiumHomeFeed(
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
     onDropsClick: () -> Unit,
+    onOpenGiveaway: (String) -> Unit,
     onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -973,7 +999,7 @@ private fun PremiumHomeFeed(
             hasPlayableVideo && (laneIndex == 0 || authorKey in followedAuthorKeys)
         }
     }
-    // Keep Reel / Sponsored / Drop insertion gaps consistent when realtime
+    // Keep Reel / Sponsored / Giveaway insertion gaps consistent when realtime
     // receives a newly ranked first post or after an explicit hide/delete.
     val reelMixSeed = remember(laneResumeKey, filter) {
         "$laneResumeKey:${filter.name}".hashCode()
@@ -988,12 +1014,12 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
     }
 
-    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey, refreshRevision) {
         if (laneIndex != 0 || !isOnline) {
             dropDiscovery = emptyList()
             return@LaunchedEffect
         }
-        dropsService.discovery(3)
+        dropsService.discovery(20)
             .onSuccess { dropDiscovery = it }
             .onFailure { dropDiscovery = emptyList() }
     }
@@ -1988,14 +2014,13 @@ private fun PremiumHomeFeed(
                                                     uiScope.launch {
                                                         dropsService.followCreator(row.item.creatorId)
                                                             .onSuccess {
-                                                                dropDiscovery = dropDiscovery.filterNot {
-                                                                    it.creatorId == row.item.creatorId
-                                                                }
+                                                                // Following is for next-time notifications; keep the current Giveaway visible.
                                                                 FollowStateStore.refresh()
                                                             }
                                                     }
                                                 },
-                                                onOpenDrops = onDropsClick,
+                                                onOpenDrops = { onOpenGiveaway(row.item.dropId) },
+                                                following = row.item.creatorId in feedFollowedIds,
                                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                             )
                                         }

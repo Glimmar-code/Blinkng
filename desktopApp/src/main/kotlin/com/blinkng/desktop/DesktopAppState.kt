@@ -25,6 +25,7 @@ class DesktopAppState(
     var settings by mutableStateOf<DesktopUserSettings?>(null)
         private set
     var selectedRoute by mutableStateOf("home")
+    var selectedGiveawayId by mutableStateOf<String?>(null)
     var globalSearch by mutableStateOf("")
     var showNewStudentSuggestions by mutableStateOf(false)
     private var pendingNewMemberDiscovery = false
@@ -103,9 +104,26 @@ class DesktopAppState(
         settings = null
         adminCapability = DesktopAdminCapability(false, null, false)
         selectedRoute = "home"
+        selectedGiveawayId = null
         globalSearch = ""
         pendingNewMemberDiscovery = false
         showNewStudentSuggestions = false
+    }
+
+    // Retry after a restored session's profile request fails, without trapping
+    // the user in the loading state or discarding their saved sign-in.
+    suspend fun retryProfileLoad() {
+        if (session == null || busy) return
+        busy = true
+        errorMessage = null
+        try {
+            loadAuthenticatedState()
+        } catch (t: Throwable) {
+            profile = null
+            errorMessage = t.message ?: "Could not load your profile. Please retry."
+        } finally {
+            busy = false
+        }
     }
 
     suspend fun refreshProfile() {

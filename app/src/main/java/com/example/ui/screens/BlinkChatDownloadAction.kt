@@ -5,6 +5,9 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -32,7 +35,9 @@ internal fun BlinkChatDownloadAction(
     url: String?,
     kind: String,
     extension: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    menuLabel: String? = null
 ) {
     val context = LocalContext.current
     val downloader = remember(context) {
@@ -78,10 +83,7 @@ internal fun BlinkChatDownloadAction(
             delay(650)
         }
     }
-    Row(modifier.testTag("chat_media_download"), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(
-            enabled = valid && state != "Saved to Downloads",
-            onClick = {
+    val performDownload: () -> Unit = {
                 val id = transferId
                 if (id != null && state in setOf("Downloading", "Download paused")) {
                     runCatching { downloader.remove(id) }
@@ -111,7 +113,27 @@ internal fun BlinkChatDownloadAction(
                         state = "Download failed"
                     }
                 }
-            }
+    }
+    Row(
+        modifier
+            .then(if (menuLabel != null) Modifier.fillMaxWidth().clickable(
+                enabled = valid && state != "Saved to Downloads",
+                onClick = performDownload
+            ) else Modifier)
+            .testTag(if (menuLabel != null) "chat_voice_download_menu" else "chat_media_download"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            modifier = (if (compact && kind == "document")
+                Modifier.size(32.dp)
+                    .border(1.dp, Color(0xFF87909D), CircleShape)
+            else if (compact) Modifier.size(30.dp)
+            else Modifier)
+                .testTag(if (compact && kind == "document")
+                    "chat_reference_document_download_circle"
+                    else "chat_reference_media_download_button"),
+            enabled = valid && state != "Saved to Downloads",
+            onClick = performDownload
         ) {
             Icon(
                 if (transferId != null && state in setOf("Downloading", "Download paused"))
@@ -124,7 +146,17 @@ internal fun BlinkChatDownloadAction(
                     else -> "Download ${kind}"
                 },
                 tint = Color(0xFF69B9FF),
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+            )
+        }
+        if (menuLabel != null) {
+            Text(
+                menuLabel,
+                color = Color(0xFFE6E9EF),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp)
+                    .weight(1f),
+                maxLines = 1
             )
         }
         if (state.isNotBlank()) {

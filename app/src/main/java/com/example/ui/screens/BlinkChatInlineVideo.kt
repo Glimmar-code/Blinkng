@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.blinkng.shared.BlinkChatReferenceStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.ContentScale
@@ -82,7 +83,7 @@ internal fun BlinkChatInlineVideo(
             .fillMaxWidth()
             .height(180.dp)
             .clip(RoundedCornerShape(13.dp))
-            .background(Color(0xFF111216))
+            .background(Color(BlinkChatReferenceStyle.Canvas))
             .testTag("chat_inline_video"),
         contentAlignment = Alignment.Center,
     ) {
@@ -151,7 +152,7 @@ internal fun BlinkChatInlineVideo(
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize()
-                            .background(Color(0xFF060D16))
+                            .background(Color(BlinkChatReferenceStyle.Canvas))
                             .testTag("chat_reference_fullscreen_video")
                     ) {
                         AndroidView(

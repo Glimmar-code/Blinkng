@@ -35,7 +35,36 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
       - name: Record real Compose launch frames and test completion
-        run: gradle :app:testDebugUnitTest --tests com.example.BlinkBeyondLinkIntroTest -Proborazzi.test.record=true --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Robolectric fetches Android SDK test jars at runtime. On a fresh CI
+          # runner a transient Maven HTTP failure can occur before any test runs.
+          # Retry ONLY that dependency-fetch failure, and still require all
+          # original screenshot and animation assertions to pass.
+          run_intro() {
+            gradle :app:testDebugUnitTest --tests com.example.BlinkBeyondLinkIntroTest -Proborazzi.test.record=true --stacktrace --no-daemon > intro-test.log 2>&1
+          }
+          if ! run_intro; then
+            cat intro-test.log
+            if grep -q 'MavenArtifactFetcher.java' intro-test.log &&
+               grep -q 'HttpURLConnection.java' intro-test.log; then
+              echo "::warning::Transient Robolectric artifact fetch failed; retrying exact same test once"
+              sleep 3
+              run_intro || { cat intro-test.log; exit 1; }
+            else
+              exit 1
+            fi
+          fi
+          cat intro-test.log
+      - name: Preserve introductory test failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-intro-failure-log-${{ github.sha }}
+          path: intro-test.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify all viewport captures exist and differ
         run: |
           set -euo pipefail
@@ -70,6 +99,28 @@ jobs:
               assert blue > 3, f"{image_path}: brand-blue b dot missing"
               assert yellow < len(sample) * 0.003, f"{image_path}: legacy accessibility overlay, not real pixels"
               print(image_path, im.size, "black", dark, "white", white, "blue", blue)
+
+              # Verify pixel proportions of the owner-approved BLINK vector. Its B
+              # includes a tall ascender above the other lower-case letters.
+              if image_path.stem in {"intro-320dp", "intro-412dp", "intro-600dp"}:
+                  ink = [(x, y) for y in range(im.height) for x in range(im.width)
+                         if min(im.getpixel((x, y))) > 220]
+                  assert ink, f"{image_path}: missing white glyphs"
+                  left = min(x for x, _ in ink)
+                  right = max(x for x, _ in ink)
+                  width = right - left
+                  b_y = [y for x, y in ink if x <= left + width * .18]
+                  link_y = [y for x, y in ink if x >= left + width * .45]
+                  assert b_y and link_y, f"{image_path}: missing B or LINK glyph"
+                  b_ink = max(b_y) - min(b_y) + 1
+                  link_ink = max(link_y) - min(link_y) + 1
+                  # Approved previous APK screenshot: the B rises roughly 45%
+                  # above the shorter lower-case letterforms. Keep real geometry.
+                  ratio = b_ink / link_ink
+                  assert 1.30 <= ratio <= 1.65, (
+                      f"{image_path}: B is {b_ink}px, LINK is {link_ink}px; "
+                      "the approved B ascender must remain visibly taller"
+                  )
           PY
 
       - name: Upload BLINK intro actual-render evidence

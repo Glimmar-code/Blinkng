@@ -3,7 +3,7 @@ name: Android quality gate
 # Keep this gate explicit for main-branch integration validation.
 on:
   push:
-    branches: [main]
+    branches: [main, 'Testlab/**']
   pull_request:
   workflow_dispatch:
 
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,6 +49,15 @@ jobs:
 
       - name: Test trustworthy expensive-suite reuse policy
         run: python3 -m unittest discover -s scripts -p 'test_ci_verified_reuse.py' -v
+
+      - name: Ensure Marketplace offers have complete paginated history
+        run: node scripts/test_market_offer_paging.mjs
+
+      - name: Verify chat notification privacy across FCM and legacy paths
+        run: node scripts/test_chat_notification_privacy.mjs
+
+      - name: Verify every Create Post APK action is wired and safe
+        run: node scripts/test_android_create_post_actions.mjs
 
       - name: Compute actual checked-out Android input digest
         id: input_digest
@@ -206,6 +215,46 @@ jobs:
           path: '**/profile-reference-*.png'
           if-no-files-found: error
           retention-days: 7
+
+      # Real Compose renderings of the same Reels and growth components shipped
+      # in the APK, with isolated staging data (no production payment or session).
+      - name: Capture Reels, Giveaways and Boost reference screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkReelsVisualCaptureTest --tests com.example.ui.screens.BlinkGrowthVisualCaptureTest -Proborazzi.test.record=true --rerun-tasks --no-daemon
+          count=$(find app/src/test/screenshots -name 'giveaway-*.png' -o -name 'growth-reference-*.png' -o -name 'reels-reference-*.png' | wc -l)
+          echo "Captured $count Reels/Giveaway/Boost visuals"
+          test "$count" -ge 6
+          # Detect unreadable headings in the exact rendered Pixel8 fixtures.
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root = Path("app/src/test/screenshots")
+          regions = {
+              "giveaway-most-givers-empty.png": (0,0,1078,720),
+              "giveaway-most-givers-podium.png": (0,0,1078,520),
+              "growth-reference-boost-quote-analytics.png": (0,0,1078,950),
+          }
+          for name, box in regions.items():
+              frame = Image.open(root / name).convert("RGB").crop(box)
+              bright = sum(1 for red, green, blue in frame.getdata() if min(red,green,blue) > 185)
+              print(f"{name}: readable light-text pixels = {bright}")
+              assert bright >= 180, f"{name}: dark card text is not visibly readable"
+          PY
+
+      - name: Upload BLINK Reels and growth screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-reels-growth-screenshots-${{ github.sha }}
+          path: |
+            app/src/test/screenshots/reels-reference-*.png
+            app/src/test/screenshots/growth-reference-*.png
+            app/src/test/screenshots/giveaway-*.png
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Capture campus Search reference screenshots
         if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'

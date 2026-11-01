@@ -6,6 +6,7 @@ on:
       - main
       - Testlab
       - 'Testlab-*'
+      - 'Testlab/**'
     paths:
       - 'app/src/**'
       - 'shared/src/**'
@@ -67,16 +68,31 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          force-avd-creation: false
+          # Avoid stale cached AVD/snapshot state that previously allowed a
+          # Pixel Launcher ANR to steal native window focus from the IME test.
+          force-avd-creation: true
           # Exercise real Compose transitions; the old smoke suite forcibly disabled them.
           disable-animations: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
+            # Build time can exceed the fresh emulator's display timeout. The IME
+            # requires an interactive, unlocked device even when Compose renders.
+            adb shell svc power stayon true
+            adb shell settings put system screen_off_timeout 1800000
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            # Ensure the launcher has actually initialized before a long
+            # 75-test UI suite. A system launcher ANR must never be mistaken
+            # for a Create Post keyboard/Compose regression.
+            adb shell input keyevent KEYCODE_HOME
+            adb shell input keyevent KEYCODE_BACK
             adb shell settings put global window_animation_scale 1.0
             adb shell settings put global transition_animation_scale 1.0
             adb shell settings put global animator_duration_scale 1.0
+            adb shell settings put secure show_ime_with_hard_keyboard 1
             echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
-            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon
+            mkdir -p app/build
+            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > app/build/runtime-gradle.log 2>&1 || { mkdir -p app/build/visual-audit; adb pull /sdcard/Pictures/BLINK-Visual-Audit app/build/visual-audit/ || true; tail -n 80 app/build/runtime-gradle.log; exit 1; }
             # Export emulator-rendered Compose staging fixture for visual audit.
             # This test data is separate from the production APK and account content.
             mkdir -p app/build/visual-audit
@@ -86,6 +102,69 @@ jobs:
             test -s app/build/visual-audit/home-reference-with-create.png
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/inbox-reference-staging-light.png app/build/visual-audit/inbox-reference-staging-light.png
             test -s app/build/visual-audit/inbox-reference-staging-light.png
+            # Capture the actual Contest test fixture to inspect small alignment errors.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-hero-podium-winners-staging.png app/build/visual-audit/contest-hero-podium-winners-staging.png
+            test -s app/build/visual-audit/contest-hero-podium-winners-staging.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-applicant-card-staging.png app/build/visual-audit/contest-applicant-card-staging.png
+            test -s app/build/visual-audit/contest-applicant-card-staging.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/contest-review-history-staging.png app/build/visual-audit/contest-review-history-staging.png
+            test -s app/build/visual-audit/contest-review-history-staging.png
+            # Explicitly collect the actual flyer dialog and 320dp leaderboard
+            # images. A passing assertion alone does not preserve screenshots.
+            for view in personalized-flyer compact-leaderboard; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/contest-${view}-staging.png" "app/build/visual-audit/contest-${view}-staging.png" && test -s "app/build/visual-audit/contest-${view}-staging.png" || exit 1; done
+            # Reference composer screenshots are produced on the emulator, not fabricated.
+            # android-emulator-runner executes each script line separately. Keep the loop on one line.
+            for view in landing landing-light-host gallery details options text-toolbar poll video-clips preview photo-editor mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # These captures use the actual full CreatePostSheet, not isolated toolbar fixtures.
+            for view in full-text full-mentions; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            for view in keyboard-mentions video-preview video-timeline gallery-library gallery-video-tab video-editor photo-crop-panel photo-filters; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # Full-route screenshot fixtures: retain actual emulator renders from
+            # Photo/Poll transitions, not only isolated component snapshots.
+            for view in poll-fullscreen text-to-gallery poll-switch-gallery photo-first-entry gallery-empty; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/create-post-${view}-staging.png" "app/build/visual-audit/create-post-${view}-staging.png" && test -s "app/build/visual-audit/create-post-${view}-staging.png" || exit 1; done
+            # Capture native dark conversation chrome for the reference audit.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-staging-dark.png app/build/visual-audit/chat-reference-staging-dark.png
+            test -s app/build/visual-audit/chat-reference-staging-dark.png
+            # Three slices of the actual Compose conversation with synthetic
+            # media fixtures. Retain all captures for manual side-by-side review.
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-top.png app/build/visual-audit/chat-reference-full-top.png
+            test -s app/build/visual-audit/chat-reference-full-top.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-media.png app/build/visual-audit/chat-reference-full-media.png
+            test -s app/build/visual-audit/chat-reference-full-media.png
+            for name in photos videos; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-${name}.png" "app/build/visual-audit/chat-reference-full-${name}.png" && test -s "app/build/visual-audit/chat-reference-full-${name}.png" || exit 1; done
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/chat-reference-full-bottom.png app/build/visual-audit/chat-reference-full-bottom.png
+            test -s app/build/visual-audit/chat-reference-full-bottom.png
+            for view in chat-reference-composer-controls chat-native-poll-synthetic-fixture chat-native-poll-retry-fixture; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/${view}.png" "app/build/visual-audit/${view}.png" && test -s "app/build/visual-audit/${view}.png" || exit 1; done
+            for theme in dark light; do adb pull "/sdcard/Pictures/BLINK-Visual-Audit/chat-reference-outgoing-document-${theme}.png" "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" && test -s "app/build/visual-audit/chat-reference-outgoing-document-${theme}.png" || exit 1; done
+
+      - name: Expose actual runtime failures through check annotations
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as E
+          def report(title, text):
+              text = re.sub(r'eyJ[A-Za-z0-9_.-]+', '[token omitted]', text)
+              text = re.sub(r'sb_(?:secret|publishable)_[A-Za-z0-9_-]+', '[key omitted]', text)
+              text = text[:6500].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title={title}::{text}')
+          for path in Path('app/build/outputs/androidTest-results/connected').rglob('*.xml'):
+              try:
+                  root = E.parse(path).getroot()
+              except E.ParseError:
+                  continue
+              for case in root.iter('testcase'):
+                  for kind in ('failure', 'error'):
+                      for failure in case.findall(kind):
+                          report('Android runtime test', f"{case.get('classname')}.{case.get('name')}: {failure.get('message', '')}\n{failure.text or ''}")
+          log = Path('app/build/runtime-gradle.log')
+          if log.exists():
+              lines = log.read_text(errors='replace').splitlines()
+              errors = [line for line in lines if re.search(r'^e:|FAILURE:|Caused by:|Execution failed|FAILED|failed tests', line)]
+              report('Android runtime build', '\n'.join(errors[:20] or lines[-50:]))
+          report('Runtime capture files', '\n'.join(str(p) for p in Path('app/build/visual-audit').glob('*.png')))
+          PY
 
       - name: Upload instrumentation reports
         if: always()
@@ -96,5 +175,6 @@ jobs:
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
             app/build/visual-audit/
+            app/build/runtime-gradle.log
           if-no-files-found: warn
           retention-days: 14

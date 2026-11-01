@@ -187,6 +187,7 @@
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/channel/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/contest/" />
             </intent-filter>
 
             <!-- Referral links work from both the canonical domain and www. -->
@@ -196,6 +197,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/invite/" />
                 <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/contest/" />
+                <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/contest/" />
             </intent-filter>
 
 
@@ -218,6 +221,7 @@
                 <data android:scheme="blink" android:host="post" />
                 <data android:scheme="blink" android:host="reel" />
                 <data android:scheme="blink" android:host="channel" />
+                <data android:scheme="blink" android:host="contest" />
             </intent-filter>
         </activity>
     </application>

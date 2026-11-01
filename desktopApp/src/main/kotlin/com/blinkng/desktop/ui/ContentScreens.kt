@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.CardGiftcard
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -70,6 +71,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -141,13 +143,28 @@ import org.json.JSONObject
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 
+private sealed interface DesktopHomeFeedRow {
+    val key: String
+    data class Post(val post: DesktopFeedPost) : DesktopHomeFeedRow {
+        override val key: String = "post-${post.id}"
+    }
+    data class Giveaway(val item: JSONObject, val slot: Int) : DesktopHomeFeedRow {
+        override val key: String = "giveaway-${item.optString("drop_id")}-$slot"
+    }
+}
+
 @Composable
 fun HomeScreen(
     state: DesktopAppState,
     onFeedCompactChange: (Boolean) -> Unit = {},
 ) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var giveawayDiscovery by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var pendingGiveawayFollowId by remember { mutableStateOf<String?>(null) }
+    val giveawayRpc = remember(state.client) { DesktopRpcActions(state.client) }
     var composer by remember { mutableStateOf("") }
+    var referenceComposerOpen by remember { mutableStateOf(false) }
+    var classicComposerOpen by remember { mutableStateOf(false) }
     var selectedTags by remember { mutableStateOf<List<String>>(emptyList()) }
     var tagInput by remember { mutableStateOf("") }
     var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -175,6 +192,28 @@ fun HomeScreen(
                     !post.imageUrl.isNullOrBlank()
                 "Polls" -> post.hasPoll
                 else -> true
+            }
+        }
+    }
+    val homeFeedRows = remember(visiblePosts, giveawayDiscovery, feedFilter) {
+        buildList<DesktopHomeFeedRow> {
+            if (feedFilter != "All" || giveawayDiscovery.isEmpty()) {
+                visiblePosts.forEach { add(DesktopHomeFeedRow.Post(it)) }
+            } else {
+                val firstIsLive = giveawayDiscovery.firstOrNull()
+                    ?.optString("status")?.equals("ACTIVE", ignoreCase = true) == true
+                var giveawaySlot = 0
+                if (firstIsLive || visiblePosts.isEmpty()) {
+                    add(DesktopHomeFeedRow.Giveaway(giveawayDiscovery[giveawaySlot], giveawaySlot))
+                    giveawaySlot++
+                }
+                visiblePosts.forEachIndexed { index, post ->
+                    add(DesktopHomeFeedRow.Post(post))
+                    if ((index + 1) % 5 == 0 && giveawaySlot < giveawayDiscovery.size) {
+                        add(DesktopHomeFeedRow.Giveaway(giveawayDiscovery[giveawaySlot], giveawaySlot))
+                        giveawaySlot++
+                    }
+                }
             }
         }
     }
@@ -220,6 +259,14 @@ fun HomeScreen(
         loading = true
         try {
             val page = state.client.fetchFeed()
+            runCatching { giveawayRpc.getGiveawayFeedDiscovery(20) }.onSuccess { root ->
+                val items = root.optJSONArray("items")
+                giveawayDiscovery = buildList {
+                    repeat(items?.length() ?: 0) { index ->
+                        items?.optJSONObject(index)?.let(::add)
+                    }
+                }
+            }
             posts = page.distinctBy { it.id }
             consumedPostRows = page.size
             hasMorePosts = page.size >= 60
@@ -333,9 +380,23 @@ fun HomeScreen(
                     Spacer(Modifier.width(6.dp))
                     Text("Store")
                 }
+                OutlinedButton(onClick = { state.selectedGiveawayId = null; state.selectedRoute = "giveaway" }) {
+                    Icon(Icons.Rounded.CardGiftcard, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Giveaway")
+                }
             }
         }
-        item {
+        item(key = "reference_create_post") {
+            Surface(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("What's on your mind?", Modifier.weight(1f))
+                    TextButton(onClick = { classicComposerOpen = !classicComposerOpen }) { Text("Classic composer") }
+                    Button(onClick = { referenceComposerOpen = true }) { Text("Create Post") }
+                }
+            }
+        }
+        if (classicComposerOpen) item {
             Surface(
                 modifier = Modifier.padding(bottom = 20.dp),
                 shape = RoundedCornerShape(20.dp),
@@ -684,7 +745,7 @@ fun HomeScreen(
             }
         }
         if (loading && posts.isEmpty()) item { LoadingRow() }
-        if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
+        if (!loading && posts.isEmpty() && giveawayDiscovery.isEmpty()) item { EmptyState("No posts are available yet.") }
         if (!loading && posts.isNotEmpty() && visiblePosts.isEmpty() &&
             !(feedFilter == "Polls" && pollMetadataUnavailable)) {
             item(key = "home_filtered_empty") {
@@ -699,8 +760,11 @@ fun HomeScreen(
                 }
             }
         }
-        items(visiblePosts, key = { it.id }) { post ->
-            DesktopFeedPostCard(
+        items(homeFeedRows, key = { it.key }) { row ->
+            when (row) {
+                is DesktopHomeFeedRow.Post -> {
+                    val post = row.post
+                    DesktopFeedPostCard(
                 post = post,
                 viewClient = state.client,
                 onLike = {
@@ -721,7 +785,7 @@ fun HomeScreen(
                             posts = posts.map {
                                 if (it.id == post.id) it.copy(isLiked = beforeLiked, likeCount = beforeCount) else it
                             }
-                            error = "Couldn't update like."
+                            error = "Couldn't update like. A Like used to claim a Giveaway reward cannot be removed."
                         } else if (actual != optimisticLiked) {
                             posts = posts.map {
                                 if (it.id == post.id) {
@@ -797,7 +861,35 @@ fun HomeScreen(
                 },
                 xFeedStyle = true,
             )
-            if (commentsFor == post.id) DesktopCommentsPanel(state, post.id)
+                    if (commentsFor == post.id) DesktopCommentsPanel(state, post.id)
+                }
+                is DesktopHomeFeedRow.Giveaway -> {
+                    val item = row.item
+                    val creatorId = item.optString("creator_id")
+                    DesktopGiveawayDiscoveryCard(
+                        item = item,
+                        followBusy = pendingGiveawayFollowId == creatorId,
+                        onFollow = {
+                            if (creatorId.isNotBlank() && pendingGiveawayFollowId == null) {
+                                pendingGiveawayFollowId = creatorId
+                                scope.launch {
+                                    runCatching { giveawayRpc.followDropCreator(creatorId) }
+                                        .onSuccess {
+                                            giveawayDiscovery = giveawayDiscovery.map { existing ->
+                                                if (existing.optString("creator_id") == creatorId) {
+                                                    JSONObject(existing.toString()).put("is_following", true)
+                                                } else existing
+                                            }
+                                        }
+                                        .onFailure { error = it.message ?: "Couldn't follow this creator." }
+                                    pendingGiveawayFollowId = null
+                                }
+                            }
+                        },
+                        onOpen = { state.selectedGiveawayId = item.optString("drop_id"); state.selectedRoute = "giveaway" },
+                    )
+                }
+            }
         }
         if (loadingMorePosts) item(key = "home_more_loading") {
             LoadingRow()
@@ -818,6 +910,11 @@ fun HomeScreen(
                 )
             }
         }
+    }
+    if (referenceComposerOpen) key(state.session?.userId) {
+        DesktopCreatePostDialog(state,
+            onDismiss = { referenceComposerOpen = false },
+            onPublished = { scope.launch { reload() } })
     }
     posts.firstOrNull { it.id == postDetailsId }?.let { selected ->
         DesktopPostDetailsDialog(
@@ -4484,7 +4581,9 @@ internal fun DesktopFeedPostCard(
             }
 
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
-            if (body.isNotBlank()) {
+            if (body.isNotBlank() && post.textStyle != null) {
+                DesktopPostText(body, post.textStyle)
+            } else if (body.isNotBlank()) {
                 Text(
                     text = body,
                     modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
@@ -4513,6 +4612,8 @@ internal fun DesktopFeedPostCard(
                 text = listOfNotNull(body.takeIf(String::isNotBlank), post.linkUrl).joinToString(" "),
                 modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
             )
+
+            if (post.hasPoll && viewClient != null) DesktopFeedPollCard(post.id, viewClient)
 
             if (mediaUrls.isNotEmpty()) {
                 Row(

@@ -108,6 +108,7 @@ internal fun PremiumReelEditor(
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
     var showAdvanced by remember(uri) { mutableStateOf(false) }
+    var activeTool by remember(uri) { mutableStateOf("TRIM") }
     val musicPlayer = remember(musicUri) {
         musicUri?.let { selected ->
             runCatching {
@@ -238,9 +239,24 @@ internal fun PremiumReelEditor(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Edit Video", color = Color.White, fontWeight = FontWeight.Bold,
+                fontSize = 18.sp, modifier = Modifier.weight(1f)
+            )
+            Text(
+                "TRIM  ·  MUSIC  ·  EFFECTS",
+                color = Color(0xFFB5B4C7), fontSize = 10.sp
+            )
+        }
         Box(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)
-                .aspectRatio(9f / 16f).clip(RoundedCornerShape(27.dp))
+                .aspectRatio(9f / 16f).heightIn(max = 420.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .testTag("blink_video_editor_preview")
                 .background(Color(0xFF121217))
                 .onSizeChanged { previewWidth = it.width.coerceAtLeast(1);
                     previewHeight = it.height.coerceAtLeast(1) },
@@ -287,6 +303,57 @@ internal fun PremiumReelEditor(
                             color = white, maxLines = 4)
                 }
             }
+            // Reference-inspired right-hand tools. Every action operates on the
+            // real editor state; tools requiring detail open the advanced panel.
+            Column(
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .padding(end = 5.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = .73f))
+                    .padding(vertical = 6.dp, horizontal = 3.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                val tools: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
+                    Triple(Icons.Default.MusicNote, "Music", {
+                        activeTool = "MUSIC"
+                        showAdvanced = true
+                        if (musicUri == null) audioPicker.launch(arrayOf("audio/*"))
+                    }),
+                    Triple(Icons.Default.TextFields, "Text", {
+                        activeTool = "TEXT"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.EmojiEmotions, "Stickers", {
+                        activeTool = "STICKERS"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.FilterVintage, "Filters", {
+                        activeTool = "FILTERS"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.AutoAwesome, "Effects", {
+                        activeTool = "EFFECTS"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.Tune, "Adjust", {
+                        activeTool = "ADJUST"; showAdvanced = true
+                    }),
+                    Triple(Icons.Default.ContentCut, "Trim", {
+                        activeTool = "TRIM"; showAdvanced = false
+                        player.seekTo(trimStartMs)
+                    })
+                )
+                tools.forEach { (icon, label, action) ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(onClick = action, enabled = !isExporting,
+                            modifier = Modifier.size(36.dp)
+                                .testTag("blink_video_tool_" + label.lowercase())) {
+                            Icon(icon, contentDescription = label + " editing tool",
+                                tint = if (activeTool == label.uppercase()) Color(0xFFA7A0FF)
+                                    else Color.White,
+                                modifier = Modifier.size(19.dp))
+                        }
+                        Text(label, color = Color.White, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.align(Alignment.TopEnd).padding(7.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -306,8 +373,9 @@ internal fun PremiumReelEditor(
                 ) { Icon(Icons.Default.Close, "Remove reel", tint = white) }
             }
         }
-        Surface(color = surface, shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        Surface(color = surface, shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                .testTag("blink_video_editor_timeline")) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -330,15 +398,33 @@ internal fun PremiumReelEditor(
                 }
 
                 if (filmstrip.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))) {
-                        filmstrip.forEach { thumbnail ->
-                            Image(
-                                bitmap = thumbnail.asImageBitmap(),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.weight(1f).height(55.dp)
-                            )
+                    // Real frames from the selected clip form the scrub timeline.
+                    // The playhead tracks ExoPlayer position independently of trim handles.
+                    BoxWithConstraints(
+                        Modifier.fillMaxWidth().height(58.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .testTag("blink_video_editor_filmstrip")
+                    ) {
+                        Row(Modifier.fillMaxSize()) {
+                            filmstrip.forEach { thumbnail ->
+                                Image(
+                                    bitmap = thumbnail.asImageBitmap(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxHeight()
+                                )
+                            }
                         }
+                        val playheadFraction = if (durationMs > 0L)
+                            (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                        else 0f
+                        Box(
+                            Modifier.align(Alignment.CenterStart)
+                                .offset(x = maxWidth * playheadFraction)
+                                .fillMaxHeight().width(2.dp)
+                                .background(Color.White)
+                                .testTag("blink_video_editor_playhead")
+                        )
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -360,6 +446,7 @@ internal fun PremiumReelEditor(
                         player.seekTo(newStart)
                     },
                     modifier = Modifier.fillMaxWidth()
+                        .testTag("blink_video_trim_handles")
                 )
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -372,22 +459,35 @@ internal fun PremiumReelEditor(
                     FilterChip(selected = rotation != 0f, onClick = {
                         rotation = (rotation + 90f) % 360f
                     }, label = { Text("Rotate", fontSize = 11.sp) }, enabled = !isExporting)
-                    TextButton(onClick = { showAdvanced = !showAdvanced }, enabled = !isExporting) {
+                    TextButton(
+                        onClick = {
+                            showAdvanced = !showAdvanced
+                            if (showAdvanced && activeTool == "TRIM") activeTool = "ADJUST"
+                        },
+                        enabled = !isExporting
+                    ) {
                         Text(if (showAdvanced) "Less" else "More", fontSize = 11.sp, color = accent)
                     }
                 }
                 if (showAdvanced) {
-                    OutlinedTextField(
+                    Text(activeTool.lowercase().replaceFirstChar { it.uppercase() } + " controls",
+                        color = Color.White, fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag("blink_video_active_tool"))
+                    if (activeTool == "TEXT") OutlinedTextField(
                         value = overlayText,
                         onValueChange = { overlayText = it.take(120) },
                         label = { Text("Text on video") }, singleLine = true,
-                        enabled = !isExporting, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(
+                        enabled = !isExporting, modifier = Modifier.fillMaxWidth()
+                            .testTag("blink_video_overlay_text"))
+                    if (activeTool == "STICKERS") OutlinedTextField(
                         value = sticker,
                         onValueChange = { sticker = it.take(16) },
                         label = { Text("Sticker / emoji") }, singleLine = true,
-                        enabled = !isExporting, modifier = Modifier.fillMaxWidth())
-                    if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+                        enabled = !isExporting, modifier = Modifier.fillMaxWidth()
+                            .testTag("blink_video_overlay_sticker"))
+                    if ((activeTool == "TEXT" || activeTool == "STICKERS") &&
+                        (overlayText.isNotBlank() || sticker.isNotBlank())) {
                         Text("Drag the words or sticker over the video to position them.",
                             color = Color.LightGray, fontSize = 12.sp)
                         Text("Overlay size: ${(overlayScale * 100).toInt()}%",
@@ -415,10 +515,23 @@ internal fun PremiumReelEditor(
                         Text("${display(overlayStart)} – ${display(overlayEnd)}",
                             fontSize = 12.sp, color = white)
                     }
+                    if (activeTool == "EFFECTS" || activeTool == "FILTERS") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { grayscale = !grayscale },
+                                enabled = !isExporting) {
+                                Text(if (grayscale) "Remove B&W" else "Black & white")
+                            }
+                            OutlinedButton(onClick = {
+                                rotation = (rotation + 90f) % 360f
+                            }, enabled = !isExporting) { Text("Rotate 90°") }
+                        }
+                    }
+                    if (activeTool == "MUSIC" || activeTool == "ADJUST") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             enabled = !isExporting,
-                            onClick = { audioPicker.launch(arrayOf("audio/*")) }
+                            onClick = { audioPicker.launch(arrayOf("audio/*")) },
+                            modifier = Modifier.testTag("blink_video_pick_music")
                         ) { Text(if (musicUri == null) "Add music" else "Change music") }
                         if (musicUri != null) TextButton(onClick = { musicUri = null }) {
                             Text("Remove music")
@@ -443,6 +556,7 @@ internal fun PremiumReelEditor(
                         )
                         Text("Audio balance previews with your video and is applied on export.",
                             color = Color.LightGray, fontSize = 12.sp)
+                    }
                     }
                 }
                 if (grayscale || rotation != 0f) {

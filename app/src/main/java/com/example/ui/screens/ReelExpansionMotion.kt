@@ -29,4 +29,14 @@ internal object ReelExpansionMotion {
             abs(dragDistancePx) >= minimumDistancePx &&
             abs(releaseVelocityPxPerSecond) >= velocityThresholdPxPerSecond &&
             dragDistancePx * releaseVelocityPxPerSecond > 0f
+    /**
+     * A short, deliberate upward drag should reveal immersive Reels, even when
+     * the user does not flick quickly. An accidental few-pixel scroll springs
+     * back to preview. Progress is normalized by viewport height.
+     */
+    fun shouldExpandFromPreview(progress: Float, fastUpwardFlick: Boolean): Boolean =
+        fastUpwardFlick || (progress.isFinite() && progress >= 0.09f)
+
+    fun shouldCollapseFromFullscreen(progress: Float, fastDownwardFlick: Boolean): Boolean =
+        fastDownwardFlick || (progress.isFinite() && progress <= 0.87f)
 }

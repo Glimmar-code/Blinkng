@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -17,15 +18,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkChatReferenceStyle
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.ui.theme.MessagePalette
+import com.example.ui.theme.MessageThemeMode
 
 /** Telegram-style single caption + tightly spaced responsive photo tiles. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -39,8 +45,16 @@ internal fun BlinkChatPhotoAlbumBubble(
 ) {
     if (messages.isEmpty()) return
     val ordered = remember(messages) {
-        messages.sortedWith(compareBy<ChatMessage> { it.imageAlbumPosition }.thenBy { it.id })
+        messages.filter { photo ->
+            !photo.deletedForEveryone && listOf(
+                photo.imagePreviewUrl,
+                photo.attachedImageUrl,
+                photo.localAttachmentUri
+            ).any { !it.isNullOrBlank() }
+        }.distinctBy { it.id }
+            .sortedWith(compareBy<ChatMessage> { it.imageAlbumPosition }.thenBy { it.id })
     }
+    if (ordered.isEmpty()) return
     val anchor = ordered.first()
     val isMine = anchor.isFromMe
     val groupedCount = maxOf(anchor.imageAlbumSize, ordered.size)
@@ -48,29 +62,29 @@ internal fun BlinkChatPhotoAlbumBubble(
     val caption = ordered.firstNotNullOfOrNull { photo ->
         photo.text.takeUnless { it.isBlank() || it.equals("Image", true) || it.equals("Photo", true) }
     }.orEmpty()
-    val status = when {
-        ordered.any { it.status == MessageStatus.FAILED } -> MessageStatus.FAILED
-        ordered.any { it.status == MessageStatus.SENDING } -> MessageStatus.SENDING
-        ordered.all { it.status == MessageStatus.READ } -> MessageStatus.READ
-        ordered.all { it.status in setOf(MessageStatus.READ, MessageStatus.DELIVERED) } -> MessageStatus.DELIVERED
-        else -> MessageStatus.SENT
-    }
+    val status = BlinkChatAlbumStatus.aggregate(ordered.map { it.status })
     val corner = RoundedCornerShape(16.dp)
     Row(Modifier.fillMaxWidth(), horizontalArrangement =
         if (isMine) Arrangement.End else Arrangement.Start) {
         Column(
-            Modifier.widthIn(max = 306.dp).clip(corner)
-                .background(if (isMine) palette.outgoingBrush()
+            Modifier.widthIn(max = 312.dp).clip(corner)
+                .background(if (palette.mode == MessageThemeMode.DARK && caption.isBlank())
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            listOf(Color.Transparent, Color.Transparent)
+                        )
+                    else if (isMine) palette.outgoingBrush()
                     else androidx.compose.ui.graphics.Brush.linearGradient(
                         listOf(palette.incomingBubble, palette.incomingBubble)
                     ))
-                .border(1.dp, palette.border.copy(alpha = .5f), corner)
+                .border(1.dp,
+                    if (palette.mode == MessageThemeMode.DARK) Color.Transparent
+                    else palette.border.copy(alpha = .5f), corner)
                 .combinedClickable(onClick = onReply, onLongClick = onActions)
                 .padding(4.dp)
         ) {
             // Match the supplied 1 / 2 / 3 / 4-photo reference layouts.
-            // A trio is one wide hero photo above two equal thumbnails, not
-            // a half-empty 2×2 grid. Every tile still opens the existing viewer.
+            // A trio is three adjacent landscape thumbnails. Every tile opens
+            // the existing viewer without changing the album's ordering.
             when (visible.size) {
                 1 -> AlbumPhotoTile(visible[0], 0, groupedCount,
                     Modifier.fillMaxWidth().height(196.dp), onOpen)
@@ -83,18 +97,14 @@ internal fun BlinkChatPhotoAlbumBubble(
                             Modifier.weight(1f).height(172.dp), onOpen)
                     }
                 }
-                3 -> {
-                    AlbumPhotoTile(visible[0], 0, groupedCount,
-                        Modifier.fillMaxWidth().height(170.dp), onOpen)
-                    Spacer(Modifier.height(3.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        visible.drop(1).forEachIndexed { index, photo ->
-                            AlbumPhotoTile(photo, index + 1, groupedCount,
-                                Modifier.weight(1f).height(120.dp), onOpen)
-                        }
+                3 -> Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    // The current screenshot uses three equally sized adjacent photos.
+                    visible.forEachIndexed { index, photo ->
+                        AlbumPhotoTile(photo, index, groupedCount,
+                            Modifier.weight(1f).aspectRatio(BlinkChatReferenceStyle.TrioPhotoAspect), onOpen)
                     }
                 }
                 else -> {
@@ -138,7 +148,10 @@ internal fun BlinkChatPhotoAlbumBubble(
             ) {
                 Text(if (status == MessageStatus.SENDING) "Sending…" else if (status == MessageStatus.FAILED)
                     "Waiting to retry" else ordered.last().timestamp,
-                    color = if (status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
+                    color = if (status == MessageStatus.FAILED) palette.danger
+                        else if (isMine && caption.isNotBlank() && palette.mode == MessageThemeMode.DARK)
+                            palette.outgoingText.copy(alpha = .55f)
+                        else palette.textSecondary,
                     fontSize = 10.sp
                 )
                 if (isMine && status !in setOf(MessageStatus.SENDING, MessageStatus.FAILED)) {
@@ -151,7 +164,8 @@ internal fun BlinkChatPhotoAlbumBubble(
                             else -> "Sent"
                         },
                         tint = if (status == MessageStatus.READ) Color(0xFF1685FF)
-                            else palette.textSecondary,
+                            else if (isMine && caption.isNotBlank() && palette.mode == MessageThemeMode.DARK)
+                                palette.outgoingText.copy(alpha = .55f) else palette.textSecondary,
                         modifier = Modifier.size(15.dp)
                     )
                 }
@@ -169,19 +183,42 @@ private fun AlbumPhotoTile(
     modifier: Modifier,
     onOpen: (ChatMessage) -> Unit
 ) {
+    val context = LocalContext.current
+    val photoSource = listOf(photo.imagePreviewUrl, photo.attachedImageUrl, photo.localAttachmentUri)
+        .firstOrNull { !it.isNullOrBlank() }
     Box(
         modifier.clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF19283B))
-            .clickable { onOpen(photo) },
+            .background(Color(BlinkChatReferenceStyle.Incoming))
+            .clickable(
+                role = androidx.compose.ui.semantics.Role.Button,
+                onClickLabel = "Open photo ${position + 1} of $total",
+                onClick = { onOpen(photo) }
+            )
+            .testTag("chat_reference_album_photo_" + position),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
-            model = photo.imagePreviewUrl ?: photo.attachedImageUrl
-                ?: photo.localAttachmentUri,
+            model = remember(photoSource) {
+                ImageRequest.Builder(context).data(photoSource).crossfade(140).build()
+            },
             contentDescription = "Photo ${position + 1} of $total",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
+        if (position == 0 && total > 1) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color.Black.copy(alpha = .65f))
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Image, contentDescription = null, tint = Color.White,
+                    modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(3.dp))
+                Text(total.toString(), color = Color.White, fontSize = 11.sp)
+            }
+        }
         if (position == 3 && total > 4) {
             Box(
                 Modifier.fillMaxSize()

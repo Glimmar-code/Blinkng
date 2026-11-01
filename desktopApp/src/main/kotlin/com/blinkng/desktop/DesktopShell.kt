@@ -35,7 +35,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.CardGiftcard
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material.icons.rounded.Notifications
@@ -114,7 +116,10 @@ import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.ConnectScreen
+import com.blinkng.desktop.ui.BlinkDesktopContestScreen
+import com.blinkng.desktop.ui.BlinkDesktopContestAdminScreen
 import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
+import com.blinkng.desktop.ui.DesktopDropsScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
 import com.blinkng.desktop.ui.LeaderboardScreen
@@ -140,16 +145,19 @@ private val desktopDestinations = listOf(
     DesktopDestination("home", "Home", Icons.Rounded.Home),
     DesktopDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
     DesktopDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
-    DesktopDestination("connect", "Connect", Icons.Rounded.Groups),
+    DesktopDestination("connect", "Contest", Icons.Rounded.EmojiEvents),
+    DesktopDestination("people", "People discovery", Icons.Rounded.Groups),
     DesktopDestination("communities", "Channels", Icons.Rounded.Groups),
     DesktopDestination("messages", "Messages", Icons.Rounded.Chat),
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
     DesktopDestination("boost", "Boost", Icons.Rounded.Campaign),
+    DesktopDestination("giveaway", "BLINK Giveaway", Icons.Rounded.CardGiftcard),
     DesktopDestination("store", "Blink Store · Soon", Icons.Rounded.ShoppingBag),
     DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
+    DesktopDestination("contest-admin", "Contest admin", Icons.Rounded.EmojiEvents, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
     DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
     DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
@@ -163,6 +171,7 @@ fun runBlinkDesktopApplication() = application {
     val trayState = rememberTrayState()
     var isWindowVisible by remember { mutableStateOf(true) }
     var showStartupIntro by remember { mutableStateOf(true) }
+    var startupRetrySerial by remember { mutableIntStateOf(0) }
     var incomingCall by remember { mutableStateOf<DesktopCall?>(null) }
     var incomingCallerName by remember { mutableStateOf("Blink user") }
     var lastNotifiedCallId by remember { mutableStateOf<String?>(null) }
@@ -186,6 +195,9 @@ fun runBlinkDesktopApplication() = application {
     }
 
     LaunchedEffect(Unit) { appState.initialize() }
+    LaunchedEffect(startupRetrySerial) {
+        if (startupRetrySerial > 0) appState.retryProfileLoad()
+    }
 
     LaunchedEffect(appState.session?.userId) {
         incomingCall = null
@@ -322,7 +334,24 @@ fun runBlinkDesktopApplication() = application {
                         when {
                             !appState.initialized -> InitializingScreen()
                             appState.session == null -> BlinkAuthScreen(appState)
-                            appState.profile == null -> InitializingScreen()
+                            appState.profile == null && appState.busy -> InitializingScreen()
+                            appState.profile == null -> Column(
+                                modifier = Modifier.fillMaxSize().padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text("Could not load your BLINK profile", style = MaterialTheme.typography.headlineSmall)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    appState.errorMessage ?: "Your profile is unavailable. Check your connection and try again.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Button(onClick = { startupRetrySerial++ }) { Text("Retry") }
+                                    OutlinedButton(onClick = { appState.signOut() }) { Text("Sign out") }
+                                }
+                            }
                             appState.profile?.onboardingCompleted == false ->
                                 BlinkDesktopOnboardingScreen(appState)
                             else -> Column(modifier = Modifier.fillMaxSize()) {
@@ -527,6 +556,7 @@ private fun AuthenticatedShell(
             val current = BlinkSwipeNavigation.pageForDesktopRoute(state.selectedRoute)
             val next = current?.let { BlinkSwipeNavigation.adjacent(it, direction) }
             if (next == null) false else {
+                state.selectedGiveawayId = null
                 state.selectedRoute = BlinkSwipeNavigation.surfaces[next].desktopRoute
                 true
             }
@@ -537,7 +567,10 @@ private fun AuthenticatedShell(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
-            onNavigate = { state.selectedRoute = it },
+            onNavigate = { route ->
+                if (route != "giveaway") state.selectedGiveawayId = null
+                state.selectedRoute = route
+            },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -548,7 +581,10 @@ private fun AuthenticatedShell(
                     compact = compact,
                     destinations = visibleDestinations,
                     selectedId = state.selectedRoute,
-                    onSelect = { state.selectedRoute = it },
+                    onSelect = { route ->
+                        if (route != "giveaway") state.selectedGiveawayId = null
+                        state.selectedRoute = route
+                    },
                 )
                 Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)))
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -560,7 +596,8 @@ private fun AuthenticatedShell(
                     when (activeRoute) {
                         "home" -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                         "reels" -> ReelsScreen(state)
-                        "connect" -> ConnectScreen(state)
+                        "connect" -> BlinkDesktopContestScreen(state)
+                        "people" -> ConnectScreen(state)
                         "communities" -> com.blinkng.desktop.ui.DesktopCommunitiesScreen(state)
                         "messages" -> MessagesScreen(state)
                         "marketplace" -> MarketplaceScreen(state)
@@ -568,9 +605,11 @@ private fun AuthenticatedShell(
                         "notifications" -> NotificationsScreen(state)
                         "store" -> StoreProScreen(state)
                         "boost" -> DesktopBoostGrowthScreen(state)
+                        "giveaway" -> DesktopDropsScreen(state, initialDropId = state.selectedGiveawayId)
                         "leaderboard" -> LeaderboardScreen(state)
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
+                        "contest-admin" -> BlinkDesktopContestAdminScreen(state)
                         "settings" -> SettingsScreen(state)
                         "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
                         "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })

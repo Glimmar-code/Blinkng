@@ -10,6 +10,7 @@ https://www.blink.com.ng/* https://blink.com.ng/:splat 301
 /post/* /index.html 200
 /reel/* /index.html 200
 /invite/* /index.html 200
+/contest/* /index.html 200
 /feed /index.html 200
 /reels /index.html 200
 /search /index.html 200

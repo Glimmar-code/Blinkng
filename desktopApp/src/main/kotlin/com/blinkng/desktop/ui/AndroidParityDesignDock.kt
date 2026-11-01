@@ -58,7 +58,8 @@ private val androidParityModules = listOf(
     AndroidParityModule("messages", "Messages", "PremiumMessagesScreen.kt", "messages", "Communication", "Matches, search, pinned/starred, reply/edit, attachments, emoji, appearance and call controls"),
     AndroidParityModule("activity", "Activity", "ActivityScreen.kt", "notifications", "Notifications", "Search, unread/category filters, section headers, caught-up divider, offline and skeleton states"),
     AndroidParityModule("marketplace", "Marketplace", "MarketScreen.kt", "marketplace", "Commerce", "Market search, featured listings, seller state, verified selling and product cards"),
-    AndroidParityModule("connect", "Connect Hub", "ConnectHubPremiumPanel.kt", "connect", "Discovery", "Smart Match, compatibility, roommates, mentoring, reading mates, housing and challenges"),
+    AndroidParityModule("connect", "Connect Hub", "ConnectHubPremiumPanel.kt", "people", "Discovery", "Smart Match, compatibility, roommates, mentoring, reading mates, housing and challenges"),
+    AndroidParityModule("contest", "Contest", "BlinkContestScreen.kt", "connect", "Community", "Free entry, scheduled contests, top-20 voting, personal rank and prize status"),
     AndroidParityModule("games", "Games", "GameSection.kt", "games", "Games", "Challenges, coin rewards, accept/play states and campus game discovery"),
     AndroidParityModule("scheduled-posts", "Scheduled posts", "CreatePostSheet.kt", "home", "Creator", "Drafts, scheduled preview, publish timing, cancel/retry and background posting state"),
     AndroidParityModule("blink-ai", "Blink AI", "BlinkAiSheet.kt", "home", "AI", "History, attachments, voice, settings, context/privacy, stop/retry and response states"),
@@ -120,7 +121,7 @@ private val androidParityLayers = listOf(
 private val androidParityCheckpoints: List<AndroidParityCheckpoint> =
     androidParityModules.flatMap { module -> androidParityLayers.map { layer -> AndroidParityCheckpoint(module, layer) } }
 
-internal const val ANDROID_UI_PARITY_CHECKPOINT_COUNT = 500
+internal const val ANDROID_UI_PARITY_CHECKPOINT_COUNT = 510
 
 @Composable
 fun AndroidParityDesignDock(

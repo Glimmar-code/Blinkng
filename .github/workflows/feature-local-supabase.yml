@@ -1,0 +1,101 @@
+name: Contest Post Chat isolated Supabase
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/local-features/**'
+      - 'supabase/functions/blink-contest-private-media/**'
+      - 'supabase/config.toml'
+      - 'app/src/main/java/com/example/ui/screens/BlinkContest*.kt'
+      - 'app/src/main/java/com/example/data/supabase/BlinkContest*.kt'
+      - 'shared/src/main/kotlin/com/blinkng/shared/BlinkContest*.kt'
+      - 'shared/src/test/kotlin/com/blinkng/shared/BlinkContest*.kt'
+      - 'supabase/migrations/*blink_contest*'
+      - 'supabase/migrations/*blink_poll_vote*'
+      - 'supabase/migrations/*blink_block_unprotected*'
+      - 'supabase/migrations/*chat_video_albums*'
+      - 'supabase/migrations/*blink_chat_native_polls*'
+      - '.github/workflows/feature-local-supabase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: feature-local-supabase-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  feature-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify private contest media access rules with mocked Edge requests
+        run: node --experimental-strip-types --test supabase/tests/local-features/private-contest-media.test.mjs
+      - name: Configure a fresh local project with no production connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/blink-isolated/supabase"
+          cat > "$RUNNER_TEMP/blink-isolated/supabase/config.toml" <<'TOML'
+          project_id = "blink-feature-isolated"
+          [api]
+          port = 54331
+          [db]
+          port = 54332
+          shadow_port = 54330
+          major_version = 17
+          [db.seed]
+          enabled = false
+          [studio]
+          enabled = false
+          [analytics]
+          enabled = false
+          [auth]
+          enabled = true
+          site_url = "http://localhost:54331"
+          [auth.email]
+          enable_confirmations = false
+          TOML
+      - name: Start actual local Auth REST Storage and Realtime services
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          supabase --workdir "$RUNNER_TEMP/blink-isolated" start -x studio,imgproxy,logflare,vector,edge-runtime,supavisor,mailpit,postgres-meta > "$RUNNER_TEMP/blink-feature-start.log" 2>&1
+      - name: Verify real authenticated feature HTTP and Realtime behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node supabase/tests/local-features/verify.mjs "$RUNNER_TEMP/blink-isolated" 2>&1 | tee "$RUNNER_TEMP/blink-feature-results.log"
+      - name: Expose test failures without publishing local credentials
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          for name in ('blink-feature-start.log', 'blink-feature-results.log'):
+              path = pathlib.Path(os.environ['RUNNER_TEMP']) / name
+              if not path.exists():
+                  continue
+              text = path.read_text(errors='replace')
+              text = re.sub(r'eyJ[A-Za-z0-9_.-]+', '[local token omitted]', text)
+              text = re.sub(r'sb_(?:secret|publishable)_[A-Za-z0-9_-]+', '[local key omitted]', text)
+              text = re.sub(r'postgres(?:ql)?://[^\s]+', '[local connection omitted]', text)
+              tail = text[-6000:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title={name}::{tail}')
+          PY
+      - name: Remove only the disposable project and its local volumes
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/blink-isolated/supabase/config.toml" ]; then
+            supabase --workdir "$RUNNER_TEMP/blink-isolated" stop --no-backup
+          fi

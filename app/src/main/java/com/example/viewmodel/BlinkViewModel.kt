@@ -49,6 +49,7 @@ import com.example.notification.BlinkInAppNotificationCenter
 import com.example.notification.BlinkInAppNotificationDestination
 import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
+import com.example.notification.ChatNotificationPreviewPolicy
 import com.example.notification.ConversationMuteExpiryWorker
 import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
@@ -321,6 +322,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val networkMonitor = NetworkMonitor(appContext)
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
+    private val chatPrivacySaveMutex = Mutex()
     // CHAT_CACHE_RECONCILIATION_V1: stale async snapshots must never write after newer ones.
     private val conversationCacheRevision = java.util.concurrent.atomic.AtomicLong(0L)
     private val messageOutboxMutex = Mutex()
@@ -2215,8 +2217,15 @@ private suspend fun restoreSupabaseSession() {
                         summaries = conversationSummaries,
                         local = _uiState.value.conversations
                     )
-                    val chatPrivacySettings = chatPrivacyRequest.await()
-                        .getOrDefault(before.chatPrivacySettings)
+                    val chatPrivacyResult = chatPrivacyRequest.await()
+                    val chatPrivacySettings = chatPrivacyResult.getOrDefault(before.chatPrivacySettings)
+                    if (chatPrivacyResult.isSuccess && inboxOwner != null &&
+                        supabaseService.getCurrentUserId() == inboxOwner
+                    ) {
+                        NotificationPreferenceStore.rememberChatPreviewMode(
+                            appContext, inboxOwner, chatPrivacySettings.notificationPreview
+                        )
+                    }
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
@@ -4010,6 +4019,7 @@ private suspend fun restoreSupabaseSession() {
         put("is_disappearing", draft.isDisappearing)
         put("poll_question", draft.pollQuestion)
         put("poll_options", JSONArray(draft.pollOptions))
+        put("poll_duration_hours", draft.pollDurationHours)
         put("saved_at", draft.savedAtTimestamp)
         put("audio_track", draft.audioTrack ?: JSONObject.NULL)
         put("alt_text", draft.altText ?: JSONObject.NULL)
@@ -4035,6 +4045,8 @@ private suspend fun restoreSupabaseSession() {
         isDisappearing = value.optBoolean("is_disappearing", false),
         pollQuestion = value.optString("poll_question"),
         pollOptions = value.optJSONArray("poll_options").toStringList(),
+        pollDurationHours = value.optInt("poll_duration_hours", 24)
+            .takeIf { it in listOf(1, 24, 72, 168) } ?: 24,
         savedAtTimestamp = value.optLong("saved_at", System.currentTimeMillis()),
         audioTrack = value.optString("audio_track").takeIf { it.isNotBlank() && it != "null" },
         altText = value.optString("alt_text").takeIf { it.isNotBlank() && it != "null" },
@@ -4064,12 +4076,14 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun saveDraft(draft: PostDraft) {
+    fun saveDraft(draft: PostDraft): Boolean {
         val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }
-        if (saveDraftsToPrefs(updated)) {
+        val saved = saveDraftsToPrefs(updated)
+        if (saved) {
             _uiState.value = _uiState.value.copy(savedDrafts = updated)
             showToast("Draft saved to this account on your phone.")
         } else showToast("Couldn't save the draft. Sign in and try again.")
+        return saved
     }
 
     fun deleteDraft(draftId: String) {
@@ -4597,7 +4611,7 @@ private suspend fun restoreSupabaseSession() {
                     mySavedPosts = update(latest.mySavedPosts, target.isLiked, target.likes)
                 )
                 persistCurrentFeed()
-                showToast("Failed to update like.")
+                showToast("Could not update like. A Like used to claim a Giveaway reward cannot be removed.")
             }
         }.invokeOnCompletion {
             pendingLikePostIds.remove(postId)
@@ -5289,11 +5303,38 @@ private suspend fun restoreSupabaseSession() {
 
     fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
         val before = _uiState.value.chatPrivacySettings
+        val ownerId = supabaseService.getCurrentUserId().orEmpty()
+        val previousPreview = NotificationPreferenceStore.chatPreviewMode(appContext)
         _uiState.value = _uiState.value.copy(chatPrivacySettings = settings)
+        // Restrictive choices take effect immediately. A less private choice is
+        // not used by notifications until the server confirms its successful save.
+        if (ownerId.isNotBlank() &&
+            ChatNotificationPreviewPolicy.disclosureRank(settings.notificationPreview) <=
+            ChatNotificationPreviewPolicy.disclosureRank(previousPreview)
+        ) {
+            NotificationPreferenceStore.rememberChatPreviewMode(
+                appContext, ownerId, settings.notificationPreview
+            )
+        }
         viewModelScope.launch {
-            if (!chatRepository.updateChatPrivacySettings(settings)) {
-                _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
-                showToast("Couldn't update message privacy.")
+            chatPrivacySaveMutex.withLock {
+                val saved = runCatching { chatRepository.updateChatPrivacySettings(settings) }
+                    .getOrDefault(false)
+                if (supabaseService.getCurrentUserId() != ownerId) return@withLock
+                // Rapid privacy edits must not reapply an older choice over the
+                // user's newest selected setting.
+                if (_uiState.value.chatPrivacySettings != settings) return@withLock
+                if (saved) {
+                    NotificationPreferenceStore.rememberChatPreviewMode(
+                        appContext, ownerId, settings.notificationPreview
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
+                    NotificationPreferenceStore.rememberChatPreviewMode(
+                        appContext, ownerId, previousPreview
+                    )
+                    showToast("Couldn't update message privacy.")
+                }
             }
         }
     }
@@ -7564,8 +7605,24 @@ private suspend fun restoreSupabaseSession() {
         )
         if (item.id.isBlank() || !_uiState.value.isOnline) return
         viewModelScope.launch {
+            // Opening a detail route is only a candidate exposure. Count it after
+            // two seconds with the same listing still genuinely on screen.
+            kotlinx.coroutines.delay(2_000L)
+            if (_uiState.value.viewingProduct?.id != item.id || !_uiState.value.isOnline) {
+                return@launch
+            }
             val count = supabaseService.recordMarketView(item.id) ?: return@launch
             val latest = _uiState.value
+            val currentBaseline = latest.viewingProduct
+                ?.takeIf { it.id == item.id }?.viewsCount
+                ?: item.viewsCount
+            if (count > currentBaseline) {
+                com.example.data.views.MarketViewDisplayCoordinator.recordExposure(
+                    itemId = item.id,
+                    modelCount = currentBaseline,
+                    authoritativeCount = count,
+                )
+            }
             val update: (MarketItem) -> MarketItem = { current ->
                 if (current.id == item.id) current.copy(viewsCount = count) else current
             }
@@ -7594,9 +7651,9 @@ private suspend fun restoreSupabaseSession() {
             }
             val current = _uiState.value
             _uiState.value = current.copy(
-                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id }),
-                viewingProduct = item
+                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id })
             )
+            openProductDetail(item)
         }
     }
 
@@ -7950,7 +8007,7 @@ private suspend fun restoreSupabaseSession() {
 
         // These destination types are handled by MainActivity after read acknowledgement.
         if (activity.targetType?.lowercase() in setOf(
-                "channel", "giveaway", "drops", "boost", "wallet", "coins", "coin", "reward", "items"
+                "channel", "giveaway", "drops", "boost", "wallet", "coins", "coin", "reward", "coin_gift", "items"
             )) return
 
         activity.targetPostId?.let { postId ->

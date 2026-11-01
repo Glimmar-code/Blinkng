@@ -94,6 +94,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -199,7 +200,8 @@ fun PostCard(
     xFeedStyle: Boolean = false,
     isFeedScrolling: Boolean = false,
     onOpenPost: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    profileSurfaceColor: Color? = null
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
     val resolvedAuthorUsername = authorUsername.trim().removePrefix("@").ifBlank {
@@ -207,12 +209,15 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
-    val surfaceColor = if (xFeedStyle) {
+    val surfaceColor = profileSurfaceColor ?: if (xFeedStyle) {
         if (isDark) FeedCardSurface else Color.White
     } else if (isDark) FeedCardSurface else LightSurface
-    val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
-    val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
-    val dividerColor = if (isDark) FeedBorder else LightBorder
+    val primaryText = if (profileSurfaceColor != null) Color.White
+        else if (isDark) FeedTextPrimary else LightTextPrimary
+    val secondaryText = if (profileSurfaceColor != null) Color.White.copy(alpha = .72f)
+        else if (isDark) FeedTextSecondary else LightTextSecondary
+    val dividerColor = if (profileSurfaceColor != null) Color.White.copy(alpha = .22f)
+        else if (isDark) FeedBorder else LightBorder
     val socialBlue = FeedBlue
 
     val displayImages = remember(post.images) {
@@ -1004,6 +1009,9 @@ fun PostCard(
     }
 }
 
+internal fun pollVotingClosed(expiresAtMillis: Long?, nowMillis: Long): Boolean =
+    expiresAtMillis != null && nowMillis >= expiresAtMillis
+
 @Composable
 private fun PremiumPollCard(
     poll: PostPoll,
@@ -1015,6 +1023,17 @@ private fun PremiumPollCard(
     // Debounce taps until the server has had time to accept the vote; a
     // failed request can still be retried after the cooldown.
     val lastVoteAtMs = remember(poll.question) { longArrayOf(0L) }
+    var wallClock by remember(poll.expiresAtMillis) {
+        mutableLongStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(poll.expiresAtMillis) {
+        val deadline = poll.expiresAtMillis ?: return@LaunchedEffect
+        while (wallClock < deadline) {
+            delay(minOf(60_000L, (deadline - wallClock).coerceAtLeast(1_000L)))
+            wallClock = System.currentTimeMillis()
+        }
+    }
+    val pollClosed = pollVotingClosed(poll.expiresAtMillis, wallClock)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1046,7 +1065,7 @@ private fun PremiumPollCard(
                     .fillMaxWidth()
                     .padding(vertical = 3.dp)
                     .heightIn(min = 46.dp)
-                    .clickable(enabled = !poll.hasVoted && !selected) {
+                    .clickable(enabled = !pollClosed && !poll.hasVoted && !selected) {
                     val now = android.os.SystemClock.elapsedRealtime()
                     if (now - lastVoteAtMs[0] >= 1500L) {
                         lastVoteAtMs[0] = now
@@ -1065,7 +1084,7 @@ private fun PremiumPollCard(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f)
                         )
-                        if (poll.hasVoted || selected) {
+                        if (pollClosed || poll.hasVoted || selected) {
                             Text(
                                 text = "${(progress * 100).toInt()}%",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1073,7 +1092,7 @@ private fun PremiumPollCard(
                             )
                         }
                     }
-                    if (poll.hasVoted || selected) {
+                    if (pollClosed || poll.hasVoted || selected) {
                         Spacer(Modifier.size(6.dp))
                         LinearProgressIndicator(
                             progress = { progress },
@@ -1086,7 +1105,8 @@ private fun PremiumPollCard(
             }
         }
         Text(
-            text = "${poll.totalVotes} votes",
+            text = if (pollClosed) "${poll.totalVotes} votes · Poll closed"
+            else "${poll.totalVotes} votes",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(top = 4.dp)

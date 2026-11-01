@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.net.URLEncoder
@@ -15,7 +16,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /** Authenticated Supabase Storage adapter for Windows file workflows. */
-class DesktopMediaService(private val client: DesktopSupabaseClient) {
+class DesktopMediaService(private val client: DesktopSupabaseClient, httpClient: OkHttpClient? = null) {
     private val baseUrl = BlinkBackendDefaults.resolve(
         System.getenv("SUPABASE_URL") ?: System.getenv("VITE_SUPABASE_URL"),
         BlinkBackendDefaults.SUPABASE_URL,
@@ -24,13 +25,20 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
         System.getenv("SUPABASE_ANON_KEY") ?: System.getenv("VITE_SUPABASE_ANON_KEY"),
         BlinkBackendDefaults.SUPABASE_ANON_KEY,
     )
-    private val http = OkHttpClient.Builder()
+    private val http = httpClient ?: OkHttpClient.Builder()
         .connectTimeout(25, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    suspend fun uploadPostMedia(file: File): String = uploadPublic("post-media", file)
+    suspend fun uploadPostMedia(file: File, objectId: UUID = UUID.randomUUID()): String {
+        require(file.isFile && file.length() > 0) { "Choose a valid media file." }
+        val type = detectContentType(file)
+        require(type.startsWith("image/") || type.startsWith("video/")) { "Choose a supported photo or video." }
+        val limit = if (type.startsWith("video/")) 200L * 1024 * 1024 else MAX_POST_BYTES
+        require(file.length() <= limit) { "Photo limit: 25 MB. Video limit: 200 MB." }
+        return uploadPublic("post-media", file, objectId)
+    }
 
     suspend fun uploadMarketplaceMedia(file: File): String = uploadPublic("marketplace-media", file)
 
@@ -39,12 +47,7 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
     suspend fun createImagePost(text: String, file: File): DesktopFeedPost = withContext(Dispatchers.IO) {
         validateMediaFile(file, MAX_POST_BYTES)
         val url = uploadPostMedia(file)
-        val post = client.createPost(text)
-        patchRow(
-            "/rest/v1/feed_posts?id=eq.${encode(post.id)}",
-            JSONObject().put("image_url", url).put("type", "image"),
-        )
-        post.copy(imageUrl = url)
+        client.createPost(text, imageUrls = listOf(url))
     }
 
     suspend fun attachMarketplaceImage(itemId: String, file: File): String = withContext(Dispatchers.IO) {
@@ -65,11 +68,13 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
         url
     }
 
-    private suspend fun uploadPublic(bucket: String, file: File): String = withContext(Dispatchers.IO) {
+    private suspend fun uploadPublic(bucket: String, file: File, objectId: UUID? = null): String = withContext(Dispatchers.IO) {
         require(file.exists() && file.isFile) { "The selected file no longer exists." }
         val session = requireSession()
         val extension = file.extension.lowercase().takeIf { it.matches(Regex("[a-z0-9]{1,8}")) } ?: "bin"
-        val objectPath = "${session.userId}/${UUID.randomUUID()}.$extension"
+        val objectPath = if (bucket == "post-media") {
+            "users/${session.userId}/posts/${objectId ?: UUID.randomUUID()}.$extension"
+        } else "${session.userId}/${objectId ?: UUID.randomUUID()}.$extension"
         val encodedPath = objectPath.split('/').joinToString("/") { encode(it) }
         val contentType = detectContentType(file)
         val request = Request.Builder()
@@ -77,9 +82,10 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
             .header("apikey", anonKey)
             .header("Authorization", "Bearer ${session.accessToken}")
             .header("x-upsert", "false")
-            .post(file.readBytes().toRequestBody(contentType.toMediaTypeOrNull()))
+            .post(file.asRequestBody(contentType.toMediaTypeOrNull()))
             .build()
-        execute(request)
+        // A retry reuses its request-specific object ID after an ambiguous response.
+        execute(request, allowExisting = objectId != null)
         "$baseUrl/storage/v1/object/public/$bucket/$encodedPath"
     }
 
@@ -109,13 +115,18 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
         "png" -> "image/png"
         "webp" -> "image/webp"
         "gif" -> "image/gif"
+        "mp4", "m4v" -> "video/mp4"
+        "mov" -> "video/quicktime"
+        "webm" -> "video/webm"
         else -> "application/octet-stream"
     }
 
-    private fun execute(request: Request): String {
+    private fun execute(request: Request, allowExisting: Boolean = false): String {
         http.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
+                val duplicate = runCatching { JSONObject(text).optString("error") == "Duplicate" }.getOrDefault(false)
+                if (allowExisting && (response.code == 409 || duplicate)) return text
                 val message = runCatching {
                     JSONObject(text).optString("message").ifBlank { JSONObject(text).optString("error") }
                 }.getOrNull().orEmpty()
