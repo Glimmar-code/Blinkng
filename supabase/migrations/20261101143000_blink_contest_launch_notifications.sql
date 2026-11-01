@@ -143,8 +143,10 @@ begin
   perform private.blink_channel_emit_due(200);
   if not exists(select 1 from public.blink_claim_channel_push_notifications(1))
      and not exists(select 1 from public.blink_essential_email_outbox
-       (status='pending' and available_at<=now())
-         or (status='sending' and updated_at<now()-interval '10 minutes')) then
+       where kind='contest_launch' and (
+         (status='pending' and available_at<=now())
+         or (status='sending' and updated_at<now()-interval '10 minutes')
+       )) then
     return false;
   end if;
   select worker_token into secret from private.blink_channel_worker_credentials where singleton;
