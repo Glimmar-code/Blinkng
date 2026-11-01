@@ -42,6 +42,7 @@ begin
       'action','open_contest'
     )
   from auth.users u
+  join public.profiles p on p.id=u.id
   where u.deleted_at is null
     and (u.banned_until is null or u.banned_until <= now())
     and not exists (
