@@ -275,7 +275,8 @@ begin
   ) z;
 
   return jsonb_build_object('topic',jsonb_build_object(
-    'id',t.id,'slug',t.slug,'name',t.name,'category',t.category,'description',t.description),
+    'id',t.id,'slug',t.slug,'name',t.name,'category',t.category,'description',t.description,
+    'following',exists(select 1 from public.blink_contest_topic_follows f where f.topic_id=t.id and f.user_id=auth.uid())),
     'contests',v_contests,'participants',v_people,
     'total_contests',(select count(*) from public.blink_contests where topic_id=t.id and status in ('published','paused','completed','cancelled')),
     'completed_contests',(select count(*) from public.blink_contests where topic_id=t.id and status='completed'),
@@ -284,6 +285,68 @@ begin
     'prizes_awarded',(select coalesce(sum(prize_ngn),0) from public.blink_contest_history_participants h
       join public.blink_contests c on c.id=h.contest_id where c.topic_id=t.id));
 end; $$;
+
+create or replace function public.admin_save_blink_contest_topic(p_id uuid,p_data jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $
+declare v_id uuid; v_slug text; v_name text; v_category text; v_description text;
+begin
+  perform private.require_blink_admin();
+  if p_data is null or jsonb_typeof(p_data)<>'object' or octet_length(p_data::text)>3000
+    then raise exception 'INVALID_TOPIC'; end if;
+  v_name:=trim(coalesce(p_data->>'name',''));
+  v_category:=trim(coalesce(p_data->>'category',''));
+  v_slug:=lower(trim(both '-' from regexp_replace(v_name,'[^a-zA-Z0-9]+','-','g')));
+  v_description:=trim(coalesce(p_data->>'description',''));
+  if length(v_name) not between 3 and 100 or length(v_category) not between 2 and 60
+    or length(v_description)>500 or v_slug='' then raise exception 'INVALID_TOPIC'; end if;
+  if p_id is null then
+    insert into public.blink_contest_topics(slug,name,category,description,sort_order)
+      values(v_slug,v_name,v_category,v_description,500)
+      returning id into v_id;
+  else
+    update public.blink_contest_topics set name=v_name,category=v_category,
+      description=v_description where id=p_id returning id into v_id;
+    if v_id is null then raise exception 'CONTEST_TOPIC_NOT_FOUND'; end if;
+  end if;
+  return (select to_jsonb(t) from public.blink_contest_topics t where id=v_id);
+end; $;
+
+create or replace function public.admin_set_blink_contest_topic_active(p_topic_id uuid,p_active boolean)
+returns jsonb language plpgsql security definer set search_path='' as $
+begin
+  perform private.require_blink_admin();
+  update public.blink_contest_topics set is_active=p_active where id=p_topic_id;
+  if not found then raise exception 'CONTEST_TOPIC_NOT_FOUND'; end if;
+  return jsonb_build_object('id',p_topic_id,'is_active',p_active);
+end; $;
+
+create or replace function private.blink_notify_followed_contest_topic()
+returns trigger language plpgsql security definer set search_path='' as $
+declare v_topic_name text;
+begin
+  if new.status='published' and old.status is distinct from 'published'
+     and new.topic_id is not null then
+    select name into v_topic_name from public.blink_contest_topics where id=new.topic_id;
+    insert into public.notifications(user_id,actor_id,type,target_type,target_id,
+      text,sub_text,is_read,metadata)
+    select f.user_id,new.created_by,'system'::public.notification_type_enum,
+      'contest',new.id,left('A new contest is scheduled in a topic you follow',180),
+      left(coalesce(v_topic_name,'BLINK Contest')||' · '||new.title,240),false,
+      jsonb_build_object('kind','blink_contest_topic_update','topic_id',new.topic_id,
+        'contest_id',new.id,'contest_title',new.title)
+    from public.blink_contest_topic_follows f
+    where f.topic_id=new.topic_id and f.user_id<>new.created_by
+      and not exists(select 1 from public.notifications n
+        where n.user_id=f.user_id and n.target_id=new.id
+          and n.metadata->>'kind'='blink_contest_topic_update');
+  end if;
+  return new;
+end; $;
+revoke all on function private.blink_notify_followed_contest_topic() from public,anon,authenticated;
+drop trigger if exists blink_contest_topic_follow_notification on public.blink_contests;
+create trigger blink_contest_topic_follow_notification
+after update of status on public.blink_contests
+for each row execute function private.blink_notify_followed_contest_topic();
 
 create or replace function public.follow_blink_contest_topic(p_topic_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -379,9 +442,9 @@ returns jsonb language sql stable security definer set search_path='' as $$
 $$;
 
 revoke all on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),
- public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid) from public,anon;
+ public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid),\n public.admin_save_blink_contest_topic(uuid,jsonb),public.admin_set_blink_contest_topic_active(uuid,boolean) from public,anon,authenticated;
 grant execute on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),
- public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid) to authenticated;
+ public.follow_blink_contest_topic(uuid),public.unfollow_blink_contest_topic(uuid) to authenticated;\ngrant execute on function public.admin_save_blink_contest_topic(uuid,jsonb),\n public.admin_set_blink_contest_topic_active(uuid,boolean) to authenticated;
 revoke all on function public.admin_save_blink_contest(uuid,jsonb) from public,anon,authenticated;
 grant execute on function public.admin_save_blink_contest(uuid,jsonb) to authenticated;
 revoke all on function public.list_blink_contests() from public,anon;
