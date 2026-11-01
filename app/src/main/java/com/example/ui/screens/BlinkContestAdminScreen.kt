@@ -89,6 +89,11 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
     var pendingContestError by remember { mutableStateOf<String?>(null) }
 
+    var topicRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicId by remember { mutableStateOf("") }
+    var topicMenu by remember { mutableStateOf(false) }
+    var competitionScope by remember { mutableStateOf("campus") }
+    var season by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf("") }
@@ -115,6 +120,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     val resetDraft: () -> Unit = {
         editingContestId = null
         title = ""; description = ""; rules = ""; category = "General"
+        topicId = ""; competitionScope = "campus"; season = ""
         university = ""; cover = ""; coverChoice = null
         registrationStart = ""; registrationEnd = ""; votingStart = ""
         votingEnd = ""; resultsDate = ""
@@ -130,6 +136,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         if (message.isNotBlank()) snackbarHostState.showSnackbar(message)
     }
     LaunchedEffect(revision) {
+        api.topicDirectory().onSuccess { topicRows = it.contestObjects() }
         contestsLoading = true
         api.adminContests().onSuccess { contests = it.contestObjects() }
             .onFailure { message = it.message ?: "Cannot load contests." }
@@ -228,6 +235,50 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         item { OutlinedTextField(description, { description = it.take(2000) }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
         item { OutlinedTextField(rules, { rules = it.take(4000) }, label = { Text("Competition rules") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
         item { OutlinedTextField(category, { category = it.take(60) }, label = { Text("Category") }, modifier = Modifier.fillMaxWidth()) }
+        item {
+            Text("Contest topic", style = MaterialTheme.typography.titleMedium)
+            Box {
+                OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(topicRows.firstOrNull { it.optString("id") == topicId }?.optString("name")
+                        ?: "Select a topic (or leave unassigned)")
+                }
+                DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
+                    DropdownMenuItem(text = { Text("No topic selected") }, onClick = {
+                        topicId = ""; topicMenu = false
+                    })
+                    topicRows.forEach { topic ->
+                        DropdownMenuItem(text = { Text(topic.optString("name")) }, onClick = {
+                            topicId = topic.optString("id")
+                            category = topic.optString("category")
+                            topicMenu = false
+                        })
+                    }
+                }
+            }
+            Text("Choose one of the public topics users can browse. You can add new topics through the admin topic library.",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Text("Competition coverage", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = competitionScope == "campus", onClick = { competitionScope = "campus" },
+                    label = { Text("Campus") })
+                FilterChip(selected = competitionScope == "nationwide", onClick = {
+                    competitionScope = "nationwide"; university = ""
+                }, label = { Text("Nationwide") })
+            }
+            if (competitionScope == "campus") {
+                OutlinedTextField(university, { university = it.take(120) },
+                    label = { Text("University (required for campus contests)") },
+                    modifier = Modifier.fillMaxWidth())
+            } else {
+                Text("Open to eligible BLINK users across all universities.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(season, { season = it.take(80) },
+                label = { Text("Season (optional, e.g. BLINK Season 1)") },
+                modifier = Modifier.fillMaxWidth())
+        }
         item { OutlinedTextField(university, { university = it.take(120) }, label = { Text("University (optional, blank = all)") }, modifier = Modifier.fillMaxWidth()) }
         item {
             Text("Contest cover", style = MaterialTheme.typography.titleMedium)
@@ -300,6 +351,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     .put("description", description.trim())
                     .put("rules", rules.trim())
                     .put("category", category.trim().ifBlank { "General" })
+                    .put("topic_id", topicId.ifBlank { JSONObject.NULL })
+                    .put("competition_scope", competitionScope)
+                    .put("season", season.trim())
                     .put("university", university.trim())
                     .put("banner_url", cover.trim())
                     .put("registration_opens_at", registrationStart.trim())
@@ -371,6 +425,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                                 description = contest.optString("description")
                                 rules = contest.optString("rules")
                                 category = contest.optString("category")
+                                topicId = contest.optString("topic_id").takeUnless { it == "null" }.orEmpty()
+                                competitionScope = contest.optString("competition_scope").ifBlank { "campus" }
+                                season = contest.optString("season").takeUnless { it == "null" }.orEmpty()
                                 university = contest.optString("university").takeUnless { it == "null" }.orEmpty()
                                 cover = contest.optString("banner_url").takeUnless { it == "null" }.orEmpty()
                                 coverChoice = null
