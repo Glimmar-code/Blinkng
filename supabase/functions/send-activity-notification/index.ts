@@ -157,6 +157,7 @@ function wireType(notification: Record<string, unknown>): string {
   const type = String(notification.type ?? "social").toLowerCase();
   const targetType = String(notification.target_type ?? "").toLowerCase();
   const metadata = (notification.metadata ?? {}) as Record<string, unknown>;
+  if (metadata.kind === "blink_contest_launch") return "admin";
   if (targetType === "story" && type === "like") return "story_like";
   if (type === "comment" && metadata.is_reply === true) return "reply";
   return type;
@@ -227,6 +228,20 @@ Deno.serve(async (req) => {
       );
       if (authError || authorized !== true) {
         return json({ error: "Contact notification was not independently authorized" }, 403);
+      }
+    } else if (kind === "blink_contest_launch" && notification.target_type === "contest") {
+      const contestId = String(notification.metadata?.contest_id ?? "");
+      if (!contestId || contestId !== String(notification.target_id ?? "")) {
+        return json({ error: "Invalid contest launch notification" }, 403);
+      }
+      const { data: contest, error: contestError } = await admin
+        .from("blink_contests")
+        .select("id,title,status")
+        .eq("id", contestId)
+        .maybeSingle();
+      if (contestError || !contest || contest.status !== "published" ||
+          String(contest.title) !== String(notification.metadata?.contest_title ?? "")) {
+        return json({ ok: true, skipped: "contest_no_longer_published" });
       }
     } else if (kind === "blink_channel_update" && notification.target_type === "channel") {
       // Every recipient is rechecked at delivery time: unfollowing, banning
@@ -328,15 +343,19 @@ Deno.serve(async (req) => {
   const senderAvatar = String(actor?.avatar_url ?? "");
   const action = String(notification.text ?? "New activity").trim();
   const body = String(notification.sub_text ?? "").trim() || action;
-  const title = notification.metadata?.kind === "blink_contact_joined"
-    ? `${senderName} from your contacts is now on BLINK!`
-    : action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
-      ? action : `${senderName} ${action}`.trim();
+  const isContestLaunch = notification.metadata?.kind === "blink_contest_launch";
+  const contestTitle = String(notification.metadata?.contest_title ?? body).trim();
+  const title = isContestLaunch
+    ? "🏆 A New BLINK Contest Is LIVE!"
+    : notification.metadata?.kind === "blink_contact_joined"
+      ? `${senderName} from your contacts is now on BLINK!`
+      : action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
+        ? action : `${senderName} ${action}`.trim();
 
   const data: Record<string, string> = {
     type,
     title: title.slice(0, 180),
-    body: body.slice(0, 1200),
+    body: (isContestLaunch ? `${contestTitle} has officially started. Join, showcase your talent and compete for prizes!` : body).slice(0, 1200),
     notification_id: notificationId,
     recipient_id: recipientId,
     sender_id: String(notification.actor_id ?? ""),
