@@ -42,6 +42,8 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     var topicDetail by remember { mutableStateOf<JSONObject?>(null) }
     var topicQuery by remember { mutableStateOf("") }
     var topicFollowed by remember { mutableStateOf(false) }
+    var selectedParticipant by remember { mutableStateOf<String?>(null) }
+    var participantProfile by remember { mutableStateOf<JSONObject?>(null) }
     var selected by remember { mutableStateOf<String?>(null) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
     var detailError by remember { mutableStateOf<String?>(null) }
@@ -118,6 +120,13 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
         runCatching { api.contestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
     }
+    LaunchedEffect(selectedParticipant) {
+        participantProfile = null
+        selectedParticipant?.let { id ->
+            runCatching { api.contestParticipantProfile(id) }.onSuccess { participantProfile = it }
+                .onFailure { message = it.message ?: "Participant history unavailable." }
+        }
+    }
     LaunchedEffect(selectedTopic, revision) {
         topicDetail = null
         topicFollowed = false
@@ -184,7 +193,8 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                     }
                     item { Text("All participants and voting records", style = MaterialTheme.typography.titleLarge) }
                     items(participants) { person ->
-                        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().clickable { selectedParticipant = person.optString("user_id") }
+                            .padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             AsyncImage(model = person.optString("avatar_url").takeIf { it.startsWith("https://") },
                                 contentDescription = null, modifier = Modifier.size(42.dp).clip(CircleShape))
                             Column(Modifier.weight(1f).padding(start = 10.dp)) {
@@ -604,6 +614,26 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                     }
                 }
             }
+        )
+    }
+    participantProfile?.let { profile ->
+        val person = profile.optJSONObject("participant") ?: JSONObject()
+        val history = profile.optJSONArray("history")?.rows().orEmpty()
+        AlertDialog(
+            onDismissRequest = { selectedParticipant = null; participantProfile = null },
+            title = { Text("Contest profile · @" + person.optString("username")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(person.optString("university"))
+                    Text("${profile.optInt("contests_entered")} contests · ${profile.optInt("wins")} wins")
+                    Text("${profile.optLong("total_votes")} career votes")
+                    Text("Prizes won: ${prize(profile.optInt("prizes_won_ngn"))}")
+                    history.take(10).forEach { item ->
+                        Text("${item.optString("contest_title")} · ${item.optInt("votes")} votes · ${item.optString("status")}")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { selectedParticipant = null; participantProfile = null }) { Text("Close") } }
         )
     }
 }
