@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 type Kind =
   | "welcome" | "new_device" | "suspicious_activity"
   | "new_follower" | "unread_messages" | "post_engagement"
-  | "reel_milestone" | "leaderboard" | "contest_launch" | "referral_confirmed";
+  | "reel_milestone" | "leaderboard" | "contest_launch" | "referral_confirmed" | "referral_milestone";
 const SOCIAL_FLAGS = {
   new_follower: "new_follower_enabled",
   unread_messages: "unread_messages_enabled",
@@ -97,6 +97,13 @@ const MESSAGES: Record<Kind, Message> = {
     intro: "Someone joined BLINK using your referral link and confirmed their email address. Your referral dashboard has been updated.",
     noteHeading: "Keep growing your network",
     note: "Invite more people to join BLINK and follow your referral achievements in Refer & Grow. Referral rewards are governed by the rules shown in the app.",
+  },
+  referral_milestone: {
+    subject: "You reached a BLINK referral milestone!",
+    heading: "Your referrals are making an impact!",
+    intro: "You reached a new confirmed-referral milestone on BLINK. Open Refer & Grow to see your achievement.",
+    noteHeading: "Your progress",
+    note: "Thank you for helping more people discover BLINK. Any rewards or benefits are shown in the app and follow its published rules.",
   },
 };
 
@@ -334,28 +341,55 @@ Deno.serve(async (req: Request) => {
         intro: `The contest "${contestName}" has officially started. Open BLINK, visit Contest, and join the competition.`,
       };
     }
-    if (row.kind === "referral_confirmed") {
-      const referredUserId = row.event_key.startsWith("referral_confirmed:")
+    if (row.kind === "referral_confirmed" || row.kind === "referral_milestone") {
+      const isMilestone = row.kind === "referral_milestone";
+      const referredUserId = !isMilestone && row.event_key.startsWith("referral_confirmed:")
         ? row.event_key.slice("referral_confirmed:".length) : "";
-      if (!/^[a-f0-9-]{36}$/i.test(referredUserId)) {
+      if (!isMilestone && !/^[a-f0-9-]{36}$/i.test(referredUserId)) {
         await setStatus(row, "failed", "invalid_referral_event_key");
         failed++;
         continue;
       }
-      const { data: referral, error: referralError } = await admin
-        .from("blink_referrals")
-        .select("referrer_user_id,status")
-        .eq("referred_user_id", referredUserId)
-        .maybeSingle();
-      if (referralError || !referral) {
-        await setStatus(row, "failed", "referral_lookup_failed");
-        failed++;
-        continue;
-      }
-      if (referral.status !== "confirmed" || referral.referrer_user_id !== row.user_id) {
-        await setStatus(row, "failed", "referral_not_confirmed_or_wrong_recipient");
-        skipped++;
-        continue;
+      if (isMilestone) {
+        const milestone = Number(row.event_key.startsWith("referral_milestone:")
+          ? row.event_key.slice("referral_milestone:".length) : "");
+        if (![1, 5, 10, 25, 50, 100].includes(milestone)) {
+          await setStatus(row, "failed", "invalid_referral_milestone");
+          failed++;
+          continue;
+        }
+        const { data: achievement, error: achievementError } = await admin
+          .from("blink_referral_achievements")
+          .select("confirmed_referrals")
+          .eq("user_id", row.user_id)
+          .maybeSingle();
+        if (achievementError || !achievement || Number(achievement.confirmed_referrals) < milestone) {
+          await setStatus(row, "failed", "referral_milestone_not_verified");
+          failed++;
+          continue;
+        }
+        message = {
+          ...message!,
+          subject: `You reached ${milestone} confirmed BLINK referrals!`,
+          heading: `${milestone} confirmed referrals!`,
+          intro: `Your BLINK network has reached ${milestone} confirmed referrals. Open Refer & Grow to see your achievement.`,
+        };
+      } else {
+        const { data: referral, error: referralError } = await admin
+          .from("blink_referrals")
+          .select("referrer_user_id,status")
+          .eq("referred_user_id", referredUserId)
+          .maybeSingle();
+        if (referralError || !referral) {
+          await setStatus(row, "failed", "referral_lookup_failed");
+          failed++;
+          continue;
+        }
+        if (referral.status !== "confirmed" || referral.referrer_user_id !== row.user_id) {
+          await setStatus(row, "failed", "referral_not_confirmed_or_wrong_recipient");
+          skipped++;
+          continue;
+        }
       }
       const { data: userSettings, error: settingsError } = await admin
         .from("user_settings").select("email_notifs_enabled")
