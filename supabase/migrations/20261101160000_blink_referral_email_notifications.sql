@@ -15,7 +15,7 @@ alter table public.blink_essential_email_outbox
 
 create index if not exists blink_referral_email_due_idx
   on public.blink_essential_email_outbox(status,priority,available_at,created_at)
-  where status='pending' and kind='referral_confirmed';
+  where status='pending' and kind in ('referral_confirmed','referral_milestone');
 
 create or replace function private.blink_queue_referral_confirmation_email()
 returns trigger
