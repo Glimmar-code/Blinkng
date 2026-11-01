@@ -13,20 +13,29 @@ const migrations = [
   '20261007115500_optimize_flagged_rls_auth_initplans.sql',
   '20261007120500_keep_ranked_profile_projections_private.sql',
   '20261007121500_fix_study_circle_rls_recursion.sql',
+  '20261101120000_presence_session_lease_accuracy.sql',
 ];
 const db = new PGlite({ extensions: { pg_trgm } });
 try {
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create schema private; create schema private_ranking; create schema extensions; create schema cron;
     create table auth.users(id uuid primary key, email text);
-    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+    create table auth.sessions(id uuid primary key, user_id uuid not null);
+    create function auth.uid() returns uuid language sql stable as $select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$;
+    create function auth.jwt() returns jsonb language sql stable as $select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$;
     grant usage on schema public,auth,extensions,private_ranking to authenticated;
     grant execute on function auth.uid() to authenticated;
+    grant execute on function auth.jwt() to authenticated;
     create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text);
-    create function cron.schedule(text,text,text) returns bigint language sql as $$insert into cron.job(jobname,schedule,command) values ($1,$2,$3) returning jobid$$;
+    create function cron.schedule(text,text,text) returns bigint language sql as $insert into cron.job(jobname,schedule,command) values ($1,$2,$3) returning jobid$;
+    create function cron.unschedule(bigint) returns boolean language sql as $delete from cron.job where jobid = $1 returning true$;
     create publication supabase_realtime;
     create extension pg_trgm with schema extensions;`);
   for (const sql of fixture.schema) await db.exec(sql);
+  await db.exec(`create table if not exists public.user_chat_privacy (
+    user_id uuid primary key, show_online boolean not null default true,
+    show_last_seen boolean not null default true
+  );`);
   const pending = [...fixture.functions];
   while (pending.length) {
     let created = 0;
@@ -43,6 +52,7 @@ try {
     console.log('PASS migration:', name);
   }
   await behaviorTests(db);
+  await (await import('./presence-session-tests.mjs')).presenceSessionTests(db);
   await (await import('./ranked-profile-tests.mjs')).rankedProfileTests(db);
   await (await import('./legacy-hardening-tests.mjs')).legacyHardeningTests(db);
   await (await import('./feed-recovery-tests.mjs')).feedRecoveryTests(db);
