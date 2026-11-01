@@ -44,6 +44,7 @@ test("push delivery is durable, preference-gated and validates the live contest 
   assert.match(migration, /blink_contest_launch/);
   assert.match(pushWorker, /send-activity-notification/);
   assert.match(pushWorker, /send-essential-email/);
+  assert.match(migration, /status='sending'.*updated_at<now\(\)-interval '10 minutes'/s);
   assert.match(activityWorker, /kind === "blink_contest_launch"/);
   assert.match(activityWorker, /contest\.status !== "published"/);
   assert.match(activityWorker, /push_notifs_enabled/);
