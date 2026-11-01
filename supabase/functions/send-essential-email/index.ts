@@ -209,7 +209,7 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  if (serviceAuthorized) {
+  if (kindFilter === "contest_launch") {
     const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
     const nowIso = new Date().toISOString();
     const { error: recoverError } = await admin.from("blink_essential_email_outbox")
