@@ -389,8 +389,9 @@ fun BlinkContestScreen(
                                 Text("›", fontSize = 22.sp, color = MaterialTheme.colorScheme.primary)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text("${topic.optInt("contests_total")} contests", fontSize = 11.sp)
+                                Text("${topic.optInt("contests_total")} contests (${topic.optInt("completed_contests")} completed)", fontSize = 11.sp)
                                 Text("${topic.optInt("participants")} participants", fontSize = 11.sp)
+                                Text("${topic.optInt("followers")} following", fontSize = 11.sp)
                                 Text("${NumberFormat.getNumberInstance(Locale.US).format(topic.optLong("votes"))} votes",
                                     fontSize = 11.sp)
                             }
@@ -540,6 +541,8 @@ fun BlinkContestScreen(
                                 if (!contest.optString("season").isNullOrBlank() && contest.optString("season") != "null") Text(contest.optString("season"), fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                                 Text("${contest.optString("competition_scope").replaceFirstChar { it.uppercase() }} · ${contest.optString("university").takeUnless { it == "null" }.orEmpty()}",
                                     fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Applications: ${dateLabel(contest.optString("registration_opens_at"))} · Voting closes: ${dateLabel(contest.optString("voting_closes_at"))}",
+                                    fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes · ${contest.optString("status")}",
                                     fontSize = 11.sp)
                             }
