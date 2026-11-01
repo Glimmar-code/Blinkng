@@ -2,6 +2,32 @@
 -- In-app notifications are durable; push and email are dispatched by existing workers.
 begin;
 
+-- Production may not yet have installed the optional transactional email outbox.
+-- Create the service-only queue here so Contest launch delivery has a complete dependency.
+create table if not exists public.blink_essential_email_outbox (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    kind text not null check (kind in ('welcome','new_device','suspicious_activity',
+      'new_follower','unread_messages','post_engagement','reel_milestone','leaderboard','contest_launch')),
+    event_key text not null check (char_length(event_key) between 8 and 160),
+    status text not null default 'pending'
+      check (status in ('pending','sending','sent','failed')),
+    priority smallint not null default 10 check (priority between 1 and 10),
+    attempts integer not null default 0 check (attempts between 0 and 10),
+    available_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    sent_at timestamptz,
+    last_error text,
+    unique(user_id,kind,event_key)
+);
+create index if not exists blink_essential_email_due_idx
+  on public.blink_essential_email_outbox(status,priority,available_at,created_at)
+  where status='pending';
+alter table public.blink_essential_email_outbox enable row level security;
+revoke all on public.blink_essential_email_outbox from public,anon,authenticated;
+grant select,insert,update,delete on public.blink_essential_email_outbox to service_role;
+
 alter table public.blink_essential_email_outbox
   drop constraint if exists blink_essential_email_outbox_kind_check;
 alter table public.blink_essential_email_outbox
