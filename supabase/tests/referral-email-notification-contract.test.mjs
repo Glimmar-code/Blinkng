@@ -21,9 +21,7 @@ test("email queue is deduplicated and requires a verified opted-in referrer", ()
   assert.match(migration, /on conflict\(user_id,kind,event_key\) do nothing/i);
   assert.match(migration, /referral_confirmed:/);
   assert.match(migration, /referral_milestone:/);
-  assert.match(migration, /confirmed_referrals in \\(1,5,10,25,50,100\\)/i);
-  assert.match(migration, /referral_milestone:/);
-  assert.match(migration, /confirmed_referrals in \\(1,5,10,25,50,100\\)/i);
+  assert.match(migration, /confirmed_referrals in \(1,5,10,25,50,100\)/i);
 });
 
 test("worker revalidates the referral relationship before sending", () => {
@@ -33,6 +31,7 @@ test("worker revalidates the referral relationship before sending", () => {
   assert.match(worker, /referral\.status !== "confirmed"/);
   assert.match(worker, /referral\.referrer_user_id !== row\.user_id/);
   assert.match(worker, /userSettings\?\.email_notifs_enabled !== true/);
+  assert.match(worker, /referral_milestone_not_verified/);
 });
 
 test("referral emails do not create or award coins and do not change Auth confirmation", () => {
