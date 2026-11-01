@@ -268,7 +268,7 @@ class MainActivity : ComponentActivity() {
         presenceHeartbeatJob = lifecycleScope.launch {
             while (isActive && viewModel.uiState.value.destination == AppDestination.MAIN) {
                 viewModel.updatePresence(true)
-                delay(60_000)
+                delay(30_000)
             }
         }
     }
@@ -637,7 +637,7 @@ class MainActivity : ComponentActivity() {
                     .recordException(error)
             }
         }
-        stopPresenceHeartbeat(markOffline = true)
+        stopPresenceHeartbeat(markOffline = false)
         super.onStop()
     }
 
@@ -787,6 +787,25 @@ class MainActivity : ComponentActivity() {
             val idleHomeForPrompts = idleAppForUpdate &&
                 uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
 
+            // Refresh the authoritative conversation presence projection while Messages
+            // or a chat is visible. This keeps an already-open chat from showing stale status.
+            LaunchedEffect(
+                uiState.destination,
+                uiState.selectedTab,
+                uiState.activeConversationPartner,
+                uiState.myProfile.id
+            ) {
+                val shouldRefreshMessages = uiState.destination == AppDestination.MAIN &&
+                    uiState.myProfile.id.isNotBlank() &&
+                    (uiState.selectedTab == MainTab.MESSAGES || uiState.activeConversationPartner != null)
+                if (shouldRefreshMessages) {
+                    viewModel.refreshMessagePresence()
+                    while (isActive) {
+                        delay(30_000L)
+                        viewModel.refreshMessagePresence()
+                    }
+                }
+            }
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
                     startPresenceHeartbeat()

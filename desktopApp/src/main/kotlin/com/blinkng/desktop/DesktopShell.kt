@@ -195,6 +195,13 @@ fun runBlinkDesktopApplication() = application {
     }
 
     LaunchedEffect(Unit) { appState.initialize() }
+    LaunchedEffect(appState.session?.userId, isWindowVisible) {
+        val owner = appState.session?.userId ?: return@LaunchedEffect
+        while (appState.session?.userId == owner && isWindowVisible) {
+            runCatching { appState.client.setMyPresence(true) }
+            delay(30_000L)
+        }
+    }
     LaunchedEffect(startupRetrySerial) {
         if (startupRetrySerial > 0) appState.retryProfileLoad()
     }

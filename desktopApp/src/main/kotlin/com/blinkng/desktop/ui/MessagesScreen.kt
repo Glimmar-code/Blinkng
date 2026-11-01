@@ -106,6 +106,7 @@ import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.Instant
@@ -199,6 +200,15 @@ fun MessagesScreen(state: DesktopAppState) {
             }
             .onFailure { if (state.session?.userId == owner) error = it.message }
         if (state.session?.userId == owner) loading = false
+    }
+
+    LaunchedEffect(myUserId) {
+        if (myUserId.isNotBlank()) {
+            while (state.session?.userId == myUserId) {
+                delay(30_000L)
+                if (state.session?.userId == myUserId) loadConversations()
+            }
+        }
     }
 
     fun changeControl(action: suspend () -> Boolean) {

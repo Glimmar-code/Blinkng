@@ -239,10 +239,14 @@ class ChatRepository(
                         partnerName = o.optString("partner_name").ifBlank { o.optString("partner_username") },
                         partnerAvatar = o.optString("partner_avatar"),
                         isOnline = o.optBoolean("partner_online", false),
-                        lastSeen = o.optString("partner_last_seen")
-                            .takeIf { it.isNotBlank() && !it.equals("null", true) }
-                            ?.let { TimeFormatters.presenceStatus(false, it) }
-                            ?: "Last seen recently",
+                        lastSeen = if (o.optBoolean("partner_online", false)) {
+                            "Active now"
+                        } else {
+                            o.optString("partner_last_seen")
+                                .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                                ?.let { TimeFormatters.presenceStatus(false, it) }
+                                ?: "Last seen unavailable"
+                        },
                         lastMessage = o.optString("last_message").takeUnless { it.equals("null", true) }.orEmpty(),
                         lastMessageTime = o.optString("last_message_at")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) }

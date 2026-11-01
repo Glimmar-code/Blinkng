@@ -138,7 +138,7 @@ class SupabaseRealtimeManager private constructor() {
         } catch (e: Exception) { Log.e(TAG, "Failed to initiate WebSocket connection", e); isConnecting.set(false); scheduleReconnect() }
     }
     private fun createListener() = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = ""; startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true) }
+        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = ""; startHeartbeat(); sendAccessToken(); subscribeToTables() }
         override fun onMessage(webSocket: WebSocket, text: String) = handleIncomingMessage(text)
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { handleDisconnected() }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "WebSocket Failure: ${t.message}", t); handleDisconnected(); scheduleReconnect() }
@@ -169,7 +169,6 @@ class SupabaseRealtimeManager private constructor() {
                         put("ref", "hb_${refCounter.getAndIncrement()}")
                     }.toString()
                 )
-                setPresence(true)
             }
         }
     }
@@ -376,7 +375,6 @@ class SupabaseRealtimeManager private constructor() {
         _messagesSubscribed.value = false
         lastAccessTokenSent = ""
         heartbeatJob?.cancel()
-        setPresence(false)
     }
     private fun scheduleReconnect() { reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) } }
     fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = "" }
