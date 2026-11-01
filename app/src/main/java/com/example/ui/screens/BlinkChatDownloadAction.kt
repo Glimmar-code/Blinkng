@@ -5,20 +5,29 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -135,19 +144,53 @@ internal fun BlinkChatDownloadAction(
             enabled = valid && state != "Saved to Downloads",
             onClick = performDownload
         ) {
-            Icon(
-                if (transferId != null && state in setOf("Downloading", "Download paused"))
-                    Icons.Default.Close
-                else if (state == "Saved to Downloads") Icons.Default.CheckCircle
-                else Icons.Default.Download,
-                contentDescription = when (state) {
-                    "Downloading", "Download paused" -> "Cancel ${kind} download"
-                    "Saved to Downloads" -> "${kind} saved in Downloads"
-                    else -> "Download ${kind}"
-                },
-                tint = Color(0xFF69B9FF),
-                modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+            val isDownloading = transferId != null &&
+                state in setOf("Downloading", "Download paused")
+            val animatedProgress by animateFloatAsState(
+                targetValue = (progress.coerceIn(0, 100) / 100f),
+                animationSpec = tween(260, easing = FastOutSlowInEasing),
+                label = "chatDownloadProgress"
             )
+            Box(
+                modifier = Modifier.size(if (compact) 22.dp else 26.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isDownloading && progress >= 0) {
+                    Canvas(Modifier.size(if (compact) 22.dp else 26.dp)) {
+                        val stroke = 2.dp.toPx()
+                        val arcSize = Size(size.width - stroke, size.height - stroke)
+                        val origin = Offset(stroke / 2f, stroke / 2f)
+                        drawArc(
+                            color = Color(0xFF69B9FF).copy(alpha = 0.22f),
+                            startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                            topLeft = origin, size = arcSize, style = Stroke(stroke)
+                        )
+                        drawArc(
+                            color = Color(0xFF69B9FF),
+                            startAngle = -90f, sweepAngle = 360f * animatedProgress,
+                            useCenter = false, topLeft = origin, size = arcSize,
+                            style = Stroke(stroke, cap = StrokeCap.Round)
+                        )
+                    }
+                }
+                Icon(
+                    when {
+                        isDownloading -> Icons.Default.Close
+                        state == "Saved to Downloads" -> Icons.Default.CheckCircle
+                        state in setOf("Download failed", "Download unavailable") -> Icons.Default.Refresh
+                        else -> Icons.Default.Download
+                    },
+                    contentDescription = when (state) {
+                        "Downloading", "Download paused" -> "Cancel ${kind} download"
+                        "Saved to Downloads" -> "${kind} saved in Downloads"
+                        "Download failed", "Download unavailable" -> "Retry ${kind} download"
+                        else -> "Download ${kind}"
+                    },
+                    tint = if (state in setOf("Download failed", "Download unavailable"))
+                        Color(0xFFFF8A80) else Color(0xFF69B9FF),
+                    modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+                )
+            }
         }
         if (menuLabel != null) {
             Text(
