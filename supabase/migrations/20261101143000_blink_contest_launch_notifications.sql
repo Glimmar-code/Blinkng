@@ -104,3 +104,31 @@ grant execute on function public.blink_claim_channel_push_notifications(integer)
 
 notify pgrst,'reload schema';
 commit;
+
+-- Keep the existing minute scheduler draining email even after all FCM rows settle.
+create or replace function private.blink_channel_dispatch_due()
+returns boolean language plpgsql security definer set search_path=''
+as $$
+declare secret text;
+begin
+  perform private.blink_channel_emit_due(200);
+  if not exists(select 1 from public.blink_claim_channel_push_notifications(1))
+     and not exists(select 1 from public.blink_essential_email_outbox
+       where kind='contest_launch' and status='pending' and available_at<=now()) then
+    return false;
+  end if;
+  select worker_token into secret from private.blink_channel_worker_credentials where singleton;
+  if secret is null then raise exception 'CHANNEL_WORKER_SECRET_MISSING'; end if;
+  perform net.http_post(
+    url := 'https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/blink-channel-push-worker',
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'x-blink-channel-worker',secret
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+  return true;
+end
+$$;
+revoke all on function private.blink_channel_dispatch_due() from public,anon,authenticated,service_role;
