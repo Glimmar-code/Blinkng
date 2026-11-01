@@ -442,6 +442,11 @@ class MainActivity : ComponentActivity() {
                 itemsOpenSignal += 1
             }
 
+            BlinkNotificationHelper.ACTION_OPEN_CONTEST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(2)
+            }
+
             BlinkNotificationHelper.ACTION_OPEN_BOOST -> {
                 viewModel.setTab(MainTab.HOME)
                 viewModel.setFeedSubTab(0)
