@@ -287,10 +287,13 @@ returns table(
 )
 language sql
 stable
-security invoker
-set search_path = public, private, pg_temp
+security definer
+set search_path = ''
 as $function$
-    with summaries as (
+    with current_user_id as (
+        select auth.uid() as uid
+    ),
+    summaries as (
         select
             c.id as conversation_id,
             other.user_id as partner_id,
@@ -303,13 +306,20 @@ as $function$
             lm.created_at as last_message_at,
             coalesce(uc.unread_count, 0)::bigint as unread_count,
             coalesce(lm.created_at, c.updated_at, c.created_at) as cursor_at
-        from public.conversation_participants mine
-        join public.conversations c on c.id = mine.conversation_id
+        from current_user_id me
+        join public.conversation_participants mine
+          on mine.user_id = me.uid
+         and mine.left_at is null
+        join public.conversations c
+          on c.id = mine.conversation_id
         join public.conversation_participants other
           on other.conversation_id = c.id
-         and other.user_id <> (select auth.uid())
-        left join public.profiles p on p.id = other.user_id
-        left join lateral private.get_chat_presence_for_viewer(other.user_id) presence on true
+         and other.user_id <> me.uid
+         and other.left_at is null
+        left join public.profiles p
+          on p.id = other.user_id
+        left join lateral private.get_chat_presence_for_viewer(other.user_id) presence
+          on true
         left join lateral (
             select m.content, m.created_at
             from public.messages m
@@ -322,11 +332,11 @@ as $function$
             select count(*) as unread_count
             from public.messages m
             where m.conversation_id = c.id
-              and m.sender_id <> (select auth.uid())
+              and m.sender_id <> me.uid
               and coalesce(m.deleted_for_everyone, false) = false
               and m.created_at > coalesce(mine.last_read_at, 'epoch'::timestamptz)
         ) uc on true
-        where mine.user_id = (select auth.uid())
+        where me.uid is not null
     )
     select
         s.conversation_id,
