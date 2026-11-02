@@ -91,6 +91,16 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     // Free-entry BLINK Contest. All writes enforce authenticated server-side rules.
     suspend fun contestList(): JSONArray =
         rpcAny("list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
+    suspend fun contestTopicDirectory(): JSONArray =
+        rpcAny("list_blink_contest_topics", JSONObject()) as? JSONArray ?: JSONArray()
+    suspend fun contestTopicDetail(id: String): JSONObject =
+        rpc("get_blink_contest_topic", JSONObject().put("p_topic_id", id))
+    suspend fun contestParticipantProfile(id: String): JSONObject =
+        rpc("get_blink_contest_participant_profile", JSONObject().put("p_user_id", id))
+    suspend fun contestFollowTopic(id: String): JSONObject =
+        rpc("follow_blink_contest_topic", JSONObject().put("p_topic_id", id))
+    suspend fun contestUnfollowTopic(id: String): JSONObject =
+        rpc("unfollow_blink_contest_topic", JSONObject().put("p_topic_id", id))
     suspend fun contestDetail(id: String): JSONObject =
         rpc("get_blink_contest", JSONObject().put("p_contest_id", id))
     suspend fun contestSearchCandidates(contestId: String, query: String, offset: Int): JSONObject =
@@ -161,6 +171,11 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         requireAdmin()
         return rpcAny("admin_list_blink_contest_entries",
             JSONObject().put("p_contest_id", id)) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestSaveTopic(data: JSONObject): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_contest_topic",
+            JSONObject().put("p_id", JSONObject.NULL).put("p_data", data))
     }
     suspend fun adminContestSave(data: JSONObject): JSONObject {
         requireAdmin()

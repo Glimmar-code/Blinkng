@@ -37,6 +37,13 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     val api = remember(state.client) { DesktopRpcActions(state.client) }
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topics by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var selectedTopic by remember { mutableStateOf<String?>(null) }
+    var topicDetail by remember { mutableStateOf<JSONObject?>(null) }
+    var topicQuery by remember { mutableStateOf("") }
+    var topicFollowed by remember { mutableStateOf(false) }
+    var selectedParticipant by remember { mutableStateOf<String?>(null) }
+    var participantProfile by remember { mutableStateOf<JSONObject?>(null) }
     var selected by remember { mutableStateOf<String?>(null) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
     var detailError by remember { mutableStateOf<String?>(null) }
@@ -109,8 +116,26 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
         }
     }
     LaunchedEffect(revision) {
+        runCatching { api.contestTopicDirectory() }.onSuccess { topics = it.rows() }
         runCatching { api.contestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
+    }
+    LaunchedEffect(selectedParticipant) {
+        participantProfile = null
+        selectedParticipant?.let { id ->
+            runCatching { api.contestParticipantProfile(id) }.onSuccess { participantProfile = it }
+                .onFailure { message = it.message ?: "Participant history unavailable." }
+        }
+    }
+    LaunchedEffect(selectedTopic, revision) {
+        topicDetail = null
+        topicFollowed = false
+        selectedTopic?.let { id ->
+            runCatching { api.contestTopicDetail(id) }.onSuccess {
+                topicDetail = it
+                topicFollowed = it.optJSONObject("topic")?.optBoolean("following") == true
+            }.onFailure { message = it.message ?: "Unable to load topic history." }
+        }
     }
     LaunchedEffect(selected, revision) {
         detail = null
@@ -122,18 +147,109 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
     }
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (selected != null) TextButton(onClick = { selected = null }) { Text("Back") }
+            if (selected != null || selectedTopic != null) TextButton(onClick = { selected = null; selectedTopic = null; topicDetail = null }) { Text("Back") }
             Text("Contest", style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { revision++ }) { Text("Refresh") }
         }
         if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
-        if (selected == null) {
+        if (selected == null && selectedTopic != null) {
+            val topic = topicDetail
+            if (topic == null) CircularProgressIndicator()
+            else {
+                val info = topic.optJSONObject("topic") ?: JSONObject()
+                val topicContests = topic.optJSONArray("contests")?.rows().orEmpty()
+                val participants = topic.optJSONArray("participants")?.rows().orEmpty()
+                val hallOfFame = participants.filter { it.optBoolean("historical") && it.optInt("place") in 1..3 }
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    item {
+                        Text(info.optString("name"), style = MaterialTheme.typography.headlineMedium)
+                        Text(info.optString("category"), color = MaterialTheme.colorScheme.primary)
+                        Text(info.optString("description"))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                scope.launch {
+                                    runCatching {
+                                        if (topicFollowed) api.contestUnfollowTopic(info.optString("id"))
+                                        else api.contestFollowTopic(info.optString("id"))
+                                    }.onSuccess { topicFollowed = !topicFollowed }
+                                        .onFailure { message = it.message ?: "Unable to follow topic." }
+                                }
+                            }) { Text(if (topicFollowed) "Following" else "Follow topic") }
+                        }
+                        Text("Contests: ${topic.optInt("total_contests")}  ·  Participants: ${topic.optInt("total_participants")}  ·  Votes: ${topic.optLong("total_votes")}  ·  Prizes awarded: ${prize(topic.optInt("prizes_awarded"))}")
+                    }
+                    item { Text("${topic.optInt("completed_contests")} completed editions · Permanent history") }
+                    item { Text("Hall of Fame", style = MaterialTheme.typography.titleLarge) }
+                    items(hallOfFame) { winner ->
+                        Surface(Modifier.fillMaxWidth().clickable {
+                            selectedParticipant = winner.optString("user_id")
+                        }, color = Color(0xFF111C2B), shape = RoundedCornerShape(12.dp)) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (winner.optInt("place") == 1) "🏆" else "🏅")
+                                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                    Text("@${winner.optString("username")}", color = Color.White)
+                                    Text("${winner.optString("contest_title")} · Place #${winner.optInt("place")}",
+                                        color = Color(0xFFBDDFFF), fontSize = 11.sp)
+                                }
+                                Text(prize(winner.optInt("prize_ngn")), color = Color.White)
+                            }
+                        }
+                    }
+                    item { Text("Contest editions", style = MaterialTheme.typography.titleLarge) }
+                    items(topicContests, key = { it.optString("id") }) { contest ->
+                        Surface(Modifier.fillMaxWidth().clickable { selected = contest.optString("id") },
+                            color = Color(0xFF0B1626), shape = RoundedCornerShape(14.dp)) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(contest.optString("title"), color = Color.White, fontWeight = FontWeight.Bold)
+                                if (contest.optString("season").isNotBlank() && contest.optString("season") != "null") Text(contest.optString("season"), color = Color(0xFF8BCBFF), fontSize = 10.sp)
+                                Text("${contest.optString("competition_scope")} · ${contest.optString("university")} · ${contest.optString("status")} · Applications: ${dt(contest.optString("registration_opens_at"))} · Voting closes: ${dt(contest.optString("voting_closes_at"))}",
+                                    color = Color(0xFFBDDFFF), fontSize = 11.sp)
+                                Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes",
+                                    color = Color.White, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    item { Text("All participants and voting records", style = MaterialTheme.typography.titleLarge) }
+                    items(participants) { person ->
+                        Row(Modifier.fillMaxWidth().clickable { selectedParticipant = person.optString("user_id") }
+                            .padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(model = person.optString("avatar_url").takeIf { it.startsWith("https://") },
+                                contentDescription = null, modifier = Modifier.size(42.dp).clip(CircleShape))
+                            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                Text(person.optString("username"), fontWeight = FontWeight.SemiBold)
+                                Text("${person.optString("contest_title")} · ${person.optString("university")}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                Text(if (person.optBoolean("historical")) "Place: ${person.optString("place")} · Prize: ${prize(person.optInt("prize_ngn"))}" else "Current participant",
+                                    fontSize = 10.sp)
+                            }
+                            Text("${person.optInt("votes")} votes", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        } else if (selected == null) {
+            OutlinedTextField(topicQuery, { topicQuery = it }, modifier = Modifier.fillMaxWidth(),
+                singleLine = true, label = { Text("Search contest topics") })
+            Text("Explore all topics", style = MaterialTheme.typography.titleLarge)
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(topics.filter { it.optString("name").contains(topicQuery, true) ||
+                    it.optString("category").contains(topicQuery, true) }, key = { it.optString("id") }) { topic ->
+                    Surface(Modifier.fillMaxWidth().clickable { selectedTopic = topic.optString("id") },
+                        color = Color(0xFF111C2B), shape = RoundedCornerShape(12.dp)) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(topic.optString("name"), color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text("${topic.optString("category")} · ${topic.optInt("contests_total")} contests (${topic.optInt("completed_contests")} completed) · ${topic.optInt("participants")} participants · ${topic.optInt("followers")} following · ${topic.optLong("votes")} votes · ${prize(topic.optInt("prizes_awarded"))} prizes",
+                                color = Color(0xFFBDDFFF), fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 listOf("Ongoing", "Upcoming", "Completed").forEach { t ->
                     FilterChip(selected = tab == t, onClick = { tab = t }, label = { Text(t) })
                 }
-                TextButton(onClick = { state.selectedRoute = "people" }) { Text("People discovery") }
             }
             val rows = contests.filter { BlinkContestPolicy.section(it.optString("status")) == tab }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -519,6 +635,26 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
             }
         )
     }
+    participantProfile?.let { profile ->
+        val person = profile.optJSONObject("participant") ?: JSONObject()
+        val history = profile.optJSONArray("history")?.rows().orEmpty()
+        AlertDialog(
+            onDismissRequest = { selectedParticipant = null; participantProfile = null },
+            title = { Text("Contest profile · @" + person.optString("username")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(person.optString("university"))
+                    Text("${profile.optInt("contests_entered")} contests · ${profile.optInt("wins")} wins")
+                    Text("${profile.optLong("total_votes")} career votes")
+                    Text("Prizes won: ${prize(profile.optInt("prizes_won_ngn"))}")
+                    history.take(10).forEach { item ->
+                        Text("${item.optString("contest_title")} · ${item.optInt("votes")} votes · ${item.optString("status")}")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { selectedParticipant = null; participantProfile = null }) { Text("Close") } }
+        )
+    }
 }
 
 @Composable
@@ -526,6 +662,15 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     val api = remember(state.client) { DesktopRpcActions(state.client) }
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topics by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicId by remember { mutableStateOf("") }
+    var topicMenu by remember { mutableStateOf(false) }
+    var scopeType by remember { mutableStateOf("campus") }
+    var university by remember { mutableStateOf("") }
+    var season by remember { mutableStateOf("") }
+    var customTopicName by remember { mutableStateOf("") }
+    var customTopicCategory by remember { mutableStateOf("") }
+    var customTopicDescription by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var appeals by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var cleanupPreview by remember { mutableStateOf<JSONObject?>(null) }
@@ -561,6 +706,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var third by remember { mutableStateOf("0") }
 
     LaunchedEffect(revision) {
+        runCatching { api.contestTopicDirectory() }.onSuccess { topics = it.rows() }
         runCatching { api.adminContestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
     }
@@ -604,6 +750,45 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
         OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(description, { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(rules, { rules = it }, label = { Text("Rules and eligibility") }, modifier = Modifier.fillMaxWidth())
+        Box {
+            OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(topics.firstOrNull { it.optString("id") == topicId }?.optString("name") ?: "Select contest topic")
+            }
+            DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
+                topics.forEach { topic ->
+                    DropdownMenuItem(text = { Text(topic.optString("name")) }, onClick = {
+                        topicId = topic.optString("id"); topicMenu = false
+                    })
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = scopeType == "campus", onClick = { scopeType = "campus" }, label = { Text("Campus") })
+            FilterChip(selected = scopeType == "nationwide", onClick = { scopeType = "nationwide"; university = "" },
+                label = { Text("Nationwide") })
+        }
+        if (scopeType == "campus") OutlinedTextField(university, { university = it },
+            label = { Text("University (required)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(season, { season = it }, label = { Text("Season (optional)") }, modifier = Modifier.fillMaxWidth())
+        Text("Add a custom topic", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(customTopicName, { customTopicName = it }, label = { Text("Topic name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(customTopicCategory, { customTopicCategory = it }, label = { Text("Topic category") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(customTopicDescription, { customTopicDescription = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(enabled = !busy && customTopicName.trim().length >= 3 &&
+            customTopicCategory.trim().length >= 2, onClick = {
+            busy = true
+            scope.launch {
+                runCatching { api.adminContestSaveTopic(JSONObject().put("name", customTopicName.trim())
+                    .put("category", customTopicCategory.trim()).put("description", customTopicDescription.trim())) }
+                    .onSuccess {
+                        topicId = it.optString("id")
+                        customTopicName = ""; customTopicCategory = ""; customTopicDescription = ""
+                        message = "Topic added to the public directory."
+                        revision++
+                    }.onFailure { message = it.message ?: "Unable to add topic." }
+                busy = false
+            }
+        }) { Text("Add topic") }
         listOf(
             "Applications open" to regStart, "Applications close" to regEnd,
             "Voting opens" to voteStart, "Voting closes" to voteEnd, "Results announced" to results
@@ -626,7 +811,10 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
         Button(enabled = !busy && title.length >= 4, onClick = {
             busy = true
             val data = JSONObject().put("title", title).put("description", description)
-                .put("rules", rules).put("category", "General")
+                .put("rules", rules).put("category", topics.firstOrNull { it.optString("id") == topicId }?.optString("category") ?: "General")
+                .put("topic_id", if (topicId.isBlank()) JSONObject.NULL else topicId)
+                .put("competition_scope", scopeType).put("university", university.trim())
+                .put("season", season.trim())
                 .put("registration_opens_at", regStart).put("registration_closes_at", regEnd)
                 .put("voting_opens_at", voteStart).put("voting_closes_at", voteEnd)
                 .put("results_at", results).put("prize_first", first.toIntOrNull() ?: 0)

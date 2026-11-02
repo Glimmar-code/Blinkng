@@ -1851,5 +1851,13 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - The Contest PR updates Android's native Compose presentation (animated cards, chips, admin dashboard layout, applicant media preview and share-flyer dialog). These are Android-native screen treatments; contest eligibility, moderation, ranking, voting, prize data and service contracts remain shared/server-authoritative and are unchanged by the presentation work.
 - Windows equivalent: retain the existing Windows-native Contest screens and their equivalent contest data/actions using desktop layout and controls. Pixel-identical Compose animation and Android image-picker/player/dialog behavior are not required on Windows; functional parity remains the same contest lifecycle, candidate moderation, free voting, leaderboard, sharing/link and prize-status capabilities. Windows parity/build checks still run independently.
 
+### PARITY-EXCEPTION: android-admin-capability-refresh-on-menu-open-20261101
 
-- **PARITY-EXCEPTION: android-chat-album-upload-overlay-20261101** — Android adds a Compose-only visual progress/retry/cancel overlay for album thumbnails. It is a presentation adapter over the existing Android outbox/upload state and does not change message delivery, receipts, retries, cancellation contracts, or stored media. **Windows equivalent:** `desktopApp/src/main/kotlin/com/blinkng/desktop/ui/MessagesScreen.kt` already displays the pending photo count and live upload percentage (fed by `DesktopChatImageOutbox.pendingProgress` and the existing `sendChatImage(onProgress)` callback); its desktop-native text status remains appropriate for Windows rather than copying a phone thumbnail overlay. Shared upload semantics remain unchanged.
+- Android's native Compose menu now retries the signed-in user's admin capability lookup when the menu opens, so a transient session-restore/RPC failure does not leave the owner dashboard entry hidden for the rest of the session. Server-side authorization is unchanged.
+- Windows equivalent: `desktopApp/src/main/kotlin/com/blinkng/desktop/ui/BlinkDesktopMenuScreen.kt` already renders its `Switch to Admin Profile` action from `state.adminCapability.allowed`; its separate desktop state lifecycle and admin navigation remain unchanged. This is an Android lifecycle/retry fix, not a new admin capability or a change to shared authorization.
+
+### PARITY-EXCEPTION: contest-launch-notification-routing-20261101
+
+- Android FCM and in-app launch alerts route to the Contest tab using the existing Home feed subtab destination. Windows foreground and notification-centre alerts route to the existing `connect` Contest destination.
+- The notification event and target are server-generated and validated against a currently published contest. Windows has no Android FCM receiver; email and the durable in-app notification rows remain cross-platform.
+

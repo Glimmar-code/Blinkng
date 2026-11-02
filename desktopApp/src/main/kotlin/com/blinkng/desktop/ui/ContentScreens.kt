@@ -1549,6 +1549,9 @@ fun NotificationsScreen(state: DesktopAppState) {
                                 }
                             }
                     }
+                    if (item.targetType.equals("contest", ignoreCase = true)) {
+                        state.selectedRoute = "connect"
+                    }
                 },
                 shape = RoundedCornerShape(16.dp),
                 tonalElevation = if (item.isRead) 0.dp else 3.dp,
