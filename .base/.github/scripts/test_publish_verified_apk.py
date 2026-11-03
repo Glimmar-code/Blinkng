@@ -1,0 +1,255 @@
+import hashlib
+import importlib.util
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+import zipfile
+
+spec = importlib.util.spec_from_file_location("publisher", Path(__file__).with_name("publish_verified_apk.py"))
+publisher = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(publisher)
+
+
+class ReleaseIntegrityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.apk = self.root / "app.apk"
+        with zipfile.ZipFile(self.apk, "w") as archive:
+            for name in ("AndroidManifest.xml", "classes.dex", "resources.arsc"):
+                archive.writestr(name, b"test payload")
+        self.sha = hashlib.sha256(self.apk.read_bytes()).hexdigest()
+        self.pack = self.root / "blink-life-web.zip"
+        with zipfile.ZipFile(self.pack, "w") as archive:
+            for name in ("index.html", "index.js", "index.wasm", "index.pck"):
+                archive.writestr(name, b"valid web game")
+        self.pack_sha = hashlib.sha256(self.pack.read_bytes()).hexdigest()
+        self.info = self.root / "release-info.txt"
+        self.commit = "c" * 40
+        self.main_head = self.commit
+        self.main_checks = 0
+        self.info.write_text("applicationId=com.aistudio.blink.appvtwo\nversionCode=123\n"
+                             f"versionName=1.0.123\ncommit={self.commit}\nproductionSource=main\n"
+                             f"signingCertificateSha256={'a' * 64}\napkSha256={self.sha}\n"
+                             f"gamePackSha256={self.pack_sha}\ngamePackSize={self.pack.stat().st_size}\n")
+        self.calls = []
+        self.assets = {}
+        self.corrupt = False
+        self.published = False
+        self.download_failure = False
+
+    def fake_gh(self, repo, *args, check=True):
+        self.calls.append(args)
+        if args[0] == "view":
+            if self.published:
+                return subprocess.CompletedProcess(args, 0, '{"isDraft":false,"targetCommitish":"abc"}', '')
+            return subprocess.CompletedProcess(args, 1, '', 'release not found')
+        if args[0] == "upload":
+            self.assets = {Path(p).name: Path(p).read_bytes() for p in args[2:-1]}
+        if args[0] == "download":
+            if self.download_failure:
+                raise subprocess.CalledProcessError(1, args)
+            dest = Path(args[args.index("--dir") + 1])
+            dest.mkdir()
+            for name, content in self.assets.items():
+                if self.corrupt and name.endswith(".apk"):
+                    content = content[:-1] + bytes([content[-1] ^ 1])
+                (dest / name).write_bytes(content)
+        return subprocess.CompletedProcess(args, 0, '', '')
+
+    def fake_current_main(self, repository, commit):
+        self.main_checks += 1
+        if self.main_head != commit:
+            raise ValueError("Stale Android release")
+
+    def run_publish(self):
+        with patch.object(publisher, "gh", self.fake_gh), \
+             patch.object(publisher, "require_current_main", self.fake_current_main), \
+             patch.object(publisher, "require_newer_than_public"):
+            publisher.publish(self.root, "owner/repo", self.commit)
+
+    def test_valid_release_is_promoted_only_after_download(self):
+        self.run_publish()
+        self.assertEqual([call[0] for call in self.calls], ["view", "create", "upload", "download", "edit"])
+        self.assertIn("--draft", self.calls[1])
+        self.assertIn("--draft=false", self.calls[-1])
+        self.assertEqual(self.assets["blink-life-web.zip.sha256"],
+                         f"{self.pack_sha}  blink-life-web.zip\n".encode())
+
+    def test_main_freshness_checked_twice(self):
+        self.run_publish()
+        self.assertEqual(self.main_checks, 2)
+
+    def test_stale_main_prevents_creating_any_release(self):
+        self.main_head = "a" * 40
+        with self.assertRaisesRegex(ValueError, "Stale"):
+            self.run_publish()
+        self.assertEqual(self.calls, [])
+
+    def test_main_advances_during_upload_prevents_publication(self):
+        checks = 0
+        def move_main(_, commit):
+            nonlocal checks
+            checks += 1
+            if checks == 2:
+                raise ValueError("Stale Android release")
+        with patch.object(publisher, "gh", self.fake_gh), \
+             patch.object(publisher, "require_current_main", move_main), \
+             patch.object(publisher, "require_newer_than_public"):
+            with self.assertRaisesRegex(ValueError, "Stale"):
+                publisher.publish(self.root, "owner/repo", self.commit)
+        self.assertNotIn("edit", [call[0] for call in self.calls])
+
+    def test_current_main_api_blocks_stale_commit(self):
+        current = "f" * 40
+        result = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        with patch.object(publisher.subprocess, "run", return_value=result) as request:
+            publisher.require_current_main("Glimmar-code/Blinkng", current)
+            request.assert_called_once()
+        with patch.object(publisher.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(ValueError, "Stale"):
+                publisher.require_current_main("Glimmar-code/Blinkng", "a" * 40)
+        with self.assertRaisesRegex(ValueError, "complete"):
+            publisher.require_current_main("Glimmar-code/Blinkng", "invalid")
+
+    def test_only_unpacked_main_advances_keep_signed_apk_eligible(self):
+        current = "f" * 40
+        ref = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        compare = subprocess.CompletedProcess([], 0, '{"status":"ahead","ahead_by":2,"behind_by":0,'
+                                                  '"files":[{"filename":"web/app.js"},'
+                                                  '{"filename":"docs/release.md"}]}', "")
+        with patch.object(publisher.subprocess, "run", side_effect=[ref, compare]) as request:
+            publisher.require_current_main("Glimmar-code/Blinkng", self.commit)
+            self.assertEqual(request.call_count, 2)
+
+    def test_native_changes_after_signing_still_block_publication(self):
+        current = "f" * 40
+        ref = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        compare = subprocess.CompletedProcess([], 0, '{"status":"ahead","ahead_by":1,"behind_by":0,'
+                                                  '"files":[{"filename":"app/src/main/java/App.kt"}]}', "")
+        with patch.object(publisher.subprocess, "run", side_effect=[ref, compare]):
+            with self.assertRaisesRegex(ValueError, "Stale Android release"):
+                publisher.require_current_main("Glimmar-code/Blinkng", self.commit)
+
+    def test_diverged_or_incomplete_main_comparison_is_rejected(self):
+        current = "f" * 40
+        ref = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        for comparison in ('{"status":"diverged","ahead_by":2,"behind_by":1,'
+                           '"files":[{"filename":"web/app.js"}]}',
+                           '{"status":"ahead","ahead_by":2,"behind_by":0,"files":[]}'):
+            compare = subprocess.CompletedProcess([], 0, comparison, "")
+            with patch.object(publisher.subprocess, "run", side_effect=[ref, compare]):
+                with self.assertRaisesRegex(ValueError, "Stale Android release"):
+                    publisher.require_current_main("Glimmar-code/Blinkng", self.commit)
+
+    def test_old_or_equal_published_version_is_rejected(self):
+        candidate = publisher.metadata(self.info, self.commit)
+
+        def last_public(release_code, cert=None):
+            def fake(repo, *args, check=True):
+                if args[0] == "view":
+                    return subprocess.CompletedProcess(args, 0, '{"tagName":"v1.0.120"}', "")
+                if args[0] == "download":
+                    dest = Path(args[args.index("--dir") + 1])
+                    text = self.info.read_text().replace(
+                        "versionCode=123", "versionCode=" + str(release_code)
+                    ).replace("versionName=1.0.123", "versionName=1.0.120")
+                    if cert:
+                        text = text.replace("a" * 64, cert)
+                    (dest / "release-info.txt").write_text(text)
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return fake
+
+        with patch.object(publisher, "gh", last_public(120)):
+            publisher.require_newer_than_public("owner/repo", candidate)
+        for previous in (123, 125):
+            with patch.object(publisher, "gh", last_public(previous)):
+                with self.assertRaisesRegex(ValueError, "equal or higher"):
+                    publisher.require_newer_than_public("owner/repo", candidate)
+        with patch.object(publisher, "gh", last_public(120, "b" * 64)):
+            with self.assertRaisesRegex(ValueError, "signing certificate"):
+                publisher.require_newer_than_public("owner/repo", candidate)
+
+    def test_latest_lookup_failure_must_not_be_assumed_safe(self):
+        candidate = publisher.metadata(self.info, self.commit)
+        failed = subprocess.CompletedProcess([], 1, "", "network timeout")
+        with patch.object(publisher, "gh", return_value=failed):
+            with self.assertRaisesRegex(ValueError, "Cannot inspect"):
+                publisher.require_newer_than_public("owner/repo", candidate)
+
+    def test_damaged_download_is_never_published(self):
+        self.corrupt = True
+        with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+            self.run_publish()
+        self.assertNotIn("edit", [call[0] for call in self.calls])
+
+    def test_failed_download_is_never_published(self):
+        self.download_failure = True
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_publish()
+        self.assertNotIn("edit", [call[0] for call in self.calls])
+
+    def test_public_assets_are_never_overwritten(self):
+        self.published = True
+        with self.assertRaisesRegex(ValueError, "overwrite"):
+            self.run_publish()
+        self.assertEqual(len(self.calls), 1)
+
+    def test_missing_checksum_fails_before_network(self):
+        self.info.write_text(self.info.read_text().replace(f"apkSha256={self.sha}\n", ""))
+        with self.assertRaisesRegex(ValueError, "mandatory"):
+            self.run_publish()
+        self.assertEqual(self.calls, [])
+
+    def test_wrong_source_commit_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "successful main build"):
+            publisher.metadata(self.info, "other")
+
+    def test_duplicate_metadata_is_rejected(self):
+        self.info.write_text(self.info.read_text() + "versionCode=999\n")
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            publisher.metadata(self.info, self.commit)
+
+    def test_ambiguous_artifacts_are_rejected(self):
+        shutil.copyfile(self.apk, self.root / "second.apk")
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            self.run_publish()
+
+    def test_corrupt_zip_is_rejected_even_with_matching_hash(self):
+        content = self.apk.read_bytes().replace(b"test payload", b"bad! payload", 1)
+        self.apk.write_bytes(content)
+        with self.assertRaisesRegex(ValueError, "ZIP integrity"):
+            publisher.verify_apk(self.apk, hashlib.sha256(content).hexdigest())
+
+    def test_bad_game_hash_blocks_publication(self):
+        self.info.write_text(self.info.read_text().replace(
+            f"gamePackSha256={self.pack_sha}", f"gamePackSha256={'0' * 64}"))
+        with self.assertRaisesRegex(ValueError, "Game pack SHA-256 mismatch"):
+            self.run_publish()
+        self.assertNotIn("edit", [call[0] for call in self.calls])
+
+    def test_missing_game_pack_blocks_publication(self):
+        self.pack.unlink()
+        with self.assertRaisesRegex(ValueError, "Expected exactly one"):
+            self.run_publish()
+
+    def test_zip_slip_game_pack_is_rejected(self):
+        with zipfile.ZipFile(self.pack, "w") as archive:
+            for name in ("index.html", "index.js", "index.wasm", "index.pck", "../escape.js"):
+                archive.writestr(name, b"payload")
+        with self.assertRaisesRegex(ValueError, "Invalid game pack entries"):
+            publisher.verify_web_pack(self.pack, hashlib.sha256(self.pack.read_bytes()).hexdigest())
+
+    def test_non_apk_zip_is_rejected(self):
+        with zipfile.ZipFile(self.apk, "w") as archive:
+            archive.writestr("hello.txt", "not an APK")
+        with self.assertRaisesRegex(ValueError, "required Android files"):
+            publisher.verify_apk(self.apk, hashlib.sha256(self.apk.read_bytes()).hexdigest())
+
+
+if __name__ == "__main__":
+    unittest.main()

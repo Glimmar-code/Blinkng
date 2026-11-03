@@ -1,0 +1,419 @@
+name: Signed Android release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Optional public version name, for example 1.1.0
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    # Only package a new signed Android app when Android/shared/build inputs change.
+    # Web/Supabase/desktop/docs-only edits can ship without another APK.
+    paths:
+      - 'app/**'
+      - 'shared/**'
+      - 'blinkLifeFeature/**'
+      - 'game3d/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'scripts/sync_android_launcher_assets.py'
+      - '.github/scripts/restore_google_services.sh'
+      - '.github/scripts/build_full_website_apk.sh'
+      - '.github/workflows/signed-release.yml'
+      # Publication-security updates must be exercised through a fresh signed build.
+      - '.github/scripts/publish_verified_apk.py'
+      - '.github/scripts/install_release_smoke_apk.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a production-approved main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Checkout has full history (fetch-depth: 0). Do not re-shallow it:
+          # several main commits can land while a release run is queued, and
+          # --depth=1 would hide a previously approved main commit's ancestry.
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::Refusing to sign a production release from a commit that is not on main. Test in Testlab/staging and merge through the approved production path first."
+            exit 1
+          fi
+          echo "Release source is present on main: $GITHUB_SHA"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify permanent production secrets
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not configured. Add the production value in GitHub Actions secrets (see docs/android-release-secrets.md)."
+              missing=1
+            fi
+          done
+          if [ -z "${GOOGLE_SERVICES_JSON_BASE64:-}" ] && [ -z "${GOOGLE_SERVICES_JSON:-}" ]; then
+            echo "::error::Firebase config is missing. Add GOOGLE_SERVICES_JSON (paste raw app google-services.json) or GOOGLE_SERVICES_JSON_BASE64 to GitHub Actions secrets. See docs/android-release-secrets.md."
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Verify launcher images match the approved BLINK logo
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0
+          python3 scripts/sync_android_launcher_assets.py --check
+
+      - name: Restore production Firebase client configuration
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: bash .github/scripts/restore_google_services.sh production
+
+      - name: Restore permanent release keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_FILE="$RUNNER_TEMP/blink-production-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+          test -s "$KEYSTORE_FILE"
+          echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+
+      - name: Pin production signing certificate
+        shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          EXPECTED_SHA1="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_name = "com.aistudio.blink.appvtwo"
+          data = json.loads(Path("app/google-services.json").read_text())
+          for client in data.get("client", []):
+              for oauth in client.get("oauth_client", []):
+                  android = oauth.get("android_info") or {}
+                  if android.get("package_name") == package_name and android.get("certificate_hash"):
+                      print(android["certificate_hash"].replace(":", "").lower())
+                      raise SystemExit(0)
+          raise SystemExit(f"No pinned Android OAuth certificate found for {package_name}")
+          PY
+          )"
+
+          CERT_PEM="$RUNNER_TEMP/blink-production-release.pem"
+          keytool -exportcert \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            -rfc > "$CERT_PEM"
+
+          ACTUAL_SHA1="$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha1 | sed 's/^.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL_SHA256="$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha256 | sed 's/^.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+          if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+            echo "::error::Production signing certificate does not match the certificate pinned for com.aistudio.blink.appvtwo. Refusing to publish an APK that Android would treat as a different signer."
+            echo "Expected SHA-1: $EXPECTED_SHA1"
+            echo "Actual SHA-1:   $ACTUAL_SHA1"
+            exit 1
+          fi
+
+          echo "RELEASE_CERT_SHA1=$ACTUAL_SHA1" >> "$GITHUB_ENV"
+          echo "RELEASE_CERT_SHA256=$ACTUAL_SHA256" >> "$GITHUB_ENV"
+          echo "Production signing certificate continuity verified."
+
+      - name: Verify signing key matches the last published production APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! previous_tag="$(gh release view --json tagName --jq '.tagName' 2>/dev/null)"; then
+            echo "No previous production release found; initial-signature check skipped."
+            exit 0
+          fi
+
+          mkdir -p "$RUNNER_TEMP/previous-blink-release"
+          gh release download "$previous_tag" \
+            --pattern 'release-info.txt' \
+            --dir "$RUNNER_TEMP/previous-blink-release" \
+            --clobber
+          info="$RUNNER_TEMP/previous-blink-release/release-info.txt"
+          previous_cert="$(sed -n 's/^signingCertificateSha256=//p' "$info" | head -n 1 | tr '[:upper:]' '[:lower:]')"
+          previous_code="$(sed -n 's/^versionCode=//p' "$info" | head -n 1)"
+          if ! [[ "$previous_cert" =~ ^[a-f0-9]{64}$ && "$previous_code" =~ ^[0-9]+$ ]]; then
+            echo "::error::Previous production release has invalid signing/version metadata. Refusing potentially uninstallable upgrade."
+            exit 1
+          fi
+          if [ "$previous_cert" != "$RELEASE_CERT_SHA256" ]; then
+            echo "::error::Signing certificate differs from the previously published BLINK APK. Existing installations would reject this update."
+            exit 1
+          fi
+          echo "PREVIOUS_PUBLISHED_VERSION_CODE=$previous_code" >> "$GITHUB_ENV"
+          echo "PREVIOUS_PUBLISHED_TAG=$previous_tag" >> "$GITHUB_ENV"
+          echo "Production signing continuity confirmed against $previous_tag."
+
+      - name: Resolve monotonically increasing version
+        id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION_NAME: ${{ github.event.inputs.version_name }}
+        run: |
+          set -euo pipefail
+
+          EPOCH_MINUTES=$(( $(date -u +%s) / 60 ))
+          RUN_SLOT=$(( GITHUB_RUN_NUMBER % 10 ))
+          VERSION_CODE=$(( EPOCH_MINUTES * 10 + RUN_SLOT ))
+          if [ -n "${PREVIOUS_PUBLISHED_VERSION_CODE:-}" ] && [ "$VERSION_CODE" -le "$PREVIOUS_PUBLISHED_VERSION_CODE" ]; then
+            VERSION_CODE=$(( PREVIOUS_PUBLISHED_VERSION_CODE + 1 ))
+          fi
+          if [ "$VERSION_CODE" -gt 2100000000 ]; then
+            echo "::error::Generated Android versionCode is too large: $VERSION_CODE"
+            exit 1
+          fi
+
+          if [ -n "${REQUESTED_VERSION_NAME:-}" ]; then
+            VERSION_NAME="$REQUESTED_VERSION_NAME"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            VERSION_NAME="1.0.$VERSION_CODE"
+          fi
+
+          if [ -z "$VERSION_NAME" ]; then
+            echo "::error::Resolved versionName is empty."
+            exit 1
+          fi
+
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Building Blink $VERSION_NAME (versionCode $VERSION_CODE)"
+
+      - name: Install Godot 4.3 Web exporter
+        run: bash scripts/setup_godot_43_web.sh
+
+      - name: Export optional BLINK LIFE Web game package
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build_blink_life_web_pack.sh
+          GAME_SHA="$(sha256sum app/build/outputs/publish/blink-life-web.zip | awk '{print $1}')"
+          echo "BLINK_LIFE_WEB_SHA256=$GAME_SHA" >> "$GITHUB_ENV"
+          echo "Optional BLINK LIFE archive ready; exact hash embedded into the signed APK."
+
+      - name: Build signed production APK and AAB
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
+
+      - name: Verify website APK excludes native Godot (no secondary install)
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          test -s "$APK"
+          test -s "$AAB"
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-website-files.txt"
+          if grep -E '(^|/)libgodot_android\.so$|(^|/)project\.godot$|(^|/)scenes/main\.tscn$' "$RUNNER_TEMP/blink-website-files.txt"; then
+            echo "::error::Website APK unexpectedly contains the 3D engine or game scenes."
+            exit 1
+          fi
+          unzip -Z1 "$AAB" > "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          grep -Fxq blinkLifeFeature/manifest/AndroidManifest.xml "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          grep -Fxq blinkLifeFeature/assets/project.godot "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          # Fail closed: publishing the old ~345 MB universal APK would break Option B.
+          # The optional game is published separately, never silently fused into Blink.
+          APK_BYTES="$(stat -c %s "$APK")"
+          PACK_BYTES="$(stat -c %s app/build/outputs/publish/blink-life-web.zip)"
+          if [ "$APK_BYTES" -gt 100000000 ]; then
+            echo "::error::Website APK is $APK_BYTES bytes (target: below 100 MB). Refusing oversized release."
+            exit 1
+          fi
+          if [ "$PACK_BYTES" -lt 1 ] || [ "$PACK_BYTES" -gt 167772160 ]; then
+            echo "::error::Optional game pack exceeds the app's 160 MiB download limit."
+            exit 1
+          fi
+          echo "PASS: lightweight website APK, Google Play AAB keeps on-demand native game."
+          du -h "$APK" app/build/outputs/publish/blink-life-web.zip
+
+      - name: Verify embedded source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_CONFIG="$(find app/build/generated -path '*/release/*/BuildConfig.java' -type f | head -n 1)"
+          if [ -z "$BUILD_CONFIG" ]; then
+            echo "::error::Release BuildConfig.java was not generated."
+            exit 1
+          fi
+          grep -F "BUILD_COMMIT_SHA = \"$GITHUB_SHA\"" "$BUILD_CONFIG" >/dev/null || {
+            echo "::error::The release does not embed its exact Git source revision."
+            exit 1
+          }
+          grep -F "BLINK_LIFE_WEB_SHA256 = \"$BLINK_LIFE_WEB_SHA256\"" "$BUILD_CONFIG" >/dev/null || {
+            echo "::error::The signed APK does not pin its matching optional game archive."
+            exit 1
+          }
+          echo "Embedded source revision verified: $GITHUB_SHA"
+
+      - name: Verify production package, version and APK signature
+        shell: bash
+        env:
+          EXPECTED_VERSION_CODE: ${{ steps.version.outputs.code }}
+          EXPECTED_VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          if [ -z "$APK" ]; then
+            echo "::error::Signed release APK was not produced."
+            exit 1
+          fi
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "name='com.aistudio.blink.appvtwo'" >/dev/null || {
+            echo "::error::Release APK applicationId is not com.aistudio.blink.appvtwo."
+            exit 1
+          }
+          echo "$BADGING" | grep -F "versionCode='$EXPECTED_VERSION_CODE'" >/dev/null || {
+            echo "::error::Release APK versionCode does not match the generated versionCode."
+            exit 1
+          }
+          echo "$BADGING" | grep -F "versionName='$EXPECTED_VERSION_NAME'" >/dev/null || {
+            echo "::error::Release APK versionName does not match the generated versionName."
+            exit 1
+          }
+
+          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          if [ -z "$AAB" ]; then
+            echo "::error::Signed release AAB was not produced."
+            exit 1
+          fi
+          jarsigner -verify "$AAB" >/dev/null
+
+          echo "APK package/version/signature and AAB signature verified."
+
+      # This is the *actual production-signed* candidate, not a disposable debug
+      # build. User devices are not required to install experimental releases.
+      - name: Fetch previous published APK for non-destructive upgrade check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PREVIOUS_PUBLISHED_TAG:-}" ]; then
+            echo "First production release: no previous APK for upgrade check."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/blink-previous-apk"
+          gh release download "$PREVIOUS_PUBLISHED_TAG" \
+            --pattern 'Blink-latest.apk' \
+            --dir "$RUNNER_TEMP/blink-previous-apk" \
+            --clobber
+          previous="$RUNNER_TEMP/blink-previous-apk/Blink-latest.apk"
+          test -s "$previous"
+          echo "PREVIOUS_PRODUCTION_APK=$previous" >> "$GITHUB_ENV"
+
+      - name: Enable KVM for production-signed Android 15 upgrade test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install, upgrade, and launch actual signed APK on Android 15
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        env:
+          EXPECTED_VERSION_CODE: ${{ steps.version.outputs.code }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash .github/scripts/install_release_smoke_apk.sh
+
+      - name: Write release metadata
+        shell: bash
+        run: |
+          mkdir -p app/build/outputs/publish
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          cat > app/build/outputs/publish/release-info.txt <<EOF
+          applicationId=com.aistudio.blink.appvtwo
+          versionCode=${{ steps.version.outputs.code }}
+          versionName=${{ steps.version.outputs.name }}
+          commit=$GITHUB_SHA
+          productionSource=main
+          signingCertificateSha1=$RELEASE_CERT_SHA1
+          signingCertificateSha256=$RELEASE_CERT_SHA256
+          apkSha256=$APK_SHA256
+          gamePackSha256=$BLINK_LIFE_WEB_SHA256
+          gamePackSize=$(stat -c %s app/build/outputs/publish/blink-life-web.zip)
+          EOF
+
+      - name: Upload signed release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-production-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/publish/release-info.txt
+            app/build/outputs/publish/blink-life-web.zip
+            app/build/outputs/publish/blink-life-web.zip.sha256

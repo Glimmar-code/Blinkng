@@ -1,0 +1,483 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.data.models.kNigerianStatesList
+import com.example.data.models.kNigerianUniversitiesList
+import com.example.ui.theme.BlinkGold
+import com.example.ui.theme.BlinkPink
+import com.blinkng.shared.BlinkDesignTokens
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BecomeSellerScreen(
+    onBack: () -> Unit,
+    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String, university: String, sellerKind: String, businessDescription: String, productCategory: String, delivery: Boolean, pickup: Boolean) -> Unit,
+    initialStoreName: String = "",
+    initialPhone: String = "",
+    initialWhatsapp: String = "",
+    isVerified: Boolean = false,
+    initialUniversity: String = "",
+    isSubmitting: Boolean = false,
+    isDark: Boolean
+) {
+    var storeName by remember(initialStoreName) { mutableStateOf(initialStoreName) }
+    var phone by remember(initialPhone) { mutableStateOf(initialPhone) }
+    var whatsapp by remember(initialWhatsapp) { mutableStateOf(initialWhatsapp) }
+    var selectedState by remember { mutableStateOf("") }
+    var city by remember { mutableStateOf("") }
+    var university by remember(initialUniversity) { mutableStateOf(initialUniversity) }
+    var universityDropdownOpen by remember { mutableStateOf(false) }
+    var universitySearch by remember { mutableStateOf("") }
+    var sellerKind by remember { mutableStateOf("individual") }
+    var businessDescription by remember { mutableStateOf("") }
+    var productCategory by remember { mutableStateOf("Electronics") }
+    var offersDelivery by remember { mutableStateOf(false) }
+    var offersPickup by remember { mutableStateOf(true) }
+    var agreedToTerms by remember { mutableStateOf(false) }
+    var stateDropdownOpen by remember { mutableStateOf(false) }
+
+    val phoneDigits = phone.filter(Char::isDigit)
+    val whatsappDigits = whatsapp.filter(Char::isDigit)
+    val detailsValid = storeName.trim().length >= 2 &&
+        phoneDigits.length in 10..15 &&
+        whatsappDigits.length in 10..15 &&
+        selectedState.isNotBlank() &&
+        city.trim().length >= 2 &&
+        university.trim().length >= 3 &&
+        kNigerianUniversitiesList.any { it.equals(university.trim(), ignoreCase = true) } &&
+        businessDescription.trim().length in 20..1000 &&
+        productCategory.isNotBlank() &&
+        (offersDelivery || offersPickup) &&
+        agreedToTerms
+    val canSubmit = detailsValid && isVerified && !isSubmitting
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Become a Market Seller", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack, enabled = !isSubmitting) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 100.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    if (isDark) {
+                                         listOf(Color(BlinkDesignTokens.Dark.SurfaceElevated), Color(BlinkDesignTokens.Dark.Background))
+                                     } else {
+                                         // Retain the promotional hero's contrast in Light Mode.
+                                         listOf(Color(0xFF171717), Color(0xFF050505))
+                                     }
+                                )
+                            )
+                            .padding(20.dp)
+                    ) {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Storefront, contentDescription = "Image", tint = Color.White)
+                                Text(
+                                    "BLINK MARKET SELLER",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White
+                                )
+                            }
+                            Spacer(modifier = Modifier.fillMaxHeight(8.dp))
+                            Text(
+                                "Create a trusted storefront, upload real listing photos, manage stock and receive purchase requests from students.",
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.82f),
+                                lineHeight = 19.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            if (isVerified) "Verified account • Free seller registration"
+                            else "An active blue or gold verification badge is required",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            if (isVerified) "No seller activation fee. Complete your campus details to start listing."
+                            else "Get verified or renew an expired badge before enrolling as a seller.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = storeName,
+                    onValueChange = { if (it.length <= 80) storeName = it },
+                    label = { Text("Business / Store name") },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Next,
+                        autoCorrectEnabled = true
+                    ),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { if (it.length <= 20) phone = it },
+                    label = { Text("Contact phone number") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Next
+                    ),
+                    singleLine = true,
+                    isError = phone.isNotBlank() && phoneDigits.length !in 10..15,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                OutlinedTextField(
+                    value = whatsapp,
+                    onValueChange = { if (it.length <= 20) whatsapp = it },
+                    label = { Text("WhatsApp number") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Next
+                    ),
+                    singleLine = true,
+                    isError = whatsapp.isNotBlank() && whatsappDigits.length !in 10..15,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                ExposedDropdownMenuBox(
+                    expanded = stateDropdownOpen,
+                    onExpandedChange = { stateDropdownOpen = !stateDropdownOpen }
+                ) {
+                    OutlinedTextField(
+                        value = selectedState,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("State") },
+                        placeholder = { Text("Choose state") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = stateDropdownOpen) },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = stateDropdownOpen,
+                        onDismissRequest = { stateDropdownOpen = false }
+                    ) {
+                        kNigerianStatesList.forEach { state ->
+                            DropdownMenuItem(
+                                text = { Text(state) },
+                                onClick = {
+                                    selectedState = state
+                                    stateDropdownOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                val aliasLookup = mapOf(
+                    "futa" to "Federal University of Technology, Akure",
+                    "futo" to "Federal University of Technology, Owerri",
+                    "futminna" to "Federal University of Technology, Minna",
+                    "unilag" to "University of Lagos",
+                    "uniben" to "University of Benin",
+                    "ui" to "University of Ibadan",
+                    "oau" to "Obafemi Awolowo University, Ile-Ife",
+                    "unn" to "University of Nigeria, Nsukka"
+                )
+                val cleanSearch = universitySearch.trim()
+                val canonical = aliasLookup[cleanSearch.lowercase()]
+                val matches = kNigerianUniversitiesList.filter {
+                    cleanSearch.isBlank() ||
+                        it.contains(cleanSearch, ignoreCase = true) ||
+                        (canonical != null && it.equals(canonical, ignoreCase = true))
+                }.take(40)
+                ExposedDropdownMenuBox(
+                    expanded = universityDropdownOpen,
+                    onExpandedChange = { universityDropdownOpen = !universityDropdownOpen }
+                ) {
+                    OutlinedTextField(
+                        value = if (universityDropdownOpen) universitySearch else university,
+                        onValueChange = {
+                            universitySearch = it.take(80)
+                            universityDropdownOpen = true
+                        },
+                        label = { Text("University") },
+                        placeholder = { Text("Search university name or acronym, e.g. FUTA") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = universityDropdownOpen)
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = universityDropdownOpen,
+                        onDismissRequest = { universityDropdownOpen = false }
+                    ) {
+                        if (matches.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("No matching university. Try the full name.") },
+                                onClick = { universityDropdownOpen = false }
+                            )
+                        } else {
+                            matches.forEach { entry ->
+                                DropdownMenuItem(
+                                    text = { Text(entry) },
+                                    onClick = {
+                                        university = entry
+                                        universitySearch = entry
+                                        universityDropdownOpen = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Choose a university from the results to keep seller details consistent.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            item {
+                OutlinedTextField(
+                    value = city,
+                    onValueChange = { if (it.length <= 120) city = it },
+                    label = { Text("Campus / City / Hostel area") },
+                    placeholder = { Text("e.g. FUTA South Gate") },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done,
+                        autoCorrectEnabled = true
+                    ),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                Text("Seller type", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = sellerKind == "individual",
+                        onClick = { sellerKind = "individual" },
+                        label = { Text("Individual") }
+                    )
+                    FilterChip(
+                        selected = sellerKind == "business",
+                        onClick = { sellerKind = "business" },
+                        label = { Text("Business") }
+                    )
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = businessDescription,
+                    onValueChange = { businessDescription = it.take(1000) },
+                    label = { Text("About your store") },
+                    supportingText = { Text("At least 20 characters • ${businessDescription.length}/1000") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                Text("Main product category", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                var categoryMenuExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = categoryMenuExpanded,
+                    onExpandedChange = { categoryMenuExpanded = !categoryMenuExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = productCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("What will you sell?") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = categoryMenuExpanded,
+                        onDismissRequest = { categoryMenuExpanded = false }
+                    ) {
+                        com.example.data.models.kMarketCategoriesList.drop(1).forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name) },
+                                onClick = { productCategory = category.name; categoryMenuExpanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Campus pickup", modifier = Modifier.weight(1f), fontSize = 15.sp)
+                    Switch(checked = offersPickup, onCheckedChange = { offersPickup = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Delivery available", modifier = Modifier.weight(1f), fontSize = 15.sp)
+                    Switch(checked = offersDelivery, onCheckedChange = { offersDelivery = it })
+                }
+            }
+
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Privacy: the phone and WhatsApp contact details you provide for a shop may be displayed to signed-in buyers on your public Market listings. Use business contact details you are comfortable sharing.",
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            item {
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isSubmitting) { agreedToTerms = !agreedToTerms }
+                ) {
+                    Checkbox(
+                        checked = agreedToTerms,
+                        onCheckedChange = { agreedToTerms = it },
+                        enabled = !isSubmitting,
+                        colors = CheckboxDefaults.colors(checkedColor = BlinkPink)
+                    )
+                    Spacer(modifier = Modifier.fillMaxWidth(6.dp))
+                    Text(
+                        "I agree to BLINK Market seller, prohibited-item, trust and safety policies.",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+
+            item {
+                Button(
+                    onClick = {
+                        onSuccess(
+                            storeName.trim(),
+                            phone.trim(),
+                            whatsapp.trim(),
+                            selectedState,
+                            city.trim(),
+                            university.trim(),
+                            sellerKind,
+                            businessDescription.trim(),
+                            productCategory,
+                            offersDelivery,
+                            offersPickup
+                        )
+                    },
+                    enabled = canSubmit,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(100.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("become_seller_register_btn")
+                ) {
+                    if (isSubmitting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.fillMaxWidth(8.dp))
+                        Text("Registering seller…", fontWeight = FontWeight.Black)
+                    } else {
+                        Text(
+                            if (isVerified) "Register as Seller — Free" else "Verify Your Account to Continue",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

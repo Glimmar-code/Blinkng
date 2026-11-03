@@ -1,0 +1,52 @@
+name: Apply message delivery and reference UI fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply_message_delivery_reference_ui_fix.py'
+      - '.github/workflows/apply-message-delivery-reference-ui-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply message delivery and UI patch
+        run: python3 .github/scripts/apply_message_delivery_reference_ui_fix.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/MainActivity.kt \
+                  app/src/main/java/com/example/viewmodel/BlinkViewModel.kt \
+                  app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+                  app/src/main/java/com/example/notification/BlinkFirebaseMessagingService.kt
+          if git diff --cached --quiet; then
+            echo "No source changes needed."
+            exit 0
+          fi
+          git commit -m "fix: reliable messaging and premium chat UI"
+          git push origin main

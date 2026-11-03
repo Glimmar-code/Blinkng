@@ -1,0 +1,258 @@
+name: Web Parity Testlab Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'Testlab-web-*'
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-parity-test.yml'
+      - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_contest_invitation.mjs'
+      - 'scripts/test_web_referral_invitation.mjs'
+      - 'scripts/test_feed_market_posting_contract.mjs'
+      - 'scripts/test_web_draft_ownership.mjs'
+      - 'scripts/test_web_honest_menu.mjs'
+      - 'scripts/test_web_account_switch.mjs'
+      - 'scripts/test_web_privacy_settings.mjs'
+      - 'scripts/test_web_route_staleness.mjs'
+      - 'scripts/test_blink_indexnow.mjs'
+      - 'scripts/indexnow_public_urls.mjs'
+      - 'scripts/submit_blink_indexnow.mjs'
+      - '.github/workflows/submit-blink-indexnow.yml'
+      - 'scripts/normalize_public_html.mjs'
+      - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_landing_relaunch.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+      - 'scripts/test_mobile_web_performance.mjs'
+      - 'scripts/test_web_local_analytics.mjs'
+      - 'scripts/test_site_aggregate_analytics.mjs'
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-parity-test.yml'
+      - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_contest_invitation.mjs'
+      - 'scripts/test_web_referral_invitation.mjs'
+      - 'scripts/test_feed_market_posting_contract.mjs'
+      - 'scripts/test_web_draft_ownership.mjs'
+      - 'scripts/test_web_honest_menu.mjs'
+      - 'scripts/test_web_account_switch.mjs'
+      - 'scripts/test_web_privacy_settings.mjs'
+      - 'scripts/test_web_route_staleness.mjs'
+      - 'scripts/test_blink_indexnow.mjs'
+      - 'scripts/indexnow_public_urls.mjs'
+      - 'scripts/submit_blink_indexnow.mjs'
+      - '.github/workflows/submit-blink-indexnow.yml'
+      - 'scripts/normalize_public_html.mjs'
+      - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Contest invitation recovery and explicit voting
+        run: node scripts/test_contest_invitation.mjs
+
+      - name: BLINK official domain, SEO, routes and APK alias
+        run: python3 scripts/check_github_pages_site.py
+
+      - name: Verify raw HTML SEO and private SPA route protections
+        run: node scripts/test_web_seo_static.mjs
+
+      - name: Verify public-only IndexNow and sitemap eligibility
+        run: node scripts/test_blink_indexnow.mjs
+
+      - name: Verify secure canonical OAuth and recovery redirects
+        run: node scripts/test_domain_auth_links.mjs
+
+      - name: Guard sitewide analytics disabled defaults and no visitor data
+        run: node scripts/test_site_aggregate_analytics.mjs
+
+      - name: Check no-tracking opt-in analytics and anonymous funnel counts
+        run: node scripts/test_web_local_analytics.mjs
+
+      - name: Check mobile asset budgets and locally opt-in Core Web Vitals
+        run: node scripts/test_mobile_web_performance.mjs
+
+      - name: Verify referral invitation privacy and signup attribution
+        run: node --test scripts/test_web_referral_invitation.mjs
+
+      - name: Verify product listings cannot be published as ordinary Feed posts
+        run: node scripts/test_feed_market_posting_contract.mjs
+
+      - name: Test Phase 3 resilient authentication and private-route SEO
+        run: node scripts/test_web_production_phase3_authseo.mjs
+
+      - name: Test Phase 3 private-safe cache, offline loading and fresh website updates
+        run: node scripts/test_web_production_phase3.mjs
+
+      - name: Check Phase 2 university catalogue, public discovery and release metadata
+        run: node scripts/test_discovery_phase2.mjs
+
+      - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
+        run: node scripts/test_landing_phase1.mjs
+
+      - name: BLINK APK-first branded homepage regression
+        run: node scripts/test_landing_relaunch.mjs
+
+      - name: JavaScript syntax
+        run: |
+          node --check web/landing-relaunch.js
+          node --check web/app.js
+          node --check web/parity.js
+          node --check web/sw.js
+          node --check web/config.js
+
+      - name: Browser drafts cross-account access regression
+        run: node scripts/test_web_draft_ownership.mjs
+
+      - name: Ensure public feature menu only lists actual web pages
+        run: node scripts/test_web_honest_menu.mjs
+
+      - name: Verify account switch clears session before Login
+        run: node scripts/test_web_account_switch.mjs
+
+      - name: Verify canonical web privacy writes and read receipts
+        run: node scripts/test_web_privacy_settings.mjs
+
+      - name: Reject stale page responses after web navigation or account changes
+        run: node scripts/test_web_route_staleness.mjs
+
+      - name: JSON manifests
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('web/manifest.webmanifest','utf8')); JSON.parse(require('fs').readFileSync('web/vercel.json','utf8')); console.log('web JSON valid')"
+
+      - name: Verify parity wiring and 500 registry
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('web/parity.js','utf8');
+          const html = fs.readFileSync('web/index.html','utf8');
+          const sw = fs.readFileSync('web/sw.js','utf8');
+          const css = fs.readFileSync('web/parity.css','utf8');
+          const modules = [...js.matchAll(/^\s*\['[^']+','[^']+','[^']+','[^']+','[^']+'\],?$/gm)].length;
+          const layersBlock = js.match(/const LAYERS = \[([\s\S]*?)\]\.map/);
+          if (!layersBlock) throw new Error('Could not find parity layers');
+          const layers = [...layersBlock[1].matchAll(/^\s*\['[^']+','[^']+','[^']+'\],?$/gm)].length;
+          if (modules !== 50) throw new Error(`Expected 50 app modules, found ${modules}`);
+          if (layers !== 10) throw new Error(`Expected 10 parity layers, found ${layers}`);
+          if (modules * layers !== 500) throw new Error(`Expected 500 capabilities, found ${modules * layers}`);
+          for (const asset of ['parity.css','parity.js','blink-icon.svg']) {
+            if (asset !== 'blink-icon.svg' && !html.includes(asset)) throw new Error(`index.html does not load ${asset}`);
+            if (!sw.includes(`./${asset}`)) throw new Error(`service worker does not cache ${asset}`);
+          }
+          if (!css.includes('.parity-root')) throw new Error('Parity stylesheet root missing');
+          console.log(`Verified ${modules} modules × ${layers} layers = ${modules * layers} capabilities`);
+          NODE
+
+      - name: Web regression safeguards
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('web/app.js','utf8');
+          const parity = fs.readFileSync('web/parity.js','utf8');
+          const sw = fs.readFileSync('web/sw.js','utf8');
+          const vercel = JSON.parse(fs.readFileSync('web/vercel.json','utf8'));
+          const styles = fs.readFileSync('web/styles.css','utf8');
+
+          const requiredApp = [
+            'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk',
+            'get_conversation_summaries_page',
+            'mark_conversation_read',
+            'send_group_message',
+            'data-connect-receiver',
+            'p_viewed_for_seconds:60',
+            '60000',
+            'fetchWithTimeout',
+            'viewObserver',
+            'profile-cover-image'
+          ];
+          for (const marker of requiredApp) {
+            if (!app.includes(marker)) throw new Error(`Missing app regression marker: ${marker}`);
+          }
+
+          if (app.includes('blink-ai-v2')) {
+            throw new Error('Web Blink AI must use the deployed canonical blink-ai endpoint');
+          }
+          if (!app.includes("for(const endpoint of ['blink-ai'])")) {
+            throw new Error('Web Blink AI canonical endpoint wiring missing');
+          }
+
+          if (!styles.includes('.profile-cover-image')) throw new Error('Profile cover image style missing');
+          if (!styles.includes(':focus-visible')) throw new Error('Keyboard focus styling missing');
+
+          for (const marker of [
+            "url.origin!==self.location.origin",
+            "request.mode==='navigate'",
+            "'./blink-icon.svg'",
+            "'./index.html'"
+          ]) {
+            if (!sw.includes(marker)) throw new Error(`Service worker hardening missing: ${marker}`);
+          }
+
+          const requiredRoutes = [
+            '/feed','/reels','/search','/messages','/activity','/market','/connect','/games','/scheduled','/ai',
+            '/settings','/login','/more','/store','/vault','/vip','/boosts','/gifts','/calls','/offline','/drafts',
+            '/verification','/analytics','/study','/accounts','/professional','/leaderboard','/seller'
+          ];
+          const routes = new Set((vercel.rewrites||[]).map(x=>x.source));
+          for (const route of requiredRoutes) {
+            if (!routes.has(route)) throw new Error(`Missing Vercel SPA rewrite: ${route}`);
+          }
+
+          for (const source of [app, parity]) {
+            for (const tag of source.match(/<a\b[^>]*target=["']_blank["'][^>]*>/g) || []) {
+              if (!/rel=["'][^"']*noopener[^"']*noreferrer[^"']*["']/.test(tag)) {
+                throw new Error(`Unsafe target=_blank link: ${tag.slice(0,160)}`);
+              }
+            }
+            if (/onclick\s*=\s*["']/.test(source)) throw new Error('Inline onclick HTML attribute found');
+          }
+
+          if (/localStorage\.(?:getItem|setItem)\(DRAFT_KEY/.test(app)) {
+            throw new Error('Post drafts are no longer account scoped');
+          }
+          console.log('Web regression safeguards passed.');
+          NODE
+
+      - name: Guard against privileged secrets in web assets
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = fs.readdirSync('web').filter(name => /\.(js|html|json|webmanifest)$/i.test(name));
+          const patterns = [
+            /sb_secret_[A-Za-z0-9_-]{10,}/,
+            /SUPABASE_SERVICE_ROLE(?:_KEY)?\s*[:=]\s*["'`][^"'`]{8,}/,
+            /service[_-]?role(?:_key)?\s*[:=]\s*["'`][A-Za-z0-9._-]{20,}/i
+          ];
+          for (const name of files) {
+            const text = fs.readFileSync(path.join('web', name), 'utf8');
+            for (const pattern of patterns) {
+              if (pattern.test(text)) throw new Error(`Possible privileged secret value detected in web/${name}`);
+            }
+          }
+          console.log('No privileged secret values found in web assets.');
+          NODE

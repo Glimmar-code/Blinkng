@@ -1,0 +1,1691 @@
+package com.example.notification
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationChannelGroup
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.IconCompat
+import com.example.MainActivity
+import com.example.util.startActivitySafely
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.math.absoluteValue
+
+/**
+ * Central notification manager for Blink.
+ *
+ * Features:
+ * - Android 8+ notification channels
+ * - Android 13+ POST_NOTIFICATIONS permission awareness
+ * - Channel groups
+ * - MessagingStyle chat notifications
+ * - Inbox-style social notifications
+ * - Market notifications
+ * - Per-conversation channel support
+ * - Notification grouping
+ * - Deep links into MainActivity
+ * - Auto-cancel
+ * - Large expandable text
+ * - Conversation shortcuts groundwork
+ * - Badge support
+ * - Notification cancellation helpers
+ * - Settings shortcuts
+ * - Stable positive notification IDs
+ * - Safer notification permission handling
+ * - Quiet / normal / urgent channel separation
+ */
+object BlinkNotificationHelper {
+
+    // ================================================================
+    // CHANNEL GROUPS
+    // ================================================================
+
+    const val GROUP_COMMUNICATION = "blink_communication_group"
+    const val GROUP_SOCIAL = "blink_social_group"
+    const val GROUP_MARKET = "blink_market_group"
+
+    // ================================================================
+    // MAIN CHANNELS
+    // ================================================================
+
+    const val CHANNEL_MESSAGES = "blink_messages_channel"
+    const val CHANNEL_SOCIAL = "blink_social_channel"
+    const val CHANNEL_MARKET = "blink_market_channel"
+
+    // ================================================================
+    // OPTIONAL SUBCHANNELS
+    // ================================================================
+
+    const val CHANNEL_MENTIONS = "blink_mentions_channel"
+    const val CHANNEL_COMMENTS = "blink_comments_channel"
+    const val CHANNEL_FOLLOWS = "blink_follows_channel"
+    const val CHANNEL_MARKET_ORDERS = "blink_market_orders_channel"
+    const val CHANNEL_SECURITY = "blink_security_channel"
+
+    // ================================================================
+    // NOTIFICATION ID RANGES
+    // ================================================================
+
+    private const val MSG_ID_BASE = 1000
+    private const val SOCIAL_ID_BASE = 2000
+    private const val MARKET_ID_BASE = 3000
+    private const val MENTION_ID_BASE = 4000
+    private const val COMMENT_ID_BASE = 5000
+    private const val SECURITY_ID_BASE = 6000
+
+    // ================================================================
+    // GROUP KEYS
+    // ================================================================
+
+    private const val GROUP_KEY_MESSAGES = "blink_group_messages"
+    private const val GROUP_KEY_SOCIAL = "blink_group_social"
+    private const val GROUP_KEY_MARKET = "blink_group_market"
+
+    // ================================================================
+    // ACTION KEYS
+    // ================================================================
+
+    const val EXTRA_ACTION = "EXTRA_ACTION"
+    const val EXTRA_CHANNEL_ID = "EXTRA_CHANNEL_ID"
+    const val EXTRA_PARTNER_USERNAME = "EXTRA_PARTNER_USERNAME"
+    const val EXTRA_PARTNER_NAME = "EXTRA_PARTNER_NAME"
+    const val EXTRA_PARTNER_AVATAR = "EXTRA_PARTNER_AVATAR"
+    const val EXTRA_POST_ID = "EXTRA_POST_ID"
+    const val EXTRA_MARKET_ID = "EXTRA_MARKET_ID"
+    const val EXTRA_PROFILE_IDENTIFIER = "EXTRA_PROFILE_IDENTIFIER"
+
+    const val ACTION_OPEN_CHANNEL = "OPEN_CHANNEL"
+    const val ACTION_OPEN_CHAT = "OPEN_CHAT"
+    const val ACTION_OPEN_MESSAGES = "OPEN_MESSAGES"
+    const val ACTION_OPEN_POST = "OPEN_POST"
+    const val ACTION_OPEN_REEL = "OPEN_REEL"
+    const val ACTION_OPEN_PROFILE = "OPEN_PROFILE"
+    const val ACTION_OPEN_MARKET = "OPEN_MARKET"
+    const val ACTION_OPEN_SOCIAL = "OPEN_SOCIAL"
+    const val ACTION_OPEN_ITEMS = "OPEN_ITEMS"
+    const val ACTION_OPEN_BOOST = "OPEN_BOOST"
+
+    // ================================================================
+    // COLORS
+    // ================================================================
+
+    private const val PINK_COLOR = 0xFFE02B6D.toInt()
+    private const val PURPLE_COLOR = 0xFF8A2BE2.toInt()
+    private const val GOLD_COLOR = 0xFFFFB800.toInt()
+    private const val GREEN_COLOR = 0xFF22C55E.toInt()
+
+    // ================================================================
+    // PUBLIC CHANNEL INITIALIZATION
+    // ================================================================
+
+    fun createNotificationChannels(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+
+        val manager =
+            context.getSystemService(
+                Context.NOTIFICATION_SERVICE
+            ) as? NotificationManager
+                ?: return
+
+        // ------------------------------------------------------------
+        // GROUPS
+        // ------------------------------------------------------------
+
+        manager.createNotificationChannelGroups(
+            listOf(
+                NotificationChannelGroup(
+                    GROUP_COMMUNICATION,
+                    "Blink Communication"
+                ),
+                NotificationChannelGroup(
+                    GROUP_SOCIAL,
+                    "Blink Social"
+                ),
+                NotificationChannelGroup(
+                    GROUP_MARKET,
+                    "Blink Market"
+                )
+            )
+        )
+
+        // ------------------------------------------------------------
+        // MESSAGES
+        // ------------------------------------------------------------
+
+        val messagesChannel =
+            NotificationChannel(
+                CHANNEL_MESSAGES,
+                "Direct Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+
+                description =
+                    "Messages from Blink students, creators and marketplace sellers"
+
+                enableLights(true)
+                lightColor =
+                    Color.parseColor("#E02B6D")
+
+                enableVibration(true)
+                vibrationPattern =
+                    longArrayOf(
+                        0,
+                        180,
+                        100,
+                        180
+                    )
+
+                setShowBadge(true)
+                setGroup(
+                    GROUP_COMMUNICATION
+                )
+
+                lockscreenVisibility =
+                    NotificationCompat
+                        .VISIBILITY_PRIVATE
+            }
+
+        // ------------------------------------------------------------
+        // SOCIAL
+        // ------------------------------------------------------------
+
+        val socialChannel =
+            NotificationChannel(
+                CHANNEL_SOCIAL,
+                "Campus Activity",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+
+                description =
+                    "Likes, comments, mentions, follows and campus activity"
+
+                enableLights(true)
+                lightColor =
+                    Color.parseColor("#8A2BE2")
+
+                enableVibration(true)
+                vibrationPattern =
+                    longArrayOf(
+                        0,
+                        100,
+                        100,
+                        100
+                    )
+
+                setShowBadge(true)
+
+                setGroup(
+                    GROUP_SOCIAL
+                )
+
+                lockscreenVisibility =
+                    NotificationCompat
+                        .VISIBILITY_PRIVATE
+            }
+
+        // ------------------------------------------------------------
+        // MARKET
+        // ------------------------------------------------------------
+
+        val marketChannel =
+            NotificationChannel(
+                CHANNEL_MARKET,
+                "Aluta Market",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+
+                description =
+                    "Buyer inquiries, orders, seller activity and important marketplace updates"
+
+                enableLights(true)
+                lightColor =
+                    Color.parseColor("#FFB800")
+
+                enableVibration(true)
+                vibrationPattern =
+                    longArrayOf(
+                        0,
+                        200,
+                        100,
+                        200
+                    )
+
+                setShowBadge(true)
+
+                setGroup(
+                    GROUP_MARKET
+                )
+
+                lockscreenVisibility =
+                    NotificationCompat
+                        .VISIBILITY_PRIVATE
+            }
+
+        // ------------------------------------------------------------
+        // MENTIONS
+        // ------------------------------------------------------------
+
+        val mentionsChannel =
+            NotificationChannel(
+                CHANNEL_MENTIONS,
+                "Mentions",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+
+                description =
+                    "When someone mentions you on Blink"
+
+                setShowBadge(true)
+                setGroup(
+                    GROUP_SOCIAL
+                )
+
+                lockscreenVisibility =
+                    NotificationCompat
+                        .VISIBILITY_PRIVATE
+            }
+
+        // ------------------------------------------------------------
+        // COMMENTS
+        // ------------------------------------------------------------
+
+        val commentsChannel =
+            NotificationChannel(
+                CHANNEL_COMMENTS,
+                "Comments",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+
+                description =
+                    "Comments and replies on your posts"
+
+                setShowBadge(true)
+                setGroup(
+                    GROUP_SOCIAL
+                )
+
+                lockscreenVisibility =
+                    NotificationCompat
+                        .VISIBILITY_PRIVATE
+            }
+
+        // ------------------------------------------------------------
+        // FOLLOWS
+        // ------------------------------------------------------------
+
+        val followsChannel =
+            NotificationChannel(
+                CHANNEL_FOLLOWS,
+                "New Followers",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+
+                description =
+                    "New people following your Blink profile"
+
+                setShowBadge(false)
+
+                setGroup(
+                    GROUP_SOCIAL
+                )
+
+                lockscreenVisibility =
+                    NotificationCompat
+                        .VISIBILITY_PRIVATE
+            }
+
+        // ------------------------------------------------------------
+        // MARKET ORDERS
+        // ------------------------------------------------------------
+
+        val marketOrdersChannel =
+            NotificationChannel(
+                CHANNEL_MARKET_ORDERS,
+                "Market Orders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+
+                description =
+                    "Important order and buyer/seller events"
+
+                enableLights(true)
+                lightColor =
+                    Color.parseColor("#FFB800")
+
+                enableVibration(true)
+
+                setShowBadge(true)
+
+                setGroup(
+                    GROUP_MARKET
+                )
+            }
+
+        // ------------------------------------------------------------
+        // SECURITY
+        // ------------------------------------------------------------
+
+        val securityChannel =
+            NotificationChannel(
+                CHANNEL_SECURITY,
+                "Account Security",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Important login, password and account security alerts"
+                enableLights(true)
+                lightColor = Color.parseColor("#8A2BE2")
+                enableVibration(true)
+                setShowBadge(true)
+                setGroup(GROUP_COMMUNICATION)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+            }
+
+        manager.createNotificationChannels(
+            listOf(
+                messagesChannel,
+                socialChannel,
+                marketChannel,
+                mentionsChannel,
+                commentsChannel,
+                followsChannel,
+                marketOrdersChannel,
+                securityChannel
+            )
+        )
+    }
+
+    // ================================================================
+    // PERMISSION
+    // ================================================================
+
+    fun hasNotificationPermission(
+        context: Context
+    ): Boolean {
+
+        return if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.TIRAMISU
+        ) {
+
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
+
+        } else {
+
+            NotificationManagerCompat
+                .from(context)
+                .areNotificationsEnabled()
+        }
+    }
+
+    fun areNotificationsEnabled(
+        context: Context
+    ): Boolean {
+
+        return NotificationManagerCompat
+            .from(context)
+            .areNotificationsEnabled()
+    }
+
+    // ================================================================
+    // SETTINGS INTENT
+    // ================================================================
+
+    fun openNotificationSettings(
+        context: Context
+    ) {
+
+        val intent =
+            Intent(
+                android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
+            ).apply {
+
+                putExtra(
+                    android.provider.Settings.EXTRA_APP_PACKAGE,
+                    context.packageName
+                )
+            }
+
+        intent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK
+        )
+
+        context.startActivitySafely(
+            intent,
+            failureMessage = "Unable to open notification settings."
+        )
+    }
+
+    fun openChannelSettings(
+        context: Context,
+        channelId: String
+    ) {
+
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.O
+        ) {
+            openNotificationSettings(
+                context
+            )
+            return
+        }
+
+        val intent =
+            Intent(
+                android.provider.Settings
+                    .ACTION_CHANNEL_NOTIFICATION_SETTINGS
+            ).apply {
+
+                putExtra(
+                    android.provider.Settings.EXTRA_APP_PACKAGE,
+                    context.packageName
+                )
+
+                putExtra(
+                    android.provider.Settings.EXTRA_CHANNEL_ID,
+                    channelId
+                )
+            }
+
+        intent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK
+        )
+
+        context.startActivitySafely(
+            intent,
+            failureMessage = "Unable to open notification channel settings."
+        )
+    }
+
+    // ================================================================
+    // CHAT DEEP LINK
+    // ================================================================
+
+    private fun buildChatPendingIntent(
+        context: Context,
+        senderUsername: String,
+        senderName: String,
+        senderAvatar: String = ""
+    ): PendingIntent {
+
+        val intent =
+            Intent(
+                context,
+                MainActivity::class.java
+            ).apply {
+
+                flags =
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+
+                putExtra(
+                    EXTRA_ACTION,
+                    ACTION_OPEN_CHAT
+                )
+
+                putExtra(
+                    EXTRA_PARTNER_USERNAME,
+                    senderUsername
+                )
+
+                putExtra(
+                    EXTRA_PARTNER_NAME,
+                    senderName
+                )
+
+                putExtra(
+                    EXTRA_PARTNER_AVATAR,
+                    senderAvatar
+                )
+            }
+
+        return PendingIntent.getActivity(
+            context,
+            positiveHash(
+                senderUsername
+            ),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // ================================================================
+    // POST DEEP LINK
+    // ================================================================
+
+    private fun buildPostPendingIntent(
+        context: Context,
+        postId: String?,
+        targetType: String = "post"
+    ): PendingIntent {
+
+        val intent =
+            Intent(
+                context,
+                MainActivity::class.java
+            ).apply {
+
+                flags =
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+
+                putExtra(
+                    EXTRA_ACTION,
+                    if (targetType.equals("reel", ignoreCase = true)) ACTION_OPEN_REEL else ACTION_OPEN_POST
+                )
+
+                putExtra(
+                    EXTRA_POST_ID,
+                    postId
+                )
+            }
+
+        return PendingIntent.getActivity(
+            context,
+            positiveHash(
+                "${targetType.lowercase()}_${postId ?: "unknown"}"
+            ),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildSocialPendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_SOCIAL)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("blink_social"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildDropsPendingIntent(
+        context: Context,
+        dropId: String?
+    ): PendingIntent {
+        val intent = Intent(context, com.example.BlinkDropsActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(com.example.BlinkDropsActivity.EXTRA_DROP_ID, dropId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("drop_${dropId ?: "unknown"}"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildBoostPendingIntent(
+        context: Context,
+        campaignId: String?
+    ): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_BOOST)
+            putExtra(EXTRA_POST_ID, campaignId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("boost_${campaignId ?: "growth"}"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // ================================================================
+    // PROFILE DEEP LINK
+    // ================================================================
+
+    private fun buildProfilePendingIntent(
+        context: Context,
+        profileIdentifier: String
+    ): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_PROFILE)
+            putExtra(EXTRA_PROFILE_IDENTIFIER, profileIdentifier)
+        }
+
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("profile_$profileIdentifier"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // ================================================================
+    // MARKET DEEP LINK
+    // ================================================================
+
+    private fun buildMarketPendingIntent(
+        context: Context,
+        marketId: String?
+    ): PendingIntent {
+
+        val intent =
+            Intent(
+                context,
+                MainActivity::class.java
+            ).apply {
+
+                flags =
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+
+                putExtra(
+                    EXTRA_ACTION,
+                    ACTION_OPEN_MARKET
+                )
+
+                putExtra(
+                    EXTRA_MARKET_ID,
+                    marketId
+                )
+            }
+
+        return PendingIntent.getActivity(
+            context,
+            positiveHash(
+                "market_${marketId ?: "unknown"}"
+            ),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // ================================================================
+    // CHAT NOTIFICATION
+    // ================================================================
+
+    private fun loadAvatarBitmap(url: String): Bitmap? {
+        if (url.isBlank()) return null
+        return runCatching {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 5_000
+            connection.readTimeout = 5_000
+            connection.instanceFollowRedirects = true
+            connection.inputStream.use { BitmapFactory.decodeStream(it) }
+        }.getOrNull()
+    }
+
+    fun showChatMessageNotification(
+        context: Context,
+        senderUsername: String,
+        senderName: String,
+        messageText: String,
+        senderAvatar: String = "",
+        messageId: String = ""
+    ) {
+        // Legacy notification entry point must follow the same privacy, mute
+        // and account rules as FCM; never construct an unfiltered alert here.
+        InstantChatNotification.show(
+            context = context,
+            senderUsername = senderUsername,
+            senderName = senderName,
+            messageText = messageText,
+            senderAvatar = senderAvatar,
+            messageId = messageId
+        )
+    }
+
+    // ================================================================
+    // MULTI-MESSAGE CHAT SUMMARY
+    // ================================================================
+
+    fun showChatSummaryNotification(
+        context: Context,
+        conversationTitle: String,
+        messages: List<Pair<String, String>>,
+        senderUsername: String
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        if (messages.isEmpty()) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val inboxStyle =
+            NotificationCompat.InboxStyle()
+
+        messages
+            .takeLast(5)
+            .forEach { pair ->
+
+                inboxStyle.addLine(
+                    "${pair.first}: ${pair.second}"
+                )
+            }
+
+        inboxStyle.setSummaryText(
+            "$conversationTitle • ${messages.size} recent messages"
+        )
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_MESSAGES
+            )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+                .setContentTitle(
+                    conversationTitle
+                )
+                .setStyle(
+                    inboxStyle
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_MESSAGE
+                )
+                .setPriority(
+                    NotificationCompat
+                        .PRIORITY_HIGH
+                )
+                .setColor(
+                    PINK_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setContentIntent(
+                    buildChatPendingIntent(
+                        context,
+                        senderUsername,
+                        conversationTitle
+                    )
+                )
+                .setGroup(
+                    GROUP_KEY_MESSAGES
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_message_summary_$senderUsername"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // SOCIAL NOTIFICATION
+    // ================================================================
+
+    fun showSocialNotification(
+        context: Context,
+        title: String,
+        body: String,
+        targetPostId: String? = null,
+        targetType: String? = null,
+        targetId: String? = null,
+        profileIdentifier: String? = null,
+        stableNotificationKey: String? = null,
+        notificationCount: Int = 1
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_SOCIAL
+            )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+                .setContentTitle(
+                    title
+                )
+                .setContentText(
+                    body
+                )
+                .setStyle(
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(body)
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_SOCIAL
+                )
+                .setPriority(
+                    NotificationCompat
+                        .PRIORITY_DEFAULT
+                )
+                .setColor(
+                    PURPLE_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setOnlyAlertOnce(!stableNotificationKey.isNullOrBlank())
+                .setNumber(notificationCount.coerceAtLeast(1))
+                .setContentIntent(
+                    when {
+                        (targetType.equals("profile", ignoreCase = true) || targetType.equals("user", ignoreCase = true)) &&
+                            !profileIdentifier.isNullOrBlank() ->
+                            buildProfilePendingIntent(context, profileIdentifier)
+                        (targetType.equals("profile", ignoreCase = true) || targetType.equals("user", ignoreCase = true)) &&
+                            !targetId.isNullOrBlank() ->
+                            buildProfilePendingIntent(context, targetId)
+                        targetType.equals("channel", ignoreCase = true) &&
+                            !targetId.isNullOrBlank() ->
+                            PendingIntent.getActivity(
+                                context,
+                                positiveHash("channel:$targetId"),
+                                Intent(context, MainActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    putExtra(EXTRA_ACTION, ACTION_OPEN_CHANNEL)
+                                    putExtra(EXTRA_CHANNEL_ID, targetId)
+                                },
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
+                        targetType.equals("market", ignoreCase = true) ->
+                            buildMarketPendingIntent(context, targetId)
+                        targetType.equals("giveaway", ignoreCase = true) ->
+                            buildDropsPendingIntent(context, targetId)
+                        targetType.equals("boost", ignoreCase = true) ->
+                            buildBoostPendingIntent(context, targetId)
+                        targetType.equals("story", ignoreCase = true) ||
+                            targetType.equals("notification", ignoreCase = true) ||
+                            (targetPostId.isNullOrBlank() && targetId.isNullOrBlank()) ->
+                            buildSocialPendingIntent(context)
+                        else ->
+                            buildPostPendingIntent(
+                                context,
+                                targetPostId ?: targetId,
+                                targetType ?: "post"
+                            )
+                    }
+                )
+                .setGroup(
+                    GROUP_KEY_SOCIAL
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_social_${stableNotificationKey ?: "$title$body"}"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // LIKE
+    // ================================================================
+
+    fun showLikeNotification(
+        context: Context,
+        username: String,
+        postId: String,
+        targetType: String = "post"
+    ) {
+
+        val burstKey = "like:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        showSocialNotification(
+            context = context,
+            title = if (burst.count == 1) {
+                "❤️ @$username liked your post"
+            } else {
+                "❤️ " + burst.actorSummary + " liked your post"
+            },
+            body = if (burst.count == 1) {
+                "Someone interacted with your campus post."
+            } else {
+                burst.count.toString() + " new likes on this post."
+            },
+            targetPostId = postId,
+            targetType = targetType,
+            stableNotificationKey = burstKey,
+            notificationCount = burst.count
+        )
+    }
+
+    // ================================================================
+    // COMMENT
+    // ================================================================
+
+    fun showCommentNotification(
+        context: Context,
+        username: String,
+        comment: String,
+        postId: String,
+        targetType: String = "post"
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val burstKey = "comment:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        val notificationTitle = if (burst.count == 1) {
+            "@$username commented on your post"
+        } else {
+            burst.actorSummary + " commented on your post"
+        }
+        val notificationBody = if (burst.count == 1) {
+            comment
+        } else {
+            burst.count.toString() + " new comments. Latest: " + comment
+        }
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_COMMENTS
+            )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+                .setContentTitle(
+                    notificationTitle
+                )
+                .setContentText(
+                    notificationBody
+                )
+                .setStyle(
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(notificationBody)
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_SOCIAL
+                )
+                .setPriority(
+                    NotificationCompat
+                        .PRIORITY_DEFAULT
+                )
+                .setColor(
+                    PURPLE_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
+                .setContentIntent(
+                    buildPostPendingIntent(
+                        context,
+                        postId,
+                        targetType
+                    )
+                )
+                .setGroup(
+                    GROUP_KEY_SOCIAL
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_comment_$burstKey"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // MENTION
+    // ================================================================
+
+    fun showMentionNotification(
+        context: Context,
+        username: String,
+        postId: String,
+        body: String,
+        targetType: String = "post"
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val burstKey = "mention:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        val notificationTitle = if (burst.count == 1) {
+            "@$username mentioned you"
+        } else {
+            burst.actorSummary + " mentioned you"
+        }
+        val notificationBody = if (burst.count == 1) body
+        else burst.count.toString() + " new mentions. Latest: " + body
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_MENTIONS
+            )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+                .setContentTitle(
+                    notificationTitle
+                )
+                .setContentText(
+                    notificationBody
+                )
+                .setStyle(
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(notificationBody)
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_SOCIAL
+                )
+                .setColor(
+                    PURPLE_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
+                .setContentIntent(
+                    buildPostPendingIntent(
+                        context,
+                        postId,
+                        targetType
+                    )
+                )
+                .setGroup(
+                    GROUP_KEY_SOCIAL
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_mention_$burstKey"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // FOLLOW NOTIFICATION
+    // ================================================================
+
+    fun showFollowNotification(
+        context: Context,
+        username: String
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val burstKey = "follow"
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_FOLLOWS
+            )
+                .setSmallIcon(
+                    android.R.drawable
+                        .ic_menu_add
+                )
+                .setContentTitle(
+                    "New follower"
+                )
+                .setContentText(
+                    if (burst.count == 1) {
+                        "@$username started following you"
+                    } else {
+                        burst.actorSummary + " started following you"
+                    }
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_SOCIAL
+                )
+                .setColor(
+                    GREEN_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
+                .setContentIntent(
+                    if (burst.count == 1) {
+                        buildProfilePendingIntent(context, username)
+                    } else {
+                        buildSocialPendingIntent(context)
+                    }
+                )
+                .setGroup(GROUP_KEY_SOCIAL)
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_follow_$burstKey"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // MARKET NOTIFICATION
+    // ================================================================
+
+    fun showMarketNotification(
+        context: Context,
+        title: String,
+        body: String,
+        targetMarketId: String? = null
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_MARKET
+            )
+                .setSmallIcon(
+                    android.R.drawable
+                        .ic_menu_agenda
+                )
+                .setContentTitle(
+                    title
+                )
+                .setContentText(
+                    body
+                )
+                .setStyle(
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(body)
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_EVENT
+                )
+                .setPriority(
+                    NotificationCompat
+                        .PRIORITY_HIGH
+                )
+                .setColor(
+                    GOLD_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setContentIntent(
+                    buildMarketPendingIntent(
+                        context,
+                        targetMarketId
+                    )
+                )
+                .setGroup(
+                    GROUP_KEY_MARKET
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_market_$title$body"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // BUYER INQUIRY
+    // ================================================================
+
+    fun showBuyerInquiryNotification(
+        context: Context,
+        buyerName: String,
+        productName: String,
+        marketId: String
+    ) {
+
+        showMarketNotification(
+            context = context,
+            title =
+                "🛍 New buyer inquiry",
+            body =
+                "$buyerName is asking about $productName.",
+            targetMarketId =
+                marketId
+        )
+    }
+
+    // ================================================================
+    // MARKET ORDER
+    // ================================================================
+
+    fun showMarketOrderNotification(
+        context: Context,
+        title: String,
+        body: String,
+        marketId: String
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_MARKET_ORDERS
+            )
+                .setSmallIcon(
+                    android.R.drawable
+                        .ic_menu_agenda
+                )
+                .setContentTitle(
+                    title
+                )
+                .setContentText(
+                    body
+                )
+                .setStyle(
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(body)
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_EVENT
+                )
+                .setPriority(
+                    NotificationCompat
+                        .PRIORITY_HIGH
+                )
+                .setColor(
+                    GOLD_COLOR
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setContentIntent(
+                    buildMarketPendingIntent(
+                        context,
+                        marketId
+                    )
+                )
+                .setGroup(
+                    GROUP_KEY_MARKET
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_market_order_$marketId"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // SECURITY NOTIFICATION
+    // ================================================================
+
+    fun showSecurityNotification(
+        context: Context,
+        title: String,
+        body: String
+    ) {
+        if (!hasNotificationPermission(context)) return
+        createNotificationChannels(context)
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_SECURITY)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setColor(PURPLE_COLOR)
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setContentIntent(buildSocialPendingIntent(context))
+            .build()
+
+        notifySafely(
+            context,
+            positiveHash("blink_security_$title$body"),
+            notification
+        )
+    }
+
+    // ================================================================
+    // GENERIC NOTIFICATION
+    // ================================================================
+
+    fun showGenericNotification(
+        context: Context,
+        channelId: String,
+        title: String,
+        body: String,
+        notificationId: Int,
+        color: Int = PINK_COLOR
+    ) {
+
+        if (
+            !hasNotificationPermission(
+                context
+            )
+        ) {
+            return
+        }
+
+        createNotificationChannels(
+            context
+        )
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                channelId
+            )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+                .setContentTitle(
+                    title
+                )
+                .setContentText(
+                    body
+                )
+                .setStyle(
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(body)
+                )
+                .setColor(
+                    color
+                )
+                .setAutoCancel(
+                    true
+                )
+                .setCategory(
+                    NotificationCompat
+                        .CATEGORY_STATUS
+                )
+                .build()
+
+        notifySafely(
+            context,
+            positiveHash(
+                notificationId.toString()
+            ),
+            notification
+        )
+    }
+
+    // ================================================================
+    // CANCEL ONE NOTIFICATION
+    // ================================================================
+
+    fun cancelNotification(
+        context: Context,
+        notificationId: Int
+    ) {
+
+        NotificationManagerCompat
+            .from(context)
+            .cancel(
+                notificationId
+            )
+    }
+
+    // ================================================================
+    // CANCEL CHAT
+    // ================================================================
+
+    fun cancelChatNotification(
+        context: Context,
+        senderUsername: String
+    ) {
+
+        cancelNotification(
+            context,
+            positiveHash("blink_message_$senderUsername")
+        )
+    }
+
+    // ================================================================
+    // CANCEL POST
+    // ================================================================
+
+    fun cancelPostNotification(
+        context: Context,
+        postId: String
+    ) {
+
+        cancelNotification(
+            context,
+            SOCIAL_ID_BASE +
+                    positiveHash(
+                        "post_$postId"
+                    ) % 700
+        )
+    }
+
+    // ================================================================
+    // CANCEL MARKET
+    // ================================================================
+
+    fun cancelMarketNotification(
+        context: Context,
+        marketId: String
+    ) {
+
+        cancelNotification(
+            context,
+            positiveHash("blink_market_order_$marketId")
+        )
+    }
+
+    // ================================================================
+    // CANCEL ALL
+    // ================================================================
+
+    fun cancelAllNotifications(
+        context: Context
+    ) {
+
+        NotificationManagerCompat
+            .from(context)
+            .cancelAll()
+    }
+
+    // ================================================================
+    // ACTIVE NOTIFICATION COUNT
+    // ================================================================
+
+    fun getActiveNotificationCount(
+        context: Context
+    ): Int {
+
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.M
+        ) {
+            return 0
+        }
+
+        val manager =
+            context.getSystemService(
+                Context.NOTIFICATION_SERVICE
+            ) as? NotificationManager
+                ?: return 0
+
+        return manager.activeNotifications.size
+    }
+
+    // ================================================================
+    // CHANNEL EXISTS
+    // ================================================================
+
+    fun doesChannelExist(
+        context: Context,
+        channelId: String
+    ): Boolean {
+
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.O
+        ) {
+            return true
+        }
+
+        val manager =
+            context.getSystemService(
+                Context.NOTIFICATION_SERVICE
+            ) as? NotificationManager
+                ?: return false
+
+        return manager.getNotificationChannel(
+            channelId
+        ) != null
+    }
+
+    // ================================================================
+    // DELETE A TEST CHANNEL
+    // ================================================================
+
+    fun deleteNotificationChannel(
+        context: Context,
+        channelId: String
+    ) {
+
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.O
+        ) {
+            return
+        }
+
+        val manager =
+            context.getSystemService(
+                Context.NOTIFICATION_SERVICE
+            ) as? NotificationManager
+                ?: return
+
+        manager.deleteNotificationChannel(
+            channelId
+        )
+    }
+
+    // ================================================================
+    // SAFE NOTIFY
+    // ================================================================
+
+    private fun notifySafely(
+        context: Context,
+        id: Int,
+        notification: android.app.Notification
+    ) {
+
+        try {
+
+            NotificationManagerCompat
+                .from(context)
+                .notify(
+                    id,
+                    notification
+                )
+
+        } catch (
+            _: SecurityException
+        ) {
+            // Permission was revoked while
+            // posting the notification.
+        }
+    }
+
+    // ================================================================
+    // POSITIVE HASH
+    // ================================================================
+
+    private fun positiveHash(
+        value: String
+    ): Int {
+
+        return value.hashCode() and Int.MAX_VALUE
+    }
+}

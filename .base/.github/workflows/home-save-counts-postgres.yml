@@ -1,0 +1,49 @@
+name: BLINK Home Save Counter isolated PostgreSQL
+
+on:
+  pull_request:
+    branches: [main, Testlab]
+    paths:
+      - 'supabase/migrations/20261021061500_home_post_save_counts.sql'
+      - 'supabase/tests/home_save_counts_*'
+      - '.github/workflows/home-save-counts-postgres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  home-save-counts-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: temporary_runner_only
+          POSTGRES_DB: blink_home_ci
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_home_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: temporary_runner_only
+      PGDATABASE: blink_home_ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Prepare disposable fixture with fake users and posts
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/home_save_counts_fixture.pgfixture
+      - name: Apply new save-count RPC migration on disposable database ONLY
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261021061500_home_post_save_counts.sql
+      - name: Assert safe totals, no access for anon, no exposure of private bookmarks
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/home_save_counts_assertions.pgfixture
+      - name: Confirm production not modified
+        run: echo 'PASSED only on fresh PostgreSQL service; no hosted Supabase credentials or paid resources used.'

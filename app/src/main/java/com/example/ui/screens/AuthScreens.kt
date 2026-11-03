@@ -1,0 +1,2863 @@
+package com.example.ui.screens
+
+import com.blinkng.shared.BlinkDesignTokens
+
+import com.example.data.local.rememberPersistentTextState
+import com.example.data.local.PersistentTextDraftStore
+import com.example.auth.RememberedLoginStore
+import com.example.auth.AccountSessionStore
+import com.example.auth.GoogleAuthLaunchGate
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.*
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.example.ui.components.BlinkMark
+import com.example.ui.theme.*
+import com.blinkng.shared.BlinkOnboardingPolicy
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+// ================================================================
+// SPLASH SCREEN
+// ================================================================
+
+@Composable
+fun SplashScreen(
+    onTimeout: () -> Unit
+) {
+    // Session initialization/navigation can proceed behind the full-screen intro.
+    // The independent MainActivity overlay is the visible animation, including
+    // for returning users whose cached auth reaches MAIN before this composes.
+    LaunchedEffect(Unit) {
+        delay(120)
+        onTimeout()
+    }
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black)
+    )
+}
+
+// ================================================================
+// ONBOARDING
+// ================================================================
+
+@Composable
+fun OnboardingScreen(
+    onSignInClick: () -> Unit,
+    onSignUpClick: () -> Unit,
+    onGoogleSignIn: (String) -> Unit
+) {
+    BlinkAuthReferenceLanding(
+        onSignInClick = onSignInClick,
+        onSignUpClick = onSignUpClick,
+        onGoogleSignIn = onGoogleSignIn,
+    )
+}
+
+// ================================================================
+// SIGN IN
+// ================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SignInScreen(
+    initialIdentifier: String = "",
+    onBack: () -> Unit,
+    onSignInWithCredentials: (
+        emailOrUsername: String,
+        password: String,
+        onResult: (Boolean, String?) -> Unit
+    ) -> Unit,
+    onGoogleSignIn: (String) -> Unit,
+    onForgotPassword: (
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) -> Unit,
+    onSwitchToSignUp: () -> Unit
+) {
+
+    val context = LocalContext.current
+    val rememberedLogin = remember { RememberedLoginStore.load(context) }
+
+    var emailOrUsername by rememberSaveable(initialIdentifier, rememberedLogin?.identifier) {
+        mutableStateOf(rememberedLogin?.identifier?.takeIf { it.isNotBlank() } ?: initialIdentifier)
+    }
+
+    // Authentication secrets stay in memory only, never saved-state Bundles.
+    var password by remember { mutableStateOf("") }
+
+    var passwordVisible by remember {
+        mutableStateOf(false)
+    }
+
+    var isSubmitting by remember {
+        mutableStateOf(false)
+    }
+
+    val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
+
+    var authError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var showForgotPasswordDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var rememberMe by rememberSaveable {
+        mutableStateOf(rememberedLogin != null)
+    }
+
+    LaunchedEffect(rememberMe, emailOrUsername) {
+        delay(300)
+        if (rememberMe) {
+            if (emailOrUsername.isNotBlank()) {
+                RememberedLoginStore.save(context, emailOrUsername, "")
+            }
+        } else {
+            RememberedLoginStore.clear(context)
+        }
+    }
+
+    var entranceReady by remember { mutableStateOf(false) }
+    val entranceAlpha by animateFloatAsState(
+        targetValue = if (entranceReady) 1f else 0f,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "signin_alpha"
+    )
+    val entranceOffset by animateDpAsState(
+        targetValue = if (entranceReady) 0.dp else 18.dp,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "signin_offset"
+    )
+
+    LaunchedEffect(Unit) { entranceReady = true }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+
+        DecorativeAuthBackground()
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(entranceAlpha)
+                .offset(y = entranceOffset)
+                .statusBarsPadding()
+                .padding(horizontal = 22.dp),
+            contentPadding = PaddingValues(
+                top = 10.dp,
+                bottom = 34.dp
+            )
+        ) {
+
+            item {
+
+                AuthTopBar(
+                    onBack = onBack,
+                    title = "Sign in",
+                    subtitle = "Welcome back to Blink"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(17.dp)
+                )
+
+                AuthHeroBadge(
+                    icon = Icons.Default.LockOpen,
+                    title = "Welcome back 👋",
+                    subtitle = "Your campus feed, communities and marketplace are waiting."
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(20.dp)
+                )
+
+                // REAL GOOGLE ACCOUNT PICKER ENTRY POINT
+                GoogleSignInButton(
+                    text = if (googleLoading)
+                        "Opening Google..."
+                    else
+                        "Continue with Google",
+                    onClick = {
+                        if (!googleLoading) {
+                            authError = null
+                            onGoogleSignIn("")
+                        }
+                    },
+                    modifier = Modifier
+                        .testTag("signin_google_btn")
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(16.dp)
+                )
+
+                AuthDivider(
+                    text = "OR CONTINUE WITH EMAIL"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(17.dp)
+                )
+
+                AnimatedVisibility(
+                    visible = authError != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut()
+                ) {
+
+                    AuthMessageCard(
+                        message = authError ?: "",
+                        success = false,
+                        onDismiss = {
+                            authError = null
+                        }
+                    )
+                }
+
+                AuthField(
+                    value = emailOrUsername,
+                    onValueChange = {
+                        emailOrUsername = it
+                        authError = null
+                    },
+                    label = "Email or username",
+                    icon = Icons.Default.Email,
+                    keyboardType = KeyboardType.Email,
+                    testTag = "signin_email_field"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(12.dp)
+                )
+
+                AuthPasswordField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        authError = null
+                    },
+                    visible = passwordVisible,
+                    onToggleVisibility = {
+                        passwordVisible =
+                            !passwordVisible
+                    },
+                    onFocus = {},
+                    testTag = "signin_password_field"
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        Checkbox(
+                            checked = rememberMe,
+                            onCheckedChange = { checked ->
+                                rememberMe = checked
+                                if (!checked) RememberedLoginStore.clear(context)
+                            },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = BlinkGold,
+                                checkmarkColor = BlinkBlack,
+                                uncheckedColor = DarkTextMuted
+                            )
+                        )
+
+                        Text(
+                            "Remember my username",
+                            color = DarkTextSecondary,
+                            fontSize = 11.5.sp
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            showForgotPasswordDialog = true
+                        }
+                    ) {
+
+                        Text(
+                            "Forgot password?",
+                            color = BlinkGoldSoft,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp
+                        )
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(14.dp)
+                )
+
+                Button(
+                    onClick = {
+
+                        when {
+
+                            emailOrUsername.isBlank() -> {
+                                authError =
+                                    "Enter your email or username."
+                            }
+
+                            password.isBlank() -> {
+                                authError =
+                                    "Enter your password."
+                            }
+
+                            else -> {
+
+                                isSubmitting = true
+                                authError = null
+
+                                onSignInWithCredentials(
+                                    emailOrUsername.trim(),
+                                    password
+                                ) { success, errorMessage ->
+
+                                    isSubmitting = false
+
+                                    if (success) {
+                                        AccountSessionStore.setSignInRequired(context, !rememberMe)
+                                        if (rememberMe) {
+                                            RememberedLoginStore.save(context, emailOrUsername.trim(), "")
+                                        } else {
+                                            RememberedLoginStore.clear(context)
+                                        }
+                                    } else {
+                                        authError =
+                                            errorMessage
+                                                ?: "Unable to sign in."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isSubmitting,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BlinkCream,
+                        contentColor = BlinkBlack,
+                        disabledContainerColor = DarkSurfaceElevated,
+                        disabledContentColor = DarkTextMuted
+                    ),
+                    shape = RoundedCornerShape(100.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(53.dp)
+                        .testTag("signin_submit_btn")
+                ) {
+
+                    if (isSubmitting) {
+
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(21.dp),
+                            color = BlinkBlack,
+                            strokeWidth = 2.dp
+                        )
+
+                    } else {
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+
+                            Text(
+                                "Sign In to Campus",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.fillMaxWidth(7.dp)
+                            )
+
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Image",
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(17.dp)
+                )
+
+                SecurityNotice()
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(18.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        "New to Blink?",
+                        color = DarkTextSecondary,
+                        fontSize = 12.5.sp
+                    )
+
+                    TextButton(
+                        onClick = onSwitchToSignUp
+                    ) {
+
+                        Text(
+                            "Create account",
+                            color = BlinkGoldSoft,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showForgotPasswordDialog) {
+
+            ForgotPasswordDialog(
+                initialEmail =
+                    if (emailOrUsername.contains("@"))
+                        emailOrUsername
+                    else
+                        "",
+                onDismiss = {
+                    showForgotPasswordDialog = false
+                },
+                onSendReset = onForgotPassword
+            )
+        }
+    }
+}
+
+// ================================================================
+// SIGN UP
+// ================================================================
+
+internal fun isStrongBlinkPassword(password: String): Boolean =
+    BlinkOnboardingPolicy.isStrongPassword(password)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SignUpScreen(
+    onBack: () -> Unit,
+    onSuccess: (
+        fullName: String,
+        username: String,
+        email: String,
+        password: String,
+        faculty: String
+    ) -> Unit,
+    onGoogleSignUp: (String) -> Unit,
+    onSwitchToSignIn: () -> Unit
+) {
+
+    var fullName by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:fullName:1")
+
+    var username by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:username:2")
+
+    var email by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:email:3")
+
+    // Legacy signup drafts may have stored encrypted password text. Clear it
+    // without restoring it; only non-sensitive signup fields remain resumable.
+    val signupContext = LocalContext.current.applicationContext
+    LaunchedEffect(signupContext) {
+        PersistentTextDraftStore.clearValue(signupContext, "com/example/ui/screens/AuthScreens.kt:password:4")
+    }
+    var password by remember { mutableStateOf("") }
+
+    var passwordVisible by remember {
+        mutableStateOf(false)
+    }
+
+    var faculty by remember {
+        mutableStateOf("SIMME")
+    }
+
+    var validationError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var googleLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var acceptTerms by remember {
+        mutableStateOf(false)
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    var entranceReady by remember { mutableStateOf(false) }
+    val entranceAlpha by animateFloatAsState(
+        targetValue = if (entranceReady) 1f else 0f,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "signup_alpha"
+    )
+    val entranceOffset by animateDpAsState(
+        targetValue = if (entranceReady) 0.dp else 18.dp,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "signup_offset"
+    )
+
+    LaunchedEffect(Unit) { entranceReady = true }
+
+    val isFormReady =
+        fullName.trim().length >= 2 &&
+                username.trim().length >= 3 &&
+                email.contains("@") &&
+                isStrongBlinkPassword(password) &&
+                acceptTerms
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+
+        DecorativeAuthBackground()
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(entranceAlpha)
+                .offset(y = entranceOffset)
+                .statusBarsPadding()
+                .padding(horizontal = 22.dp),
+            contentPadding = PaddingValues(
+                top = 10.dp,
+                bottom = 36.dp
+            )
+        ) {
+
+            item {
+
+                AuthTopBar(
+                    onBack = onBack,
+                    title = "Create account",
+                    subtitle = "Join your campus"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(16.dp)
+                )
+
+                AuthHeroBadge(
+                    icon = Icons.Default.School,
+                    title = "Join Blink Campus 🎓",
+                    subtitle = "Create your identity, find your people and become part of the campus conversation."
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(18.dp)
+                )
+
+                // REAL GOOGLE ACCOUNT PICKER
+                GoogleSignInButton(
+                    text = if (googleLoading)
+                        "Opening Google..."
+                    else
+                        "Sign up with Google",
+                    onClick = {
+
+                        if (googleLoading) {
+                            return@GoogleSignInButton
+                        }
+
+                        googleLoading = true
+                        validationError = null
+
+                        onGoogleSignUp("")
+
+                        // Only controls button presentation.
+                        // AuthRepository controls the actual Google flow.
+                        coroutineScope.launch {
+                            delay(1200)
+                            googleLoading = false
+                        }
+                    },
+                    modifier = Modifier.testTag(
+                        "signup_google_btn"
+                    )
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(16.dp)
+                )
+
+                AuthDivider(
+                    text = "OR CREATE WITH EMAIL"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(17.dp)
+                )
+
+                AnimatedVisibility(
+                    visible = validationError != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut()
+                ) {
+
+                    AuthMessageCard(
+                        message = validationError ?: "",
+                        success = false,
+                        onDismiss = {
+                            validationError = null
+                        }
+                    )
+                }
+
+                AuthField(
+                    value = fullName,
+                    onValueChange = {
+                        fullName = it
+                        validationError = null
+                    },
+                    label = "Full name",
+                    icon = Icons.Default.Person,
+                    testTag = "signup_name_field"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(12.dp)
+                )
+
+                AuthField(
+                    value = username,
+                    onValueChange = {
+                        username =
+                            it.filter { char ->
+                                char.isLetterOrDigit() ||
+                                        char == '_' ||
+                                        char == '.'
+                            }.take(25)
+
+                        validationError = null
+                    },
+                    label = "Campus username",
+                    icon = Icons.Default.AlternateEmail,
+                    testTag = "signup_username_field"
+                )
+
+                if (username.isNotBlank()) {
+
+                    UsernamePreview(
+                        username = username
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(12.dp)
+                )
+
+                AuthField(
+                    value = email,
+                    onValueChange = {
+                        email = it
+                        validationError = null
+                    },
+                    label = "University / Gmail address",
+                    icon = Icons.Default.Email,
+                    keyboardType = KeyboardType.Email,
+                    testTag = "signup_email_field"
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(12.dp)
+                )
+
+                AuthPasswordField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        validationError = null
+                    },
+                    visible = passwordVisible,
+                    onToggleVisibility = {
+                        passwordVisible =
+                            !passwordVisible
+                    },
+                    onFocus = {},
+                    testTag = "signup_password_field"
+                )
+
+                PasswordStrengthBar(
+                    password = password
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(14.dp)
+                )
+
+                Text(
+                    "Choose your faculty",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DarkTextSecondary
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(7.dp)
+                )
+
+                val faculties =
+                    listOf(
+                        "SIMME",
+                        "ENGINEERING",
+                        "LAW",
+                        "ARTS",
+                        "SCIENCE"
+                    )
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+
+                    items(faculties) { fac ->
+
+                        val selected =
+                            faculty == fac
+
+                        PremiumChoiceChip(
+                            text = fac,
+                            selected = selected,
+                            onClick = {
+                                faculty = fac
+                            }
+                        )
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(15.dp)
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Checkbox(
+                        checked = acceptTerms,
+                        onCheckedChange = {
+                            acceptTerms = it
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = BlinkGold,
+                            checkmarkColor = BlinkBlack,
+                            uncheckedColor = DarkTextMuted
+                        )
+                    )
+
+                    Text(
+                        "I agree to Blink's community guidelines and terms.",
+                        color = DarkTextSecondary,
+                        fontSize = 10.5.sp
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(13.dp)
+                )
+
+                Button(
+                    onClick = {
+
+                        when {
+
+                            fullName.isBlank() ->
+                                validationError =
+                                    "Enter your full name."
+
+                            username.length < 3 ->
+                                validationError =
+                                    "Your username should contain at least 3 characters."
+
+                            !email.contains("@") ->
+                                validationError =
+                                    "Enter a valid email address."
+
+                            !isStrongBlinkPassword(password) ->
+                                validationError =
+                                    "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
+
+                            !acceptTerms ->
+                                validationError =
+                                    "Please accept the community guidelines and terms."
+
+                            else ->
+                                onSuccess(
+                                    fullName.trim(),
+                                    username.trim(),
+                                    email.trim(),
+                                    password,
+                                    faculty
+                                )
+                        }
+                    },
+                    enabled = isFormReady,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BlinkCream,
+                        contentColor = BlinkBlack,
+                        disabledContainerColor = DarkSurfaceElevated,
+                        disabledContentColor = DarkTextMuted
+                    ),
+                    shape = RoundedCornerShape(100.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(53.dp)
+                        .testTag("signup_submit_btn")
+                ) {
+
+                    Text(
+                        "Continue to onboarding",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+
+                    Spacer(
+                        modifier = Modifier.fillMaxWidth(7.dp)
+                    )
+
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Image",
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(17.dp)
+                )
+
+                SignupProgressIndicator(
+                    ready = isFormReady
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(15.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        "Already on Blink?",
+                        color = DarkTextSecondary,
+                        fontSize = 12.5.sp
+                    )
+
+                    TextButton(
+                        onClick = onSwitchToSignIn
+                    ) {
+
+                        Text(
+                            "Sign In",
+                            color = BlinkGoldSoft,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ================================================================
+// PROFILE SETUP
+// ================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileSetupOnboardingScreen(
+    studentName: String,
+    studentUsername: String,
+    onComplete: (
+        university: String,
+        department: String,
+        level: String,
+        bio: String,
+        skills: List<String>
+    ) -> Unit
+) {
+
+    val universities = listOf(
+        "University of Lagos",
+        "University of Benin",
+        "Obafemi Awolowo University",
+        "University of Nigeria Nsukka",
+        "Ahmadu Bello University",
+        "Federal University of Technology Akure",
+        "University of Ibadan",
+        "Lagos State University",
+        "Covenant University"
+    )
+
+    val levels = listOf(
+        "100 Level",
+        "200 Level",
+        "300 Level",
+        "400 Level",
+        "500 Level",
+        "Postgraduate"
+    )
+
+    val interests = listOf(
+        "Product Design",
+        "Coding",
+        "ALUTA Market",
+        "Photography",
+        "Gaming",
+        "Content Creation",
+        "Campus Politics",
+        "Afrobeats",
+        "Fashion",
+        "Sports",
+        "Events",
+        "Tech"
+    )
+
+    var selectedUniversity by remember {
+        mutableStateOf(
+            "Federal University of Technology Akure"
+        )
+    }
+
+    var department by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:department:5")
+
+    var selectedLevel by remember {
+        mutableStateOf("200 Level")
+    }
+
+    var bio by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:bio:6")
+
+    var currentStep by remember {
+        mutableIntStateOf(0)
+    }
+
+    val selectedInterests =
+        remember {
+            mutableStateListOf<String>()
+        }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 22.dp),
+            contentPadding = PaddingValues(
+                top = 12.dp,
+                bottom = 40.dp
+            )
+        ) {
+
+            item {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    BlinkMark(
+                        size = 32.dp,
+                        showText = true
+                    )
+
+                    Spacer(
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = BlinkPink.copy(alpha = 0.10f)
+                    ) {
+
+                        Text(
+                            text = "STEP ${currentStep + 1}/4",
+                            color = BlinkPink,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(
+                                horizontal = 9.dp,
+                                vertical = 5.dp
+                            )
+                        )
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(20.dp)
+                )
+
+                LinearProgressIndicator(
+                    progress = {
+                        when (currentStep) {
+                            0 -> 0.25f
+                            1 -> 0.50f
+                            2 -> 0.75f
+                            else -> 1f
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp),
+                    color = BlinkPink,
+                    trackColor = DarkBorder
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(22.dp)
+                )
+
+                AnimatedContent(
+                    targetState = currentStep,
+                    label = "onboarding_step"
+                ) { step ->
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+
+                        when (step) {
+
+                            0 -> {
+
+                                OnboardingStepHeader(
+                                    title = "Where do you study? 🎓",
+                                    subtitle = "This helps Blink personalize your campus experience."
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(17.dp)
+                                )
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+
+                                    items(universities) { university ->
+
+                                        PremiumChoiceChip(
+                                            text = university,
+                                            selected =
+                                                selectedUniversity ==
+                                                        university,
+                                            onClick = {
+                                                selectedUniversity =
+                                                    university
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            1 -> {
+
+                                OnboardingStepHeader(
+                                    title = "Tell us about your studies",
+                                    subtitle = "Your academic profile helps organize your campus communities."
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(18.dp)
+                                )
+
+                                PremiumOnboardingField(
+                                    value = department,
+                                    onValueChange = {
+                                        department = it
+                                    },
+                                    label = "Department / Course",
+                                    icon = Icons.Default.School
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(18.dp)
+                                )
+
+                                Text(
+                                    "Academic level",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(8.dp)
+                                )
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+
+                                    items(levels) { level ->
+
+                                        PremiumChoiceChip(
+                                            text = level,
+                                            selected =
+                                                selectedLevel == level,
+                                            onClick = {
+                                                selectedLevel = level
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            2 -> {
+
+                                OnboardingStepHeader(
+                                    title = "What are you into? 🔥",
+                                    subtitle = "Pick a few interests to improve your recommendations."
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(17.dp)
+                                )
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+
+                                    items(interests) { interest ->
+
+                                        val selected =
+                                            selectedInterests.contains(
+                                                interest
+                                            )
+
+                                        PremiumChoiceChip(
+                                            text = interest,
+                                            selected = selected,
+                                            onClick = {
+
+                                                if (selected) {
+                                                    selectedInterests.remove(
+                                                        interest
+                                                    )
+                                                } else if (
+                                                    selectedInterests.size < 6
+                                                ) {
+                                                    selectedInterests.add(
+                                                        interest
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            else -> {
+
+                                OnboardingStepHeader(
+                                    title = "Give your profile a voice ✨",
+                                    subtitle = "A short bio helps people know what you're about."
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(18.dp)
+                                )
+
+                                ProfilePreviewCard(
+                                    name = studentName,
+                                    username = studentUsername,
+                                    university = selectedUniversity,
+                                    department = department,
+                                    level = selectedLevel
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.fillMaxHeight(15.dp)
+                                )
+
+                                OutlinedTextField(
+                                    value = bio,
+                                    onValueChange = {
+                                        bio =
+                                            it.take(180)
+                                    },
+                                    label = {
+                                        Text("Campus bio")
+                                    },
+                                    placeholder = {
+                                        Text(
+                                            "Student, creator, builder..."
+                                        )
+                                    },
+                                    minLines = 4,
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors =
+                                        OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = BlinkPink,
+                                            unfocusedBorderColor = DarkBorder,
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White,
+                                            focusedLabelColor = BlinkPink,
+                                            unfocusedLabelColor = DarkTextSecondary,
+                                            focusedContainerColor = DarkSurface,
+                                            unfocusedContainerColor = DarkSurface
+                                        ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Text(
+                                    "${bio.length}/180",
+                                    fontSize = 11.sp,
+                                    color = DarkTextSecondary,
+                                    modifier = Modifier.align(
+                                        Alignment.End
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(28.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+
+                    if (currentStep > 0) {
+
+                        OutlinedButton(
+                            onClick = {
+                                currentStep--
+                            },
+                            modifier = Modifier
+                                .weight(0.35f)
+                                .height(52.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                DarkBorder
+                            )
+                        ) {
+
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Previous"
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+
+                            if (currentStep < 3) {
+
+                                currentStep++
+
+                            } else {
+
+                                onComplete(
+                                    selectedUniversity,
+                                    department,
+                                    selectedLevel,
+                                    bio,
+                                    selectedInterests.toList()
+                                )
+                            }
+                        },
+                        enabled =
+                            when (currentStep) {
+                                0 ->
+                                    selectedUniversity.isNotBlank()
+
+                                1 ->
+                                    department.isNotBlank()
+
+                                2 ->
+                                    selectedInterests.isNotEmpty()
+
+                                else ->
+                                    true
+                            },
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = BlinkPink,
+                                disabledContainerColor = DarkSurface
+                            ),
+                        shape = RoundedCornerShape(100.dp),
+                        modifier = Modifier
+                            .weight(
+                                if (currentStep > 0)
+                                    0.65f
+                                else
+                                    1f
+                            )
+                            .height(52.dp)
+                            .testTag(
+                                "onboarding_continue_btn"
+                            )
+                    ) {
+
+                        Text(
+                            if (currentStep < 3)
+                                "Continue"
+                            else
+                                "Launch Blink 🚀",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+
+                        Spacer(
+                            modifier = Modifier.fillMaxWidth(6.dp)
+                        )
+
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Image"
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ================================================================
+// FORGOT PASSWORD
+// ================================================================
+
+@Composable
+fun ForgotPasswordDialog(
+    initialEmail: String,
+    onDismiss: () -> Unit,
+    onSendReset: (
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) -> Unit
+) {
+
+    var email by remember {
+        mutableStateOf(initialEmail)
+    }
+
+    var sending by remember {
+        mutableStateOf(false)
+    }
+
+    var message by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var success by remember {
+        mutableStateOf(false)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss
+    ) {
+
+        Surface(
+            shape = RoundedCornerShape(26.dp),
+            color = DarkSurface,
+            border = BorderStroke(1.dp, DarkBorder),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        ) {
+
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+
+                BlinkMark(
+                    size = 58.dp,
+                    showText = false
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(15.dp)
+                )
+
+                Text(
+                    "Reset your password",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(6.dp)
+                )
+
+                Text(
+                    "Enter the email linked to your Blink account.",
+                    color = DarkTextSecondary,
+                    fontSize = 11.5.sp,
+                    lineHeight = 17.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(18.dp)
+                )
+
+                AnimatedVisibility(
+                    visible = message != null,
+                    enter = fadeIn() + expandVertically()
+                ) {
+
+                    AuthMessageCard(
+                        message = message ?: "",
+                        success = success,
+                        onDismiss = {
+                            message = null
+                        }
+                    )
+                }
+
+                if (!success) {
+
+                    AuthField(
+                        value = email,
+                        onValueChange = {
+                            email = it
+                        },
+                        label = "Email address",
+                        icon = Icons.Default.Email,
+                        keyboardType = KeyboardType.Email
+                    )
+
+                    Spacer(
+                        modifier = Modifier.fillMaxHeight(17.dp)
+                    )
+
+                    Button(
+                        onClick = {
+
+                            if (!email.contains("@")) {
+
+                                message =
+                                    "Enter a valid email address."
+
+                                success = false
+
+                                return@Button
+                            }
+
+                            sending = true
+                            message = null
+
+                            onSendReset(email.trim()) {
+                                    ok,
+                                    result ->
+
+                                sending = false
+                                success = ok
+                                message = result
+                            }
+                        },
+                        enabled =
+                            !sending &&
+                                    email.isNotBlank(),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = BlinkPink
+                            ),
+                        shape =
+                            RoundedCornerShape(100.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(49.dp)
+                    ) {
+
+                        if (sending) {
+
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+
+                        } else {
+
+                            Text(
+                                "Send reset link",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                } else {
+
+                    Button(
+                        onClick = onDismiss,
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = BlinkPink
+                            ),
+                        shape =
+                            RoundedCornerShape(100.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(49.dp)
+                    ) {
+
+                        Text(
+                            "Back to Sign In",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.fillMaxHeight(8.dp)
+                )
+
+                TextButton(
+                    onClick = onDismiss
+                ) {
+
+                    Text(
+                        "Cancel",
+                        color = DarkTextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ================================================================
+// GOOGLE BUTTON
+// ================================================================
+
+@Composable
+fun GoogleSignInButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(100.dp),
+        color = BlinkCreamBright,
+        border = BorderStroke(1.dp, BlinkGold.copy(alpha = 0.30f)),
+        shadowElevation = 0.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp)
+    ) {
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+
+            GoogleLogoVector(
+                modifier = Modifier.size(20.dp)
+            )
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth(11.dp)
+            )
+
+            Text(
+                text,
+                color = Color(0xFF202124),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+// ================================================================
+// AUTH FIELD
+// ================================================================
+
+@Composable
+internal fun AuthField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    testTag: String? = null
+) {
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
+        },
+        leadingIcon = {
+
+            Icon(
+                icon,
+                contentDescription = "Image",
+                tint = BlinkPink,
+                modifier = Modifier.size(19.dp)
+            )
+        },
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType = keyboardType
+            ),
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.sp
+        ),
+        shape = RoundedCornerShape(18.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = BlinkGoldSoft,
+            unfocusedBorderColor = DarkBorderSoft,
+            focusedTextColor = DarkTextPrimary,
+            unfocusedTextColor = DarkTextPrimary,
+            cursorColor = BlinkGoldSoft,
+            focusedLabelColor = BlinkGoldSoft,
+            unfocusedLabelColor = DarkTextSecondary,
+            focusedLeadingIconColor = BlinkGoldSoft,
+            unfocusedLeadingIconColor = DarkTextSecondary,
+            focusedContainerColor = DarkSurfaceElevated,
+            unfocusedContainerColor = DarkSurface
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (testTag != null)
+                    Modifier.testTag(testTag)
+                else
+                    Modifier
+            )
+    )
+}
+
+// ================================================================
+// PASSWORD
+// ================================================================
+
+@Composable
+internal fun AuthPasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    visible: Boolean,
+    onToggleVisibility: () -> Unit,
+    onFocus: () -> Unit,
+    testTag: String? = null
+) {
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = {
+            onValueChange(it)
+            onFocus()
+        },
+        label = {
+            Text(
+                "Password",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
+        },
+        leadingIcon = {
+
+            Icon(
+                Icons.Default.Lock,
+                contentDescription = "Image",
+                tint = BlinkPink,
+                modifier = Modifier.size(19.dp)
+            )
+        },
+        trailingIcon = {
+
+            IconButton(
+                onClick = onToggleVisibility
+            ) {
+
+                Icon(
+                    imageVector =
+                        if (visible)
+                            Icons.Default.Visibility
+                        else
+                            Icons.Default.VisibilityOff,
+                    contentDescription = "Toggle password visibility",
+                    tint = DarkTextSecondary
+                )
+            }
+        },
+        visualTransformation =
+            if (visible)
+                VisualTransformation.None
+            else
+                PasswordVisualTransformation(),
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.sp
+        ),
+        shape = RoundedCornerShape(18.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = BlinkGoldSoft,
+            unfocusedBorderColor = DarkBorderSoft,
+            focusedTextColor = DarkTextPrimary,
+            unfocusedTextColor = DarkTextPrimary,
+            cursorColor = BlinkGoldSoft,
+            focusedLabelColor = BlinkGoldSoft,
+            unfocusedLabelColor = DarkTextSecondary,
+            focusedLeadingIconColor = BlinkGoldSoft,
+            unfocusedLeadingIconColor = DarkTextSecondary,
+            focusedContainerColor = DarkSurfaceElevated,
+            unfocusedContainerColor = DarkSurface
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (testTag != null)
+                    Modifier.testTag(testTag)
+                else
+                    Modifier
+            )
+    )
+}
+
+// ================================================================
+// PASSWORD STRENGTH
+// ================================================================
+
+@Composable
+internal fun PasswordStrengthBar(
+    password: String
+) {
+
+    if (password.isBlank()) {
+        return
+    }
+
+    val score =
+        listOf(
+            password.length >= 6,
+            password.any { it.isUpperCase() },
+            password.any { it.isDigit() },
+            password.any { !it.isLetterOrDigit() }
+        ).count { it }
+
+    val progress = score / 4f
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "password_strength_progress"
+    )
+
+    val color =
+        when (score) {
+            4 -> Color(BlinkDesignTokens.Semantic.Success)
+            3 -> Color(BlinkDesignTokens.Semantic.Warning)
+            2 -> Color(0xFFFF8A00)
+            else -> BlinkPink
+        }
+
+    Column(
+        modifier = Modifier.padding(top = 6.dp)
+    ) {
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Text(
+                text =
+                    when (score) {
+                        4 -> "Strong password"
+                        3 -> "Good password"
+                        2 -> "Weak password"
+                        else -> "Very weak password"
+                    },
+                color = color,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.weight(1f)
+            )
+
+            Text(
+                "$score/4",
+                color = DarkTextSecondary,
+                fontSize = 11.sp
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.fillMaxHeight(4.dp)
+        )
+
+        LinearProgressIndicator(
+            progress = {
+                animatedProgress
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp),
+            color = color,
+            trackColor = DarkBorder
+        )
+    }
+}
+
+// ================================================================
+// AUTH TOP BAR
+// ================================================================
+
+@Composable
+internal fun AuthTopBar(
+    onBack: () -> Unit,
+    title: String,
+    subtitle: String
+) {
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    Color.White.copy(alpha = 0.07f),
+                    CircleShape
+                )
+        ) {
+
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.fillMaxWidth(10.dp)
+        )
+
+        BlinkMark(
+            size = 30.dp,
+            showText = false
+        )
+
+        Spacer(
+            modifier = Modifier.fillMaxWidth(10.dp)
+        )
+
+        Column {
+
+            Text(
+                title,
+                color = DarkTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.2).sp
+            )
+
+            Text(
+                subtitle,
+                color = DarkTextSecondary,
+                fontSize = 9.5.sp
+            )
+        }
+    }
+}
+
+// ================================================================
+// AUTH HERO
+// ================================================================
+
+@Composable
+private fun AuthHeroBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String
+) {
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Surface(
+            shape = CircleShape,
+            color = BlinkPink.copy(alpha = 0.11f)
+        ) {
+
+            Icon(
+                icon,
+                contentDescription = "Image",
+                tint = BlinkPink,
+                modifier = Modifier.padding(14.dp)
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.fillMaxWidth(12.dp)
+        )
+
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.45).sp,
+                color = DarkTextPrimary
+            )
+
+            Spacer(
+                modifier = Modifier.fillMaxHeight(4.dp)
+            )
+
+            Text(
+                subtitle,
+                fontSize = 10.5.sp,
+                lineHeight = 15.sp,
+                color = DarkTextSecondary
+            )
+        }
+    }
+}
+
+// ================================================================
+// DIVIDER
+// ================================================================
+
+@Composable
+internal fun AuthDivider(
+    text: String
+) {
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(DarkBorder)
+        )
+
+        Text(
+            text,
+            color = DarkTextSecondary,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 10.dp)
+        )
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(DarkBorder)
+        )
+    }
+}
+
+// ================================================================
+// MESSAGE CARD
+// ================================================================
+
+@Composable
+internal fun AuthMessageCard(
+    message: String,
+    success: Boolean,
+    onDismiss: () -> Unit
+) {
+
+    val color =
+        if (success)
+            Color(BlinkDesignTokens.Semantic.Success)
+        else
+            Color(0xFFFF4D4D)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        shape = RoundedCornerShape(15.dp),
+        color = color.copy(alpha = 0.10f),
+        border = BorderStroke(
+            1.dp,
+            color
+        )
+    ) {
+
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Icon(
+                if (success)
+                    Icons.Default.CheckCircle
+                else
+                    Icons.Default.ErrorOutline,
+                contentDescription = "Image",
+                tint = color,
+                modifier = Modifier.size(21.dp)
+            )
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth(9.dp)
+            )
+
+            Text(
+                message,
+                color = DarkTextPrimary,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.weight(1f)
+            )
+
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(28.dp)
+            ) {
+
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Dismiss",
+                    tint = DarkTextSecondary,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
+        }
+    }
+}
+
+// ================================================================
+// SECURITY NOTICE
+// ================================================================
+
+@Composable
+private fun SecurityNotice() {
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(15.dp),
+        color = Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.07f)
+    ) {
+
+        Row(
+            modifier = Modifier.padding(11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Icon(
+                Icons.Default.VerifiedUser,
+                contentDescription = "Image",
+                tint = Color(BlinkDesignTokens.Semantic.Success),
+                modifier = Modifier.size(18.dp)
+            )
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth(8.dp)
+            )
+
+            Text(
+                "Your sign-in is handled through your configured authentication backend.",
+                color = DarkTextSecondary,
+                fontSize = 9.5.sp,
+                lineHeight = 13.sp
+            )
+        }
+    }
+}
+
+// ================================================================
+// USERNAME PREVIEW
+// ================================================================
+
+@Composable
+private fun UsernamePreview(
+    username: String
+) {
+
+    Row(
+        modifier = Modifier.padding(
+            top = 5.dp,
+            bottom = 3.dp
+        ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Icon(
+            Icons.Default.CheckCircle,
+            contentDescription = "Image",
+            tint = Color(BlinkDesignTokens.Semantic.Success),
+            modifier = Modifier.size(12.dp)
+        )
+
+        Spacer(
+            modifier = Modifier.fillMaxWidth(4.dp)
+        )
+
+        Text(
+            "@$username",
+            color = Color(BlinkDesignTokens.Semantic.Success),
+            fontSize = 9.5.sp
+        )
+    }
+}
+
+// ================================================================
+// SIGNUP PROGRESS
+// ================================================================
+
+@Composable
+private fun SignupProgressIndicator(
+    ready: Boolean
+) {
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+
+        repeat(5) { index ->
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(4.dp)
+                    .clip(
+                        RoundedCornerShape(100.dp)
+                    )
+                    .background(
+                        if (ready || index < 2)
+                            BlinkPink
+                        else
+                            DarkBorder
+                    )
+            )
+        }
+    }
+}
+
+// ================================================================
+// CHOICE CHIP
+// ================================================================
+
+@Composable
+private fun PremiumChoiceChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+
+    val chipScale by animateFloatAsState(
+        targetValue = if (selected) 1.035f else 1f,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "auth_choice_chip_scale"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(100.dp),
+        color =
+            if (selected)
+                BlinkPink
+            else
+                DarkSurface,
+        border =
+            BorderStroke(
+                1.dp,
+                if (selected)
+                    BlinkPink
+                else
+                    DarkBorder
+            ),
+        modifier = Modifier
+            .scale(chipScale)
+            .clickable { onClick() }
+    ) {
+
+        Row(
+            modifier = Modifier.padding(
+                horizontal = 12.dp,
+                vertical = 8.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            if (selected) {
+
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Image",
+                    tint = BlinkBlack,
+                    modifier = Modifier.size(13.dp)
+                )
+
+                Spacer(
+                    modifier = Modifier.fillMaxWidth(4.dp)
+                )
+            }
+
+            Text(
+                text,
+                color =
+                    if (selected)
+                        BlinkBlack
+                    else
+                        DarkTextSecondary,
+                fontSize = 10.sp,
+                fontWeight =
+                    if (selected)
+                        FontWeight.Bold
+                    else
+                        FontWeight.Medium
+            )
+        }
+    }
+}
+
+// ================================================================
+// ONBOARDING FIELD
+// ================================================================
+
+@Composable
+private fun PremiumOnboardingField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = {
+            Text(label)
+        },
+        leadingIcon = {
+
+            Icon(
+                icon,
+                contentDescription = "Image",
+                tint = BlinkPink
+            )
+        },
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = BlinkPink,
+            unfocusedBorderColor = DarkBorder,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedLabelColor = BlinkPink,
+            unfocusedLabelColor = DarkTextSecondary,
+            focusedContainerColor = DarkSurface,
+            unfocusedContainerColor = DarkSurface
+        ),
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+// ================================================================
+// ONBOARDING HEADER
+// ================================================================
+
+@Composable
+private fun OnboardingStepHeader(
+    title: String,
+    subtitle: String
+) {
+
+    Column {
+
+        Text(
+            title,
+            fontSize = 23.sp,
+            fontWeight = FontWeight.Black,
+            color = Color.White
+        )
+
+        Spacer(
+            modifier = Modifier.fillMaxHeight(5.dp)
+        )
+
+        Text(
+            subtitle,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            color = DarkTextSecondary
+        )
+    }
+}
+
+// ================================================================
+// PROFILE PREVIEW
+// ================================================================
+
+@Composable
+private fun ProfilePreviewCard(
+    name: String,
+    username: String,
+    university: String,
+    department: String,
+    level: String
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(21.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = DarkSurface
+        )
+    ) {
+
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .size(55.dp)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                BlinkPink,
+                                BlinkPurple,
+                                BlinkGold
+                            )
+                        ),
+                        CircleShape
+                    )
+                    .padding(2.dp)
+            ) {
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            DarkBackground,
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+
+                    Text(
+                        text =
+                            name.firstOrNull()
+                                ?.uppercase()
+                                ?: "B",
+                        fontSize = 19.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth(11.dp)
+            )
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+
+                Text(
+                    name,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    "@$username",
+                    color = BlinkPink,
+                    fontSize = 9.5.sp
+                )
+
+                Text(
+                    "$department • $level",
+                    color = DarkTextSecondary,
+                    fontSize = 9.5.sp
+                )
+
+                Text(
+                    university,
+                    color = DarkTextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            Icon(
+                Icons.Default.Verified,
+                contentDescription = "Student badge",
+                tint = BlinkPink,
+                modifier = Modifier.size(19.dp)
+            )
+        }
+    }
+}
+
+// ================================================================
+// PREMIUM CAMPUS ORB
+// ================================================================
+
+@Composable
+private fun PremiumCampusOrb() {
+
+    val infinite =
+        rememberInfiniteTransition(
+            label = "orb_animation"
+        )
+
+    val rotation by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                9000,
+                easing = LinearEasing
+            )
+        ),
+        label = "orb_rotation"
+    )
+
+    val pulse by infinite.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                1100,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "orb_pulse"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(112.dp)
+            .scale(pulse)
+    ) {
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    rotationZ = rotation
+                }
+                .background(
+                    Brush.sweepGradient(
+                        listOf(
+                            BlinkPink,
+                            BlinkPurple,
+                            BlinkGold,
+                            BlinkPink
+                        )
+                    ),
+                    CircleShape
+                )
+                .padding(3.dp)
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        DarkSurface,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+
+                Icon(
+                    Icons.Default.School,
+                    contentDescription = "Campus",
+                    tint = BlinkPink,
+                    modifier = Modifier.size(49.dp)
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .background(
+                    Color(BlinkDesignTokens.Semantic.Success),
+                    CircleShape
+                )
+                .border(
+                    3.dp,
+                    DarkBackground,
+                    CircleShape
+                )
+                .align(Alignment.BottomEnd)
+        )
+    }
+}
+
+// ================================================================
+// FEATURE CARD
+// ================================================================
+
+@Composable
+private fun PremiumFeatureCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String
+) {
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.055f),
+        border = BorderStroke(
+            1.dp,
+            Color.White.copy(alpha = 0.08f)
+        )
+    ) {
+
+        Row(
+            modifier = Modifier.padding(
+                horizontal = 13.dp,
+                vertical = 11.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Surface(
+                shape = CircleShape,
+                color = BlinkPink.copy(alpha = 0.10f)
+            ) {
+
+                Icon(
+                    icon,
+                    contentDescription = "Image",
+                    tint = BlinkPink,
+                    modifier = Modifier.padding(9.dp)
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth(9.dp)
+            )
+
+            Column {
+
+                Text(
+                    title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.5.sp
+                )
+
+                Text(
+                    description,
+                    color = DarkTextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp
+                )
+            }
+        }
+    }
+}
+
+// ================================================================
+// PREMIUM AUTH BUTTON
+// ================================================================
+
+@Composable
+internal fun PremiumAuthButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    primary: Boolean,
+    modifier: Modifier = Modifier
+) {
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(100.dp),
+        color =
+            if (primary)
+                BlinkPink
+            else
+                Color.Transparent,
+        border =
+            if (primary)
+                null
+            else
+                BorderStroke(
+                    1.dp,
+                    BlinkPurple
+                ),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp)
+    ) {
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+
+            Icon(
+                icon,
+                contentDescription = "Image",
+                tint = if (primary) BlinkBlack else DarkTextPrimary,
+                modifier = Modifier.size(17.dp)
+            )
+
+            Spacer(
+                modifier = Modifier.fillMaxWidth(7.dp)
+            )
+
+            Text(
+                text,
+                color = if (primary) BlinkBlack else DarkTextPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+// ================================================================
+// DECORATIVE BACKGROUND
+// ================================================================
+
+@Composable
+private fun DecorativeAuthBackground() {
+    // Authentication stays pure black so the supplied black-square BLINK
+    // mark visually disappears into the page instead of looking boxed-in.
+    Box(modifier = Modifier.fillMaxSize())
+}
+
+// ================================================================
+// LOADING DOTS
+// ================================================================
+
+@Composable
+private fun LoadingDots() {
+
+    val infinite =
+        rememberInfiniteTransition(
+            label = "loading_dots"
+        )
+
+    val phase by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                1200
+            ),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dots_phase"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        repeat(3) { index ->
+
+            val active =
+                phase > index * 0.25f
+
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 3.dp)
+                    .size(
+                        if (active) 7.dp else 5.dp
+                    )
+                    .background(
+                        if (active)
+                            BlinkPink
+                        else
+                            Color.White.copy(alpha = 0.25f),
+                        CircleShape
+                    )
+            )
+        }
+    }
+}
+
+// ================================================================
+// GOOGLE LOGO
+// ================================================================
+
+@Composable
+fun GoogleLogoVector(
+    modifier: Modifier = Modifier
+) {
+
+    Canvas(
+        modifier = modifier
+    ) {
+
+        val w = size.width
+        val cx = w / 2f
+        val cy = size.height / 2f
+        val radius = w * 0.46f
+
+        val blue = Color(0xFF4285F4)
+        val green = Color(0xFF34A853)
+        val yellow = Color(0xFFFBBC05)
+        val red = Color(0xFFEA4335)
+
+        drawArc(
+            color = red,
+            startAngle = 220f,
+            sweepAngle = 70f,
+            useCenter = true,
+            topLeft = Offset(
+                cx - radius,
+                cy - radius
+            ),
+            size = Size(
+                radius * 2,
+                radius * 2
+            )
+        )
+
+        drawArc(
+            color = yellow,
+            startAngle = 145f,
+            sweepAngle = 78f,
+            useCenter = true,
+            topLeft = Offset(
+                cx - radius,
+                cy - radius
+            ),
+            size = Size(
+                radius * 2,
+                radius * 2
+            )
+        )
+
+        drawArc(
+            color = green,
+            startAngle = 45f,
+            sweepAngle = 95f,
+            useCenter = true,
+            topLeft = Offset(
+                cx - radius,
+                cy - radius
+            ),
+            size = Size(
+                radius * 2,
+                radius * 2
+            )
+        )
+
+        drawArc(
+            color = blue,
+            startAngle = -35f,
+            sweepAngle = 80f,
+            useCenter = true,
+            topLeft = Offset(
+                cx - radius,
+                cy - radius
+            ),
+            size = Size(
+                radius * 2,
+                radius * 2
+            )
+        )
+
+        drawCircle(
+            color = Color.White,
+            radius = radius * 0.58f,
+            center = Offset(cx, cy)
+        )
+
+        drawRect(
+            color = blue,
+            topLeft = Offset(
+                cx - radius * 0.05f,
+                cy - radius * 0.19f
+            ),
+            size = Size(
+                radius * 0.95f,
+                radius * 0.38f
+            )
+        )
+    }
+}

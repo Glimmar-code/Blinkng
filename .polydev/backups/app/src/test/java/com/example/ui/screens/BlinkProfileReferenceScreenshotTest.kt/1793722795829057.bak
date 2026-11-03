@@ -1,0 +1,217 @@
+package com.example.ui.screens
+
+import android.app.Application
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.example.data.models.AchievementBadge
+import com.example.data.models.UserProfile
+import com.example.data.models.FeedPost
+import com.example.ui.components.PostCard
+import com.blinkng.shared.BlinkProfileThemes
+import com.example.data.models.VerificationBadge
+import com.example.ui.theme.BlinkTheme
+import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * Staging screenshot probe for the BLINK full-screen reference profile.
+ * Fake data is limited to the isolated JVM screenshot test, never production.
+ * Rendering at larger font scales catches clipping without consuming device data.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
+class BlinkProfileReferenceScreenshotTest {
+    @get:Rule val rule = createComposeRule()
+
+    private val profile = UserProfile(
+        id = "screenshot-only",
+        fullName = "Aisha Khan",
+        username = "aisha",
+        profileTheme = "royal_purple",
+        university = "University of Lagos",
+        bio = "Good people make great days.",
+        verificationBadge = VerificationBadge.BLUE,
+        worldRank = 248,
+        campusRank = 12,
+        totalXp = 620L,
+        xpLevel = 4,
+        followerCount = 876,
+        followingCount = 134,
+        badges = listOf(
+            AchievementBadge("verified_student", "Verified Student", "Academic verification"),
+            AchievementBadge("social_connector", "Social Connector", "Connect with students")
+        ),
+    )
+
+    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null, themeId: String = "royal_purple", visitor: Boolean = false, includePost: Boolean = false) {
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
+                BlinkTheme(darkTheme = dark) {
+                    Box(
+                        Modifier.then(
+                            if (viewportWidth == null) Modifier.fillMaxSize()
+                            else Modifier.width(viewportWidth).fillMaxHeight()
+                        ).background(if (dark) Color.Black else Color.White)
+                    ) {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            item {
+                                BlinkPremiumProfileDashboard(
+                                    profile = profile.copy(profileTheme = themeId),
+                                    isMe = !visitor,
+                                    blinkCoinBalance = 1250L,
+                                    isDark = dark,
+                                    isFollowing = false,
+                                    followBusy = false,
+                                    postCount = 24,
+                                    totalLoadedViews = 1234L,
+                                    totalLoadedLikes = 219L,
+                                    profileCompletion = 82,
+                                    onAvatarClick = {}, onBack = {}, onEdit = {},
+                                    onMessage = {}, onFollow = {}, onVerify = {},
+                                    onEarnCoins = {}, onWallet = {}, onCampusRank = {},
+                                     onShowBadges = {}, onShare = {},
+                                    onCopyUsername = {}, onVisitors = {}, onTopAction = {}
+                                )
+                            }
+                            if (includePost) {
+                                item {
+                                    PostCard(
+                                        post = FeedPost(
+                                            id = "screenshot-post-only", author = "Aisha Khan",
+                                            authorUsername = "aisha", authorAvatar = "",
+                                            timeAgo = "2 days ago", text = "@blink",
+                                            likes = 1, commentsCount = 0, sharesCount = 0,
+                                            viewsCount = 85
+                                        ),
+                                        isDark = dark,
+                                        onLike = {}, onComment = {}, onBookmark = {},
+                                        onShare = {}, onOptionsClick = {}, onProfileClick = {},
+                                        trackExposure = false,
+                                        xFeedStyle = true,
+                                        profileSurfaceColor = Color(BlinkProfileThemes.resolve(themeId).cardArgb)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun profileReferenceLight() {
+        render(dark = false, fontScale = 1.0f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-light.png")
+    }
+
+    @Test fun profileReferenceLargeFonts() {
+        render(dark = false, fontScale = 1.5f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-large-fonts.png")
+    }
+
+    @Test fun profileReferenceMediumFonts() {
+        render(dark = false, fontScale = 1.3f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-medium-fonts.png")
+    }
+
+    @Test fun profileReferenceExtraLargeFonts() {
+        render(dark = false, fontScale = 2.0f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-extra-large-fonts.png")
+    }
+
+    @Test fun profileReference320DpFont200() {
+        render(dark = false, fontScale = 2.0f, viewportWidth = 320.dp)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-320dp-font200.png")
+    }
+
+    @Test fun profileReference360DpFont130() {
+        render(dark = true, fontScale = 1.3f, viewportWidth = 360.dp)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-360dp-font130.png")
+    }
+
+    @Test fun profileReferenceDark() {
+        render(dark = true, fontScale = 1.0f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-dark.png")
+    }
+    @Test fun blackProfileStaysBlackForOwnerInLightApp() {
+        render(dark = false, fontScale = 1.0f, themeId = "black")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-black-owner.png")
+    }
+
+    @Test fun blackProfileStaysBlackForVisitorInDarkApp() {
+        render(dark = true, fontScale = 1.0f, themeId = "black", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-black-visitor.png")
+    }
+
+    @Test fun purpleProfileStaysPurpleForVisitorInLightApp() {
+        render(dark = false, fontScale = 1.0f, themeId = "royal_purple", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-purple-visitor.png")
+    }
+
+    @Test fun sapphireVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "sapphire", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-sapphire.png")
+    }
+
+    @Test fun sapphireOwnerThemeAndPostCardRenders() {
+        render(dark = true, fontScale = 1.0f, themeId = "sapphire", includePost = true)
+        rule.onNodeWithText("Posts").assertExists()
+        rule.onNodeWithText("Followers").assertExists()
+        rule.onNodeWithText("Following").assertExists()
+        rule.onNodeWithText("Views").assertExists()
+        rule.onNodeWithText("Campus Rank").assertExists()
+        rule.onNodeWithText("World Rank").assertExists()
+        rule.onNodeWithText("HP Level").assertExists()
+        rule.onNodeWithText("Earn Coins").assertExists()
+        rule.onNodeWithText("Get Verified").assertExists()
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-sapphire-owner.png")
+    }
+
+    @Test fun sapphireVisitorHasOnlyPublicShortcuts() {
+        render(dark = true, fontScale = 1.0f, themeId = "sapphire", visitor = true)
+        rule.onNodeWithText("Campus Rank").assertExists()
+        rule.onNodeWithText("World Rank").assertExists()
+        rule.onNodeWithText("HP Level").assertExists()
+        rule.onNodeWithText("Earn Coins").assertDoesNotExist()
+        rule.onNodeWithText("Get Verified").assertDoesNotExist()
+    }
+
+    @Test fun emeraldVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "emerald", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-emerald.png")
+    }
+
+    @Test fun roseVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "rose", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-rose.png")
+    }
+
+    @Test fun amberVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "amber", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-amber.png")
+    }
+
+}

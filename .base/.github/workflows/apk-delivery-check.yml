@@ -1,0 +1,43 @@
+name: APK delivery integrity
+
+# Always available as a required CI gate on every PR. Previously this job
+# was path-filtered and could be absent for unrelated PRs.
+on:
+  push:
+    branches: [main, Testlab, 'Testlab-*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-delivery-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test fail-closed production release alerting policy
+        run: node --test .github/scripts/blink_release_monitor.test.cjs
+
+      - name: Verify published release push authorization and payload
+        run: python3 -m unittest discover -s .github/scripts -p 'test_notify_blink_release.py'
+
+      - name: Validate release Python syntax
+        run: >-
+          python3 -m py_compile
+          .github/scripts/publish_verified_apk.py
+          .github/scripts/audit_published_apk.py
+          .github/scripts/test_publish_verified_apk.py
+          .github/scripts/test_release_audit.py
+      - name: Test release publication and anti-stale protections
+        run: python3 .github/scripts/test_publish_verified_apk.py -v
+      - name: Test public release audit and download safety
+        run: python3 .github/scripts/test_release_audit.py -v

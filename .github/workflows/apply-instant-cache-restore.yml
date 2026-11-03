@@ -1,0 +1,46 @@
+name: Apply instant cache restore
+
+on:
+  push:
+    paths:
+      - '.github/scripts/apply_instant_cache_restore.py'
+      - '.github/workflows/apply-instant-cache-restore.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply cache changes
+        run: python .github/scripts/apply_instant_cache_restore.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source fixes
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/data/local/OfflineContentStore.kt app/src/main/java/com/example/viewmodel/BlinkViewModel.kt
+          git commit -m 'fix: restore cached app state instantly'
+          git push origin HEAD:main

@@ -1,0 +1,40 @@
+name: AdMob live SSV readiness
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'Testlab-ssv-*'
+    paths:
+      - 'scripts/check_admob_live_readiness.mjs'
+      - '.github/workflows/admob-live-readiness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  production-readiness-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose BLINK apex and www DNS resolution
+        if: ${{ vars.BLINK_DOMAIN_READY == 'true' }}
+        shell: bash
+        run: |
+          set -u
+          for hostname in blink.com.ng www.blink.com.ng; do
+            echo "::group::DNS for $hostname"
+            dig "$hostname" SOA +time=3 +tries=1 +noall +comments +answer || true
+            dig "$hostname" NS +time=3 +tries=1 +noall +answer || true
+            dig "$hostname" A +time=3 +tries=1 +noall +answer || true
+            dig "$hostname" CNAME +time=3 +tries=1 +noall +answer || true
+            echo "::endgroup::"
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check live SSV endpoint, defer domain until purchased
+        env:
+          BLINK_DOMAIN_READY: ${{ vars.BLINK_DOMAIN_READY }}
+        run: node --test scripts/check_admob_live_readiness.mjs

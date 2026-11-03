@@ -1,0 +1,120 @@
+package com.example.ui.components
+
+import android.text.format.DateUtils
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.example.data.supabase.BlinkDropDiscovery
+import java.text.NumberFormat
+import java.time.Instant
+import java.util.Locale
+
+/**
+ * Public Giveaway discovery stays in its own feed row and never reorders organic posts.
+ */
+@Composable
+fun BlinkDropDiscoveryCard(
+    item: BlinkDropDiscovery,
+    onFollow: () -> Unit,
+    onOpenDrops: () -> Unit,
+    following: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val formatter = NumberFormat.getIntegerInstance(Locale.US)
+    val active = item.status.equals("ACTIVE", ignoreCase = true)
+    val endedLabel = runCatching {
+        val endedAt = Instant.parse(item.endsAt).toEpochMilli()
+        "Ended " + DateUtils.getRelativeTimeSpanString(
+            endedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
+        ).toString()
+    }.getOrDefault("Giveaway ended")
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .62f)
+        ),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row {
+                Icon(
+                    Icons.Default.CardGiftcard,
+                    contentDescription = "Image",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.fillMaxWidth(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (active) "BLINK GIVEAWAY · LIVE" else "You missed this BLINK Giveaway",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        if (active) "@${item.creatorUsername} is running a Giveaway. Join before it ends." else "@${item.creatorUsername} ran this Giveaway. $endedLabel.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (item.targetTitle.isNotBlank()) {
+                Text(item.targetTitle, fontWeight = FontWeight.SemiBold)
+            }
+            Text(
+                when (item.action.uppercase()) {
+                    "LIKE" -> "Entry action: like the linked post."
+                    "COMMENT" -> "Entry action: comment on the linked post."
+                    "REPOST" -> "Entry action: repost the linked post."
+                    else -> "Complete the required action to enter."
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "${formatter.format(item.totalCoins)} BLINK Coins · ${formatter.format(item.rewardPerUser)} each · ${item.winnerCount} rewards",
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                when {
+                    active && following -> "You follow @${item.creatorUsername}. Join this Giveaway before it ends."
+                    active -> "Anyone can discover this Giveaway. Follow the creator to be notified next time."
+                    following -> "You follow @${item.creatorUsername}. Watch for the next Giveaway."
+                    else -> "Follow @${item.creatorUsername} to be among the first notified about the next Giveaway."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!following) {
+                    Button(onClick = onFollow) { Text("Follow") }
+                }
+                OutlinedButton(onClick = onOpenDrops) {
+                    Text(if (active) "View Giveaway" else "View Giveaway details")
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,46 @@
+name: BLINK Referral Push Outbox (opt-in)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drain:
+    if: ${{ vars.BLINK_REFERRAL_PUSH_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      PROJECT_REF: ${{ vars.BLINK_SUPABASE_REF }}
+      WORKER_SECRET: ${{ secrets.BLINK_REFERRAL_WORKER_TOKEN }}
+    steps:
+      - name: Verify worker deployment configuration
+        shell: bash
+        run: |
+          test -n "$PROJECT_REF" || { echo 'BLINK_SUPABASE_REF missing'; exit 1; }
+          test "${#WORKER_SECRET}" -ge 32 || { echo 'BLINK_REFERRAL_WORKER_TOKEN missing'; exit 1; }
+      - name: Drain eligible referral pushes
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(curl --fail-with-body --retry 2 --retry-delay 4 --max-time 40 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-blink-referral-worker: $WORKER_SECRET" \
+            "https://${PROJECT_REF}.supabase.co/functions/v1/blink-referral-push-worker")"
+          # Validate the worker response rather than matching a field name that
+          # always appears even when stateUpdateErrors is zero.
+          printf '%s' "$payload" | python3 -c '
+          import json
+          import sys
+          response = json.load(sys.stdin)
+          fields = ("claimed", "delivered", "retryable", "stateUpdateErrors")
+          if any(type(response.get(name)) is not int or response[name] < 0 for name in fields):
+              sys.exit("Invalid referral worker response")
+          print("Referral push summary:", {name: response[name] for name in fields})
+          if response["stateUpdateErrors"] > 0:
+              sys.exit("Referral push acknowledgements failed; inspect outbox logs")
+          '

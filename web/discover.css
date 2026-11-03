@@ -1,0 +1,35 @@
+/* Shared responsive styles for static, search-accessible BLINK information pages. */
+.discover-page{width:min(100% - 32px,1080px);margin:0 auto;padding:22px 0 56px}
+.discover-header{display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap;padding:8px 0 22px}
+.discover-logo{display:inline-flex;gap:9px;align-items:center;font-weight:950;font-size:23px;letter-spacing:-.6px}
+.discover-logo img{object-fit:contain;flex-shrink:0}
+.discover-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.discover-nav a,.discover-footer a{display:inline-block;padding:9px 12px;border-radius:12px}
+.discover-nav a:hover,.discover-nav a:focus-visible,.discover-footer a:hover,.discover-footer a:focus-visible{background:var(--panel2)}
+.discover-nav a[aria-current="page"]{color:#fff;background:rgba(139,92,246,.20)}
+.discover-hero{padding:clamp(25px,5vw,52px);margin-bottom:18px;overflow:hidden}
+.discover-hero h1{font-size:clamp(30px,6vw,55px);line-height:1.12;letter-spacing:-1.3px;margin:0 0 18px;max-width:800px}
+.discover-lead{max-width:780px;color:#cbc4d6;font-size:clamp(16px,2.5vw,19px);line-height:1.75;margin:0}
+.eyebrow{margin:0 0 14px;color:#c2a4ff;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:2px}
+.discover-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+.discover-actions .btn{display:inline-flex;align-items:center;justify-content:center;min-height:46px}
+.discover-section{margin:18px 0}
+.discover-section h2{font-size:clamp(22px,3.5vw,30px);margin:0 0 18px}
+.discover-section>p{max-width:740px;color:#cbc4d6;line-height:1.7}
+.discover-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.discover-card{padding:clamp(20px,4vw,28px)}
+.discover-card h2,.discover-card h3{margin:0 0 10px;font-size:21px}
+.discover-card p,.discover-card li{color:#cbc4d6;line-height:1.7}
+.discover-card p:last-child{margin-bottom:0}
+.discover-steps{padding-left:22px;margin:6px 0}
+.discover-steps li{padding:4px 0 10px;color:#cbc4d6;line-height:1.7}
+.discover-faq{display:grid;gap:12px}
+.discover-faq details{padding:0 22px}
+.discover-faq summary{cursor:pointer;padding:22px 0;font-size:17px;font-weight:800}
+.discover-faq summary:focus-visible{outline:2px solid #c2a4ff;outline-offset:2px;border-radius:4px}
+.discover-faq details p{color:#cbc4d6;line-height:1.7;margin:0 0 22px}
+.discover-footer{border-top:1px solid var(--line);margin-top:30px;padding:18px 0;display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:13px;color:#c6c0ce}
+.discover-footer span{margin-right:auto;padding:9px 0;font-weight:750}
+.skip-link{position:absolute;left:16px;top:-70px;padding:12px;background:#fff;color:#000;border-radius:8px;z-index:99}
+.skip-link:focus{top:12px}
+@media(max-width:660px){.discover-grid{grid-template-columns:1fr}.discover-header{justify-content:center}.discover-nav{justify-content:center}.discover-nav a{padding:8px}.discover-footer span{width:100%}}

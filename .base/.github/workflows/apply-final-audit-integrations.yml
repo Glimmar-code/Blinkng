@@ -1,0 +1,56 @@
+name: Apply final audit integrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-final-audit-integrations.yml'
+      - '.github/scripts/final_audit_patch.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply audited source integrations
+        run: python3 .github/scripts/final_audit_patch.py
+
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Android lint
+        run: gradle :app:lintDebug --stacktrace --no-daemon
+
+      - name: Compile instrumentation tests
+        run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Commit validated integrations
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No integration changes to commit."
+            exit 0
+          fi
+          git config user.name "Glimmar"
+          git config user.email "golowosile@gmail.com"
+          git add app gradle/libs.versions.toml
+          git commit -m "feat: finish audited scheduling study and offline integrations"
+          git push origin HEAD:main

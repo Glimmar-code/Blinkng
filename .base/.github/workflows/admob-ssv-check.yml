@@ -1,0 +1,33 @@
+name: AdMob SSV verifier gate
+
+on:
+  push:
+    branches:
+      - main
+      - Testlab
+      - 'Testlab-admob-*'
+    paths:
+      - 'supabase/functions/admob-reward-ssv/**'
+      - 'supabase/config.toml'
+      - 'scripts/test_admob_ssv_verifier.mjs'
+      - '.github/workflows/admob-ssv-check.yml'
+  pull_request:
+    paths:
+      - 'supabase/functions/admob-reward-ssv/**'
+      - 'supabase/config.toml'
+      - 'scripts/test_admob_ssv_verifier.mjs'
+      - '.github/workflows/admob-ssv-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run AdMob SSV cryptographic regression tests
+        run: node --test scripts/test_admob_ssv_verifier.mjs

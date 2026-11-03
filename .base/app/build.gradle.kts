@@ -1,0 +1,370 @@
+import java.net.URI
+
+plugins {
+  alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.compose)
+  alias(libs.plugins.google.devtools.ksp)
+  alias(libs.plugins.roborazzi)
+  alias(libs.plugins.secrets)
+  alias(libs.plugins.google.services) apply false
+  alias(libs.plugins.firebase.crashlytics) apply false
+}
+
+apply(from = rootProject.file("gradle/png-integrity.gradle.kts"))
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+  dependsOn("validatePngIntegrity")
+}
+
+val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+val googleServicesFile = file("google-services.json")
+val googleServicesExampleFile = file("google-services.json.example")
+val allowPlaceholderGoogleServices = providers.environmentVariable("ALLOW_PLACEHOLDER_GOOGLE_SERVICES")
+  .orNull
+  ?.equals("true", ignoreCase = true) == true
+
+if (!googleServicesFile.exists()) {
+  if (!releaseTaskRequested || allowPlaceholderGoogleServices) {
+    if (!googleServicesExampleFile.exists()) {
+      throw GradleException("Missing app/google-services.json.example; cannot generate a safe CI Firebase placeholder.")
+    }
+    googleServicesExampleFile.copyTo(googleServicesFile, overwrite = true)
+  } else {
+    throw GradleException(
+      "Release Firebase configuration is missing. Restore app/google-services.json from the protected " +
+        "GOOGLE_SERVICES_JSON_BASE64 secret before building a production release."
+    )
+  }
+}
+
+if (
+  releaseTaskRequested &&
+  googleServicesFile.readText().contains("YOUR_FIREBASE_") &&
+  !allowPlaceholderGoogleServices
+) {
+  throw GradleException(
+    "Production release refused: app/google-services.json contains placeholder Firebase values."
+  )
+}
+
+if (googleServicesFile.exists()) {
+  apply(plugin = "com.google.gms.google-services")
+  apply(plugin = "com.google.firebase.crashlytics")
+}
+
+val requestedVersionCodeRaw = providers.environmentVariable("VERSION_CODE").orNull?.trim()
+val requestedVersionCode = requestedVersionCodeRaw?.toIntOrNull()
+val requestedVersionName = providers.environmentVariable("VERSION_NAME").orNull
+  ?.trim()
+  ?.takeIf { it.isNotEmpty() }
+
+if (releaseTaskRequested) {
+  if (requestedVersionCodeRaw.isNullOrBlank()) {
+    throw GradleException(
+      "Release VERSION_CODE is required. Build production APK/AAB files through the signed-release workflow " +
+        "or provide an explicit monotonically increasing VERSION_CODE."
+    )
+  }
+  if (requestedVersionCode == null) {
+    throw GradleException("Release VERSION_CODE must be a valid integer, got '$requestedVersionCodeRaw'.")
+  }
+  if (requestedVersionCode < 10_000_000) {
+    throw GradleException(
+      "Release VERSION_CODE must be >= 10000000. Small fallback codes are blocked to prevent Android downgrade/update mismatch errors."
+    )
+  }
+  if (requestedVersionName.isNullOrBlank()) {
+    throw GradleException(
+      "Release VERSION_NAME is required. Build production APK/AAB files through the signed-release workflow " +
+        "or provide an explicit VERSION_NAME."
+    )
+  }
+}
+
+val gitCommitCount = providers.exec {
+  workingDir(rootDir)
+  commandLine("git", "rev-list", "--count", "HEAD")
+  isIgnoreExitValue = true
+}.standardOutput.asText.get().trim().toIntOrNull()
+
+val gitCommitSha = providers.environmentVariable("GITHUB_SHA").orNull
+  ?.trim()
+  ?.takeIf { it.matches(Regex("^[0-9a-fA-F]{40}$")) }
+  ?: providers.exec {
+    workingDir(rootDir)
+    commandLine("git", "rev-parse", "--verify", "HEAD")
+    isIgnoreExitValue = true
+  }.standardOutput.asText.get().trim()
+
+if (releaseTaskRequested && !gitCommitSha.matches(Regex("^[0-9a-fA-F]{40}$"))) {
+  throw GradleException(
+    "Release builds require an exact 40-character Git commit SHA so every APK/AAB can be traced to source."
+  )
+}
+
+val resolvedVersionCode = (
+  requestedVersionCode
+    ?: gitCommitCount
+    ?: 2
+).coerceAtLeast(2)
+
+require(resolvedVersionCode <= 2_100_000_000) {
+  "VERSION_CODE must be <= 2100000000, got $resolvedVersionCode"
+}
+
+val resolvedVersionName = requestedVersionName ?: "1.0.$resolvedVersionCode"
+
+val configuredShareBaseUrl = providers.gradleProperty("BLINK_SHARE_BASE_URL").orNull
+  ?: providers.environmentVariable("BLINK_SHARE_BASE_URL").orNull
+val resolvedShareBaseUrl = configuredShareBaseUrl
+  ?.trim()
+  ?.trimEnd('/')
+  ?.takeIf { it.startsWith("https://") }
+  ?: "https://blink.com.ng"
+val resolvedShareUri = URI(resolvedShareBaseUrl)
+val resolvedShareHost = resolvedShareUri.host
+  ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
+val resolvedSharePathPrefix = resolvedShareUri.path.orEmpty().trimEnd('/')
+
+fun buildConfigString(value: String): String =
+  "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val resolvedTurnUrl = (
+  providers.gradleProperty("BLINK_TURN_URL").orNull
+    ?: providers.environmentVariable("BLINK_TURN_URL").orNull
+).orEmpty().trim()
+val resolvedTurnUsername = (
+  providers.gradleProperty("BLINK_TURN_USERNAME").orNull
+    ?: providers.environmentVariable("BLINK_TURN_USERNAME").orNull
+).orEmpty().trim()
+val resolvedTurnCredential = (
+  providers.gradleProperty("BLINK_TURN_CREDENTIAL").orNull
+    ?: providers.environmentVariable("BLINK_TURN_CREDENTIAL").orNull
+).orEmpty().trim()
+
+val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("KEY_ALIAS")
+val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+
+if (releaseTaskRequested) {
+  val missing = buildList {
+    if (releaseKeystorePath.isNullOrBlank()) add("KEYSTORE_PATH")
+    if (releaseStorePassword.isNullOrBlank()) add("STORE_PASSWORD")
+    if (releaseKeyAlias.isNullOrBlank()) add("KEY_ALIAS")
+    if (releaseKeyPassword.isNullOrBlank()) add("KEY_PASSWORD")
+  }
+  if (missing.isNotEmpty()) {
+    throw GradleException(
+      "Release signing is not configured. Missing: ${missing.joinToString()}. " +
+        "Use the signed-release GitHub workflow or provide the permanent release key variables."
+    )
+  }
+}
+
+
+android {
+  // Game code, engine and scene assets are delivered after an explicit Play tap.
+  dynamicFeatures.add(":blinkLifeFeature")
+  namespace = "com.example"
+  compileSdk { version = release(37) }
+  defaultConfig {
+    applicationId = "com.aistudio.blink.appvtwo"
+    minSdk = 24
+    targetSdk = 36
+    versionCode = resolvedVersionCode
+    versionName = resolvedVersionName
+    manifestPlaceholders["shareHost"] = resolvedShareHost
+    manifestPlaceholders["sharePathPrefix"] = resolvedSharePathPrefix
+    buildConfigField("String", "SHARE_BASE_URL", "\"$resolvedShareBaseUrl\"")
+    buildConfigField("String", "BLINK_TURN_URL", buildConfigString(resolvedTurnUrl))
+    buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
+    buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
+    // Keep disabled until call-turn-credentials is validated/deployed from a Supabase dev branch.
+    buildConfigField("boolean", "BLINK_DYNAMIC_TURN_ENABLED", "false")
+    // Enable only after call_quality_reporting.sql is validated/deployed through a real migration.
+    buildConfigField("boolean", "BLINK_CALL_QUALITY_REPORTING_ENABLED", "false")
+    buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
+    // The signed release pins the optional WASM game archive; debug installs have no pack by default.
+    buildConfigField("String", "BLINK_LIFE_WEB_SHA256", buildConfigString(providers.environmentVariable("BLINK_LIFE_WEB_SHA256").orNull.orEmpty().lowercase()))
+    buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4343111201"))
+    buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/9024145134"))
+    buildConfigField("String", "ADMOB_REELS_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4949168751"))
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+  signingConfigs {
+    create("release") {
+      if (!releaseKeystorePath.isNullOrBlank()) storeFile = file(releaseKeystorePath)
+      storePassword = releaseStorePassword
+      keyAlias = releaseKeyAlias
+      keyPassword = releaseKeyPassword
+    }
+  }
+  buildTypes {
+    release {
+      isCrunchPngs = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      signingConfig = signingConfigs.getByName("release")
+    }
+    // CI-only R8-shrunk variant: exercises the same native WebRTC JNI names
+    // as release without requiring or exposing the production signing key.
+    create("rtcSmoke") {
+      initWith(getByName("debug"))
+      // R8 disables optimizations for debuggable builds. The JNI smoke APK must
+      // actually be shrunk just like production, but retain debug signing.
+      isDebuggable = false
+      // Keep the real package name: google-services.json only defines the production client.
+      // This debug-signed variant runs on a disposable CI emulator, never on user devices.
+      versionNameSuffix = "-rtcsmoke"
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro",
+        "rtc-smoke-proguard-rules.pro"
+      )
+      matchingFallbacks.add("debug")
+    }
+    debug {
+      versionNameSuffix = "-debug"
+      // Never request live ads from developer/test builds.
+      buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/5224354917"))
+      buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/2247696110"))
+      buildConfigField("String", "ADMOB_REELS_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/1044960115"))
+    }
+  }
+  compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+  buildFeatures { compose = true; buildConfig = true }
+  // Keep ordinary test tasks unchanged. The dedicated native smoke workflow
+  // opts in to instrumenting the R8-shrunk build on Android 15.
+  if (providers.environmentVariable("BLINK_RTC_SMOKE").orNull == "true") {
+    testBuildType = "rtcSmoke"
+  }
+  sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
+  sourceSets.getByName("test").kotlin.srcDir("src/referenceTest/kotlin")
+  sourceSets.getByName("androidTest").kotlin.srcDir("src/referenceTest/kotlin")
+  testOptions { unitTests { isIncludeAndroidResources = true } }
+  dependenciesInfo { includeInApk = false; includeInBundle = true }
+}
+
+// The R8-minified, debug-signed rtcSmoke variant uses placeholder Firebase config.
+// Crashlytics rejects mapping uploads from this disposable CI app (HTTP 400), but
+// a mapping upload is not needed to validate WebRTC JNI_OnLoad. Keep upload tasks
+// fully enabled for real signed release builds.
+if (providers.environmentVariable("BLINK_RTC_SMOKE").orNull == "true") {
+  tasks.matching { it.name == "uploadCrashlyticsMappingFileRtcSmoke" }.configureEach {
+    enabled = false
+  }
+}
+
+secrets {
+  propertiesFileName = ".env"
+  defaultPropertiesFileName = ".env.example"
+
+  // Never generate Android BuildConfig fields for backend-only credentials/config.
+  // These belong in Supabase/CI secrets, not in the APK.
+  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("SUPABASE_SERVICE_ROLE_KEY")
+  ignoreList.add("SUPABASE_DB_PASSWORD")
+  ignoreList.add("FIREBASE_SERVICE_ACCOUNT_JSON")
+  ignoreList.add("SMTP_PASSWORD")
+  ignoreList.add("GOOGLE_OAUTH_CLIENT_SECRET")
+  ignoreList.add("PAYSTACK_SECRET_KEY")
+  ignoreList.add("PAYSTACK_CALLBACK_URL")
+  ignoreList.add("PAYMENT_PROVIDER_SECRET")
+  ignoreList.add("GEMINI_API_KEY")
+  ignoreList.add("GEMINI_MODEL")
+  ignoreList.add("OPENWEATHER_API_KEY")
+}
+
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+  arg("room.incremental", "true")
+}
+
+dependencies {
+  coreLibraryDesugaring(libs.desugar.jdk.libs)
+  implementation(platform(libs.androidx.compose.bom))
+  implementation(libs.androidx.activity.compose)
+  implementation("androidx.fragment:fragment-ktx:1.8.5")
+  implementation("com.google.android.play:feature-delivery:2.1.0")
+  implementation("androidx.webkit:webkit:1.14.0")
+  implementation(libs.androidx.compose.material.icons.core)
+  implementation(libs.androidx.compose.material.icons.extended)
+  implementation(libs.androidx.compose.material3)
+  implementation(libs.androidx.compose.ui)
+  implementation(libs.androidx.compose.ui.graphics)
+  implementation("androidx.compose.ui:ui-text-google-fonts")
+  implementation(libs.androidx.compose.ui.tooling.preview)
+  implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.lifecycle.runtime.compose)
+  implementation(libs.androidx.lifecycle.runtime.ktx)
+  implementation(libs.androidx.lifecycle.viewmodel.compose)
+  implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.room.ktx)
+  implementation(libs.androidx.room.runtime)
+  implementation(libs.androidx.datastore.preferences)
+  implementation(libs.androidx.work.runtime.ktx)
+  implementation("androidx.core:core-telecom:1.1.0-beta01")
+  implementation(libs.coil.compose)
+  // Decode one lightweight frame for older Reels without uploaded cover images.
+  implementation("io.coil-kt:coil-video:2.7.0")
+  implementation(libs.converter.moshi)
+  implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.logging.interceptor)
+  implementation(libs.moshi.kotlin)
+  implementation(libs.okhttp)
+  implementation(libs.retrofit)
+  implementation(libs.media3.exoplayer)
+  implementation(libs.media3.ui)
+  implementation(libs.media3.transformer)
+  implementation(libs.media3.effect)
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.messaging)
+  implementation(libs.firebase.analytics)
+  implementation(libs.firebase.crashlytics)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
+  implementation(libs.googleid)
+  implementation(libs.accompanist.permissions)
+  implementation(libs.play.services.location)
+  implementation(libs.play.app.update)
+  implementation(libs.play.app.update.ktx)
+  implementation("com.google.android.gms:play-services-ads:25.5.0")
+  implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+  implementation(libs.androidx.camera.camera2)
+  implementation(libs.androidx.camera.lifecycle)
+  implementation(libs.androidx.camera.view)
+  implementation(libs.androidx.camera.core)
+  implementation("io.github.webrtc-sdk:android:150.7871.04")
+  implementation("com.google.zxing:core:3.5.3")
+
+  testImplementation(libs.androidx.compose.ui.test.junit4)
+  testImplementation(libs.androidx.core)
+  testImplementation(libs.androidx.junit)
+  testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.robolectric)
+  testImplementation(libs.roborazzi)
+  testImplementation(libs.roborazzi.compose)
+  testImplementation(libs.roborazzi.junit.rule)
+  androidTestImplementation(platform(libs.androidx.compose.bom))
+  androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+  androidTestImplementation(libs.androidx.espresso.core)
+  androidTestImplementation(libs.androidx.junit)
+  androidTestImplementation(libs.androidx.runner)
+  // Keep the AndroidJUnitRunner runtime complete in the R8-minified rtcSmoke
+  // instrumentation APK. Missing androidx.tracing.Trace crashes the runner
+  // before the WebRTC JNI test can execute.
+  androidTestImplementation("androidx.tracing:tracing:1.2.0")
+  // AndroidJUnitRunner resolves Trace from the target app's class loader.
+  // The smoke-only target dependency + keep rule prevent R8 from pruning it.
+  add("rtcSmokeImplementation", "androidx.tracing:tracing:1.2.0")
+  debugImplementation(libs.androidx.compose.ui.test.manifest)
+  debugImplementation(libs.androidx.compose.ui.tooling)
+  "ksp"(libs.androidx.room.compiler)
+  "ksp"(libs.moshi.kotlin.codegen)
+}

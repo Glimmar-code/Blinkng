@@ -1,0 +1,105 @@
+package com.example.data.views
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+internal const val MARKET_VIEW_REFLECTION_DELAY_MS = 120_000L
+
+internal data class MarketViewDisplayState(
+    val revealedCounts: Map<String, Long> = emptyMap(),
+    val suppressedBaselines: Map<String, Long> = emptyMap(),
+    val activeWindows: Set<String> = emptySet(),
+) {
+    fun displayedCount(itemId: String, modelCount: Long): Long {
+        val cleanModel = modelCount.coerceAtLeast(0L)
+        if (itemId in activeWindows) {
+            return (suppressedBaselines[itemId] ?: cleanModel).coerceAtLeast(0L)
+        }
+        return maxOf(cleanModel, revealedCounts[itemId]?.coerceAtLeast(0L) ?: 0L)
+    }
+}
+
+private class MarketViewWindow(
+    val itemId: String,
+    val baseline: Long,
+    var latestAuthoritativeCount: Long,
+)
+
+/**
+ * Listing view writes are immediate on the server. Only the displayed Market
+ * counter is delayed, matching Feed/Profile/Reels without deduplicating visits.
+ */
+internal object MarketViewDisplayCoordinator {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lock = Any()
+    private val windows = mutableMapOf<String, MarketViewWindow>()
+    private val _state = MutableStateFlow(MarketViewDisplayState())
+    val state: StateFlow<MarketViewDisplayState> = _state.asStateFlow()
+
+    fun recordExposure(itemId: String, modelCount: Long, authoritativeCount: Long) {
+        if (itemId.isBlank()) return
+        var created: MarketViewWindow? = null
+        synchronized(lock) {
+            val existing = windows[itemId]
+            if (existing != null) {
+                existing.latestAuthoritativeCount = maxOf(
+                    existing.latestAuthoritativeCount,
+                    authoritativeCount.coerceAtLeast(0L),
+                )
+            } else {
+                val baseline = _state.value.displayedCount(itemId, modelCount)
+                MarketViewWindow(
+                    itemId = itemId,
+                    baseline = baseline,
+                    latestAuthoritativeCount = maxOf(baseline, authoritativeCount.coerceAtLeast(0L)),
+                ).also { window ->
+                    windows[itemId] = window
+                    created = window
+                    _state.update { current ->
+                        current.copy(
+                            suppressedBaselines = current.suppressedBaselines + (itemId to baseline),
+                            activeWindows = current.activeWindows + itemId,
+                        )
+                    }
+                }
+            }
+        }
+        created?.let { window ->
+            scope.launch {
+                delay(MARKET_VIEW_REFLECTION_DELAY_MS)
+                synchronized(lock) {
+                    if (windows[itemId] !== window) return@synchronized
+                    windows.remove(itemId)
+                    _state.update { current ->
+                        current.copy(
+                            revealedCounts = current.revealedCounts + (
+                                itemId to maxOf(
+                                    current.revealedCounts[itemId] ?: 0L,
+                                    window.latestAuthoritativeCount,
+                                )
+                            ),
+                            suppressedBaselines = current.suppressedBaselines - itemId,
+                            activeWindows = current.activeWindows - itemId,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun rememberDelayedMarketViewCount(itemId: String, modelCount: Long): Long {
+    val displayState by MarketViewDisplayCoordinator.state.collectAsState()
+    return displayState.displayedCount(itemId, modelCount)
+}

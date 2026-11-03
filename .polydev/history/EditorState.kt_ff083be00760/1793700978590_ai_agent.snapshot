@@ -1,0 +1,121 @@
+package com.blinkng.shared.ui.editor
+
+import androidx.compose.runtime.*
+import com.blinkng.shared.ui.editor.*
+
+/**
+ * Stable holder for all mutable editor state. Using @Stable allows Compose to
+ * treat the class as a single mutable object, which keeps recompositions cheap.
+ */
+@Stable
+class PhotoEditorState(
+    initialUri: String
+) {
+    var uri by mutableStateOf(initialUri)
+    var cropConfig by mutableStateOf(CropConfig())
+    var filterConfig by mutableStateOf(FilterConfig())
+    var adjustConfig by mutableStateOf(AdjustConfig())
+    var blurEnabled by mutableStateOf(false)
+    var blurRadius by mutableStateOf(12f)
+    var textOverlays = mutableStateListOf<TextOverlay>()
+    var stickerOverlays = mutableStateListOf<StickerOverlay>()
+    var quality by mutableStateOf(CompressionQuality.HIGH)
+
+    // Undo/redo stacks store snapshots of the whole state for simplicity.
+    private val undoStack = mutableStateListOf<PhotoEditorStateSnapshot>()
+    private val redoStack = mutableStateListOf<PhotoEditorStateSnapshot>()
+
+    fun snapshot(): PhotoEditorStateSnapshot = PhotoEditorStateSnapshot(
+        uri,
+        cropConfig,
+        filterConfig,
+        adjustConfig,
+        blurEnabled,
+        blurRadius,
+        textOverlays.toList(),
+        stickerOverlays.toList(),
+        quality
+    )
+
+    fun restore(snap: PhotoEditorStateSnapshot) {
+        uri = snap.uri
+        cropConfig = snap.cropConfig
+        filterConfig = snap.filterConfig
+        adjustConfig = snap.adjustConfig
+        blurEnabled = snap.blurEnabled
+        blurRadius = snap.blurRadius
+        textOverlays.clear(); textOverlays.addAll(snap.textOverlays)
+        stickerOverlays.clear(); stickerOverlays.addAll(snap.stickerOverlays)
+        quality = snap.quality
+    }
+
+    fun pushUndo() { undoStack.add(snapshot()); redoStack.clear() }
+    fun undo() { if (undoStack.isNotEmpty()) { redoStack.add(snapshot()); restore(undoStack.removeAt(undoStack.lastIndex)) } }
+    fun redo() { if (redoStack.isNotEmpty()) { pushUndo(); restore(redoStack.removeAt(redoStack.lastIndex)) } }
+}
+
+data class PhotoEditorStateSnapshot(
+    val uri: String,
+    val cropConfig: CropConfig,
+    val filterConfig: FilterConfig,
+    val adjustConfig: AdjustConfig,
+    val blurEnabled: Boolean,
+    val blurRadius: Float,
+    val textOverlays: List<TextOverlay>,
+    val stickerOverlays: List<StickerOverlay>,
+    val quality: CompressionQuality
+)
+
+/** Video editor state – similar pattern but with video‑specific fields. */
+@Stable
+class VideoEditorState(
+    initialUri: String
+) {
+    var uri by mutableStateOf(initialUri)
+    var trim by mutableStateOf(VideoTrim())
+    var audioConfig by mutableStateOf(VideoAudioConfig())
+    var speed by mutableStateOf(VideoSpeed.NORMAL)
+    var rotationDegrees by mutableStateOf(0)
+    var textOverlays = mutableStateListOf<TextOverlay>()
+    var stickerOverlays = mutableStateListOf<StickerOverlay>()
+    var quality by mutableStateOf(CompressionQuality.HIGH)
+
+    private val undoStack = mutableStateListOf<VideoEditorStateSnapshot>()
+    private val redoStack = mutableStateListOf<VideoEditorStateSnapshot>()
+
+    fun snapshot(): VideoEditorStateSnapshot = VideoEditorStateSnapshot(
+        uri, trim, audioConfig, speed, rotationDegrees,
+        textOverlays.toList(), stickerOverlays.toList(), quality
+    )
+    fun restore(snap: VideoEditorStateSnapshot) {
+        uri = snap.uri
+        trim = snap.trim
+        audioConfig = snap.audioConfig
+        speed = snap.speed
+        rotationDegrees = snap.rotationDegrees
+        textOverlays.clear(); textOverlays.addAll(snap.textOverlays)
+        stickerOverlays.clear(); stickerOverlays.addAll(snap.stickerOverlays)
+        quality = snap.quality
+    }
+    fun pushUndo() { undoStack.add(snapshot()); redoStack.clear() }
+    fun undo() { if (undoStack.isNotEmpty()) { redoStack.add(snapshot()); restore(undoStack.removeAt(undoStack.lastIndex)) } }
+    fun redo() { if (redoStack.isNotEmpty()) { pushUndo(); restore(redoStack.removeAt(redoStack.lastIndex)) } }
+}
+
+data class VideoEditorStateSnapshot(
+    val uri: String,
+    val trim: VideoTrim,
+    val audioConfig: VideoAudioConfig,
+    val speed: VideoSpeed,
+    val rotationDegrees: Int,
+    val textOverlays: List<TextOverlay>,
+    val stickerOverlays: List<StickerOverlay>,
+    val quality: CompressionQuality
+)
+
+/** Helper composables to obtain a remembered state instance. */
+@Composable
+fun rememberPhotoEditorState(initialUri: String): PhotoEditorState = remember { PhotoEditorState(initialUri) }
+
+@Composable
+fun rememberVideoEditorState(initialUri: String): VideoEditorState = remember { VideoEditorState(initialUri) }

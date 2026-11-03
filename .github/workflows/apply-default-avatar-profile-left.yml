@@ -1,0 +1,200 @@
+name: Apply default avatar and left profile transition
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-default-avatar-profile-left.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply avatar fallback and profile transition
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          root = Path('app/src/main/java/com/example')
+          drawable = Path('app/src/main/res/drawable/ic_default_profile.xml')
+          drawable.parent.mkdir(parents=True, exist_ok=True)
+          drawable.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path
+                  android:fillColor="#303544"
+                  android:pathData="M0,0h24v24H0z" />
+              <path
+                  android:fillColor="#C5CAD8"
+                  android:pathData="M12,12c2.21,0 4,-1.79 4,-4s-1.79,-4 -4,-4 -4,1.79 -4,4 1.79,4 4,4zM12,14c-2.67,0 -8,1.34 -8,4v2h16v-2c0,-2.66 -5.33,-4 -8,-4z" />
+          </vector>
+          ''')
+
+          def ensure_import(text: str, import_line: str) -> str:
+              if import_line in text:
+                  return text
+              lines = text.splitlines(keepends=True)
+              first_import = next((i for i, line in enumerate(lines) if line.startswith('import ')), None)
+              if first_import is None:
+                  package_line = next((i for i, line in enumerate(lines) if line.startswith('package ')), 0)
+                  lines.insert(package_line + 1, '\n' + import_line + '\n')
+              else:
+                  lines.insert(first_import, import_line + '\n')
+              return ''.join(lines)
+
+          def patch_avatar_async_images(text: str):
+              lines = text.splitlines(keepends=True)
+              changed = False
+              count = 0
+              i = 0
+              call_re = re.compile(r'^\s*(?:AsyncImage|SubcomposeAsyncImage)\(\s*$')
+              while i < len(lines):
+                  if not call_re.match(lines[i]):
+                      i += 1
+                      continue
+
+                  model_index = None
+                  for j in range(i + 1, min(i + 8, len(lines))):
+                      stripped = lines[j].strip()
+                      if stripped.startswith('model ='):
+                          model_index = j
+                          break
+                      if stripped.startswith('contentDescription ='):
+                          break
+
+                  if model_index is None or 'avatar' not in lines[model_index].lower():
+                      i += 1
+                      continue
+
+                  nearby = ''.join(lines[model_index + 1:min(model_index + 10, len(lines))])
+                  if 'R.drawable.ic_default_profile' in nearby:
+                      i += 1
+                      continue
+
+                  indent = re.match(r'^(\s*)', lines[model_index]).group(1)
+                  lines[model_index + 1:model_index + 1] = [
+                      f'{indent}error = painterResource(R.drawable.ic_default_profile),\n',
+                      f'{indent}fallback = painterResource(R.drawable.ic_default_profile),\n',
+                  ]
+                  changed = True
+                  count += 1
+                  i = model_index + 3
+
+              return ''.join(lines), changed, count
+
+          total_avatar_calls = 0
+          touched = []
+          for path in root.rglob('*.kt'):
+              text = path.read_text()
+              if 'AsyncImage' not in text and 'SubcomposeAsyncImage' not in text:
+                  continue
+              patched, changed, count = patch_avatar_async_images(text)
+              if not changed:
+                  continue
+              patched = ensure_import(patched, 'import androidx.compose.ui.res.painterResource')
+              patched = ensure_import(patched, 'import com.example.R')
+              path.write_text(patched)
+              total_avatar_calls += count
+              touched.append(str(path))
+
+          # Profile share preview previously rendered nothing when there was no DP.
+          profile_path = Path('app/src/main/java/com/example/ui/screens/ProfileScreen.kt')
+          profile_text = profile_path.read_text()
+          share_pattern = re.compile(
+              r'''(?P<indent>\s*)if \(avatarUrl\.isNotBlank\(\)\) \{\n'''
+              r'''(?P<body>\s*AsyncImage\(\n\s*model = avatarUrl,.*?\n(?P=indent)\})''',
+              re.S,
+          )
+          share_match = share_pattern.search(profile_text)
+          if share_match and 'profile_share_default_avatar' not in profile_text:
+              indent = share_match.group('indent')
+              original = share_match.group(0)
+              replacement = original + (
+                  f''' else {{\n'''
+                  f'''{indent}    Box(\n'''
+                  f'''{indent}        modifier = Modifier\n'''
+                  f'''{indent}            .size(72.dp)\n'''
+                  f'''{indent}            .clip(CircleShape)\n'''
+                  f'''{indent}            .background(Color(0xFF303544))\n'''
+                  f'''{indent}            .testTag("profile_share_default_avatar"),\n'''
+                  f'''{indent}        contentAlignment = Alignment.Center\n'''
+                  f'''{indent}    ) {{\n'''
+                  f'''{indent}        Icon(\n'''
+                  f'''{indent}            imageVector = Icons.Default.Person,\n'''
+                  f'''{indent}            contentDescription = "$fullName default profile picture",\n'''
+                  f'''{indent}            tint = Color(0xFFC5CAD8),\n'''
+                  f'''{indent}            modifier = Modifier.size(42.dp)\n'''
+                  f'''{indent}        )\n'''
+                  f'''{indent}    }}\n'''
+                  f'''{indent}}}'''
+              )
+              profile_text = profile_text.replace(original, replacement, 1)
+              profile_path.write_text(profile_text)
+              if str(profile_path) not in touched:
+                  touched.append(str(profile_path))
+
+          main_path = Path('app/src/main/java/com/example/MainActivity.kt')
+          main = main_path.read_text()
+          profile_anchor = '// Sub-screen Overlays: User Profile with dynamic tabs (Posts, Liked, Saved, Skills, About) & messaging'
+          anchor_index = main.find(profile_anchor)
+          if anchor_index < 0:
+              raise SystemExit('Could not locate profile overlay anchor in MainActivity')
+          profile_segment = main[anchor_index:]
+          old_transition = '''enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),\n            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()'''
+          new_transition = '''enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),\n            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()'''
+          if old_transition in profile_segment:
+              profile_segment = profile_segment.replace(old_transition, new_transition, 1)
+              main = main[:anchor_index] + profile_segment
+              main_path.write_text(main)
+          elif new_transition not in profile_segment:
+              raise SystemExit('Could not locate profile horizontal transition')
+
+          if total_avatar_calls == 0 and not any('ic_default_profile' in p.read_text() for p in root.rglob('*.kt')):
+              raise SystemExit('No avatar image calls were patched or previously configured')
+
+          print(f'Avatar AsyncImage fallbacks configured: {total_avatar_calls}')
+          print('Touched Kotlin files:')
+          for path in touched:
+              print(f'  - {path}')
+
+      - name: Validate patch
+        shell: bash
+        run: |
+          git diff --check
+          test -f app/src/main/res/drawable/ic_default_profile.xml
+          grep -q 'initialOffsetX = { -it }' app/src/main/java/com/example/MainActivity.kt
+          grep -q 'R.drawable.ic_default_profile' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+
+      - name: Compile app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Push avatar and profile navigation changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Default avatar and profile transition are already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example app/src/main/res/drawable/ic_default_profile.xml
+          git commit -m 'Add default avatars and left profile transition'
+          git push origin HEAD:main

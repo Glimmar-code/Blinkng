@@ -1,0 +1,1239 @@
+package com.example.ui.screens
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
+import com.example.R
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
+import com.example.ui.components.blinkPressFeedback
+import com.example.performance.rememberBlinkReduceMotion
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
+import com.example.notification.BlinkOfflineAnnouncementCache
+import com.example.ui.components.BlinkOfflineAnnouncementsPanel
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.data.models.ActivityItem
+import com.example.data.models.NotificationFilter
+import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
+import com.example.data.supabase.AdminAnnouncementDetail
+import com.example.data.supabase.AdminAnnouncementService
+import com.example.data.supabase.SupabaseService
+import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkVipMarkForUsername
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+
+private enum class NotificationViewMode(val label: String) {
+    ALL("All"),
+    UNREAD("Unread")
+}
+
+private enum class NotificationCategory(val label: String) {
+    ALL("All"),
+    MENTIONS("Mentions"),
+    COMMENTS("Comments"),
+    LIKES("Likes"),
+    FOLLOWS("Follows"),
+    MARKET("Market"),
+    REELS("Reels"),
+    STORIES("Stories"),
+    REWARDS("Rewards"),
+    MESSAGES("Messages"),
+    CONTESTS("Contests"),
+    BLINK("BLINK")
+}
+
+private data class NotificationSection(
+    val title: String,
+    val items: List<ActivityItem>,
+    val showCaughtUpAfter: Boolean = false
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ActivityScreen(
+    activities: List<ActivityItem>,
+    onBack: () -> Unit,
+    onProfileClick: (String) -> Unit,
+    onNotificationClick: (ActivityItem) -> Unit,
+    isDark: Boolean,
+    isConnected: Boolean = true,
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onRefresh: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onMarkAllRead: () -> Unit = {},
+    onToggleRead: (ActivityItem) -> Unit = {},
+    accountId: String = "",
+) {
+    var filter by remember(accountId) { mutableStateOf(NotificationCategory.ALL) }
+    var viewMode by remember(accountId) { mutableStateOf(NotificationViewMode.ALL) }
+    var newestFirst by remember(accountId) { mutableStateOf(true) }
+    var searchVisible by remember(accountId) { mutableStateOf(false) }
+    var actionsExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember(accountId) { mutableStateOf("") }
+    var showSavedUpdates by remember(accountId) { mutableStateOf(false) }
+    val context = LocalContext.current
+    var savedUpdates by remember(accountId) {
+        mutableStateOf(BlinkOfflineAnnouncementCache.read(context, accountId))
+    }
+    LaunchedEffect(accountId, activities, showSavedUpdates) {
+        if (showSavedUpdates) savedUpdates = BlinkOfflineAnnouncementCache.read(context, accountId)
+    }
+
+    val profileService = remember { SupabaseService() }
+    val announcementService = remember { AdminAnnouncementService() }
+    val scope = rememberCoroutineScope()
+    var actorProfiles by remember(accountId) { mutableStateOf<Map<String, UserProfile>>(emptyMap()) }
+    var selectedAdminMessage by remember(accountId) { mutableStateOf<AdminAnnouncementDetail?>(null) }
+    var adminMessageLoading by remember { mutableStateOf(false) }
+    var adminMessageError by remember { mutableStateOf<String?>(null) }
+
+    selectedAdminMessage?.let { detail ->
+        AdminMessageDetailScreen(
+            detail = detail,
+            onBack = { selectedAdminMessage = null }
+        )
+        return
+    }
+
+    // Activity rows store actor_id for integrity. Resolve those IDs to public profile
+    // details only while this screen is visible so UUIDs are never rendered to people.
+    LaunchedEffect(accountId, activities, isConnected) {
+        if (!isConnected || activities.isEmpty()) return@LaunchedEffect
+
+        val actors = activities
+            .map { it.user.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        val next = actorProfiles.toMutableMap()
+        actors.filterNot(next::containsKey)
+            .chunked(6)
+            .forEach { chunk ->
+                val resolved = coroutineScope {
+                    chunk.map { actor ->
+                        async { actor to profileService.fetchProfileById(actor) }
+                    }.awaitAll()
+                }
+                resolved.forEach { (actor, profile) ->
+                    if (profile != null && profile.username.isNotBlank()) {
+                        next[actor] = profile
+                    }
+                }
+                actorProfiles = next.toMap()
+            }
+    }
+
+    val timelineActivities = remember(activities) {
+        activities.filter { com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) }
+    }
+    val unread = timelineActivities.count { it.isUnread }
+    val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    ) || LocalConfiguration.current.screenWidthDp <= 430
+    // The full action cluster used to truncate "Notifications" on 390dp phones.
+    val filtered = remember(timelineActivities, actorProfiles, filter, viewMode, searchQuery) {
+        timelineActivities.filter { item ->
+            val categoryMatches = filter == NotificationCategory.ALL || resolvedNotificationCategory(item) == filter
+            val unreadMatches = viewMode == NotificationViewMode.ALL || item.isUnread
+            val query = searchQuery.trim().lowercase()
+            val profile = actorProfiles[item.user]
+            val searchable = buildString {
+                append(item.action)
+                append(' ')
+                append(item.previewText.orEmpty())
+                append(' ')
+                append(profile?.fullName.orEmpty())
+                append(' ')
+                append(profile?.username.orEmpty())
+                append(' ')
+                append(item.user)
+            }.lowercase()
+            val searchMatches = query.isBlank() || searchable.contains(query)
+            categoryMatches && unreadMatches && searchMatches
+        }
+    }
+    val sortedNotifications = remember(filtered, newestFirst) {
+        if (newestFirst) filtered.sortedByDescending { it.rawTimestamp }
+        else filtered.sortedBy { it.rawTimestamp }
+    }
+    val sections = remember(sortedNotifications, viewMode, newestFirst) {
+        buildNotificationSections(sortedNotifications, viewMode, newestFirst)
+    }
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, hasMore, isLoadingMore, showSavedUpdates, isLoading, sortedNotifications.size) {
+        if (!showSavedUpdates && !isLoading && hasMore && !isLoadingMore && sortedNotifications.isNotEmpty()) {
+            snapshotFlow {
+                val info = listState.layoutInfo
+                (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
+            }.distinctUntilChanged().collect { (lastVisible, total) ->
+                if (total > 0 && lastVisible >= total - 5) onLoadMore()
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, "Back")
+                        }
+                    },
+                    title = {
+                        Column {
+                            Text(
+                                "Notifications",
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (!compactToolbar) {
+                                Text(
+                                    when {
+                                        unread == 0 -> "You're all caught up"
+                                        unread == 1 -> "1 unread"
+                                        else -> "$unread unread"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            searchVisible = !searchVisible
+                            if (!searchVisible) searchQuery = ""
+                        }) {
+                            Icon(
+                                if (searchVisible) Icons.Default.Close else Icons.Default.Search,
+                                if (searchVisible) "Close search" else "Search notifications"
+                            )
+                        }
+                        if (compactToolbar) {
+                            Box {
+                                IconButton(onClick = { actionsExpanded = true }) {
+                                    Icon(Icons.Default.MoreVert, "More notification actions")
+                                }
+                                DropdownMenu(
+                                    expanded = actionsExpanded,
+                                    onDismissRequest = { actionsExpanded = false }
+                                ) {
+                                    if (unread > 0) {
+                                        DropdownMenuItem(
+                                            text = { Text("Mark all as read") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onMarkAllRead()
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.DoneAll, null) }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(if (newestFirst) "Sort oldest first" else "Sort newest first")
+                                        },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            newestFirst = !newestFirst
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Sort, null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Refresh") },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            onRefresh()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Refresh, null) }
+                                    )
+                                }
+                            }
+                        } else {
+                            if (unread > 0) {
+                                TextButton(onClick = onMarkAllRead) {
+                                    Icon(Icons.Default.DoneAll, contentDescription = "Image", modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Read all", fontSize = 12.sp)
+                                }
+                            }
+                            IconButton(onClick = { newestFirst = !newestFirst }) {
+                                Icon(Icons.Default.Sort, if (newestFirst) "Sort oldest first" else "Sort newest first")
+                            }
+                            IconButton(onClick = onRefresh) {
+                                Icon(Icons.Default.Refresh, "Refresh")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
+                )
+
+                if (compactToolbar) {
+                    Text(
+                        when {
+                            unread == 0 -> "You're all caught up"
+                            unread == 1 -> "1 unread"
+                            else -> "$unread unread"
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(
+                            start = 72.dp, end = 16.dp, bottom = 3.dp
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (searchVisible) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        placeholder = { Text("Search people or activity") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Image") },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, "Clear search")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { showSavedUpdates = !showSavedUpdates }) {
+                    Text(if (showSavedUpdates) "Live notifications" else "Saved Updates")
+                }
+            }
+            if (!showSavedUpdates) {
+                NotificationControls(
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    viewMode = viewMode,
+                    onViewModeChange = { viewMode = it }
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
+
+            if (adminMessageLoading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+
+            adminMessageError?.let { message ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            message,
+                            modifier = Modifier.weight(1f),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        TextButton(onClick = { adminMessageError = null }) { Text("Dismiss") }
+                    }
+                }
+            }
+
+            if (!isConnected) {
+                NotificationConnectionNotice()
+            } else if (!errorMessage.isNullOrBlank() && activities.isNotEmpty()) {
+                NotificationRefreshNotice(onRefresh)
+            }
+
+            when {
+                showSavedUpdates -> BlinkOfflineAnnouncementsPanel(
+                    announcements = savedUpdates,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                isLoading && activities.isEmpty() -> NotificationSkeletonList()
+
+                !errorMessage.isNullOrBlank() && activities.isEmpty() -> NotificationLoadError(
+                    message = errorMessage,
+                    onRefresh = onRefresh
+                )
+
+                filtered.isEmpty() -> Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    NotificationEmptyState(
+                        filter = filter,
+                        viewMode = viewMode,
+                        hasSearch = searchQuery.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (hasMore && !isLoadingMore && isConnected) {
+                        TextButton(onClick = onLoadMore) { Text("Search older notifications") }
+                    } else if (isLoadingMore) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(12.dp).size(22.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+
+                else -> LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    sections.forEach { section ->
+                        item(key = "section_${section.title}") {
+                            NotificationSectionHeader(section.title)
+                        }
+                        items(section.items, key = { it.id }) { item ->
+                            NotificationSwipeRow(
+                                item = item,
+                                onToggleRead = { onToggleRead(item) }
+                            ) {
+                                NotificationCard(
+                                    item = item,
+                                    profile = actorProfiles[item.user],
+                                    onProfileClick = onProfileClick,
+                                    onNotificationClick = { tapped ->
+                                        if (!com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+                                                tapped.targetType, tapped.eventType, tapped.action
+                                            )) {
+                                            onNotificationClick(tapped)
+                                        } else if (!adminMessageLoading) {
+                                            scope.launch {
+                                                adminMessageLoading = true
+                                                adminMessageError = null
+                                                (if (tapped.targetType.equals("system", true)) {
+                                                    Result.success<AdminAnnouncementDetail?>(null)
+                                                } else {
+                                                    announcementService.fetchForActivity(tapped.id)
+                                                }).onSuccess { detail ->
+                                                        if (detail != null) {
+                                                            selectedAdminMessage = detail
+                                                            if (tapped.isUnread) onToggleRead(tapped)
+                                                        } else {
+                                                            // Ordinary notices may not belong to admin campaigns.
+                                                            selectedAdminMessage = AdminAnnouncementDetail(
+                                                                activityId = tapped.id,
+                                                                notificationId = tapped.id.removePrefix("notification:"),
+                                                                campaignId = "",
+                                                                topic = tapped.action,
+                                                                subtopic = "",
+                                                                message = tapped.previewText.orEmpty().ifBlank { tapped.action },
+                                                                senderName = "BLINK",
+                                                                createdAt = tapped.rawTimestamp
+                                                            )
+                                                            if (tapped.isUnread) onToggleRead(tapped)
+                                                        }
+                                                    }
+                                                    .onFailure {
+                                                        adminMessageError = it.message
+                                                            ?: "Couldn't open this Blink message."
+                                                    }
+                                                adminMessageLoading = false
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        if (section.showCaughtUpAfter) {
+                            item(key = "caught_up_${section.title}") {
+                                CaughtUpDivider()
+                            }
+                        }
+                    }
+                    if (isLoadingMore) {
+                        item(key = "older_loading") {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    } else if (hasMore) {
+                        item(key = "older_more") {
+                            TextButton(
+                                onClick = onLoadMore,
+                                modifier = Modifier.fillMaxWidth().padding(8.dp)
+                            ) { Text("Load older notifications") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationControls(
+    filter: NotificationCategory,
+    onFilterChange: (NotificationCategory) -> Unit,
+    viewMode: NotificationViewMode,
+    onViewModeChange: (NotificationViewMode) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            NotificationViewMode.values().forEach { mode ->
+                FilterChip(
+                    selected = viewMode == mode,
+                    onClick = { onViewModeChange(mode) },
+                    label = { Text(mode.label, fontSize = 12.sp) }
+                )
+            }
+        }
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(NotificationCategory.values()) { item ->
+                FilterChip(
+                    selected = filter == item,
+                    onClick = { onFilterChange(item) },
+                    label = { Text(item.label, fontSize = 12.sp) },
+                    leadingIcon = {
+                        Icon(
+                            filterIcon(item),
+                            contentDescription = "Image",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun NotificationSectionHeader(title: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.width(8.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .65f)
+        )
+    }
+}
+
+@Composable
+private fun CaughtUpDivider() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .65f),
+            modifier = Modifier.padding(horizontal = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.DoneAll,
+                    contentDescription = "Image",
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "You're all caught up",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+@Composable
+private fun NotificationConnectionNotice() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = "Image",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(9.dp))
+            Column {
+                Text("Notifications are offline", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(
+                    "Showing your last available activity.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationRefreshNotice(onRefresh: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Couldn't refresh. Showing recent activity.",
+            modifier = Modifier.weight(1f),
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = onRefresh) { Text("Retry") }
+    }
+}
+
+@Composable
+private fun NotificationLoadError(message: String, onRefresh: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Default.Refresh,
+                null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(44.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("Notifications couldn't load", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            Text(
+                message,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(14.dp))
+            Button(onClick = onRefresh) { Text("Try again") }
+        }
+    }
+}
+
+@Composable
+private fun NotificationEmptyState(
+    filter: NotificationCategory,
+    viewMode: NotificationViewMode,
+    hasSearch: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val title = when {
+        hasSearch -> "No matching notifications"
+        viewMode == NotificationViewMode.UNREAD -> "No unread notifications"
+        filter == NotificationCategory.MENTIONS -> "No mentions"
+        filter == NotificationCategory.COMMENTS -> "No comments or replies"
+        filter == NotificationCategory.LIKES -> "No likes, saves or reposts"
+        filter == NotificationCategory.FOLLOWS -> "No new followers"
+        filter == NotificationCategory.MARKET -> "No market activity"
+        filter == NotificationCategory.REELS -> "No reel activity"
+        filter == NotificationCategory.STORIES -> "No story activity"
+        filter == NotificationCategory.REWARDS -> "No reward activity"
+        filter == NotificationCategory.BLINK -> "No BLINK notices"
+        else -> "No notifications"
+    }
+    val description = when {
+        hasSearch -> "Try another name or activity keyword."
+        viewMode == NotificationViewMode.UNREAD -> "You're all caught up."
+        filter == NotificationCategory.MENTIONS -> "Mentions will appear here."
+        filter == NotificationCategory.COMMENTS -> "Comments and replies will appear here."
+        filter == NotificationCategory.LIKES -> "Likes, saves and repost activity will appear here."
+        filter == NotificationCategory.FOLLOWS -> "New followers will appear here."
+        filter == NotificationCategory.MARKET -> "Marketplace updates will appear here."
+        filter == NotificationCategory.REELS -> "Reel reactions will appear here."
+        filter == NotificationCategory.STORIES -> "Story reactions will appear here."
+        filter == NotificationCategory.REWARDS -> "Coins and rewards will appear here."
+        filter == NotificationCategory.BLINK -> "Official BLINK notices will appear here."
+        else -> "Likes, comments, follows and profile activity will appear here."
+    }
+
+    Box(modifier.fillMaxSize(), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .12f),
+                modifier = Modifier.size(72.dp)
+            ) {
+                Icon(
+                    Icons.Default.Notifications,
+                    null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(20.dp)
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            Text(
+                description,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotificationSkeletonList() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        repeat(6) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(50.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {}
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Surface(
+                        modifier = Modifier.width(130.dp).height(12.dp),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {}
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(.78f).height(10.dp),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)
+                    ) {}
+                    Surface(
+                        modifier = Modifier.width(82.dp).height(8.dp),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+                    ) {}
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotificationSwipeRow(
+    item: ActivityItem,
+    onToggleRead: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd) {
+                onToggleRead()
+                false
+            } else {
+                value == SwipeToDismissBoxValue.Settled
+            }
+        },
+        positionalThreshold = { distance -> distance * 0.28f }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            val accent = MaterialTheme.colorScheme.onSurface
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(accent.copy(alpha = .12f))
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (item.isUnread) Icons.Default.DoneAll else Icons.Default.Notifications,
+                    contentDescription = "Image",
+                    tint = accent
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (item.isUnread) "Mark read" else "Mark unread",
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        content = { content() }
+    )
+}
+
+@Composable
+private fun NotificationCard(
+    item: ActivityItem,
+    profile: UserProfile?,
+    onProfileClick: (String) -> Unit,
+    onNotificationClick: (ActivityItem) -> Unit
+) {
+    val isContactMatch = item.action.contains("possible contact", ignoreCase = true)
+    val isOfficial = com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+        item.targetType, item.eventType, item.action
+    )
+    val safeAction = item.action.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    } ?: "New activity"
+    val safePreview = item.previewText?.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    }
+    val accent = MaterialTheme.colorScheme.onSurface
+
+    val rawUser = item.user.trim().removePrefix("@")
+    val username = profile?.username?.takeIf { it.isNotBlank() }
+        ?: rawUser.takeUnless(::looksLikeUuid).orEmpty()
+    val displayName = profile?.fullName?.takeIf { it.isNotBlank() }
+        ?: username.takeIf { it.isNotBlank() }
+        ?: if (isOfficial) "Blink" else "Someone on Blink"
+    val avatar = profile?.avatarUrl?.takeIf { it.isNotBlank() } ?: item.avatar
+    val verificationBadge = profile?.verificationBadge ?: item.verificationBadge
+    val canOpenProfile = username.isNotBlank() && !isOfficial
+
+    val motionReduced = rememberBlinkReduceMotion()
+    val rowInteraction = remember { MutableInteractionSource() }
+    // This must be fully opaque: otherwise the swipe-to-mark-read background
+    // bleeds through notification text on the idle row (seen in real captures).
+    val unreadBackground = accent.copy(alpha = .075f)
+        .compositeOver(MaterialTheme.colorScheme.background)
+    val highlight by animateColorAsState(
+        targetValue = if (item.isUnread) unreadBackground
+            else MaterialTheme.colorScheme.background,
+        animationSpec = tween(if (motionReduced) 0 else BlinkDesignTokens.Motion.ContentReveal),
+        label = "notificationReadHighlight"
+    )
+    Surface(
+        color = highlight,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("blink_notification_row")
+            .blinkPressFeedback(rowInteraction)
+            .clickable(
+                interactionSource = rowInteraction,
+                indication = LocalIndication.current,
+                onClick = { onNotificationClick(item) }
+            )
+    ) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 86.dp)
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                Modifier
+                    .size(50.dp)
+                    .clickable(enabled = canOpenProfile) { onProfileClick(username) }
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = CircleShape,
+                    color = if (isOfficial) accent.copy(alpha = .12f) else MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    if (isOfficial) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Campaign,
+                                contentDescription = "Blink official message",
+                                tint = accent,
+                                modifier = Modifier.size(25.dp)
+                            )
+                        }
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_default_profile),
+                                contentDescription = "$displayName default profile picture",
+                                tint = Color.Unspecified,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+
+                if (!isOfficial && avatar.isNotBlank()) {
+                    AsyncImage(
+                        model = avatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
+                        contentDescription = "$displayName profile picture",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = accent,
+                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.background),
+                    modifier = Modifier.size(20.dp).align(Alignment.BottomEnd)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            notificationIcon(item),
+                            contentDescription = "Image",
+                            tint = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                }
+
+            }
+
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f).padding(top = 1.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        displayName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(enabled = canOpenProfile) { onProfileClick(username) }
+                    )
+                    if (verificationBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedMark(verificationBadge, size = 12.dp)
+                    }
+                    BlinkVipMarkForUsername(
+                        username = username,
+                        knownVip = if (item.actorIsVip || profile?.isBlinkVip == true) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    if (isOfficial) {
+                        Spacer(Modifier.width(5.dp))
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = accent.copy(alpha = .12f)
+                        ) {
+                            Text(
+                                "OFFICIAL",
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = accent
+                            )
+                        }
+                    }
+
+                }
+
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    safeAction,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                if (isContactMatch && canOpenProfile) {
+                    TextButton(onClick = { onProfileClick(username) }) {
+                        Text("View possible contact")
+                    }
+                }
+                if (safePreview != null) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        safePreview,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        item.time,
+                        fontSize = 11.5.sp,
+                        color = if (item.isUnread) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
+
+            if (item.isUnread) {
+                Spacer(Modifier.width(10.dp))
+                Surface(shape = CircleShape, color = accent,
+                    modifier = Modifier.padding(top = 19.dp).size(9.dp)) {}
+            }
+        }
+    }
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 78.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f)
+    )
+}
+
+private fun buildNotificationSections(
+    items: List<ActivityItem>,
+    viewMode: NotificationViewMode,
+    newestFirst: Boolean
+): List<NotificationSection> {
+    if (items.isEmpty()) return emptyList()
+    if (!newestFirst) return listOf(NotificationSection("Oldest first", items))
+
+    if (viewMode == NotificationViewMode.UNREAD) {
+        return listOf(NotificationSection("New", items))
+    }
+
+    val unreadItems = items.filter { it.isUnread }
+    val readItems = items.filterNot { it.isUnread }
+    val sections = mutableListOf<NotificationSection>()
+
+    if (unreadItems.isNotEmpty()) {
+        sections += NotificationSection(
+            title = "New",
+            items = unreadItems,
+            showCaughtUpAfter = readItems.isNotEmpty()
+        )
+    }
+
+    listOf("Today", "Yesterday", "This week", "Earlier").forEach { bucket ->
+        val bucketItems = readItems.filter { notificationDateBucket(it) == bucket }
+        if (bucketItems.isNotEmpty()) {
+            sections += NotificationSection(bucket, bucketItems)
+        }
+    }
+
+    return sections
+}
+
+private fun notificationDateBucket(item: ActivityItem): String {
+    val timestampDate = item.rawTimestamp.trim().takeIf { it.isNotBlank() }?.let { raw ->
+        runCatching { OffsetDateTime.parse(raw).atZoneSameInstant(ZoneId.systemDefault()).toLocalDate() }
+            .recoverCatching { Instant.parse(raw).atZone(ZoneId.systemDefault()).toLocalDate() }
+            .getOrNull()
+    }
+    if (timestampDate != null) {
+        val days = ChronoUnit.DAYS.between(timestampDate, LocalDate.now()).coerceAtLeast(0)
+        return when {
+            days == 0L -> "Today"
+            days == 1L -> "Yesterday"
+            days <= 7L -> "This week"
+            else -> "Earlier"
+        }
+    }
+
+    // Compatibility fallback for cached rows created by older app versions.
+    val value = item.time.trim().lowercase()
+    if (value.isBlank()) return "Earlier"
+    if (value.contains("yesterday")) return "Yesterday"
+    if (value.contains("today") || value.contains("just now") || value == "now") return "Today"
+    val days = Regex("(\\d+)\\s*(d|day|days)").find(value)
+        ?.groupValues?.getOrNull(1)?.toIntOrNull()
+    return when {
+        Regex("(\\d+)\\s*(h|hr|hrs|hour|hours)").containsMatchIn(value) -> "Today"
+        Regex("(\\d+)\\s*(m|min|mins|minute|minutes)").containsMatchIn(value) -> "Today"
+        days == 1 -> "Yesterday"
+        days != null && days <= 7 -> "This week"
+        else -> "Earlier"
+    }
+}
+
+private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter) {
+    NotificationCategory.ALL -> Icons.Default.Notifications
+    NotificationCategory.MENTIONS -> Icons.Default.AlternateEmail
+    NotificationCategory.COMMENTS -> Icons.Default.ChatBubble
+    NotificationCategory.LIKES -> Icons.Default.Favorite
+    NotificationCategory.FOLLOWS -> Icons.Default.PersonAdd
+    NotificationCategory.MARKET -> Icons.Default.Storefront
+    NotificationCategory.REELS -> Icons.Default.Repeat
+    NotificationCategory.STORIES -> Icons.Default.Bookmark
+    NotificationCategory.REWARDS -> Icons.Default.DoneAll
+    NotificationCategory.MESSAGES -> Icons.Default.ChatBubble
+    NotificationCategory.CONTESTS -> Icons.Default.EmojiEvents
+    NotificationCategory.BLINK -> Icons.Default.Campaign
+}
+
+private fun notificationIcon(item: ActivityItem): ImageVector {
+    val event = item.eventType.orEmpty().lowercase()
+    val action = item.action.lowercase()
+    return when {
+        event.contains("coin") || event == "tip" || event.contains("gift") || action.contains("coin") ||
+            action.contains("gift") -> Icons.Default.Paid
+        event.contains("contest") || action.contains("contest") || action.contains("vote") ->
+            Icons.Default.EmojiEvents
+        event.contains("message") || item.targetType.equals("CHAT", true) ->
+            Icons.Default.ChatBubble
+        com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+            item.targetType, item.eventType, item.action
+        ) -> Icons.Default.Campaign
+        item.targetType.equals("market", true) || event.contains("market") ||
+            action.contains("order") -> Icons.Default.Storefront
+        event.contains("mention") || action.contains("mention") -> Icons.Default.AlternateEmail
+        event.contains("reply") || action.contains("reply") -> Icons.Default.Reply
+        event.contains("comment") || action.contains("comment") -> Icons.Default.ChatBubble
+        event.contains("follow") || action.contains("follow") -> Icons.Default.PersonAdd
+        event.contains("save") || action.contains("bookmark") -> Icons.Default.Bookmark
+        event.contains("repost") -> Icons.Default.Repeat
+        event.contains("view") -> Icons.Default.Visibility
+        event.contains("like") || action.contains("like") -> Icons.Default.Favorite
+        else -> Icons.Default.Notifications
+    }
+}
+
+private fun resolvedNotificationCategory(item: ActivityItem): NotificationCategory {
+    val event = item.eventType.orEmpty().lowercase()
+    val action = item.action.lowercase()
+    return when {
+        event.contains("coin") || event == "tip" || event.contains("gift") || event.contains("drop") ||
+            event.contains("referral") || action.contains("coin") || action.contains("reward") ||
+            action.contains("gift") || action.contains("rank point") -> NotificationCategory.REWARDS
+        event.contains("contest") || action.contains("contest") || action.contains("vote") ->
+            NotificationCategory.CONTESTS
+        event.contains("message") || item.targetType.equals("CHAT", true) ->
+            NotificationCategory.MESSAGES
+        event.contains("mention") || action.contains("mention") -> NotificationCategory.MENTIONS
+        event.contains("comment") || event.contains("reply") ||
+            action.contains("comment") || action.contains("reply") -> NotificationCategory.COMMENTS
+        event.contains("follow") || action.contains("follow") -> NotificationCategory.FOLLOWS
+        event.contains("like") || event.contains("save") || event.contains("repost") ||
+            action.contains("like") || action.contains("save") || action.contains("repost") ->
+            NotificationCategory.LIKES
+        item.targetType.equals("reel", true) || event.contains("reel") || action.contains("reel") ->
+            NotificationCategory.REELS
+        item.targetType.equals("story", true) || event.contains("story") || action.contains("story") ->
+            NotificationCategory.STORIES
+        item.targetType.equals("market", true) || event.contains("market") ||
+            action.contains("market") || action.contains("order") -> NotificationCategory.MARKET
+        com.blinkng.shared.notification.BlinkNotificationPresentation.isOfficial(
+            item.targetType, item.eventType, item.action
+        ) -> NotificationCategory.BLINK
+        item.category == NotificationFilter.MARKET -> NotificationCategory.MARKET
+        item.category == NotificationFilter.COMMENTS -> NotificationCategory.COMMENTS
+        item.category == NotificationFilter.LIKES -> NotificationCategory.LIKES
+        else -> NotificationCategory.ALL
+    }
+}
+
+
+private fun looksLikeUuid(value: String): Boolean =
+    value.length == 36 && value.count { it == '-' } == 4

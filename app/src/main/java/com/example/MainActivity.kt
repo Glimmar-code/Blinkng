@@ -1,0 +1,3638 @@
+package com.example
+
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.ui.components.*
+import com.example.performance.rememberBlinkReduceMotion
+import com.example.ads.BlinkAdConsentManager
+import com.example.ads.BlinkAdsRuntime
+import com.example.ads.BlinkRewardedAdManager
+import com.example.auth.AccountSessionStore
+import com.example.data.supabase.AdminSupabaseService
+import com.example.data.supabase.BlinkLiveRemoteConfig
+import com.example.data.supabase.BlinkLiveCampaignService
+import com.example.data.supabase.BlinkReferralClient
+import com.blinkng.shared.live.BlinkLiveSnapshot
+import com.blinkng.shared.live.BlinkLiveCampaign
+import com.example.data.supabase.BlinkPaystackCheckoutService
+import com.blinkng.shared.BlinkCheckoutVerificationState
+import com.example.data.supabase.BlinkPaystackReceipt
+import com.example.notification.BlinkNotificationHelper
+import com.example.notification.BlinkFirebaseMessagingService
+import com.example.notification.BlinkInAppNotification
+import com.example.notification.BlinkInAppNotificationDestination
+import com.example.sharing.DeepLinkRouter
+import com.example.sharing.ContestVoteRoute
+import com.example.sharing.ContestVoteTarget
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
+import com.example.ui.screens.*
+import com.example.ui.theme.BlinkTheme
+import com.example.update.PlayInAppUpdateCoordinator
+import com.example.update.WebsiteApkDownloadCoordinator
+import com.example.update.BlinkWebsiteReleaseAlerts
+import com.example.update.WebsiteApkUpdateCoordinator
+import com.blinkng.shared.update.BlinkReleaseInfo
+import com.example.util.startActivitySafely
+import com.example.viewmodel.AppDestination
+import com.example.viewmodel.BlinkViewModel
+import com.example.viewmodel.MainTab
+import com.blinkng.shared.BlinkStoreAvailability
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+    /** One authoritative action binding for every chat entry point. */
+private fun messageInteractionActions(viewModel: BlinkViewModel): ChatInteractionActions = ChatInteractionActions(
+            onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
+            onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
+            onDeleteForMe = { partner, message -> viewModel.deleteChatMessageForMe(partner, message) },
+            onDeleteForEveryone = { partner, message -> viewModel.deleteChatMessageForEveryone(partner, message) },
+            onToggleStar = { partner, message -> viewModel.toggleChatMessageStar(partner, message) },
+            onTogglePin = { partner, message -> viewModel.toggleChatMessagePin(partner, message) },
+            onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
+            onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
+            onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+            onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
+            onNotificationSettings = { conversation, mode, muteUntil ->
+                viewModel.setChatNotificationSettings(conversation, mode, muteUntil)
+            },
+            onArchiveConversation = { conversation, archived -> viewModel.setConversationArchived(conversation, archived) },
+            onPinConversation = { conversation, pinned -> viewModel.setConversationPinned(conversation, pinned) },
+            onMarkConversationUnread = { conversation, unread -> viewModel.setConversationMarkedUnread(conversation, unread) },
+            onRespondMessageRequest = { conversation, accept -> viewModel.respondToMessageRequest(conversation, accept) },
+            onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
+            onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
+    )
+
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: BlinkViewModel by viewModels()
+    private lateinit var rewardedAdManager: BlinkRewardedAdManager
+    private lateinit var adConsentManager: BlinkAdConsentManager
+    private var presenceHeartbeatJob: Job? = null
+    private var rewardedAdShowPending = false
+    private var startupIntroComplete = false
+    private var itemsOpenSignal by mutableIntStateOf(0)
+    private var boostOpenSignal by mutableIntStateOf(0)
+    private var showBugReportSheet by mutableStateOf(false)
+    private var shakeSensorListener: android.hardware.SensorEventListener? = null
+    private var lastShakeTriggerAt: Long = 0L
+    private var lastShakeImpulseAt: Long = 0L
+    private var shakeImpulses: Int = 0
+
+    private fun startBugShakeListener() {
+        if (shakeSensorListener != null) return
+        val manager = getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager ?: return
+        val sensor = manager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER) ?: return
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) = Unit
+            override fun onSensorChanged(event: android.hardware.SensorEvent) {
+                if (viewModel.uiState.value.destination != AppDestination.MAIN ||
+                    !getSharedPreferences(com.example.ui.components.BlinkBugPrefs.FILE, MODE_PRIVATE)
+                        .getBoolean(com.example.ui.components.BlinkBugPrefs.SHAKE_ENABLED, true) ||
+                    showBugReportSheet) return
+                // Malformed sensor events must not bring down the UI thread.
+                if (event.values.size < 3) return
+                val g = android.hardware.SensorManager.GRAVITY_EARTH
+                val x = event.values[0] / g
+                val y = event.values[1] / g
+                val z = event.values[2] / g
+                val strength = kotlin.math.sqrt(x * x + y * y + z * z)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (strength < 2.6f || now - lastShakeImpulseAt < 170L ||
+                    now - lastShakeTriggerAt < 5000L) return
+                shakeImpulses = if (now - lastShakeImpulseAt <= 1200L) shakeImpulses + 1 else 1
+                lastShakeImpulseAt = now
+                if (shakeImpulses >= 2) {
+                    shakeImpulses = 0
+                    lastShakeTriggerAt = now
+                    showBugReportSheet = true
+                }
+            }
+        }
+        if (manager.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_UI)) {
+            shakeSensorListener = listener
+        }
+    }
+
+    private fun stopBugShakeListener() {
+        val listener = shakeSensorListener ?: return
+        (getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager)
+            ?.unregisterListener(listener)
+        shakeSensorListener = null
+    }
+
+    private val inAppUpdateLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { }
+
+    private val playInAppUpdateCoordinator by lazy {
+        PlayInAppUpdateCoordinator(this, inAppUpdateLauncher)
+    }
+
+    private val websiteApkDownloadCoordinator by lazy {
+        WebsiteApkDownloadCoordinator(applicationContext)
+    }
+
+    private fun showRewardedAdForCoins() {
+        val rewardState = viewModel.uiState.value
+        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday, rewardState.myProfile.hasActiveMarketVerification())) {
+            viewModel.rewardedAdUnavailable(
+                if (rewardState.myProfile.hasActiveMarketVerification()) "Today's rewarded ads are complete."
+                else "Unlock ads 11–15 by getting verified."
+            )
+            return
+        }
+        if (!BlinkAdsRuntime.canRequestAds.value) {
+            // UMP may still be refreshing after a cold start or account change.
+            // Re-check consent on a deliberate tap; never request an ad before UMP permits it.
+            adConsentManager.gatherConsent {
+                if (BlinkAdsRuntime.canRequestAds.value && !isFinishing && !isDestroyed) {
+                    showRewardedAdForCoins()
+                } else {
+                    viewModel.rewardedAdUnavailable(
+                        "Ads are unavailable until privacy choices are complete. Check Ad privacy in BLINK settings."
+                    )
+                }
+            }
+            return
+        }
+        if (rewardedAdShowPending) {
+            viewModel.rewardedAdUnavailable("Your rewarded ad is already being prepared.")
+            return
+        }
+
+        rewardedAdShowPending = true
+
+        fun beginClaimAndShow() {
+            lifecycleScope.launch {
+                val claimId = viewModel.beginRewardedAdClaim()
+                if (claimId == null) {
+                    rewardedAdShowPending = false
+                    return@launch
+                }
+
+                val userId = viewModel.uiState.value.myProfile.id
+                rewardedAdManager.show(
+                    userId = userId,
+                    claimId = claimId,
+                    onRewardEarned = { viewModel.completeRewardedAdClaim(claimId) },
+                    onUnavailable = { message ->
+                        rewardedAdShowPending = false
+                        viewModel.rewardedAdUnavailable(message)
+                    },
+                    onClosed = {
+                        rewardedAdShowPending = false
+                    }
+                )
+            }
+        }
+
+        if (rewardedAdManager.isReady) {
+            beginClaimAndShow()
+        } else {
+            viewModel.rewardedAdUnavailable("Preparing your rewarded ad…")
+            rewardedAdManager.load(
+                onReady = ::beginClaimAndShow,
+                onUnavailable = { message ->
+                    rewardedAdShowPending = false
+                    viewModel.rewardedAdUnavailable(message)
+                }
+            )
+        }
+    }
+
+    private fun showAdPrivacyOptions() {
+        adConsentManager.showPrivacyOptions { error ->
+            if (error != null) {
+                viewModel.showToast("Unable to open ad privacy choices. Please try again.")
+            }
+            if (BlinkAdsRuntime.canRequestAds.value) {
+                rewardedAdManager.load()
+            }
+        }
+    }
+
+    private fun openWebsiteUpdate() {
+        val browser = Intent(Intent.ACTION_VIEW, Uri.parse(WebsiteApkUpdateCoordinator.DOWNLOAD_PAGE))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+        runCatching { startActivity(browser) }
+            .onFailure { viewModel.showToast("Could not open BLINK website. Visit blink.com.ng.") }
+    }
+
+    private fun startPresenceHeartbeat() {
+        presenceHeartbeatJob?.cancel()
+        if (viewModel.uiState.value.destination != AppDestination.MAIN) return
+        presenceHeartbeatJob = lifecycleScope.launch {
+            while (isActive && viewModel.uiState.value.destination == AppDestination.MAIN) {
+                viewModel.updatePresence(true)
+                delay(30_000)
+            }
+        }
+    }
+
+    private fun stopPresenceHeartbeat(markOffline: Boolean) {
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = null
+        if (markOffline && viewModel.uiState.value.destination == AppDestination.MAIN) {
+            viewModel.updatePresence(false)
+        }
+    }
+
+    private val coinPurchaseDeepLinkRequests = kotlinx.coroutines.flow.MutableStateFlow(0)
+    private val contestVoteRequests = kotlinx.coroutines.flow.MutableStateFlow<ContestVoteTarget?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("open_blink_coin_packs", false) == true) {
+            intent.removeExtra("open_blink_coin_packs")
+            coinPurchaseDeepLinkRequests.value += 1
+            return
+        }
+        if (intent?.action == BlinkWebsiteReleaseAlerts.ACTION_OPEN_UPDATE) {
+            BlinkWebsiteReleaseAlerts.requestRefresh(openPrompt = true)
+            intent.action = Intent.ACTION_MAIN // Consume the notification action once.
+        }
+        handleNotificationIntent(intent)
+        ContestVoteRoute.parse(intent?.data)?.let { target ->
+            // Never vote automatically. Open the intended contestant after sign-in.
+            ContestVoteRoute.store(this, target)
+            contestVoteRequests.value = target
+            intent?.data = null
+            return
+        }
+        // Public BLINK channel links are routed to the same native channel page
+        // as the inbox. Only exact first-party hosts and UUIDs are trusted.
+        val incomingUri = intent?.data
+        val segments = incomingUri?.pathSegments.orEmpty()
+        val isTrustedChannelLink = (incomingUri?.scheme == "blink" && incomingUri.host == "channel") ||
+            (incomingUri?.scheme == "https" && incomingUri.host?.lowercase() in
+                setOf("blink.com.ng", "www.blink.com.ng") &&
+                segments.firstOrNull() == "channel")
+        val incomingChannelId = if (isTrustedChannelLink)
+            (if (incomingUri?.scheme == "blink") segments.firstOrNull() else segments.getOrNull(1))
+        else null
+        if (incomingChannelId != null &&
+            runCatching { java.util.UUID.fromString(incomingChannelId) }.isSuccess) {
+            val offset = if (incomingUri?.scheme == "blink") 1 else 2
+            val requestedUpdateId = if (segments.getOrNull(offset) == "update")
+                segments.getOrNull(offset + 1)?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+            else null
+            val openChannel = Intent(this, ProfessionalCenterActivity::class.java)
+                .putExtra("section", "communities")
+                .putExtra("channel_id", incomingChannelId)
+            if (requestedUpdateId != null) openChannel.putExtra("update_id", requestedUpdateId)
+            startActivity(openChannel)
+            intent?.setData(null)
+            return
+        }
+        val invitedUsername = DeepLinkRouter.invitedBy(intent?.data)
+        if (invitedUsername != null) {
+            // Count actual link openings, not shares, without storing personal identifiers.
+            // This anonymous metric cannot earn Coins or referral visibility.
+            val clickPrefs = getSharedPreferences("blink_referral_visitor", MODE_PRIVATE)
+            val stored = clickPrefs.getString("visitor_uuid", null)
+            val visitor = stored?.takeIf {
+                runCatching { java.util.UUID.fromString(it) }.isSuccess
+            } ?: java.util.UUID.randomUUID().toString().also {
+                clickPrefs.edit().putString("visitor_uuid", it).apply()
+            }
+            lifecycleScope.launch {
+                runCatching { BlinkReferralClient.recordInviteLinkOpen(invitedUsername, visitor) }
+            }
+            // Invitation selection remains optional. Never redirect an existing logged-in account.
+            if (viewModel.uiState.value.destination != AppDestination.MAIN) {
+                getSharedPreferences("blink_referral_invite", MODE_PRIVATE).edit()
+                    .putString("username", invitedUsername).apply()
+                viewModel.setDestination(AppDestination.SIGN_UP)
+            }
+            intent?.data = null
+            return
+        }
+        val data = intent?.data
+        if (data?.scheme == "blink" && data.host == "payment") {
+            viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
+            intent.data = null
+            return
+        }
+        if (viewModel.handleAuthDeepLink(intent?.data)) {
+            intent?.data = null
+            return
+        }
+        DeepLinkRouter.parse(intent?.data)?.let { deepLink ->
+            viewModel.handleDeepLink(deepLink)
+            intent?.data = null
+        }
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        val action = intent?.getStringExtra(BlinkNotificationHelper.EXTRA_ACTION) ?: return
+
+        when (action) {
+            BlinkNotificationHelper.ACTION_OPEN_CHANNEL -> {
+                val id = intent.getStringExtra(BlinkNotificationHelper.EXTRA_CHANNEL_ID).orEmpty()
+                if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
+                    startActivity(Intent(this, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "communities")
+                        .putExtra("channel_id", id))
+                }
+            }
+            BlinkNotificationHelper.ACTION_OPEN_MESSAGES -> {
+                viewModel.setTab(MainTab.MESSAGES)
+                viewModel.closeConversation()
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_CHAT -> {
+                val username = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_USERNAME).orEmpty()
+                val name = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_NAME)
+                val avatar = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_AVATAR)
+                if (username.isNotBlank()) {
+                    viewModel.setTab(MainTab.MESSAGES)
+                    viewModel.openChatWithUser(username, name, avatar)
+                }
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_POST,
+            BlinkNotificationHelper.ACTION_OPEN_REEL -> {
+                val postId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_POST_ID)
+                val isReel = action == BlinkNotificationHelper.ACTION_OPEN_REEL
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(if (isReel) 1 else 0)
+                if (!postId.isNullOrBlank()) {
+                    viewModel.handleDeepLink(
+                        com.example.sharing.AppDeepLink(
+                            type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                            id = postId
+                        )
+                    )
+                }
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_PROFILE -> {
+                val identifier = intent
+                    .getStringExtra(BlinkNotificationHelper.EXTRA_PROFILE_IDENTIFIER)
+                    .orEmpty()
+                if (identifier.isNotBlank()) {
+                    viewModel.openProfile(identifier)
+                } else {
+                    viewModel.openActivity(true)
+                }
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
+                val marketId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_MARKET_ID)
+                viewModel.openMarketFromNotification(marketId)
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
+                viewModel.openActivity(true)
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_ITEMS -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                itemsOpenSignal += 1
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_BOOST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                boostOpenSignal += 1
+            }
+        }
+
+        intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
+    }
+
+    private fun handleInAppNotification(event: BlinkInAppNotification) {
+        event.activity?.let { activity ->
+            viewModel.handleNotificationClick(activity)
+            return
+        }
+
+        when (event.destination) {
+            BlinkInAppNotificationDestination.CHANNEL -> {
+                val id = event.targetId.orEmpty()
+                if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
+                    startActivity(Intent(this, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "communities")
+                        .putExtra("channel_id", id))
+                }
+            }
+            BlinkInAppNotificationDestination.CHAT -> {
+                if (event.senderUsername.isNotBlank()) {
+                    viewModel.setTab(MainTab.MESSAGES)
+                    viewModel.openChatWithUser(
+                        event.senderUsername,
+                        event.senderName.takeIf { it.isNotBlank() },
+                        event.senderAvatar.takeIf { it.isNotBlank() }
+                    )
+                } else {
+                    viewModel.openActivity(true)
+                }
+            }
+
+            BlinkInAppNotificationDestination.POST -> {
+                val postId = event.postId ?: event.targetId
+                if (!postId.isNullOrBlank()) {
+                    val state = viewModel.uiState.value
+                    val isReel = event.targetType.equals("reel", ignoreCase = true) ||
+                        state.reels.any { it.id == postId }
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(if (isReel) 1 else 0)
+                    viewModel.handleDeepLink(
+                        com.example.sharing.AppDeepLink(
+                            type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                            id = postId
+                        )
+                    )
+                } else {
+                    viewModel.openActivity(true)
+                }
+            }
+
+            BlinkInAppNotificationDestination.PROFILE -> {
+                val identifier = event.senderUsername.ifBlank { event.senderId }
+                if (identifier.isNotBlank()) viewModel.openProfile(identifier)
+                else viewModel.openActivity(true)
+            }
+
+            BlinkInAppNotificationDestination.MARKET -> {
+                viewModel.openMarketFromNotification(event.marketId ?: event.targetId)
+            }
+
+            BlinkInAppNotificationDestination.DROPS -> {
+                startActivity(
+                    Intent(this, BlinkDropsActivity::class.java).apply {
+                        putExtra(BlinkDropsActivity.EXTRA_DROP_ID, event.targetId)
+                    }
+                )
+            }
+
+            BlinkInAppNotificationDestination.BOOST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                boostOpenSignal += 1
+            }
+
+            BlinkInAppNotificationDestination.ITEMS -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                itemsOpenSignal += 1
+            }
+
+            BlinkInAppNotificationDestination.NOTIFICATIONS -> {
+                viewModel.openActivity(true)
+            }
+        }
+    }
+
+    private var pendingPaystackRefreshJob: Job? = null
+
+    /** A verified Coin pack updates its wallet only; other purchases also change
+     * badges, campaign status, purchase history or third-party delivery.
+     */
+    private fun refreshVerifiedPaystackPurchase(kind: String?) {
+        if (kind == "coin_pack") viewModel.refreshCoinBalanceAfterPayment()
+        else viewModel.fetchSupabaseData()
+    }
+
+    /**
+     * Reconcile a returned Paystack checkout without waiting for the next feed sync.
+     * The server alone decides whether a signed payment has been fulfilled.
+     */
+    private fun reconcileReturnedPaystackPayment() {
+        val accountId = viewModel.uiState.value.myProfile.id
+        if (accountId.isBlank() || pendingPaystackRefreshJob?.isActive == true) return
+        val preferences = getSharedPreferences("blink_paystack_v2_" + accountId, MODE_PRIVATE)
+        val reference = preferences.getString("reference", null)?.trim().orEmpty()
+        if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
+
+        // A browser return or repeated activity resumes are not proof of payment.
+        // Throttle outstanding references; no verification toast for an unfinished
+        // or cancelled checkout, and no five-request burst on every resume.
+        val now = System.currentTimeMillis()
+        if (preferences.getString("last_silent_reference", null) == reference &&
+            now >= preferences.getLong("last_silent_attempt_ms", 0L) &&
+            now - preferences.getLong("last_silent_attempt_ms", 0L) < 60_000L) return
+        preferences.edit()
+            .putString("last_silent_reference", reference)
+            .putLong("last_silent_attempt_ms", now)
+            .apply()
+        pendingPaystackRefreshJob = lifecycleScope.launch {
+            val status = runCatching { BlinkPaystackCheckoutService().paymentStatus(reference) }
+                .getOrNull() ?: return@launch // Network issue: retain reference.
+            if (viewModel.uiState.value.myProfile.id != accountId ||
+                preferences.getString("reference", null) != reference) return@launch
+            when (status) {
+                BlinkCheckoutVerificationState.FULFILLED -> {
+                    val kind = preferences.getString("kind", null)
+                    preferences.edit().remove("reference").remove("kind")
+                        .remove("last_silent_reference").remove("last_silent_attempt_ms")
+                        .apply()
+                    refreshVerifiedPaystackPurchase(kind)
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
+                }
+                BlinkCheckoutVerificationState.ABANDONED,
+                BlinkCheckoutVerificationState.FAILED,
+                BlinkCheckoutVerificationState.REVERSED -> {
+                    // Clear the LOCAL reminder, never the server order: a delayed
+                    // signed webhook can still fulfil a genuine successful charge.
+                    preferences.edit().remove("reference").remove("kind")
+                        .remove("last_silent_reference").remove("last_silent_attempt_ms")
+                        .apply()
+                }
+                else -> Unit // Pending, processing or unknown: reconcile quietly.
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.setChatUiForeground(true)
+        playInAppUpdateCoordinator.onResume()
+        startBugShakeListener()
+        if (viewModel.uiState.value.destination == AppDestination.MAIN) {
+            viewModel.refreshIfStale()
+            viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
+            viewModel.retryPendingRewardedAdClaim()
+            if (startupIntroComplete && BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
+                rewardedAdManager.load()
+            }
+            startPresenceHeartbeat()
+        }
+    }
+
+    override fun onPause() {
+        stopBugShakeListener()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        if (::rewardedAdManager.isInitialized) rewardedAdManager.close()
+        stopBugShakeListener()
+        playInAppUpdateCoordinator.close()
+        websiteApkDownloadCoordinator.close()
+        super.onDestroy()
+    }
+
+    override fun onStop() {
+        viewModel.setChatUiForeground(false)
+        // Save the exact navigation surface before Android backgrounds or kills the task.
+        try {
+            viewModel.persistResumePoint()
+        } catch (error: Exception) {
+            android.util.Log.e("MainActivity", "Failed to persist the resume route", error)
+            runCatching {
+                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance()
+                    .recordException(error)
+            }
+        }
+        stopPresenceHeartbeat(markOffline = false)
+        super.onStop()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Removing BLINK from Android Recents can leave the process alive. A new
+        // task must still start at the top of For You; configuration recreation
+        // (savedInstanceState != null) keeps the current in-task position.
+        if (savedInstanceState == null) FeedLaneProcessVisit.resetForNewTask()
+        rewardedAdManager = BlinkRewardedAdManager(
+            activity = this,
+            adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
+        )
+        adConsentManager = BlinkAdConsentManager(this)
+        // Install our own Compose host. The Activity setContent convenience API
+        // assumes android.R.id.content already exists in the decor hierarchy.
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        }
+        setContentView(composeView)
+        runCatching { enableEdgeToEdge() }
+            .onFailure { error ->
+                android.util.Log.w("MainActivity", "Edge-to-edge setup unavailable.", error)
+            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+
+        composeView.setContent {
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val coinPurchaseRequest by coinPurchaseDeepLinkRequests.collectAsStateWithLifecycle()
+            val incomingContestTarget by contestVoteRequests.collectAsStateWithLifecycle()
+            val pendingContestTarget = incomingContestTarget ?: ContestVoteRoute.pending(this@MainActivity)
+            LaunchedEffect(pendingContestTarget, uiState.destination) {
+                if (pendingContestTarget != null && uiState.destination == AppDestination.ONBOARDING) {
+                    viewModel.setDestination(AppDestination.SIGN_IN)
+                }
+            }
+            var lastCoinPurchaseRequest by remember { mutableIntStateOf(0) }
+            LaunchedEffect(coinPurchaseRequest, uiState.destination, uiState.myProfile.id) {
+                if (coinPurchaseRequest > lastCoinPurchaseRequest &&
+                    uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    lastCoinPurchaseRequest = coinPurchaseRequest
+                    viewModel.buyBlinkCoins()
+                }
+            }
+            val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
+            val snackbarHostState = remember { SnackbarHostState() }
+            val reduceAppMotion = rememberBlinkReduceMotion()
+            // Covers auth/session restoration too: returning users must see the intro.
+            var showStartupIntro by remember { mutableStateOf(true) }
+            var introAnimationFinished by remember { mutableStateOf(false) }
+            // Never reveal the legacy black SPLASH placeholder after the wordmark.
+            // Keep the final BLINK frame visible until a real destination is ready.
+            LaunchedEffect(introAnimationFinished, uiState.destination) {
+                if (introAnimationFinished && uiState.destination != AppDestination.SPLASH) {
+                    startupIntroComplete = true
+                    showStartupIntro = false
+                }
+            }
+            // Ad consent and rewarded-ad loading compete with first-frame rendering.
+            // Run them only after the exact approved BLINK intro finishes.
+            LaunchedEffect(showStartupIntro) {
+                if (!showStartupIntro && !isFinishing && !isDestroyed) {
+                    delay(300L)
+                    adConsentManager.gatherConsent {
+                        if (BlinkAdsRuntime.canRequestAds.value && !isFinishing && !isDestroyed) {
+                            rewardedAdManager.load()
+                        }
+                    }
+                }
+            }
+            val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
+            var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
+            var websiteUpdateDismissed by remember { mutableStateOf(false) }
+            var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
+            val websiteRefreshSignal by BlinkWebsiteReleaseAlerts.refreshSignal.collectAsStateWithLifecycle()
+            val websiteOpenSignal by BlinkWebsiteReleaseAlerts.openPromptSignal.collectAsStateWithLifecycle()
+            var adminAnnouncementOpen by remember { mutableStateOf(false) }
+            // Only a completed *new* onboarding may show optional BLINK perks.
+            // Never open a purchase prompt during registration or on every login.
+            var justCompletedOnboardingAccount by rememberSaveable {
+                mutableStateOf<String?>(null)
+            }
+            var newStudentDiscoveryAccount by rememberSaveable {
+                mutableStateOf<String?>(null)
+            }
+
+            // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
+            // Stopping the Activity suspends checks, resuming it checks straight away.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id, websiteRefreshSignal) {
+                websiteUpdateCheckFinished = false
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    BlinkWebsiteReleaseAlerts.configureSubscription(this@MainActivity)
+                    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (isActive) {
+                            if (!WebsiteApkDownloadCoordinator.isPlayStoreInstall(this@MainActivity)) {
+                                val latest = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                                if (latest?.versionCode != websiteRelease?.versionCode) {
+                                    websiteRelease = latest
+                                    websiteUpdateDismissed = false
+                                }
+                            } else {
+                                websiteRelease = null
+                            }
+                            websiteUpdateCheckFinished = true
+                            delay(15 * 60 * 1000L)
+                        }
+                    }
+                } else {
+                    websiteRelease = null
+                    websiteUpdateDismissed = false
+                    websiteUpdateCheckFinished = true
+                }
+            }
+            LaunchedEffect(websiteOpenSignal, uiState.destination) {
+                if (websiteOpenSignal > 0 && uiState.destination == AppDestination.MAIN) {
+                    websiteUpdateDismissed = false
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(0)
+                    BlinkWebsiteReleaseAlerts.consumeOpenPrompt()
+                }
+            }
+
+            // Update notifications should also be visible while browsing Reels,
+            // Market, Connect or Messages, but must not interrupt other overlays.
+            // Loading feed posts must never block an available app update:
+            // people with an offline/failed feed still need access to Update Center.
+            val idleAppForUpdate = !showStartupIntro && uiState.destination == AppDestination.MAIN &&
+                !uiState.isMenuOpen &&
+                !uiState.isActivityOpen &&
+                !uiState.isCreatePostOpen &&
+                !uiState.isCreateStoryOpen &&
+                !uiState.isPostItemOpen &&
+                !uiState.isEditProfileOpen &&
+                !uiState.isBecomeSellerOpen &&
+                !uiState.isGetVerifiedOpen &&
+                !uiState.isConversationFullScreen &&
+                uiState.activeConversationPartner == null &&
+                uiState.activeCommentsPostId == null &&
+                uiState.activePostOptionsPost == null &&
+                uiState.activeViewingStory == null &&
+                uiState.deepLinkedPost == null &&
+                uiState.viewingProduct == null &&
+                uiState.viewingProfile == null
+            val idleHomeForPrompts = idleAppForUpdate &&
+                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
+
+            // Refresh the authoritative conversation presence projection while Messages
+            // or a chat is visible. This keeps an already-open chat from showing stale status.
+            LaunchedEffect(
+                uiState.destination,
+                uiState.selectedTab,
+                uiState.activeConversationPartner,
+                uiState.myProfile.id
+            ) {
+                val shouldRefreshMessages = uiState.destination == AppDestination.MAIN &&
+                    uiState.myProfile.id.isNotBlank() &&
+                    (uiState.selectedTab == MainTab.MESSAGES || uiState.activeConversationPartner != null)
+                if (shouldRefreshMessages) {
+                    viewModel.refreshMessagePresence()
+                    while (isActive) {
+                        delay(30_000L)
+                        viewModel.refreshMessagePresence()
+                    }
+                }
+            }
+            LaunchedEffect(uiState.destination) {
+                if (uiState.destination == AppDestination.MAIN) {
+                    startPresenceHeartbeat()
+                } else {
+                    stopPresenceHeartbeat(markOffline = false)
+                }
+            }
+            // Persist the account that has actually reached the authenticated main app.
+            // Keying by destination + user id prevents repeated writes during recomposition.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    // Safe actor-authorized dispatch: no service-role secrets in Android.
+                    // Backend may not yet expose the RPC; never block normal app startup.
+                    runCatching { BlinkReferralClient.dispatchConfirmedReferralPushes() }
+                    AccountSessionStore.recordCurrentSession(
+                        context = this@MainActivity,
+                        userId = uiState.myProfile.id,
+                        username = uiState.myProfile.username,
+                        fullName = uiState.myProfile.fullName,
+                        email = uiState.myProfile.email.value,
+                        avatarUrl = uiState.myProfile.avatarUrl
+                    )
+                    BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
+                    viewModel.refreshProfileRewards()
+                }
+            }
+
+            LaunchedEffect(updateReadyToInstall) {
+                if (updateReadyToInstall) {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "BLINK update downloaded",
+                        actionLabel = "Restart",
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Indefinite
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        playInAppUpdateCoordinator.completeUpdate()
+                    }
+                }
+            }
+
+            // Listen for snackbar events
+            LaunchedEffect(Unit) {
+                viewModel.snackBarMessages.collectLatest { msg ->
+                    snackbarHostState.showSnackbar(msg)
+                }
+            }
+
+            BlinkTheme(darkTheme = uiState.isDarkMode) {
+                // Keep system icons readable when the selected app theme differs from Android's.
+                SideEffect {
+                    val whiteAuthScreen = uiState.destination == AppDestination.ONBOARDING ||
+                        uiState.destination == AppDestination.SIGN_IN ||
+                        uiState.destination == AppDestination.SIGN_UP
+                    WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = whiteAuthScreen || !uiState.isDarkMode
+                        isAppearanceLightNavigationBars = whiteAuthScreen || !uiState.isDarkMode
+                    }
+                }
+                val homeManagesSystemInsets =
+                    uiState.destination == AppDestination.MAIN &&
+                    uiState.selectedTab == MainTab.HOME &&
+                    uiState.feedSubTab in 0..2
+                // Messages and Search already apply statusBarsPadding in their
+                // own top chrome. Consuming a second status inset in Scaffold
+                // creates the same black/empty band fixed on Home. Preserve
+                // the bottom and side gesture/cutout insets for these routes.
+                val routeManagesTopInset =
+                    uiState.destination == AppDestination.MAIN &&
+                    uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
+                Box(modifier = Modifier.fillMaxSize()) {
+                Scaffold(
+                    contentWindowInsets = when {
+                        // The intro paints behind both system bars on every device size.
+                        uiState.destination == AppDestination.SPLASH -> WindowInsets(0, 0, 0, 0)
+                        // The new profile owns both status and gesture-bar safe
+                        // areas; don't reserve another inset in the host scaffold.
+                        uiState.destination == AppDestination.MAIN &&
+                            uiState.viewingProfile != null -> WindowInsets(0, 0, 0, 0)
+                        // The approved welcome handles the top status inset itself; reserve
+                        // only gesture-navigation and horizontal safe areas in the scaffold.
+                        uiState.destination == AppDestination.ONBOARDING ->
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            )
+                        // Sign-in and sign-up forms handle their own system-bar insets.
+                        uiState.destination == AppDestination.SIGN_IN ||
+                            uiState.destination == AppDestination.SIGN_UP ->
+                            WindowInsets(0, 0, 0, 0)
+                        homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
+                        uiState.destination == AppDestination.MAIN &&
+                            uiState.activeConversationPartner != null &&
+                            (uiState.selectedTab == MainTab.MESSAGES ||
+                                uiState.isConversationFullScreen) ->
+                            // The full chat owns nav-bar + IME padding. The root
+                            // Scaffold must not also insert a bottom safe-area band.
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                        routeManagesTopInset -> WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                        )
+                        else -> ScaffoldDefaults.contentWindowInsets
+                    },
+                    containerColor = if (uiState.destination == AppDestination.SPLASH) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
+                    snackbarHost = {
+                        SnackbarHost(
+                            hostState = snackbarHostState,
+                            modifier = Modifier.testTag("app_snackbar")
+                        )
+                    },
+                    modifier = Modifier.fillMaxSize()
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        AnimatedContent(
+                            targetState = uiState.destination,
+                            transitionSpec = {
+                                if (initialState == AppDestination.SPLASH || targetState == AppDestination.SPLASH ||
+                                    reduceAppMotion) {
+                                    // Never animate over the approved Beyond LINK -> BLINK launch frame.
+                                    EnterTransition.None togetherWith ExitTransition.None
+                                } else if (
+                                    initialState in setOf(
+                                        AppDestination.ONBOARDING, AppDestination.SIGN_IN,
+                                        AppDestination.SIGN_UP, AppDestination.RESET_PASSWORD,
+                                        AppDestination.PROFILE_SETUP
+                                    ) && targetState in setOf(
+                                        AppDestination.ONBOARDING, AppDestination.SIGN_IN,
+                                        AppDestination.SIGN_UP, AppDestination.RESET_PASSWORD,
+                                        AppDestination.PROFILE_SETUP
+                                    )
+                                ) {
+                                    val forward = targetState != AppDestination.ONBOARDING &&
+                                        targetState != AppDestination.SIGN_IN
+                                    (
+                                        slideInHorizontally(
+                                            animationSpec = tween(230),
+                                            initialOffsetX = { if (forward) it / 5 else -it / 5 }
+                                        ) + fadeIn(animationSpec = tween(180))
+                                    ) togetherWith (
+                                        slideOutHorizontally(
+                                            animationSpec = tween(190),
+                                            targetOffsetX = { if (forward) -it / 8 else it / 8 }
+                                        ) + fadeOut(animationSpec = tween(150))
+                                    )
+                                } else {
+                                    fadeIn(animationSpec = tween(160)) togetherWith
+                                        fadeOut(animationSpec = tween(120))
+                                }
+                            },
+                            label = "AppNavigation"
+                        ) { destination ->
+                            when (destination) {
+                                AppDestination.SPLASH -> {
+                                    SplashScreen(
+                                        onTimeout = { viewModel.completeSplash() }
+                                    )
+                                }
+
+                                AppDestination.ONBOARDING -> {
+                                    // Reach the approved campus-photo welcome instead of
+                                    // the legacy dark landing. Keep existing auth callbacks.
+                                    OnboardingScreen(
+                                        onSignInClick = { viewModel.setDestination(AppDestination.SIGN_IN) },
+                                        onSignUpClick = { viewModel.setDestination(AppDestination.SIGN_UP) },
+                                        onGoogleSignIn = { email -> viewModel.loginWithGoogle(email) }
+                                    )
+                                }
+
+                                AppDestination.SIGN_IN -> {
+                                    val initialIdentifier = remember {
+                                        AccountSessionStore.lastIdentifier(this@MainActivity).ifBlank {
+                                            val recent = AccountSessionStore.list(this@MainActivity).firstOrNull()
+                                            recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
+                                        }
+                                    }
+                                    BlinkReferenceSignInScreen(
+                                        initialIdentifier = initialIdentifier,
+                                        onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
+                                        onSignInWithCredentials = { emailOrUser, password, onResult ->
+                                            viewModel.signInWithCredentials(emailOrUser, password, onResult)
+                                        },
+                                        onGoogleSignIn = { email -> viewModel.loginWithGoogle(email) },
+                                        onForgotPassword = { email, onResult ->
+                                            viewModel.sendPasswordReset(email, onResult)
+                                        },
+                                        onSwitchToSignUp = { viewModel.setDestination(AppDestination.SIGN_UP) }
+                                    )
+                                }
+
+                                AppDestination.SIGN_UP -> {
+                                    BlinkReferenceCreateAccountScreen(
+                                        onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
+                                        onCreateAccount = { name, email, password, referrerId, birthday ->
+                                            viewModel.signUp(name, email, password, referrerId = referrerId, birthDate = birthday)
+                                        },
+                                        onGoogle = { email -> viewModel.loginWithGoogle(email) },
+                                        onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) }
+                                    )
+                                }
+
+                                AppDestination.RESET_PASSWORD -> {
+                                    ResetPasswordScreen(
+                                        onSubmit = { password, onResult ->
+                                            viewModel.updateRecoveredPassword(password, onResult)
+                                        },
+                                        onCancel = { viewModel.cancelPasswordRecovery() }
+                                    )
+                                }
+
+                                AppDestination.PROFILE_SETUP -> {
+                                    AccountOnboardingScreen(
+                                        profile = uiState.myProfile,
+                                        candidates = (uiState.profiles + uiState.discoverProfiles)
+                                            .distinctBy { it.id },
+                                        onCheckUsername = { username, onResult ->
+                                            viewModel.checkOnboardingUsername(username, onResult)
+                                        },
+                                        onSaveUsername = { username, displayName, onResult ->
+                                            viewModel.saveOnboardingUsername(
+                                                username, onResult, displayName
+                                            )
+                                        },
+                                        onSaveReferrer = { referrerId, onResult ->
+                                            viewModel.saveGoogleOnboardingReferrer(referrerId, onResult)
+                                        },
+                                        onSaveBasics = { university, department, level, gender, birthDate, avatarUrl, onResult ->
+                                            viewModel.saveOnboardingBasics(
+                                                university = university,
+                                                department = department,
+                                                level = level,
+                                                gender = gender,
+                                                birthDate = birthDate,
+                                                avatarUrl = avatarUrl,
+                                                onResult = onResult
+                                            )
+                                        },
+                                        onSavePhone = { number, onResult ->
+                                            // Empty is optional; a user clearing an existing
+                                            // number must actually clear it on the server.
+                                            if (number.isBlank() && uiState.myProfile.phone.value.isBlank()) {
+                                                onResult(true, null)
+                                            } else {
+                                                lifecycleScope.launch {
+                                                    val saved = com.example.data.supabase.SupabaseService()
+                                                        .updateMyProfilePhone(number)
+                                                    onResult(
+                                                        saved,
+                                                        if (saved) null else "Could not save your private phone number."
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onSaveInterests = { interests, onResult ->
+                                            viewModel.saveOnboardingInterests(interests, onResult)
+                                        },
+                                        onFinish = { onResult ->
+                                            viewModel.finishAccountOnboarding { ok, message ->
+                                                val id = uiState.myProfile.id
+                                                if (ok && NewMemberPerksStore.shouldShow(this@MainActivity, id)) {
+                                                    justCompletedOnboardingAccount = id
+                                                }
+                                                onResult(ok, message)
+                                            }
+                                        },
+                                        onRefreshSuggestions = {
+                                            viewModel.refreshOnboardingSuggestions()
+                                        }
+                                    )
+                                }
+
+                                AppDestination.MAIN -> {
+                                    MainAppContent(
+                                        uiState = uiState,
+                                        viewModel = viewModel,
+                                        contestTarget = pendingContestTarget,
+                                        onContestTargetOpened = {
+                                            ContestVoteRoute.clear(this@MainActivity)
+                                            contestVoteRequests.value = null
+                                        },
+                                        onWatchAdForCoins = ::showRewardedAdForCoins,
+                                        itemsOpenSignal = itemsOpenSignal,
+                                        boostOpenSignal = boostOpenSignal,
+                                        showNewMemberPerks = justCompletedOnboardingAccount ==
+                                            uiState.myProfile.id && uiState.myProfile.id.isNotBlank(),
+                                        onDismissNewMemberPerks = {
+                                            NewMemberPerksStore.markSeen(
+                                                this@MainActivity, uiState.myProfile.id
+                                            )
+                                            newStudentDiscoveryAccount = uiState.myProfile.id
+                                            justCompletedOnboardingAccount = null
+                                        },
+                                        isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
+                                        onAdPrivacyOptions = ::showAdPrivacyOptions,
+                                        onReportBug = { showBugReportSheet = true },
+                                        websiteRelease = websiteRelease,
+                                        websiteUpdateChecked = websiteUpdateCheckFinished,
+                                        onCheckForWebsiteUpdate = {
+                                            BlinkWebsiteReleaseAlerts.requestRefresh()
+                                        },
+                                        onOpenWebsiteUpdate = {
+                                            websiteUpdateDismissed = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN &&
+                            newStudentDiscoveryAccount != null &&
+                            newStudentDiscoveryAccount == uiState.myProfile.id
+                        ) {
+                            BlinkNewStudentSuggestionsDialog(
+                                onDismiss = { newStudentDiscoveryAccount = null },
+                                onProfileClick = {
+                                    newStudentDiscoveryAccount = null
+                                    viewModel.openProfile(it)
+                                }
+                            )
+                        }
+                        if (uiState.destination == AppDestination.MAIN) {
+                            BlinkInAppNotificationHost(
+                                onOpen = ::handleInAppNotification,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .zIndex(100f)
+                            )
+                        }
+
+                        // A download that continues after "Continue in background" exposes a
+                        // draggable progress ring; tapping it reopens the verified installer UI.
+                        // It stays inside the app and requires no overlay permissions.
+                        if (
+                            uiState.destination == AppDestination.MAIN &&
+                            websiteUpdateDismissed &&
+                            websiteRelease != null &&
+                            (websiteDownloadState is WebsiteApkDownloadCoordinator.State.Downloading ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Paused ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Ready)
+                        ) {
+                            BlinkUpdateMiniProgress(
+                                downloadState = websiteDownloadState,
+                                onOpen = { websiteUpdateDismissed = false },
+                                modifier = Modifier.fillMaxSize().zIndex(101f)
+                            )
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            BlinkLoginAnnouncementHost(
+                                accountId = uiState.myProfile.id,
+                                activities = uiState.activities,
+                                safeToShow = idleHomeForPrompts &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed),
+                                onOpenNotifications = { viewModel.openActivity(true) },
+                                onShowingChanged = { adminAnnouncementOpen = it },
+                            )
+                            BlinkDiscoveryGuideHost(
+                                userId = uiState.myProfile.id,
+                                safeToShow = idleHomeForPrompts &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed) &&
+                                    !adminAnnouncementOpen,
+                                onNavigate = { route ->
+                                    when (route) {
+                                        "reels" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(1)
+                                        }
+                                        "connect" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(2)
+                                        }
+                                        "games" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(3)
+                                        }
+                                        "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                        "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                    }
+                                },
+                            )
+                        }
+
+                        // Ask after login or signup only when Home is idle.
+                        // Backend absence suppresses this prompt safely.
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            com.example.ui.components.BlinkContactSyncLoginPrompt(
+                                accountId = uiState.myProfile.id,
+                                safeToShow = idleHomeForPrompts &&
+                                    !showStartupIntro &&
+                                    !adminAnnouncementOpen &&
+                                    justCompletedOnboardingAccount == null &&
+                                    newStudentDiscoveryAccount == null &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed)
+                            )
+                        }
+
+                        val newRelease = websiteRelease
+                        if (idleAppForUpdate && newRelease != null && !websiteUpdateDismissed) {
+                            BlinkWebsiteUpdateDialog(
+                                release = newRelease,
+                                downloadState = when (val downloaded = websiteDownloadState) {
+                                    is WebsiteApkDownloadCoordinator.State.Ready ->
+                                        if (downloaded.release == newRelease) downloaded
+                                        else WebsiteApkDownloadCoordinator.State.Idle
+                                    else -> downloaded
+                                },
+                                onUpdateNow = { unmeteredOnly ->
+                                    websiteApkDownloadCoordinator.start(
+                                        newRelease, BuildConfig.VERSION_CODE, unmeteredOnly,
+                                    )
+                                },
+                                onInstall = {
+                                    runCatching { websiteApkDownloadCoordinator.install(this@MainActivity) }
+                                        .onFailure {
+                                            viewModel.showToast("Android could not open the installer. Use the official BLINK website.")
+                                        }
+                                },
+                                onPauseDownload = { websiteApkDownloadCoordinator.pause() },
+                                onOpenWebsite = {
+                                    websiteUpdateDismissed = true
+                                    openWebsiteUpdate()
+                                },
+                                onLater = { websiteUpdateDismissed = true },
+                            )
+                        }
+                    }
+                }
+                if (showBugReportSheet && !showStartupIntro && uiState.destination == AppDestination.MAIN) {
+                    BlinkBugReportSheet(onDismiss = { showBugReportSheet = false })
+                }
+                // Always overlay the entire Activity for one cold launch, regardless of
+                // how quickly a cached session transitions from SPLASH to MAIN.
+                if (showStartupIntro) {
+                    com.blinkng.shared.brand.BlinkBeyondLinkIntro(
+                        onFinished = { introAnimationFinished = true },
+                        modifier = Modifier.fillMaxSize()
+                            .zIndex(1000f)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                    )
+                }
+                } // Fullscreen startup overlay host
+            }
+        }
+
+        handleIncomingIntent(intent)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+// MESSAGING_RELIABILITY_AUDIT_V3
+fun MainAppContent(
+    uiState: com.example.viewmodel.BlinkUiState,
+    viewModel: BlinkViewModel,
+    contestTarget: ContestVoteTarget? = null,
+    onContestTargetOpened: () -> Unit = {},
+    onWatchAdForCoins: () -> Unit,
+    itemsOpenSignal: Int,
+    boostOpenSignal: Int,
+    showNewMemberPerks: Boolean = false,
+    onDismissNewMemberPerks: () -> Unit = {},
+    isAdPrivacyOptionsRequired: Boolean,
+    onAdPrivacyOptions: () -> Unit,
+    onReportBug: () -> Unit,
+    websiteRelease: BlinkReleaseInfo? = null,
+    websiteUpdateChecked: Boolean = false,
+    onCheckForWebsiteUpdate: () -> Unit = {},
+    onOpenWebsiteUpdate: () -> Unit = {}
+) {
+    LaunchedEffect(contestTarget, uiState.destination, uiState.myProfile.id) {
+        if (contestTarget != null && uiState.destination == AppDestination.MAIN &&
+            uiState.myProfile.id.isNotBlank()) {
+            viewModel.setTab(MainTab.HOME)
+            viewModel.setFeedSubTab(2)
+        }
+    }
+    // Auto-hide bottom bar on scroll down and reappear on scroll up
+    var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    // A full-screen Reel owns horizontal gestures; the five-tab pager must not
+    // steal them from video controls or accidentally navigate to Market.
+    var isReelFullScreen by remember { mutableStateOf(false) }
+    // Switching back to Home without leaving Android's Activity still counts as
+    // a foreground visit. Scoped stale checks avoid redundant whole-app syncs.
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab, uiState.myProfile.id) {
+        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+            viewModel.refreshIfStale()
+        }
+    }
+    var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
+    var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var walletOpenedFromMenu by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
+    var feedUtilityGiveawayId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
+    // MainAppContent hosts the Home feed: keep permission state in this scope.
+    val adminService = remember { AdminSupabaseService() }
+    val adminContext = androidx.compose.ui.platform.LocalContext.current
+    var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    LaunchedEffect(uiState.myProfile.id) {
+        canOpenAdmin = false
+        if (uiState.myProfile.id.isNotBlank()) {
+            canOpenAdmin = adminService.fetchCapability().getOrNull()?.isAdmin == true
+        }
+    }
+    LaunchedEffect(feedUtilitySheet) {
+        // Restored states and old navigation callers cannot reopen the paused Store.
+        if (BlinkStoreAvailability.isPaused && feedUtilitySheet == "store") {
+            feedUtilitySheet = null
+            showStoreComingSoon = true
+        }
+    }
+    LaunchedEffect(itemsOpenSignal) {
+        if (itemsOpenSignal > 0) feedUtilitySheet = "items"
+    }
+    LaunchedEffect(boostOpenSignal) {
+        if (boostOpenSignal > 0) feedUtilitySheet = "boost"
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (showNewMemberPerks && uiState.myProfile.id.isNotBlank() &&
+        NewMemberPerksStore.shouldShow(context, uiState.myProfile.id) &&
+        feedUtilitySheet == null && !uiState.isMenuOpen && !uiState.isGetVerifiedOpen
+    ) {
+        AlertDialog(
+            modifier = Modifier.testTag("new_member_perks"),
+            onDismissRequest = onDismissNewMemberPerks,
+            title = { Text("Welcome to your BLINK campus") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Explore optional features any time. BLINK is free to use.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            onDismissNewMemberPerks()
+                            viewModel.openGetVerified(true)
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("perks_verify")
+                    ) { Text("Explore Blue / Gold verification") }
+                    OutlinedButton(
+                        onClick = {
+                            onDismissNewMemberPerks()
+                            viewModel.buyBlinkCoins()
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("perks_coins")
+                    ) { Text("Explore BLINK Coins") }
+                    OutlinedButton(
+                        onClick = {
+                            onDismissNewMemberPerks()
+                            feedUtilitySheet = "boost"
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("perks_boost")
+                    ) { Text("Explore post and Reel Boost") }
+                    Text(
+                        "Nothing is charged automatically. Availability and prices " +
+                            "are confirmed on each feature's own screen.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    modifier = Modifier.testTag("perks_continue"),
+                    onClick = onDismissNewMemberPerks
+                ) { Text("Continue to BLINK") }
+            }
+        )
+    }
+    var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            BlinkLiveRemoteConfig.load()?.let { liveSnapshot = it }
+            delay(120_000L)
+        }
+    }
+
+    // This controller is additive to main's legacy Paystack seller-activation flow.
+    // The new v2 payment endpoints and database remain disabled until independently verified.
+    val paystackV2 = remember { BlinkPaystackCheckoutService() }
+    val paymentScope = rememberCoroutineScope()
+    val paystackPrefs = remember(uiState.myProfile.id) {
+        context.getSharedPreferences("blink_paystack_v2_" + uiState.myProfile.id,
+            android.content.Context.MODE_PRIVATE)
+    }
+    var v2PendingReference by remember(uiState.myProfile.id) {
+        mutableStateOf(paystackPrefs.getString("reference", null))
+    }
+    var v2PendingPrompt by remember(uiState.myProfile.id) { mutableStateOf(true) }
+    var v2PaymentBusy by remember { mutableStateOf(false) }
+    var v2RenewalStatus by remember(uiState.myProfile.id) { mutableStateOf("unavailable") }
+    var v2RenewalBusy by remember { mutableStateOf(false) }
+    var showV2Receipts by remember { mutableStateOf(false) }
+    var v2Receipts by remember { mutableStateOf<List<BlinkPaystackReceipt>>(emptyList()) }
+    var receiptsLoading by remember { mutableStateOf(false) }
+    var receiptsError by remember { mutableStateOf<String?>(null) }
+    var showGiftPurchase by remember { mutableStateOf(false) }
+    var giftRecipient by remember { mutableStateOf("") }
+    var giftMessage by remember { mutableStateOf("") }
+    var refundReference by remember { mutableStateOf<String?>(null) }
+    var refundReason by remember { mutableStateOf("") }
+
+    fun startV2Checkout(kind: String, item: String, months: Int = 1) {
+        if (v2PaymentBusy) return
+        // Preserve the authenticated, owner-only Coins pilot from main/PR #443.
+        // The server remains authoritative for authorisation and payment gates.
+        if (kind != "coin_pack" && !uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Paystack cash checkout is not available yet.")
+            return
+        }
+        v2PaymentBusy = true
+        paymentScope.launch {
+            try {
+                val checkout = paystackV2.createCheckout(kind, item, months)
+                v2PendingReference = checkout.reference
+                v2PendingPrompt = true
+                paystackPrefs.edit().putString("reference", checkout.reference).putString("kind", kind).apply()
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                )
+                viewModel.showToast("Complete your Paystack payment and return to BLINK.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Secure checkout unavailable.")
+            } finally {
+                v2PaymentBusy = false
+            }
+        }
+    }
+
+    fun startV2CashBoost(
+        targetType: String, targetId: String, power: Int,
+        objective: String, audience: String, days: Int, university: String?
+    ) {
+        if (v2PaymentBusy) return
+        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Cash-funded Boost is not enabled yet.")
+            return
+        }
+        v2PaymentBusy = true
+        paymentScope.launch {
+            try {
+                val checkout = paystackV2.createBoostCheckout(
+                    targetType, targetId, power, objective, audience, days, university
+                )
+                v2PendingReference = checkout.reference
+                v2PendingPrompt = true
+                paystackPrefs.edit().putString("reference", checkout.reference).putString("kind", "boost").apply()
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                )
+                viewModel.showToast("Complete your secure Paystack campaign payment.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Cash Boost is not available.")
+            } finally { v2PaymentBusy = false }
+        }
+    }
+
+    fun startV2MarketCheckout(listingId: String) {
+        if(v2PaymentBusy) return
+        if(!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Secure marketplace checkout is not enabled.")
+            return
+        }
+        v2PaymentBusy=true
+        paymentScope.launch {
+            try {
+                val checkout=paystackV2.createMarketCheckout(listingId)
+                v2PendingReference=checkout.reference
+                v2PendingPrompt=true
+                paystackPrefs.edit().putString("reference",checkout.reference).putString("kind","market").apply()
+                context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+                viewModel.showToast("Pay on Paystack, then return to BLINK to verify.")
+            }catch(error:Exception){
+                viewModel.showToast(error.message ?: "Marketplace checkout is not available.")
+            }finally {v2PaymentBusy=false}
+        }
+    }
+
+    fun startV2GiftCheckout(recipient: String, packId: String, note: String) {
+        if(v2PaymentBusy) return
+        if(!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Cash gift purchases are not enabled yet.")
+            return
+        }
+        v2PaymentBusy=true
+        paymentScope.launch {
+            try {
+                val checkout=paystackV2.createGiftCheckout(recipient,packId,note)
+                v2PendingReference=checkout.reference
+                v2PendingPrompt=true
+                paystackPrefs.edit().putString("reference",checkout.reference).putString("kind","gift").apply()
+                showGiftPurchase=false
+                context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+                viewModel.showToast("Gift coins are delivered only after Paystack verifies payment.")
+            }catch(error:Exception){
+                viewModel.showToast(error.message ?: "Gift checkout unavailable.")
+            }finally {v2PaymentBusy=false}
+        }
+    }
+
+    fun confirmV2Payment() {
+        val reference = v2PendingReference ?: return
+        if (v2PaymentBusy) return
+        v2PaymentBusy = true
+        paymentScope.launch {
+            try {
+                if (paystackV2.confirmPayment(reference)) {
+                    val purchaseKind = paystackPrefs.getString("kind", null)
+                    v2PendingReference = null
+                    v2PendingPrompt = false
+                    paystackPrefs.edit().remove("reference").remove("kind").apply()
+                    if (purchaseKind == "coin_pack") viewModel.refreshCoinBalanceAfterPayment()
+                    else viewModel.fetchSupabaseData()
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
+                } else viewModel.showToast("Payment is still pending. Check again later.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Could not verify this payment.")
+            } finally {
+                v2PaymentBusy = false
+            }
+        }
+    }
+
+    fun refreshV2RenewalStatus() {
+        paymentScope.launch {
+            v2RenewalStatus = try {
+                paystackV2.renewalStatus().optString("status", "none")
+            } catch (_: Exception) { "unavailable" }
+        }
+    }
+
+    fun updateV2Renewal(enabled: Boolean) {
+        if (v2RenewalBusy) return
+        v2RenewalBusy = true
+        paymentScope.launch {
+            try {
+                val response = if (enabled) paystackV2.enableRenewal() else paystackV2.stopRenewal()
+                v2RenewalStatus = response.optString("status", "none")
+                viewModel.showToast(if (enabled) "Automatic renewal enabled."
+                    else "Future automatic charges cancelled.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Unable to update renewal.")
+            } finally { v2RenewalBusy = false }
+        }
+    }
+
+    fun openV2Receipts() {
+        showV2Receipts = true
+        receiptsLoading = true
+        receiptsError = null
+        paymentScope.launch {
+            try { v2Receipts = paystackV2.listReceipts() }
+            catch (_: Exception) { receiptsError = "Couldn't load payment history." }
+            finally { receiptsLoading = false }
+        }
+    }
+
+    val connectHubActions = remember(viewModel) {
+        ConnectHubActions(
+            refresh = { viewModel.refreshConnectHub() },
+            refreshStudents = { viewModel.refreshConnectStudents() },
+            searchStudents = { query -> viewModel.searchConnectStudents(query) },
+            submitHubForm = { kind, a, b, c, d, e, onResult ->
+                viewModel.submitConnectForm(kind, a, b, c, d, e, onResult)
+            },
+            publishRoommate = { title, description, location, minBudget, maxBudget ->
+                viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
+            },
+            applyRoommate = { viewModel.applyForRoommate(it) },
+            publishMentor = { subjects, headline, description, mode ->
+                viewModel.publishMentorProfile(subjects, headline, description, mode)
+            },
+            requestMentor = { viewModel.requestMentor(it) },
+            publishReadingMate = { courses, style, times, location, description ->
+                viewModel.publishReadingMateProfile(courses, style, times, location, description)
+            },
+            requestReadingMate = { viewModel.requestReadingMate(it) },
+            applyHousingAgent = { businessName, serviceAreas, bio ->
+                viewModel.applyAsHousingAgent(businessName, serviceAreas, bio)
+            },
+            publishHousingRequest = { title, location, minBudget, maxBudget, description ->
+                viewModel.publishHousingRequest(title, location, minBudget, maxBudget, description)
+            },
+            applyToHousingRequest = { requestId, message ->
+                viewModel.applyToHousingRequest(requestId, message)
+            },
+            challengeUser = { userId, gameType -> viewModel.challengeUser(userId, gameType) },
+            respondChallenge = { challengeId, accept -> viewModel.respondToGameChallenge(challengeId, accept) },
+            respondRequest = { kind, requestId, accept -> viewModel.respondToConnectRequest(kind, requestId, accept) },
+            submitChallengeScore = { challengeId, score -> viewModel.submitChallengeScore(challengeId, score) },
+            recordGameResult = { gameType, score -> viewModel.recordGameResult(gameType, score) },
+            onMatchSpinCoinsUpdated = { balance -> viewModel.onConnectMatchSpinCoinsUpdated(balance) }
+        )
+    }
+
+    var startReelComposer by rememberSaveable { mutableStateOf(false) }
+    var sharingPostId by rememberSaveable { mutableStateOf<String?>(null) }
+    var storySharePrefill by rememberSaveable { mutableStateOf("") }
+    var storyShareCardLabel by rememberSaveable { mutableStateOf("") }
+
+    // Sharing must work from Profile, Liked and Saved as well as the main Feed.
+    // Resolve from authenticated in-memory posts, not from unverified IDs or placeholders.
+    fun findShareablePost(postId: String): com.example.data.models.FeedPost? =
+        (uiState.posts + uiState.followingPosts + uiState.reels +
+            uiState.discoverPosts + uiState.profilePostsByUserId.values.flatten() +
+            uiState.myLikedPosts + uiState.mySavedPosts +
+            listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost))
+            .firstOrNull { it.id == postId }
+
+    fun sharePostOrReel(postId: String) {
+        if (findShareablePost(postId) == null) {
+            viewModel.showToast("This content is unavailable.")
+            return
+        }
+        // Keep Reels mounted while the user chooses a BLINK recipient or external app.
+        sharingPostId = postId
+    }
+
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
+        isBottomBarVisibleByScroll = true
+    }
+
+    // Handle back button presses for sub-views
+    BackHandler(
+        enabled = uiState.viewingProduct != null ||
+                uiState.viewingProfile != null ||
+                uiState.isPostItemOpen ||
+                uiState.isBecomeSellerOpen ||
+                uiState.isEditProfileOpen ||
+                uiState.isMenuOpen ||
+                uiState.activeConversationPartner != null ||
+                uiState.activePostOptionsPost != null ||
+                uiState.isActivityOpen ||
+                uiState.isGetVerifiedOpen ||
+                uiState.isCreatePostOpen ||
+                uiState.isCreateStoryOpen ||
+                uiState.activeViewingStory != null ||
+                uiState.showSellerCongratulationsDialog ||
+                uiState.deepLinkedPost != null ||
+                uiState.navigationHistory.isNotEmpty() ||
+                (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1)
+    ) {
+        when {
+            uiState.deepLinkedPost != null -> viewModel.closeDeepLinkedPost()
+            uiState.activePostOptionsPost != null -> viewModel.openPostOptions(null)
+            uiState.isMenuOpen -> viewModel.openMenu(false)
+            uiState.isEditProfileOpen -> viewModel.openEditProfile(false)
+            uiState.isBecomeSellerOpen -> viewModel.openBecomeSeller(false)
+            uiState.isPostItemOpen -> viewModel.openPostItem(false)
+            uiState.isActivityOpen -> viewModel.openActivity(false)
+            uiState.activeConversationPartner != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeConversation()
+            }
+            uiState.viewingProfile != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeProfile()
+            }
+            uiState.viewingProduct != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeProductDetail()
+            }
+            uiState.isGetVerifiedOpen -> viewModel.openGetVerified(false)
+            uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
+            uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
+            uiState.activeViewingStory != null -> viewModel.closeStory()
+            uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
+            uiState.navigationHistory.isNotEmpty() -> viewModel.navigateBackInHistory()
+            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1 -> {
+                isBottomBarVisibleByScroll = true
+                viewModel.setFeedSubTab(0)
+            }
+        }
+    }
+
+    // Follow the canonical five-page sequence. Extra routes are direct-access only.
+    val selectedPage = when (uiState.selectedTab) {
+        MainTab.HOME -> when (uiState.feedSubTab) { 1 -> 1; 2 -> 3; 3 -> 7; else -> 0 }
+        MainTab.MARKET -> 2
+        MainTab.MESSAGES -> 4
+        MainTab.SEARCH -> 5
+        MainTab.LEADERBOARD -> 6
+    }
+    val pagerState = rememberPagerState(
+        initialPage = selectedPage,
+        // Keep page count constant: rebuilding pager topology when navigating to
+        // Search/Leaderboard/Game could reset the ongoing drag and flash a blank frame.
+        pageCount = { 8 }
+    )
+    var requestedPage by remember { mutableIntStateOf(selectedPage) }
+    val latestSelectedPage by rememberUpdatedState(selectedPage)
+
+    LaunchedEffect(selectedPage) {
+        requestedPage = selectedPage
+        if (pagerState.currentPage != selectedPage) {
+            if (pagerState.currentPage in 0..4 && selectedPage in 0..4 &&
+                kotlin.math.abs(pagerState.currentPage - selectedPage) == 1
+            ) {
+                pagerState.animateScrollToPage(selectedPage)
+            } else {
+                pagerState.scrollToPage(selectedPage)
+            }
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collectLatest { page ->
+            if (page == requestedPage || page !in 0..4 ||
+                requestedPage != latestSelectedPage
+            ) return@collectLatest
+            requestedPage = page
+            when (page) {
+                0 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                1 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                2 -> viewModel.navigateToPrimaryTab(MainTab.MARKET)
+                3 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                4 -> viewModel.navigateToPrimaryTab(MainTab.MESSAGES)
+            }
+        }
+    }
+
+    val livePlacement = when (selectedPage) {
+        0 -> "home"
+        1 -> "reels"
+        2 -> "marketplace"
+        3 -> "connect"
+        4 -> "messages"
+        7 -> "games"
+        else -> ""
+    }
+    var campaignResponse by remember {
+        mutableStateOf<Pair<String, List<BlinkLiveCampaign>>>("" to emptyList())
+    }
+    LaunchedEffect(livePlacement, uiState.myProfile.id) {
+        if (livePlacement.isNotBlank()) {
+            while (isActive) {
+                BlinkLiveCampaignService.load(livePlacement)?.let { campaignResponse = livePlacement to it }
+                delay(45_000L)
+            }
+        }
+    }
+
+    val mainPageSwipeEnabled = feedUtilitySheet == null &&
+        uiState.viewingProduct == null && uiState.viewingProfile == null &&
+        uiState.activeConversationPartner == null && uiState.activeCommentsPostId == null &&
+        uiState.activePostOptionsPost == null && !uiState.isMenuOpen &&
+        !uiState.isGetVerifiedOpen && !uiState.isBecomeSellerOpen &&
+        !uiState.isConversationFullScreen && !uiState.showSellerCongratulationsDialog &&
+        !uiState.isCreatePostOpen && !uiState.isCreateStoryOpen &&
+        !uiState.isPostItemOpen && !uiState.isEditProfileOpen &&
+        !uiState.isActivityOpen && uiState.deepLinkedPost == null &&
+        uiState.activeViewingStory == null &&
+        !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = mainPageSwipeEnabled && pagerState.currentPage in 0..4 &&
+                !(pagerState.currentPage == 1 && isReelFullScreen)
+        ) { page ->
+            val tab = when (page) {
+                2 -> MainTab.MARKET
+                4 -> MainTab.MESSAGES
+                5 -> MainTab.SEARCH
+                6 -> MainTab.LEADERBOARD
+                else -> MainTab.HOME
+            }
+            // Telegram-like native paging: the outgoing page follows the finger
+            // and exposes its full-size neighbour. Never scale or fade the whole
+            // surface, which caused dark seams and made text look jittery.
+            Box(modifier = Modifier.fillMaxSize()) {
+            when (tab) {
+                MainTab.HOME -> {
+                    PremiumFeedScreen(
+                        contestTarget = contestTarget,
+                        onContestTargetOpened = onContestTargetOpened,
+                        posts = uiState.posts,
+                        followingPosts = uiState.followingPosts,
+                        hiddenFeedPostIds = uiState.hiddenFeedPostIds,
+                        mutedFeedAuthors = uiState.mutedUsers,
+                        reels = uiState.reels,
+                        stories = uiState.stories,
+                        profiles = uiState.profiles,
+                        currentUserProfile = uiState.myProfile,
+                        blinkCoinBalance = uiState.blinkCoinBalance,
+                        leaderboardUsers = uiState.gameLeaderboardUsers,
+                        connectHub = uiState.connectHub,
+                        isConnectHubLoading = uiState.isConnectHubLoading,
+                        isProfilesLoading = uiState.isSyncingContent && uiState.profiles.isEmpty(),
+                        connectHubActions = connectHubActions,
+                        currentUsername = uiState.myProfile.username,
+                        userAvatar = uiState.myProfile.avatarUrl,
+                        currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
+                        // HorizontalPager keeps its neighbours composed. Only the settled,
+                        // foreground destination may own an active Feed/Reels player.
+                        isMainPageActive = selectedPage == page &&
+                            pagerState.currentPage == page &&
+                            !pagerState.isScrollInProgress &&
+                            // Comments/share are overlays, not navigation away from Reels.
+                            // Keeping the page composed preserves the Media3 player,
+                            // its video frame and its exact playback position.
+                            (mainPageSwipeEnabled ||
+                                uiState.activeCommentsPostId != null ||
+                                uiState.activePostOptionsPost != null ||
+                                sharingPostId != null),
+                        routedReelId = uiState.routedReelId,
+                        onSubTabChanged = { viewModel.setFeedSubTab(it) },
+                        isDark = uiState.isDarkMode,
+                        onLikePost = { viewModel.togglePostLike(it) },
+                        onCommentPost = { viewModel.openCommentsForPost(it) },
+                        onOpenFeedPost = { viewModel.openFeedPostDetails(it) },
+                        onBookmarkPost = { viewModel.toggleBookmark(it) },
+                        onRepostPost = { viewModel.toggleRepost(it) },
+                        onSharePost = { sharePostOrReel(it) },
+                        onOptionsClick = { viewModel.openPostOptions(it) },
+                        onDeletePost = { viewModel.deletePost(it) },
+                        onProfileClick = { viewModel.openProfile(it) },
+                        onAddStoryClick = { viewModel.openCreateStory(true) },
+                        onStoryClick = { story -> viewModel.openStory(story) },
+                        onOpenCreatePost = { startReelComposer = false; viewModel.openCreatePost(true) },
+                        onOpenCreateReel = { startReelComposer = true; viewModel.openCreatePost(true) },
+                        onOpenActivity = { viewModel.openActivity(true) },
+                        onOpenMenu = { viewModel.openMenu(true) },
+                        onToggleTheme = { viewModel.toggleDarkMode() },
+                        isServerConnected = uiState.isLiveSupabaseConnected,
+                        activityPulsePolicy = uiState.activityPulsePolicy,
+                        onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                            viewModel.recordActivityPulseEvent(
+                                surface = surface,
+                                eventType = eventType,
+                                realCount = realCount,
+                                displayedValue = displayedValue,
+                                metadata = metadata,
+                            )
+                        },
+                        isLoading = uiState.isFeedLoading,
+                        isRefreshing = uiState.isRefreshingHome || uiState.isRefreshingContent,
+                        isRefreshingFollowing = uiState.isRefreshingFollowing || uiState.isRefreshingContent,
+                        postsRefreshRevision = uiState.postsRefreshRevision,
+                        followingRefreshRevision = uiState.followingRefreshRevision,
+                        isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
+                        errorMessage = uiState.feedErrorMessage,
+                        followingErrorMessage = uiState.followingFeedErrorMessage,
+                        paginationErrorMessage = uiState.feedPaginationErrorMessage,
+                        followingPaginationErrorMessage = uiState.followingPaginationErrorMessage,
+                        onRefresh = { viewModel.refreshFeedLane() },
+                        onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
+                        onFollowingVisible = { viewModel.refreshFollowingIfStale() },
+                        onRefreshReels = { viewModel.refreshFeedLane(isReel = true) },
+                        onRetry = { viewModel.refreshFeedLane() },
+                        onViewedPost = { viewModel.recordPostView(it) },
+                        onVotePoll = { postId, optId -> viewModel.votePoll(postId, optId) },
+                        onDirectMessage = { partner, partnerName, partnerAvatar ->
+                            viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
+                        },
+                        onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
+                        isAdmin = canOpenAdmin,
+                        onAdminClick = {
+                            if (canOpenAdmin) {
+                                adminContext.startActivitySafely(
+                                    Intent(adminContext, AdminControlCenterActivity::class.java),
+                                    "Unable to open admin dashboard."
+                                )
+                            }
+                        },
+                        onItemsClick = { feedUtilitySheet = "items" },
+                        onGetCoinsClick = { walletOpenedFromMenu = false; showWallet = true },
+                        onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
+                        onStoreClick = {
+                            if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
+                            else feedUtilitySheet = "store"
+                        },
+                        onBoostClick = { feedUtilitySheet = "boost" },
+                        onDropsClick = { feedUtilityGiveawayId = null; feedUtilitySheet = "giveaway" },
+                        onOpenGiveaway = { giveawayId ->
+                            feedUtilityGiveawayId = giveawayId
+                            feedUtilitySheet = "giveaway"
+                        },
+                        onGameClick = { feedUtilitySheet = "game" },
+                        onMarketClick = { viewModel.setTab(MainTab.MARKET) },
+                        onOpenMarketListing = { item -> viewModel.openProductDetail(item) },
+                        onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
+                        unreadNotificationCount = uiState.activities.count { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
+                        isInteractionOverlayOpen =
+                            uiState.activeCommentsPostId != null ||
+                                uiState.activePostOptionsPost != null ||
+                                sharingPostId != null,
+                        hasMorePosts = uiState.hasMorePosts,
+                        hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
+                        hasMoreReels = uiState.hasMoreReels,
+                        isLoadingMorePosts = uiState.isLoadingMorePosts,
+                        isLoadingMoreFollowingPosts = uiState.isLoadingMoreFollowingPosts,
+                        isLoadingMoreReels = uiState.isLoadingMoreReels,
+                        onLoadMorePosts = { viewModel.loadMoreFeed(false) },
+                        onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
+                        onLoadMoreReels = { viewModel.loadMoreFeed(true) },
+                        homeReselectSignal = homeReselectSignal,
+                        isBottomNavigationVisible = isBottomBarVisibleByScroll,
+                        onBottomBarVisibilityChange = { isVisible ->
+                            isBottomBarVisibleByScroll = isVisible
+                        },
+                        onReelFullscreenChange = { isExpanded ->
+                            isReelFullScreen = isExpanded
+                        },
+                        // Home now requests complete hide/show, never partial translation.
+                        onBottomBarTravelChange = { _ -> }
+                    )
+                }
+
+                MainTab.SEARCH -> {
+                    SearchScreen(
+                        profiles = uiState.profiles,
+                        posts = (uiState.posts + uiState.reels).distinctBy { it.id },
+                        currentUsername = uiState.myProfile.username,
+                        myProfile = uiState.myProfile,
+                        serverProfiles = uiState.discoverProfiles,
+                        serverPosts = uiState.discoverPosts,
+                        marketItems = uiState.marketItems,
+                        onMarketItemClick = { viewModel.openProductDetail(it) },
+                        onGameClick = { feedUtilitySheet = "items" },
+                        onNotificationsClick = { viewModel.openActivity(true) },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
+                        isSearching = uiState.isDiscoverSearching,
+                        onSearchQueryChange = { viewModel.searchDiscover(it) },
+                        onProfileClick = { viewModel.openProfile(it) },
+                        onPostClick = { viewModel.openSearchPost(it) },
+                        onLikePost = { viewModel.togglePostLike(it) },
+                        onCommentPost = { viewModel.openCommentsForPost(it) },
+                        onBookmarkPost = { viewModel.toggleBookmark(it) },
+                        onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
+                        onSharePost = { sharePostOrReel(it) },
+                        onOptionsClick = { viewModel.openPostOptions(it) },
+                        onDeletePost = { viewModel.deletePost(it) },
+                        onBackToHome = { viewModel.navigateToPrimaryTab(MainTab.HOME, 0) },
+                        isDark = uiState.isDarkMode
+                    )
+                }
+
+                MainTab.LEADERBOARD -> {
+                    LeaderboardScreen(
+                        users = uiState.leaderboardUsers,
+                        userProfile = uiState.myProfile,
+                        onProfileClick = { viewModel.openProfile(it) },
+                        isDark = uiState.isDarkMode,
+                        isLoading = uiState.isFeedLoading && uiState.leaderboardUsers.isEmpty(),
+                            isLiveDataAvailable = uiState.isOnline && uiState.isLiveSupabaseConnected,
+                        activityPulsePolicy = uiState.activityPulsePolicy,
+                        onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                            viewModel.recordActivityPulseEvent(
+                                surface = surface,
+                                eventType = eventType,
+                                realCount = realCount,
+                                displayedValue = displayedValue,
+                                metadata = metadata,
+                            )
+                        },
+                        onRefresh = { viewModel.refreshLeaderboard() }
+                    )
+                }
+
+                MainTab.MARKET -> {
+                    MarketScreen(
+                        items = uiState.marketItems,
+                        isSellerActive = uiState.myProfile.isSellerActive && uiState.myProfile.hasActiveMarketVerification(),
+                        sellerStoreName = uiState.myProfile.sellerStoreName,
+                        verificationBadge = uiState.myProfile.verificationBadge,
+                        sellerVerificationActive = uiState.myProfile.hasActiveMarketVerification(),
+                        verificationExpiresAtMillis = uiState.myProfile.verificationExpiresAtMillis,
+                        viewerUniversity = uiState.myProfile.university,
+                        viewerId = uiState.myProfile.id,
+                        onItemClick = { viewModel.openProductDetail(it) },
+                        onOpenPostItem = { viewModel.openPostItem(true) },
+                        onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
+                        onOpenGetVerified = { viewModel.openGetVerified(true) },
+                        onToggleSave = { viewModel.toggleMarketSaved(it) },
+                        onSearch = { query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly, university ->
+                            viewModel.searchMarketItems(query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly, university)
+                        },
+                        onRefresh = { viewModel.refreshMarketItems() },
+                        onLoadMore = { viewModel.loadMoreMarketItems() },
+                        isLoading = uiState.isMarketLoading,
+                        isLoadingMore = uiState.isLoadingMoreMarket,
+                        hasMore = uiState.marketHasMore,
+                        errorMessage = uiState.marketErrorMessage,
+                        isDark = uiState.isDarkMode
+                    )
+                }
+
+                MainTab.MESSAGES -> {
+                    var showMessageComposeOptions by rememberSaveable { mutableStateOf(false) }
+                    var showGroupInvitations by rememberSaveable { mutableStateOf(false) }
+                    PremiumMessagesScreen(
+                        conversations = uiState.conversations,
+                        stories = uiState.stories,
+                        activities = uiState.activities,
+                        chatPrivacySettings = uiState.chatPrivacySettings,
+                        myAvatar = uiState.myProfile.avatarUrl,
+                        myName = uiState.myProfile.fullName.ifBlank { uiState.myProfile.username },
+                        activePartner = uiState.activeConversationPartner,
+                        isConversationFullScreen = uiState.isConversationFullScreen,
+                        onConversationFullScreenChange = { viewModel.setConversationFullScreen(it) },
+                        onOpenConversation = { partner ->
+                            viewModel.openChatWithUser(partner)
+                        },
+                        onCloseConversation = { viewModel.closeConversation() },
+                        onSendMessage = { partner, text, replyTo ->
+                            viewModel.sendMessage(partner, text, replyToMessageId = replyTo)
+                        },
+                        onForwardMessage = { target, message ->
+                            viewModel.forwardChatMessage(target, message)
+                        },
+                        interactionActions = messageInteractionActions(viewModel),
+                        onSendAttachment = { partner, uri, kind ->
+                            viewModel.sendAttachmentMessage(partner, uri, kind)
+                        },
+                        onPresenceChange = { partner, state ->
+                            viewModel.updateChatPresence(partner, state)
+                        },
+                        onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
+                        onSendVideoAlbum = { partner, videos -> viewModel.sendVideoAlbum(partner, videos) },
+                        onSendViewOncePicture = { partner, uri, caption, quality ->
+                            viewModel.sendViewOncePicture(partner, uri, caption, quality)
+                        },
+                        onSendPhotoAlbum = { partner, uris, quality ->
+                            val photos = uris.take(10)
+                            val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
+                            photos.forEachIndexed { index, photo ->
+                                viewModel.sendAttachmentMessage(
+                                    partner, photo.first, com.blinkng.shared.BlinkChatAttachmentKind.IMAGE,
+                                    caption = photo.second, imageQuality = quality,
+                                    album = if (albumId == null) com.blinkng.shared.BlinkChatPhotoAlbum.single()
+                                    else com.blinkng.shared.BlinkChatPhotoAlbum.of(albumId, index, photos.size)
+                                )
+                            }
+                        },
+                        onRetryMessage = { partner, message ->
+                            viewModel.retrySendMessage(partner, message)
+                        },
+                        onCancelAttachment = { partner, message ->
+                            viewModel.cancelAttachmentMessage(partner, message)
+                        },
+                        hasMoreMessages = { conversationId ->
+                            uiState.messageHistoryHasMore[conversationId] ?: true
+                        },
+                        isLoadingOlder = { conversationId ->
+                            uiState.loadingOlderConversationId == conversationId
+                        },
+                        onLoadOlder = { partner -> viewModel.loadOlderMessages(partner) },
+                        isLoadingMessages = { conversationId ->
+                            uiState.loadingInitialConversationId == conversationId
+                        },
+                        onProfileClick = { viewModel.openProfileFromChat(it) },
+                        onStoryClick = { story -> viewModel.openStory(story) },
+                        onAddStoryClick = { viewModel.openCreateStory(true) },
+                        onOpenActivity = { viewModel.openActivity(true) },
+                        onUpdateChatPrivacy = { settings ->
+                            viewModel.updateChatPrivacySettings(settings)
+                        },
+                        onComposeMessage = { showMessageComposeOptions = true },
+                        onSearchUsers = { query, limit, afterUsername, afterId ->
+                            viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                        },
+                        onCreateGroup = { showGroupInvitations = true },
+                        onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
+                        onGameClick = { feedUtilitySheet = "items" },
+                        isDark = uiState.isDarkMode,
+                        isConnected = uiState.isOnline,
+                        isLoading = uiState.isConversationsLoading,
+                        onVisibleInboxReceipt = { id, timestamp ->
+                            viewModel.refreshVisibleInboxReceipt(id, timestamp)
+                        }
+                    )
+                    if (showMessageComposeOptions) {
+                        AlertDialog(
+                            onDismissRequest = { showMessageComposeOptions = false },
+                            title = { Text("New conversation") },
+                            text = { Text("Message a student or invite classmates to a group.") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showMessageComposeOptions = false
+                                    viewModel.setTab(MainTab.SEARCH)
+                                }) { Text("Message student") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {
+                                    showMessageComposeOptions = false
+                                    showGroupInvitations = true
+                                }) { Text("Groups & invitations") }
+                            }
+                        )
+                    }
+                    if (showGroupInvitations) {
+                        BlinkGroupInvitationsDialog(
+                            onDismiss = { showGroupInvitations = false }
+                        )
+                    }
+                }
+            }
+        }
+        }
+
+        feedUtilitySheet?.let { utility ->
+            var intentionalLongSwipe by remember(utility) { mutableStateOf(false) }
+            var gameRoundActive by remember(utility) { mutableStateOf(false) }
+            var gameExitConfirmVisible by remember(utility) { mutableStateOf(false) }
+            val utilitySheetState = rememberModalBottomSheetState(
+                skipPartiallyExpanded = true,
+                confirmValueChange = { target ->
+                    target != SheetValue.Hidden || (intentionalLongSwipe && !gameRoundActive)
+                }
+            )
+            val utilityScope = rememberCoroutineScope()
+            val utilityWindowHeightPx = with(LocalDensity.current) {
+                LocalConfiguration.current.screenHeightDp.dp.toPx()
+            }
+            // Track the sheet's window position: local pointer coordinates alone
+            // undercount movement while Material3 animates the sheet with the finger.
+            var utilitySheetCoordinates by remember(utility) {
+                mutableStateOf<LayoutCoordinates?>(null)
+            }
+
+            fun dismissUtility(afterDismiss: () -> Unit = {}) {
+                if (utility == "game" && gameRoundActive) {
+                    gameExitConfirmVisible = true
+                    return
+                }
+                utilityScope.launch {
+                    // Explicit navigation and close actions are never swipe-gated.
+                    intentionalLongSwipe = true
+                    runCatching { utilitySheetState.hide() }
+                    feedUtilitySheet = null
+                    afterDismiss()
+                }
+            }
+
+            if (gameExitConfirmVisible) {
+                AlertDialog(
+                    onDismissRequest = { gameExitConfirmVisible = false },
+                    title = { Text("Leave this game?") },
+                    text = { Text("Your unfinished round will be lost.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            gameRoundActive = false
+                            gameExitConfirmVisible = false
+                            dismissUtility()
+                        }) { Text("Leave game") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { gameExitConfirmVisible = false }) {
+                            Text("Keep playing")
+                        }
+                    }
+                )
+            }
+
+            ModalBottomSheet(
+                onDismissRequest = {
+                    if (utility == "game" && gameRoundActive) {
+                        gameExitConfirmVisible = true
+                    } else {
+                        feedUtilitySheet = null
+                    }
+                },
+                sheetState = utilitySheetState,
+                dragHandle = {
+                    Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.Center))
+                        IconButton(
+                            onClick = { dismissUtility() },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close ${utility} page")
+                        }
+                    }
+                },
+                // Listen without consuming motion. Inner LazyColumns and games still
+                // scroll normally; a small pull can no longer dismiss the whole page.
+                modifier = Modifier
+                    .testTag("feedUtilitySheet")
+                    .onGloballyPositioned { utilitySheetCoordinates = it }
+                    .pointerInput(utility, utilityWindowHeightPx) {
+                        awaitEachGesture {
+                            intentionalLongSwipe = false
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val startY = utilitySheetCoordinates
+                                ?.takeIf { it.isAttached }
+                                ?.localToWindow(down.position)?.y ?: down.position.y
+                            var peakDownwardTravelPx = 0f
+                            var wasReleased = false
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                peakDownwardTravelPx = maxOf(
+                                    peakDownwardTravelPx,
+                                    ((utilitySheetCoordinates
+                                        ?.takeIf { it.isAttached }
+                                        ?.localToWindow(change.position)?.y
+                                        ?: change.position.y) - startY).coerceAtLeast(0f)
+                                )
+                                intentionalLongSwipe = UtilitySheetDismissPolicy.allowsDownwardDismiss(
+                                    peakDownwardTravelPx,
+                                    utilityWindowHeightPx
+                                )
+                                if (!change.pressed) {
+                                    wasReleased = true
+                                    break
+                                }
+                            }
+                            // Inner scrollables may absorb long pulls so Material3 cannot
+                            // complete the sheet gesture; explicitly close after release.
+                            if (UtilitySheetDismissPolicy.allowsCompletedDownwardDismiss(
+                                    peakDownwardTravelPx,
+                                    utilityWindowHeightPx,
+                                    wasReleased
+                                )
+                            ) {
+                                dismissUtility()
+                            }
+                        }
+                    }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.96f)
+                ) {
+                    when (utility) {
+                        "leaderboard" -> LeaderboardScreen(
+                            users = uiState.leaderboardUsers,
+                            userProfile = uiState.myProfile,
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            isDark = uiState.isDarkMode,
+                            isLoading = uiState.isFeedLoading && uiState.leaderboardUsers.isEmpty(),
+                            isLiveDataAvailable = uiState.isOnline && uiState.isLiveSupabaseConnected,
+                            activityPulsePolicy = uiState.activityPulsePolicy,
+                            onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                                viewModel.recordActivityPulseEvent(
+                                    surface = surface,
+                                    eventType = eventType,
+                                    realCount = realCount,
+                                    displayedValue = displayedValue,
+                                    metadata = metadata,
+                                )
+                            },
+                            onRefresh = { viewModel.refreshLeaderboard() }
+                        )
+
+                        "game" -> GameSection(
+                            userAvatar = uiState.myProfile.avatarUrl,
+                            onRoundActiveChange = { gameRoundActive = it },
+                            leaderboardUsers = uiState.gameLeaderboardUsers,
+                            connectHub = uiState.connectHub,
+                            connectHubActions = connectHubActions,
+                            isDark = uiState.isDarkMode,
+                            onOpenMenu = { viewModel.openMenu(true) },
+                            onOpenActivity = { viewModel.openActivity(true) },
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            selectedTopTab = 3,
+                            onHomeClick = {
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.HOME)
+                                    viewModel.setFeedSubTab(0)
+                                }
+                            },
+                            onReelClick = {
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.HOME)
+                                    viewModel.setFeedSubTab(1)
+                                }
+                            },
+                            onConnectClick = {
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.HOME)
+                                    viewModel.setFeedSubTab(2)
+                                }
+                            },
+                            onGameClick = {},
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        "store" -> BlinkStoreRoute(onClose = { dismissUtility() })
+
+                        "boost" -> BlinkBoostGrowthRoute(
+                            posts = uiState.posts,
+                            reels = uiState.reels,
+                            marketItems = uiState.marketItems,
+                            myProfile = uiState.myProfile,
+                            isDark = uiState.isDarkMode,
+                            onLikePost = { viewModel.togglePostLike(it) },
+                            onCommentPost = { viewModel.openCommentsForPost(it) },
+                            onBookmarkPost = { viewModel.toggleBookmark(it) },
+                            onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
+                            onOpenPost = { post -> dismissUtility { viewModel.openSearchPost(post) } },
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            onListingClick = { listing ->
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.MARKET)
+                                    viewModel.openProductDetail(listing)
+                                }
+                            },
+                            onGetCoins = { viewModel.buyBlinkCoins() },
+                            onCreateContent = {
+                                dismissUtility { viewModel.openCreatePost(true) }
+                            },
+                            paystackCheckoutAvailable = uiState.economyPolicy.cashCheckoutEnabled,
+                            onPaystackBoost = { targetType, targetId, power, objective, audience, days, university ->
+                                startV2CashBoost(targetType, targetId, power, objective, audience, days, university)
+                            },
+                            onClose = { dismissUtility() },
+                        )
+
+                        "giveaway", "drops" -> BlinkDropsRoute(
+                            initialDropId = feedUtilityGiveawayId,
+                            onGetCoins = { viewModel.buyBlinkCoins() },
+                            onClose = {
+                                feedUtilityGiveawayId = null
+                                dismissUtility()
+                            }
+                        )
+
+                        "items" -> BlinkItemsScreen(
+                            profiles = uiState.profiles,
+                            currentUserId = uiState.myProfile.id,
+                            currentUsername = uiState.myProfile.username,
+                            onClose = { dismissUtility() },
+                            onOpenGame = { dismissUtility { feedUtilitySheet = "game" } },
+                            onOpenBoost = { dismissUtility { feedUtilitySheet = "boost" } },
+                            onOpenDrops = { dismissUtility { feedUtilityGiveawayId = null; feedUtilitySheet = "giveaway" } },
+                            onOpenStore = {
+                                dismissUtility {
+                                    if (BlinkStoreAvailability.isPaused) {
+                                        showStoreComingSoon = true
+                                    } else {
+                                        feedUtilitySheet = "store"
+                                    }
+                                }
+                            },
+                            websiteUpdateAvailable = websiteRelease != null,
+                            websiteUpdateChecked = websiteUpdateChecked,
+                            websiteUpdateVersion = websiteRelease?.versionName,
+                            onCheckForWebsiteUpdate = onCheckForWebsiteUpdate,
+                            onOpenWebsiteUpdate = {
+                                dismissUtility { onOpenWebsiteUpdate() }
+                            },
+                            isAdmin = canOpenAdmin,
+                            onOpenAdmin = {
+                                if (canOpenAdmin) {
+                                    dismissUtility {
+                                        adminContext.startActivitySafely(
+                                            Intent(adminContext, AdminControlCenterActivity::class.java),
+                                            "Unable to open admin dashboard."
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showStoreComingSoon && BlinkStoreAvailability.isPaused) {
+            BlinkStoreComingSoonDialog(onDismiss = { showStoreComingSoon = false })
+        }
+
+        val showLiveCampaigns = livePlacement.isNotBlank() && uiState.isOnline &&
+            feedUtilitySheet == null && !uiState.isMenuOpen &&
+            !uiState.isCreatePostOpen && !uiState.isCreateStoryOpen &&
+            !uiState.isPostItemOpen && !uiState.isConversationFullScreen &&
+            uiState.activeViewingStory == null && uiState.activeConversationPartner == null &&
+            uiState.activeCommentsPostId == null && uiState.viewingProduct == null &&
+            uiState.viewingProfile == null && !uiState.isGetVerifiedOpen
+        if (showLiveCampaigns) {
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .zIndex(29f).statusBarsPadding()
+                    .padding(horizontal = 12.dp).padding(top = 72.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (livePlacement == "home" &&
+                    (campaignResponse.first != "home" || campaignResponse.second.isEmpty())) {
+                    BlinkLiveBanners(snapshot = liveSnapshot)
+                }
+                if (liveSnapshot.campaignsEnabledOn(livePlacement) &&
+                    campaignResponse.first == livePlacement) {
+                    BlinkLiveCampaignCards(
+                        placement = livePlacement, campaigns = campaignResponse.second,
+                        onRoute = { route ->
+                            when (route) {
+                                "home" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                                "reels" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                                "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                "connect" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                                "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                                "games" -> feedUtilitySheet = "game"
+                                "notifications" -> viewModel.openActivity(true)
+                                "store" -> showStoreComingSoon = true
+                                "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        OfflineConnectionBanner(
+            visible = !uiState.isOnline,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .zIndex(30f)
+        )
+
+        // Floating bottom navigation follows the feed chrome state. Its transition is
+        // deliberately non-bouncy so a restored bar glides in instead of springing back.
+        val shouldShowBottomBar = feedUtilitySheet == null &&
+                uiState.viewingProduct == null &&
+                uiState.viewingProfile == null &&
+                !uiState.isPostItemOpen &&
+                !uiState.isBecomeSellerOpen &&
+                !uiState.isEditProfileOpen &&
+                uiState.activeConversationPartner == null &&
+                !uiState.isConversationFullScreen &&
+                !uiState.isActivityOpen &&
+                !uiState.isGetVerifiedOpen &&
+                !uiState.isCreatePostOpen &&
+                !uiState.isCreateStoryOpen &&
+                uiState.activeViewingStory == null &&
+                !uiState.showSellerCongratulationsDialog &&
+                uiState.activePostOptionsPost == null &&
+                uiState.activeCommentsPostId == null &&
+                uiState.deepLinkedPost == null &&
+                !uiState.isMenuOpen && !showWallet
+
+        androidx.compose.animation.AnimatedVisibility(
+            // A downward Home scroll hides the entire rail, including its shadow,
+            // rather than moving it by a fixed 50 px on different screen sizes.
+            visible = shouldShowBottomBar && (
+                uiState.selectedTab != MainTab.HOME ||
+                    uiState.feedSubTab !in 0..1 || isBottomBarVisibleByScroll
+            ),
+            enter = androidx.compose.animation.slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 200,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                )
+            ) + androidx.compose.animation.fadeIn(
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 170)
+            ),
+            exit = androidx.compose.animation.slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 180,
+                    easing = androidx.compose.animation.core.FastOutLinearInEasing
+                )
+            ) + androidx.compose.animation.fadeOut(
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 150)
+            ),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            FeedBottomBar(
+                currentTab = uiState.selectedTab,
+                feedSubTab = uiState.feedSubTab,
+                onHomeClick = {
+                    isBottomBarVisibleByScroll = true
+
+                    // A Home reselect is only valid when the user is actually looking at
+                    // the main Home feed. Profiles, comments, menus, chats, reels/game,
+                    // and every other surface must navigate Home without refreshing it.
+                    val isHomeFeedSurface =
+                        uiState.selectedTab == MainTab.HOME &&
+                            uiState.feedSubTab == 0 &&
+                            uiState.viewingProduct == null &&
+                            uiState.viewingProfile == null &&
+                            !uiState.isPostItemOpen &&
+                            !uiState.isBecomeSellerOpen &&
+                            !uiState.isEditProfileOpen &&
+                            !uiState.isMenuOpen &&
+                            uiState.activeConversationPartner == null &&
+                            !uiState.isConversationFullScreen &&
+                            uiState.activePostOptionsPost == null &&
+                            uiState.activeCommentsPostId == null &&
+                            !uiState.isActivityOpen &&
+                            !uiState.isGetVerifiedOpen &&
+                            !uiState.isCreatePostOpen &&
+                            !uiState.isCreateStoryOpen &&
+                            uiState.activeViewingStory == null &&
+                            !uiState.showSellerCongratulationsDialog &&
+                            uiState.deepLinkedPost == null
+
+                    if (isHomeFeedSurface) {
+                        homeReselectSignal++
+                    } else {
+                        // Bottom-nav Home behaves as navigation, not as a hidden refresh.
+                        // Close any transient surface that can sit above a main tab first.
+                        if (uiState.deepLinkedPost != null) viewModel.closeDeepLinkedPost()
+                        if (uiState.activePostOptionsPost != null) viewModel.openPostOptions(null)
+                        if (uiState.activeCommentsPostId != null) viewModel.openCommentsForPost(null)
+                        if (uiState.isMenuOpen) viewModel.openMenu(false)
+                        if (uiState.isEditProfileOpen) viewModel.openEditProfile(false)
+                        if (uiState.isBecomeSellerOpen) viewModel.openBecomeSeller(false)
+                        if (uiState.isPostItemOpen) viewModel.openPostItem(false)
+                        if (uiState.isActivityOpen) viewModel.openActivity(false)
+                        if (uiState.activeConversationPartner != null) viewModel.closeConversation()
+                        if (uiState.viewingProfile != null) viewModel.closeProfile()
+                        if (uiState.viewingProduct != null) viewModel.closeProductDetail()
+                        if (uiState.isGetVerifiedOpen) viewModel.openGetVerified(false)
+                        if (uiState.isCreatePostOpen) viewModel.openCreatePost(false)
+                        if (uiState.isCreateStoryOpen) viewModel.openCreateStory(false)
+                        if (uiState.activeViewingStory != null) viewModel.closeStory()
+                        if (uiState.showSellerCongratulationsDialog) viewModel.dismissSellerCongratulations()
+
+                        viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                    }
+                },
+                onReelsClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                },
+                onMarketClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.navigateToPrimaryTab(MainTab.MARKET)
+                },
+                onConnectClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                },
+                onMessageClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.navigateToPrimaryTab(MainTab.MESSAGES)
+                },
+                isDark = uiState.isDarkMode,
+                onMenuClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.openMenu(true)
+                },
+                isMenuOpen = uiState.isMenuOpen,
+                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 || it.isMarkedUnread },
+                modifier = Modifier
+            )
+        }
+
+        BackgroundPostPublishIndicator(
+            isCreatingPost = uiState.isCreatingPost,
+            messages = viewModel.snackBarMessages,
+            uploadProgress = uiState.postUploadProgress,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (shouldShowBottomBar) 92.dp else 18.dp)
+                .zIndex(50f)
+        )
+
+        // Load the full thread once when a post opens. Keep the comment sheet
+        // for other routes; the full post now renders its comments inline.
+        LaunchedEffect(uiState.deepLinkedPost?.id) {
+            uiState.deepLinkedPost?.id?.let { postId ->
+                if (uiState.activeCommentsPostId != postId) viewModel.openCommentsForPost(postId)
+            }
+        }
+
+        // Hold outgoing route content through its exit animation. Otherwise a
+        // null ViewModel destination removes the whole page one frame early.
+        var previousPost by remember { mutableStateOf(uiState.deepLinkedPost) }
+        LaunchedEffect(uiState.deepLinkedPost) {
+            uiState.deepLinkedPost?.let { previousPost = it }
+        }
+        AnimatedVisibility(
+            visible = uiState.deepLinkedPost != null,
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
+        ) {
+            (uiState.deepLinkedPost ?: previousPost)?.let { post ->
+                SharedPostScreen(
+                    post = post,
+                    currentUsername = uiState.myProfile.username,
+                    currentUserId = uiState.myProfile.id,
+                    isDark = uiState.isDarkMode,
+                    comments = uiState.comments,
+                    isCommentsLoading = uiState.isCommentsLoading,
+                    isPostingComment = uiState.isPostingComment,
+                    onBack = { viewModel.closeDeepLinkedPost() },
+                    onLike = { viewModel.togglePostLike(post.id) },
+                    onBookmark = { viewModel.toggleBookmark(post.id) },
+                    onShare = { sharePostOrReel(post.id) },
+                    onOptions = { viewModel.openPostOptions(post) },
+                    onDelete = { viewModel.deletePost(post.id) },
+                    onProfileClick = { viewModel.openProfile(it) },
+                    onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
+                    onSendComment = { text, parentId -> viewModel.addComment(post.id, text, parentId) },
+                    onToggleCommentLike = { viewModel.toggleCommentLike(it) },
+                    onReportComment = { id, reason -> viewModel.reportComment(id, reason) }
+                )
+            }
+        }
+
+        // Sub-screen Overlays: Product Detail
+        var previousProduct by remember { mutableStateOf(uiState.viewingProduct) }
+        LaunchedEffect(uiState.viewingProduct) {
+            uiState.viewingProduct?.let { previousProduct = it }
+        }
+        AnimatedVisibility(
+            visible = uiState.viewingProduct != null,
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
+        ) {
+            (uiState.viewingProduct ?: previousProduct)?.let { product ->
+                ProductDetailScreen(
+                    item = product,
+                    onBack = { viewModel.closeProductDetail() },
+                    onDirectMessage = { partner, sellerName, sellerAvatar ->
+                        viewModel.openChatWithUser(partner, sellerName, sellerAvatar)
+                    },
+                    onSellerProfileClick = { viewModel.openProfile(it) },
+                    onToggleSave = { viewModel.toggleMarketSaved(it) },
+                    onRequestOrder = { listing, quantity ->
+                        viewModel.requestMarketplaceOrder(listing, quantity)
+                    },
+                    paystackCheckoutAvailable = uiState.economyPolicy.cashCheckoutEnabled,
+                    onPaystackBuy = { listing -> startV2MarketCheckout(listing.id) },
+                    onReport = { listing, reason, details ->
+                        viewModel.reportMarketItem(listing, reason, details)
+                    },
+                    onMakeOffer = { listing, offerAmount, note ->
+                        viewModel.makeMarketOffer(listing, offerAmount, note)
+                    },
+                    onConfirmAvailability = { listing ->
+                        viewModel.confirmMarketAvailability(listing)
+                    },
+                    onBoostListing = { _ ->
+                        feedUtilitySheet = "boost"
+                    },
+                    onRequestModerationReview = { item, reason ->
+                        viewModel.requestMarketModerationReview(item, reason)
+                    },
+                    isOwner = product.sellerId.isNotBlank() &&
+                        product.sellerId == uiState.myProfile.id,
+                    onUpdateListingStatus = { listing, status ->
+                        viewModel.updateMarketListingStatus(listing, status)
+                    },
+                    onDeleteListing = { viewModel.deleteMarketListing(it) },
+                    isSubmittingOrder = uiState.isRequestingMarketOrder,
+                    isDark = uiState.isDarkMode
+                )
+            }
+        }
+
+        // Keep profiles rendered while sliding out to reveal the originating page.
+        // All detail routes enter from the right and leave to the right.
+        var previousProfile by remember { mutableStateOf(uiState.viewingProfile) }
+        LaunchedEffect(uiState.viewingProfile) {
+            uiState.viewingProfile?.let { previousProfile = it }
+        }
+        AnimatedVisibility(
+            visible = uiState.viewingProfile != null,
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
+        ) {
+            (uiState.viewingProfile ?: previousProfile)?.let { profile ->
+                val isMyProfile = viewModel.isMe(profile.username)
+                val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
+
+                LaunchedEffect(currentProfileToDisplay.id, currentProfileToDisplay.username, isMyProfile) {
+                    viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
+                    if (!isMyProfile && currentProfileToDisplay.username.isNotBlank()) {
+                        com.example.notification.ProfileViewActivityTracker.recordViewedProfile(
+                            currentProfileToDisplay.username
+                        )
+                    }
+                }
+
+                val profileKey = currentProfileToDisplay.id.ifBlank {
+                    currentProfileToDisplay.username.trim().removePrefix("@").lowercase()
+                }
+                val profilePosts = uiState.profilePostsByUserId[profileKey].orEmpty()
+                val isProfilePostsLoading = profilePosts.isEmpty() &&
+                    (profileKey in uiState.profileSurfaceLoadingIds ||
+                     (profileKey !in uiState.profileSurfaceLoadedIds &&
+                      profileKey !in uiState.profileSurfaceFailedIds))
+                val profilePostsLoadFailed = profilePosts.isEmpty() &&
+                    profileKey in uiState.profileSurfaceFailedIds
+                val profileLikedPosts = if (isMyProfile) uiState.myLikedPosts.filter { it.isLiked } else emptyList()
+                val profileSavedPosts = if (isMyProfile) uiState.mySavedPosts.filter { it.isBookmarked } else emptyList()
+
+                // Seller listings are loaded from Supabase by seller ID, never from
+                // the limited global Market discovery feed.
+                val userMarketItems = uiState.profileMarketItemsByUserId[profileKey].orEmpty()
+                val isProfileMarketLoading = profileKey in uiState.profileMarketLoadingIds ||
+                    (profileKey !in uiState.profileMarketLoadedIds &&
+                     profileKey !in uiState.profileMarketFailedIds)
+                val isProfileMarketFailed = profileKey in uiState.profileMarketFailedIds
+
+                ProfileScreen(
+                    profile = currentProfileToDisplay,
+                    isMe = isMyProfile,
+                    initialTab = if (isMyProfile && showSavedProfile) 7 else 0,
+                    storyForProfile = uiState.stories.firstOrNull { story ->
+                        val belongsToProfile = if (isMyProfile) {
+                            story.isUser || story.username.equals(currentProfileToDisplay.username, ignoreCase = true)
+                        } else {
+                            story.username.equals(currentProfileToDisplay.username, ignoreCase = true)
+                        }
+                        belongsToProfile && (story.storyImage.isNotBlank() || story.caption.isNotBlank())
+                    },
+                    onOpenProfileStory = { story -> viewModel.openStory(story) },
+                    userPosts = profilePosts,
+                    isPostsLoading = isProfilePostsLoading,
+                    hasPostsLoadError = profilePostsLoadFailed,
+                    likedPosts = profileLikedPosts,
+                    savedPosts = profileSavedPosts,
+                    arePrivateCollectionsLoading = profileKey in uiState.privateProfileCollectionsLoadingIds,
+                    havePrivateCollectionsError = profileKey in uiState.privateProfileCollectionsFailedIds,
+                    userMarketItems = userMarketItems,
+                    isMarketLoading = isProfileMarketLoading,
+                    hasMarketLoadError = isProfileMarketFailed,
+                    onBack = { showSavedProfile = false; viewModel.closeProfile() },
+                    onEditProfileClick = { viewModel.openEditProfile(true) },
+                    onDirectMessage = { partner ->
+                        // Keep Profile on the LIFO route stack. A forced close and
+                        // preliminary Messages tab change discard the return path.
+                        viewModel.openChatWithUser(partner, currentProfileToDisplay.fullName, currentProfileToDisplay.avatarUrl)
+                    },
+                    onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
+                    onLikePost = { viewModel.togglePostLike(it) },
+                    onOpenPost = { postId ->
+                        (profilePosts + profileLikedPosts + profileSavedPosts)
+                            .firstOrNull { it.id == postId }
+                            ?.let { viewModel.openProfilePost(it) }
+                    },
+                    onCommentPost = { viewModel.openCommentsForPost(it) },
+                    onBookmarkPost = { viewModel.toggleBookmark(it) },
+                    onSharePost = { sharePostOrReel(it) },
+                    onOptionsClick = { viewModel.openPostOptions(it) },
+                    onDeletePost = { viewModel.deletePost(it) },
+                    onProfileClick = { viewModel.openProfile(it) },
+                    onMarketItemClick = { viewModel.openProductDetail(it) },
+                    onOpenGetVerified = { viewModel.openGetVerified(true) },
+                    blinkCoinBalance = if (isMyProfile) uiState.blinkCoinBalance else 0L,
+                    economyPolicy = uiState.economyPolicy,
+                    rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
+                    onWatchAdForCoins = onWatchAdForCoins,
+                    onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                    onOpenCoinsWallet = { walletOpenedFromMenu = false; showWallet = true },
+                    isDark = uiState.isDarkMode,
+                    currentUserId = uiState.myProfile.id,
+                    selectedMainTabRoute = when (uiState.selectedTab) {
+                        MainTab.MARKET -> "market"
+                        MainTab.MESSAGES -> "messages"
+                        MainTab.HOME -> when (uiState.feedSubTab) {
+                            1 -> "reels"
+                            2 -> "connect"
+                            else -> "home"
+                        }
+                        else -> "home"
+                    },
+                    onNavigateMainTab = { tab ->
+                        // Primary navigation records the outgoing profile route.
+                        when (tab) {
+                            "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                            "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                            "market" -> viewModel.setTab(MainTab.MARKET)
+                            "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                            "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                            "leaderboard" -> viewModel.navigateToPrimaryTab(MainTab.LEADERBOARD)
+                        }
+                    },
+                    onTopAction = { action ->
+                        // Preserve the profile route when heading to Search.
+                        when (action) {
+                            "search" -> viewModel.setTab(MainTab.SEARCH)
+                            "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                            "notifications" -> viewModel.openActivity(true)
+                        }
+                    },
+                    isProfileRefreshing = profileKey in uiState.profileSurfaceLoadingIds,
+                    onFollowChanged = { viewModel.refreshViewedProfile() },
+                    onRefreshProfile = {
+                        viewModel.refreshProgressState()
+                        viewModel.refreshViewedProfile()
+                        viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
+                    }
+                )
+            }
+        }
+
+        // Sub-screen Overlays: Post Item Screen
+        AnimatedVisibility(
+            visible = uiState.isPostItemOpen,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            PostItemScreen(
+                onBack = { viewModel.openPostItem(false) },
+                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation, videoSource ->
+                    viewModel.addMarketItem(
+                        title = title,
+                        price = price,
+                        category = category,
+                        condition = condition,
+                        description = description,
+                        imageSources = images,
+                        quantity = quantity,
+                        negotiable = negotiable,
+                        deliveryMethod = deliveryMethod,
+                        pickupLocation = pickupLocation,
+                        videoSource = videoSource
+                    )
+                },
+                isPublishing = uiState.isPublishingMarketItem,
+                isDark = uiState.isDarkMode
+            )
+        }
+
+        // Sub-screen Overlays: Become Seller Screen
+        AnimatedVisibility(
+            visible = uiState.isBecomeSellerOpen,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            BecomeSellerScreen(
+                onBack = { viewModel.openBecomeSeller(false) },
+                onSuccess = { storeName, phone, whatsapp, state, city, university, sellerKind, description, category, delivery, pickup ->
+                    viewModel.activateSellerAccount(
+                        storeName, phone, whatsapp, state, city, university,
+                        sellerKind, description, category, delivery, pickup
+                    )
+                },
+                initialStoreName = uiState.myProfile.sellerStoreName,
+                initialPhone = uiState.myProfile.phone.value,
+                initialWhatsapp = uiState.myProfile.whatsapp.value,
+                isVerified = uiState.myProfile.hasActiveMarketVerification(),
+                initialUniversity = uiState.myProfile.university,
+                isSubmitting = uiState.isSellerActivationLoading,
+                isDark = uiState.isDarkMode
+            )
+        }
+
+        // Sub-screen Overlays: Edit Profile Screen
+        AnimatedVisibility(
+            visible = uiState.isEditProfileOpen,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            EditProfileScreen(
+                profile = uiState.myProfile,
+                onBack = { viewModel.openEditProfile(false) },
+                onSave = { updated ->
+                    viewModel.onProfilePersisted(updated)
+                },
+                isDark = uiState.isDarkMode
+            )
+        }
+
+        sharingPostId?.let { requestedId ->
+            val sharedPost = findShareablePost(requestedId)
+            if (sharedPost == null) {
+                LaunchedEffect(requestedId) { sharingPostId = null }
+            } else {
+                val type = if (sharedPost.isReel) ShareContentType.REEL else ShareContentType.POST
+                val url = ShareLinkManager.generateShareLink(type, sharedPost.id)
+                BlinkNativeShareSheet(
+                    post = sharedPost,
+                    recentChats = uiState.conversations,
+                    suggestedUsers = (uiState.profiles + uiState.discoverProfiles).distinctBy { it.id },
+                    searchUsers = { query -> viewModel.searchMentionProfiles(query, limit = 60) },
+                    currentUsername = uiState.myProfile.username,
+                    onDismiss = { sharingPostId = null },
+                    onSendToUsers = { usernames ->
+                        usernames.distinctBy { it.trim().lowercase() }
+                            .take(15).forEach { username ->
+                                viewModel.sendMessage(username, url)
+                            }
+                        // One share event per explicit send action, not per selected recipient.
+                        if (usernames.isNotEmpty()) {
+                            viewModel.sharePost(sharedPost.id)
+                            viewModel.showToast("Queued ${usernames.size} share message(s). Check Messages for delivery.")
+                        }
+                        sharingPostId = null
+                    },
+                    onCopyLink = {
+                        ShareLinkManager.copyLink(context, type, sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onStory = {
+                        // Prefill the real permalink in Story composer, without claiming
+                        // to have published anything or bypassing the media picker.
+                        storySharePrefill = url
+                        storyShareCardLabel = listOf(
+                            sharedPost.author.trim(),
+                            sharedPost.text.trim().take(180)
+                        ).filter { it.isNotBlank() }.joinToString("\n")
+                        sharingPostId = null
+                        viewModel.openCreateStory(true)
+                    },
+                    onWhatsApp = {
+                        val text = listOfNotNull(sharedPost.text.take(140).takeIf { it.isNotBlank() }, url).joinToString("\n")
+                        var launched = false
+                        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+                            if (launched) break
+                            launched = runCatching {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    setPackage(pkg)
+                                    this.type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                })
+                                true
+                            }.getOrDefault(false)
+                        }
+                        if (!launched) ShareLinkManager.share(
+                            context, type, sharedPost.id, "Share on BLINK", sharedPost.text.take(140))
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onOtherApps = {
+                        ShareLinkManager.share(context, type, sharedPost.id,
+                            "Share on BLINK", sharedPost.text.take(180),
+                            sharedPost.images.firstOrNull())
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    }
+                )
+            }
+        }
+
+        // Modals: Comments Modal Sheet with reply & like interactions
+        if (uiState.activeCommentsPostId != null && uiState.deepLinkedPost == null) {
+            CommentSheet(
+                comments = uiState.comments,
+                isLoading = uiState.isCommentsLoading,
+                isPosting = uiState.isPostingComment,
+                currentUserId = uiState.myProfile.id,
+                draftKey = uiState.activeCommentsPostId.orEmpty(),
+                mentionCandidates = (listOf(uiState.myProfile) + uiState.profiles)
+                    .filter { it.username.isNotBlank() }
+                    .distinctBy { it.username.trim().removePrefix("@").lowercase() },
+                onSearchMentions = { query, limit, afterUsername, afterId ->
+                    viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                },
+                isDark = uiState.isDarkMode,
+                onDismiss = { viewModel.openCommentsForPost(null) },
+                onSendComment = { text, parentCommentId ->
+                    uiState.activeCommentsPostId?.let { postId ->
+                        viewModel.addComment(postId, text, parentCommentId)
+                    }
+                },
+                onToggleCommentLike = { commentId ->
+                    viewModel.toggleCommentLike(commentId)
+                },
+                onReportComment = { commentId, reason ->
+                    viewModel.reportComment(commentId, reason)
+                },
+                onProfileClick = { username ->
+                    viewModel.openCommentsForPost(null)
+                    viewModel.openProfile(username)
+                }
+            )
+        }
+
+        // Modals: Post Options Menu Sheet (Save, Share, Delete, Report, Mute)
+        uiState.activePostOptionsPost?.let { post ->
+            PostOptionsMenuSheet(
+                post = post,
+                isAuthor = post.author.equals(uiState.myProfile.username, ignoreCase = true),
+                isDark = uiState.isDarkMode,
+                onDismiss = { viewModel.openPostOptions(null) },
+                onToggleSave = { viewModel.toggleBookmark(post.id) },
+                onShare = { sharePostOrReel(post.id) },
+                onDelete = { viewModel.deletePost(post.id) },
+                onReport = { reason -> viewModel.reportPost(post.id, reason) },
+                onMuteUser = { username -> viewModel.muteUser(username) },
+                onNotInterested = { viewModel.markPostNotInterested(post.id) }
+            )
+        }
+
+        // Sub-screen Overlays: Chat Conversation
+        AnimatedVisibility(
+            visible = uiState.isConversationFullScreen && uiState.activeConversationPartner != null && uiState.selectedTab != MainTab.MESSAGES,
+            enter = fadeIn(tween(180)),
+            exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(390)) + fadeOut(tween(220))
+        ) {
+            val convo = uiState.conversations.find { it.partnerUsername == uiState.activeConversationPartner }
+            if (convo != null) {
+                com.example.ui.screens.ChatConversationView(
+                    convo = convo,
+                    onBack = { viewModel.closeConversation() },
+                    onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
+                    onSendMessageWithReply = { text, replyTo ->
+                        viewModel.sendMessage(convo.partnerUsername, text, replyToMessageId = replyTo)
+                    },
+                    onForwardMessage = { target, message -> viewModel.forwardChatMessage(target, message) },
+                    onPresenceChange = { state -> viewModel.updateChatPresence(convo.partnerUsername, state) },
+                    interactionActions = messageInteractionActions(viewModel),
+                    chatPrivacySettings = uiState.chatPrivacySettings,
+                    allConversations = uiState.conversations,
+                    isLoadingMessages = uiState.loadingInitialConversationId == convo.id,
+                    onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
+                    onSendVideoAlbum = { videos ->
+                        viewModel.sendVideoAlbum(convo.partnerUsername, videos)
+                    },
+                    onSendAttachment = { uri, kind, _, caption, quality, album ->
+                        viewModel.sendAttachmentMessage(
+                            convo.partnerUsername, uri, kind,
+                            caption = caption, imageQuality = quality, album = album
+                        )
+                    },
+                    onSendViewOncePicture = { uri, caption, quality ->
+                        viewModel.sendViewOncePicture(convo.partnerUsername, uri, caption, quality)
+                    },
+                    onProfileClick = { username ->
+                        viewModel.openProfileFromChat(username)
+                    },
+                    isDark = uiState.isDarkMode,
+                    isConnected = uiState.isOnline,
+                    onRetryMessage = { msg ->
+                        viewModel.retrySendMessage(convo.partnerUsername, msg)
+                    },
+                    onCancelAttachment = { msg ->
+                        viewModel.cancelAttachmentMessage(convo.partnerUsername, msg)
+                    },
+                    hasMoreMessages = uiState.messageHistoryHasMore[convo.id] ?: true,
+                    isLoadingOlder = uiState.loadingOlderConversationId == convo.id,
+                    onLoadOlder = { viewModel.loadOlderMessages(convo.partnerUsername) }
+                )
+            }
+        }
+
+        // Sub-screen Overlays: Notification Center (Activity)
+        AnimatedVisibility(
+            visible = uiState.isActivityOpen,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        ) {
+            ActivityScreen(
+                activities = uiState.activities,
+                accountId = uiState.myProfile.id,
+                onBack = { viewModel.openActivity(false) },
+                onProfileClick = { username ->
+                    viewModel.openActivity(false)
+                    viewModel.openProfile(username)
+                },
+                onNotificationClick = { activity ->
+                    viewModel.handleNotificationClick(activity)
+                    when (activity.targetType?.lowercase()) {
+                        "channel" -> {
+                            val id = activity.targetResourceId.orEmpty()
+                            if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
+                                context.startActivity(
+                                    Intent(context, ProfessionalCenterActivity::class.java)
+                                        .putExtra("section", "communities")
+                                        .putExtra("channel_id", id)
+                                )
+                            } else viewModel.openActivity(true)
+                        }
+                        "giveaway", "drops" -> context.startActivity(
+                            Intent(context, BlinkDropsActivity::class.java)
+                                .putExtra(BlinkDropsActivity.EXTRA_DROP_ID, activity.targetResourceId)
+                        )
+                        "boost" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(0)
+                            feedUtilitySheet = "boost"
+                        }
+                        "items" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(0)
+                            feedUtilitySheet = "items"
+                        }
+                        "wallet", "coins", "coin", "reward", "coin_gift" -> {
+                            walletOpenedFromMenu = false
+                            showWallet = true
+                        }
+                    }
+                },
+                isDark = uiState.isDarkMode,
+                isConnected = uiState.isOnline,
+                isLoading = uiState.activitiesLoading,
+                errorMessage = uiState.activitiesError,
+                onRefresh = { viewModel.refreshNotifications() },
+                onLoadMore = { viewModel.loadOlderNotifications() },
+                hasMore = uiState.activitiesHasMore,
+                isLoadingMore = uiState.activitiesLoadingMore,
+                onMarkAllRead = { viewModel.markAllActivitiesRead() },
+                onToggleRead = { activity -> viewModel.toggleActivityReadState(activity) }
+            )
+        }
+
+        // Modals: Get Verified Sheet (Blue ₦800, Gold 1k followers + ₦2,000)
+        if (uiState.isGetVerifiedOpen) {
+            GetVerifiedSheet(
+                profile = uiState.myProfile,
+                isDark = uiState.isDarkMode,
+                blinkCoinBalance = uiState.blinkCoinBalance,
+                economyPolicy = uiState.economyPolicy,
+                rewardedAdsToday = uiState.rewardedAdsToday,
+                dailyMissions = uiState.dailyMissions,
+                isDailyMissionsLoading = uiState.isDailyMissionsLoading,
+                onDismiss = { viewModel.openGetVerified(false) },
+                onWatchAdForCoins = onWatchAdForCoins,
+                onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
+                onClaimDailyMission = { viewModel.claimDailyMission(it) },
+                onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
+                onUpgrade = { tier, months ->
+                    if (tier != com.example.data.models.VerificationBadge.NONE)
+                        startV2Checkout("verification", tier.name, months)
+                },
+                pendingCashPayment = v2PendingReference != null,
+                cashCheckoutBusy = v2PaymentBusy,
+                onCheckCashPayment = { confirmV2Payment() },
+                onPaymentHistory = { openV2Receipts() },
+                renewalStatus = v2RenewalStatus,
+                renewalWorking = v2RenewalBusy,
+                onLoadRenewal = { refreshV2RenewalStatus() },
+                onEnableRenewal = { updateV2Renewal(true) },
+                onCancelRenewal = { updateV2Renewal(false) }
+            )
+        }
+
+        if (v2PendingReference != null && v2PendingPrompt && !uiState.isGetVerifiedOpen) {
+            AlertDialog(
+                onDismissRequest = { v2PendingPrompt = false },
+                title = { Text("Confirm your Paystack payment") },
+                text = { Text("After checkout, BLINK verifies your payment with Paystack before granting benefits.") },
+                confirmButton = {
+                    TextButton(enabled = !v2PaymentBusy, onClick = { confirmV2Payment() }) {
+                        Text("I've paid · Verify")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { v2PendingPrompt = false }) { Text("Later") }
+                }
+            )
+        }
+        if (showGiftPurchase) {
+            AlertDialog(
+                onDismissRequest = { showGiftPurchase = false },
+                title = { Text("Gift BLINK Coins") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("Choose a BLINK username and a coin pack. The recipient receives coins after payment confirmation.")
+                        OutlinedTextField(
+                            value = giftRecipient, onValueChange = { giftRecipient = it.take(40) },
+                            label = { Text("Recipient username") },
+                            singleLine = true, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = giftMessage, onValueChange = { giftMessage = it.take(160) },
+                            label = { Text("Gift message (optional)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.closeCoinPackPicker()
+                                showGiftPurchase = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🎁 Gift BLINK Coins to a friend") }
+                        uiState.economyPolicy.coinPacks.forEach { pack ->
+                            OutlinedButton(
+                                enabled = !v2PaymentBusy &&
+                                    giftRecipient.matches(Regex("^[a-zA-Z0-9_.]{2,40}$")) &&
+                                    uiState.economyPolicy.cashCheckoutEnabled,
+                                onClick = { startV2GiftCheckout(giftRecipient,pack.id,giftMessage) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Gift ${pack.coins} Coins · ₦${pack.priceNgn}") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showGiftPurchase = false }) { Text("Close") }
+                }
+            )
+        }
+        if (refundReference != null) {
+            AlertDialog(
+                onDismissRequest = { refundReference = null },
+                title = { Text("Request payment refund") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Refunds require a review and are not automatically approved.")
+                        OutlinedTextField(
+                            value = refundReason,onValueChange = { refundReason = it.take(1000) },
+                            label = { Text("Reason for refund (at least 10 characters)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = refundReason.trim().length>=10 && !v2PaymentBusy,
+                        onClick = {
+                            val reference=refundReference ?: return@TextButton
+                            v2PaymentBusy=true
+                            paymentScope.launch {
+                                try {
+                                    paystackV2.requestRefund(reference,refundReason)
+                                    refundReference=null
+                                    refundReason=""
+                                    viewModel.showToast("Refund request sent for review.")
+                                }catch(error:Exception){
+                                    viewModel.showToast(error.message ?: "Could not request refund.")
+                                }finally{v2PaymentBusy=false}
+                            }
+                        }
+                    ) { Text("Submit request") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { refundReference = null }) { Text("Cancel") }
+                }
+            )
+        }
+        if (showV2Receipts) {
+            AlertDialog(
+                onDismissRequest = { showV2Receipts = false },
+                title = { Text("Paystack payment history") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        when {
+                            receiptsLoading -> CircularProgressIndicator()
+                            receiptsError != null -> Text(receiptsError.orEmpty())
+                            v2Receipts.isEmpty() -> Text("No Paystack purchases yet.")
+                            else -> v2Receipts.take(8).forEach { receipt ->
+                                Text("${receipt.createdAt} · ${receipt.itemCode} · ₦${receipt.amountNgn} · ${receipt.status}")
+                                if (receipt.status == "fulfilled" &&
+                                    receipt.kind in setOf("marketplace","gift")) {
+                                    TextButton(onClick = {
+                                        refundReference = receipt.reference
+                                        showV2Receipts = false
+                                    }) { Text("Request refund") }
+                                }
+                                if (receipt.status == "fulfilled" &&
+                                    receipt.kind == "marketplace") {
+                                    TextButton(onClick = {
+                                        paymentScope.launch {
+                                            try {
+                                                paystackV2.confirmMarketDelivery(receipt.reference)
+                                                viewModel.showToast("Delivery confirmed. Seller settlement enters review.")
+                                            }catch(error:Exception){
+                                                viewModel.showToast(error.message ?: "Unable to confirm delivery.")
+                                            }
+                                        }
+                                    }) { Text("Confirm item received") }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showV2Receipts = false }) { Text("Close") }
+                }
+            )
+        }
+
+        if (uiState.isCoinPackPickerOpen) {
+            AlertDialog(
+                onDismissRequest = { viewModel.closeCoinPackPicker() },
+                title = { Text("Choose a Blink Coin pack") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Paystack will open a secure hosted checkout. Coins are delivered only after server verification.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        uiState.economyPolicy.coinPacks.forEach { pack ->
+                            OutlinedButton(
+                                onClick = { startV2Checkout("coin_pack", pack.id, 1); viewModel.closeCoinPackPicker() },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text("₦${pack.priceNgn} → ${pack.coins} coins")
+                                    if (pack.bonusCoins > 0) {
+                                        Text(
+                                            "+${pack.bonusCoins} bonus coins",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { viewModel.closeCoinPackPicker() }) { Text("Cancel") }
+                }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = uiState.isCreateStoryOpen,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            CreateStoryScreen(
+                profile = uiState.myProfile,
+                isUploading = uiState.isCreatingStory,
+                initialCaption = storySharePrefill,
+                initialShareCardLabel = storyShareCardLabel,
+                onBack = {
+                    storySharePrefill = ""
+                    storyShareCardLabel = ""
+                    viewModel.openCreateStory(false)
+                },
+                onPublish = { uri, caption, isVideo ->
+                    storySharePrefill = ""
+                    storyShareCardLabel = ""
+                    viewModel.publishStory(uri, caption, isVideo)
+                }
+            )
+        }
+
+        // Modals: Create Post Sheet
+        if (uiState.isCreatePostOpen) {
+            CreatePostSheet(
+                profile = uiState.myProfile,
+                savedDrafts = uiState.savedDrafts,
+                scheduledPosts = uiState.scheduledPosts,
+                onDismiss = { startReelComposer = false; viewModel.openCreatePost(false) },
+                onOpenMarket = {
+                    startReelComposer = false
+                    viewModel.openCreatePost(false)
+                    viewModel.setTab(MainTab.MARKET)
+                    // Preserve the verified-seller market composer added to main.
+                    if (uiState.myProfile.isSellerActive &&
+                        uiState.myProfile.hasActiveMarketVerification()
+                    ) {
+                        viewModel.openPostItem(true)
+                    }
+                },
+                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
+                    // Keep the composer alive until Supabase confirms the save. The ViewModel
+                    // closes it only after success, so a failed publish keeps the user's draft.
+                    viewModel.addPost(
+                        text = text,
+                        faculty = faculty,
+                        imageUri = imageUri,
+                        videoUri = videoUri,
+                        tags = tags,
+                        mentions = mentions,
+                        poll = poll,
+                        isReel = isReel,
+                        audience = audience,
+                        category = category,
+                        location = location,
+                        linkUrl = linkUrl,
+                        allowComments = allowComments,
+                        hideLikes = hideLikes,
+                        isPinned = isPinned,
+                        isDisappearing = isDisappearing,
+                        audioTitle = audioTitle,
+                        altText = altText,
+                        textStyle = textStyle,
+                        clientRequestId = clientRequestId
+                    )
+                },
+                onSaveDraft = { draft ->
+                    viewModel.saveDraft(draft)
+                },
+                onDeleteDraft = { draftId ->
+                    viewModel.deleteDraft(draftId)
+                },
+                onSchedulePost = { post, timeMillis, timeFormatted ->
+                    viewModel.schedulePost(post, timeMillis, timeFormatted)
+                },
+                onPublishScheduledPostNow = { scheduleId ->
+                    viewModel.publishScheduledPostNow(scheduleId)
+                },
+                onCancelScheduledPost = { scheduleId ->
+                    viewModel.deleteScheduledPost(scheduleId)
+                },
+                isDark = uiState.isDarkMode,
+                startInReelMode = startReelComposer,
+                isSubmitting = uiState.isCreatingPost,
+                uploadProgress = uiState.postUploadProgress,
+                searchMentions = { query, limit, afterUsername, afterId ->
+                    viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                }
+            )
+        }
+
+        // BLINK Menu reference — all routes preserve existing production services.
+        if (uiState.isMenuOpen && !showWallet) {
+            BlinkReferenceMenuScreen(
+                profile = uiState.myProfile,
+                isDark = uiState.isDarkMode,
+                hasUnreadNotifications = uiState.activities.any { it.isUnread && com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.belongsInActivityTimeline(it.targetType) },
+                appVersion = BuildConfig.VERSION_NAME,
+                onDismiss = { viewModel.openMenu(false) },
+                onViewProfile = {
+                    showSavedProfile = false
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onLeaderboard = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.LEADERBOARD)
+                },
+                onWallet = {
+                    viewModel.openMenu(false)
+                    walletOpenedFromMenu = true
+                    showWallet = true
+                },
+                onNotifications = {
+                    viewModel.openMenu(false)
+                    viewModel.openActivity(true)
+                },
+                onSaved = {
+                    showSavedProfile = true
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onVerification = {
+                    viewModel.openMenu(false)
+                    viewModel.openGetVerified(true)
+                },
+                onSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java)
+                            .putExtra("section", "privacy"),
+                        "Could not open settings."
+                    )
+                },
+                onToggleTheme = { viewModel.toggleDarkMode() },
+                onCallSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.notification.NotificationAndCallSettingsActivity::class.java),
+                        "Could not open call settings."
+                    )
+                },
+                onSwitchAccount = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.auth.AccountSwitcherActivity::class.java),
+                        "Could not switch account."
+                    )
+                },
+                onOpenAdmin = {
+                    viewModel.openMenu(false)
+                    if (canOpenAdmin) context.startActivitySafely(
+                        Intent(context, AdminControlCenterActivity::class.java),
+                        "Could not open administration."
+                    )
+                },
+                canOpenAdmin = canOpenAdmin,
+                onMessages = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
+                onEditProfile = {
+                    viewModel.openMenu(false)
+                    viewModel.openEditProfile(true)
+                },
+                onFindFriends = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onPostItem = {
+                    viewModel.openMenu(false)
+                    viewModel.openPostItem(true)
+                },
+                onSellerHub = {
+                    viewModel.openMenu(false)
+                    viewModel.openBecomeSeller(true)
+                },
+                onScheduledPosts = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "scheduled"),
+                        "Could not open scheduled posts."
+                    )
+                },
+                onGroups = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "groups"),
+                        "Could not open groups."
+                    )
+                },
+                onOrdersAndWishlist = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "market"),
+                        "Could not open orders."
+                    )
+                },
+                onCallHistory = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.call.CallHistoryActivity::class.java),
+                        "Could not open call history."
+                    )
+                },
+                showAdPrivacyOptions = isAdPrivacyOptionsRequired,
+                onAdPrivacyOptions = {
+                    viewModel.openMenu(false)
+                    onAdPrivacyOptions()
+                },
+                onLogOut = {
+                    viewModel.openMenu(false)
+                    showWallet = false
+                    viewModel.logout()
+                },
+                onSearch = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onGames = {
+                    viewModel.openMenu(false)
+                    feedUtilitySheet = "items"
+                },
+                onOpenUpdateWebsite = onOpenWebsiteUpdate,
+                onOpenHelpWebsite = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.blink.com.ng"))
+                                .addCategory(Intent.CATEGORY_BROWSABLE)
+                        )
+                    }
+                },
+                onHome = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                },
+                onReels = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                },
+                onMarket = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.MARKET)
+                },
+                onConnect = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                }
+            )
+        }
+
+        // The wallet always reads this account's authoritative state from Supabase.
+        if (showWallet && uiState.myProfile.id.isNotBlank()) {
+            BlinkWalletScreen(
+                accountId = uiState.myProfile.id,
+                lastKnownBalance = uiState.blinkCoinBalance,
+                dailyStreak = uiState.myProfile.dailyStreak,
+                adsToday = uiState.rewardedAdsToday,
+                policy = uiState.economyPolicy,
+                missions = uiState.dailyMissions,
+                loadingMissions = uiState.isDailyMissionsLoading,
+                isDark = uiState.isDarkMode,
+                isVerified = uiState.myProfile.hasActiveMarketVerification(),
+                onVerifyCoins = { viewModel.verifyBlueWithCoins() },
+                onBuyPack = { pack -> startV2Checkout("coin_pack", pack.id, 1) },
+                onBack = {
+                    showWallet = false
+                    if (walletOpenedFromMenu) viewModel.openMenu(true)
+                },
+                onRefresh = { viewModel.refreshProfileRewards() },
+                onClaimMission = { viewModel.claimDailyMission(it) },
+                onWatchOptionalAd = onWatchAdForCoins,
+                onOpenVerification = {
+                    showWallet = false
+                    viewModel.openGetVerified(true)
+                },
+                onOpenStore = {
+                    if (BlinkStoreAvailability.isPaused) {
+                        showStoreComingSoon = true
+                    } else context.startActivitySafely(
+                        Intent(context, BlinkStoreActivity::class.java),
+                        "Unable to open BLINK Store."
+                    )
+                }
+            )
+        }
+
+        // Modals: Interactive Fullscreen Story Viewer
+        uiState.activeViewingStory?.let { activeStory ->
+            StoryViewerDialog(
+                stories = uiState.stories,
+                initialStory = activeStory,
+                currentUserId = "you",
+                onDismiss = { viewModel.closeStory() },
+                onStoryViewed = { storyId -> viewModel.markStoryViewed(storyId) },
+                onLikeStory = { storyId -> viewModel.toggleStoryLike(storyId) },
+                onReactStory = { storyId, emoji -> viewModel.reactToStory(storyId, emoji) },
+                onReplyStory = { username, text -> viewModel.replyToStory(username, text) },
+                onProfileClick = { username -> viewModel.openProfile(username) }
+            )
+        }
+
+        // Modals: Seller Congratulations Dialog
+        if (uiState.showSellerCongratulationsDialog) {
+            SellerCongratulationsDialog(
+                storeName = uiState.myProfile.sellerStoreName,
+                onDismiss = { viewModel.dismissSellerCongratulations() },
+                onCreatePost = {
+                    viewModel.dismissSellerCongratulations()
+                    viewModel.openPostItem(true)
+                },
+                isDark = uiState.isDarkMode
+            )
+        }
+    }
+}

@@ -1,0 +1,93 @@
+name: BLINK Paystack merchant TEST-mode gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Create a test checkout or verify its transaction reference
+        required: true
+        type: choice
+        options: [initialize, verify]
+      reference:
+        description: Required for verify. Only references created by this test gate.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  paystack-merchant-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      PAYSTACK_TEST_SECRET_KEY: ${{ secrets.PAYSTACK_TEST_SECRET_KEY }}
+      PAYSTACK_TEST_EMAIL: ${{ secrets.BLINK_PAYSTACK_TEST_EMAIL }}
+      GATE_OPERATION: ${{ inputs.operation }}
+      GATE_REFERENCE: ${{ inputs.reference }}
+    steps:
+      - name: Verify TEST-mode provider and transaction
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,sys,uuid,urllib.request,urllib.error
+          key=os.environ.get("PAYSTACK_TEST_SECRET_KEY","")
+          email=os.environ.get("PAYSTACK_TEST_EMAIL","")
+          if not key.startswith("sk_test_") or len(key)<16:
+              sys.exit("BLOCKED: a Paystack TEST secret is required; no live keys accepted.")
+          if not email or "@" not in email:
+              sys.exit("BLOCKED: configure private BLINK_PAYSTACK_TEST_EMAIL repository secret.")
+          action=os.environ.get("GATE_OPERATION","")
+          reference=os.environ.get("GATE_REFERENCE","").strip()
+          body=None
+          if action=="initialize":
+              reference="blink-testgate-"+uuid.uuid4().hex
+              body=json.dumps({
+                  "email":email,"reference":reference,"amount":10000,
+                  "currency":"NGN","callback_url":"https://blink.com.ng"
+              }).encode()
+              endpoint="transaction/initialize"
+          elif action=="verify" and reference.startswith("blink-testgate-") and len(reference)==47:
+              endpoint="transaction/verify/"+reference
+          else: sys.exit("BLOCKED: enter a valid test-gate reference.")
+          request=urllib.request.Request(
+              "https://api.paystack.co/"+endpoint, data=body,
+              headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},
+              method="POST" if body else "GET"
+          )
+          try:
+              with urllib.request.urlopen(request,timeout=25) as response:
+                  payload=json.loads(response.read(200000))
+          except urllib.error.HTTPError as error:
+              sys.exit(f"Paystack TEST merchant API returned HTTP {error.code}")
+          data=payload.get("data") or {}
+          if payload.get("status") is not True: sys.exit("Provider rejected test request.")
+          if action=="initialize":
+              link=str(data.get("authorization_url",""))
+              if not link.startswith("https://checkout.paystack.com/"):
+                  sys.exit("Provider checkout domain invalid.")
+              if data.get("reference")!=reference:sys.exit("Reference mismatch.")
+              print("PASS: Paystack test-mode transaction initialized (no money charged).")
+              summary=(
+                "## Paystack test checkout initialized\n\n"
+                f"Reference: `{reference}`\n\n"
+                f"Complete with Paystack's TEST card in the hosted page: {link}\n\n"
+                "Then rerun this gate using `verify` with the same reference.\n"
+                "**This alone does not test BLINK fulfillment or permit LIVE activation.**\n"
+              )
+          else:
+              status=data.get("status","unknown")
+              if data.get("domain")!="test" or data.get("currency")!="NGN" or data.get("amount")!=10000:
+                  sys.exit("BLOCKED: mode, currency or paid amount mismatch.")
+              if data.get("reference")!=reference:sys.exit("Reference mismatch.")
+              print("Paystack test transaction state:",status)
+              if status!="success":sys.exit("Payment not completed; no fulfillment permitted.")
+              summary=(
+                "## Verified Paystack TEST-mode purchase\n\n"
+                f"Reference: `{reference}`\n\nStatus: success (TEST-mode)\n\n"
+                "Next test signed callbacks and BLINK database fulfillment in an isolated environment.\n"
+              )
+          path=os.environ.get("GITHUB_STEP_SUMMARY")
+          if path:
+              with open(path,"a",encoding="utf8") as file:file.write(summary)
+          PY

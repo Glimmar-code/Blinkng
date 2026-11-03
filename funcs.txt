@@ -1,0 +1,75 @@
+310:    private fun observeAuthState() {
+378:    private suspend fun restoreSupabaseSession() {
+419:    private fun restoreLocalSession() {
+527:    private fun saveLocalProfile(
+576:    private fun saveSession(
+586:    private fun startServerStatusMonitoring() {
+624:    fun fetchSupabaseData() {
+727:    suspend fun refreshMyProfileFromSupabase(
+784:    fun signInWithCredentials(
+868:    fun loginWithGoogle(
+970:    fun sendPasswordReset(
+1046:    fun signUp(
+1152:    fun completeProfileOnboarding(
+1306:    fun navigateTo(
+1317:    fun setDestination(
+1325:    fun selectTab(
+1342:    fun setTab(
+1350:    fun setFeedSubTab(
+1364:    fun toggleDarkMode() {
+1374:    fun openMenu(
+1385:    fun openActivity(
+1396:    fun openCommentsForPost(
+1412:    fun openPostOptions(
+1423:    fun openCreatePost(
+1434:    fun openPostItem(
+1445:    fun openBecomeSeller(
+1456:    fun openEditProfile(
+1467:    fun openGetVerified(
+1482:    fun isMe(
+1502:    fun openProfile(
+1564:    fun closeProfile() {
+1573:    fun updateProfile(
+1627:    fun updateMyProfile(
+1635:    private fun updateLocalAuthorData(
+1727:    private fun loadDraftsFromPrefs() {
+1762:    private fun saveDraftsToPrefs(drafts: List<PostDraft>) {
+1785:    fun saveDraft(draft: PostDraft) {
+1792:    fun deleteDraft(draftId: String) {
+1799:    fun schedulePost(
+1818:    fun deleteScheduledPost(id: String) {
+1824:    fun publishScheduledPostNow(id: String) {
+1841:    fun addPost(
+1957:    private suspend fun uploadPostUri(
+2037:    fun togglePostLike(
+2100:    fun toggleBookmark(postId: String) {
+2182:    fun sharePost(
+2233:    fun deletePost(postId: String) {
+2262:    fun reportPost(
+2278:    fun muteUser(
+2326:    fun votePoll(
+2432:    fun addComment(
+2459:    fun toggleCommentLike(
+2495:    fun openChatWithUser(
+2575:    fun closeConversation() {
+2586:    fun sendMessage(
+2691:    fun addMarketListing(
+2732:    fun addMarketItem(
+2798:    fun openProductDetail(
+2809:    fun closeProductDetail() {
+2818:    fun activateSellerAccount(
+2855:    fun dismissSellerCongratulations() {
+2863:    fun endorseSkill(
+2922:    fun applyVerification(
+3022:    fun recordPostView(
+3106:    fun handleNotificationClick(
+3192:    fun logout() {
+3233:    fun simulateBackgroundNotification(
+3333:    fun openStory(story: Story) {
+3346:    fun closeStory() {
+3352:    fun markStoryViewed(storyId: String) {
+3359:    fun toggleStoryLike(storyId: String) {
+3379:    fun reactToStory(storyId: String, emoji: String) {
+3392:    fun replyToStory(storyUsername: String, replyText: String) {
+3406:    fun showToast(
+3417:private fun String.capitalizeWords(): String {

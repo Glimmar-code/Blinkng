@@ -1,0 +1,500 @@
+from pathlib import Path
+import re
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    if new in text:
+        return
+    if old not in text:
+        raise SystemExit(f"Expected source fragment not found in {path}: {old[:120]!r}")
+    p.write_text(text.replace(old, new, 1))
+
+
+def regex_once(path: str, pattern: str, replacement: str, marker: str | None = None) -> None:
+    p = Path(path)
+    text = p.read_text()
+    if marker and marker in text:
+        return
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"Expected exactly one regex match in {path}; got {count}: {pattern[:120]}")
+    p.write_text(updated)
+
+
+# Project-wide Media3 opt-in is owned by lint.xml; keep Kotlin's @OptIn for Compose only.
+replace_once(
+    "app/src/main/java/com/example/ui/components/CreatePostSheet.kt",
+    "@OptIn(\n    androidx.compose.material3.ExperimentalMaterial3Api::class,\n    androidx.media3.common.util.UnstableApi::class\n)",
+    "@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)",
+)
+
+replace_once(
+    "app/src/main/java/com/example/ui/components/StudyCirclesPanel.kt",
+    "import androidx.compose.foundation.layout.width\n",
+    "import androidx.compose.foundation.layout.width\nimport androidx.compose.foundation.layout.weight\n",
+)
+replace_once(
+    "app/src/main/java/com/example/data/local/OfflineMutationQueue.kt",
+    ".setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)",
+    ".setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)",
+)
+replace_once(
+    "app/src/main/java/com/example/data/local/OfflineMutationWorker.kt",
+    "        if (store.pendingCount() > 0 && hadRetryableFailure) {\n            OfflineMutationStore.schedule(applicationContext)\n        }\n        return Result.success()",
+    "        return if (store.pendingCount() > 0 && hadRetryableFailure) Result.retry() else Result.success()",
+)
+replace_once(
+    "gradle/libs.versions.toml",
+    'desugarJdkLibs = "2.0.3"',
+    'desugarJdkLibs = "2.1.5"',
+)
+
+# Main ViewModel: durable scheduled posts + durable social mutation queue.
+vm = "app/src/main/java/com/example/viewmodel/BlinkViewModel.kt"
+replace_once(
+    vm,
+    "import com.example.data.local.OfflineContentStore\n",
+    "import com.example.data.local.OfflineContentStore\nimport com.example.data.local.OfflineMutationStore\n",
+)
+replace_once(
+    vm,
+    "    private val connectHubRepository = ConnectHubRepository(supabaseService)\n",
+    "    private val connectHubRepository = ConnectHubRepository(supabaseService)\n"
+    "    private val scheduledPostRepository = ScheduledPostRepository()\n"
+    "    private val offlineMutationStore = OfflineMutationStore(appContext)\n",
+)
+replace_once(
+    vm,
+    "        loadDraftsFromPrefs()\n",
+    "        loadDraftsFromPrefs()\n        OfflineMutationStore.schedule(appContext)\n",
+)
+replace_once(
+    vm,
+    '''                    val connectHub = runCatching { connectHubRepository.fetchSnapshot() }
+                        .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
+                        .getOrDefault(before.connectHub)
+
+                    val cloudStories = runCatching { supabaseService.fetchStories() }''',
+    '''                    val connectHub = runCatching { connectHubRepository.fetchSnapshot() }
+                        .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
+                        .getOrDefault(before.connectHub)
+
+                    val scheduledPosts = runCatching { scheduledPostRepository.fetchMine() }
+                        .onFailure { Log.e(TAG, "Scheduled post fetch failed", it) }
+                        .getOrDefault(before.scheduledPosts)
+
+                    val cloudStories = runCatching { supabaseService.fetchStories() }''',
+)
+replace_once(
+    vm,
+    "                        connectHub = connectHub,\n                        isConnectHubLoading = false,\n",
+    "                        connectHub = connectHub,\n                        scheduledPosts = scheduledPosts,\n                        isConnectHubLoading = false,\n",
+)
+replace_once(
+    vm,
+    "                    drainMessageOutbox()\n                    fetchSupabaseData()\n",
+    "                    drainMessageOutbox()\n                    OfflineMutationStore.schedule(appContext)\n                    fetchSupabaseData()\n",
+)
+
+schedule_block = '''    fun schedulePost(post: FeedPost, timeMillis: Long, timeFormatted: String) {
+        if (!_uiState.value.isOnline) {
+            showToast("Scheduling needs an internet connection so media can be uploaded securely.")
+            return
+        }
+        if (timeMillis < System.currentTimeMillis() + 60_000L) {
+            showToast("Choose a time at least one minute from now.")
+            return
+        }
+        val profile = _uiState.value.myProfile
+        val userId = supabaseService.getCurrentUserId()
+            ?: profile.id.takeIf { it.isNotBlank() }
+            ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val uploadedImages = post.images.map { input ->
+                    if (input.startsWith("content://")) {
+                        uploadPostUri(userId, input, false)
+                            ?: throw IllegalStateException("A selected image could not be uploaded.")
+                    } else input
+                }
+                val uploadedVideo = post.videoUrl?.let { input ->
+                    if (input.startsWith("content://")) {
+                        uploadPostUri(userId, input, true)
+                            ?: throw IllegalStateException("The selected video could not be uploaded.")
+                    } else input
+                }
+                val serverPost = post.copy(
+                    author = profile.username,
+                    authorAvatar = profile.avatarUrl,
+                    images = uploadedImages,
+                    videoUrl = uploadedVideo,
+                    isReel = post.isReel || !uploadedVideo.isNullOrBlank()
+                )
+                scheduledPostRepository.schedule(serverPost, timeMillis)
+                val live = scheduledPostRepository.fetchMine()
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(
+                        scheduledPosts = live,
+                        isCreatePostOpen = false
+                    )
+                    showToast("⏰ Post scheduled for $timeFormatted")
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "schedulePost failed", error)
+                withContext(Dispatchers.Main) {
+                    showToast(error.message ?: "Couldn't schedule this post.")
+                }
+            }
+        }
+    }
+
+    fun deleteScheduledPost(id: String) {
+        viewModelScope.launch {
+            runCatching { scheduledPostRepository.cancel(id) }
+                .onSuccess {
+                    val live = runCatching { scheduledPostRepository.fetchMine() }.getOrDefault(emptyList())
+                    _uiState.value = _uiState.value.copy(scheduledPosts = live)
+                    showToast("🗑️ Scheduled post cancelled")
+                }
+                .onFailure { showToast(it.message ?: "Couldn't cancel scheduled post.") }
+        }
+    }
+
+    fun publishScheduledPostNow(id: String) {
+        viewModelScope.launch {
+            runCatching { scheduledPostRepository.publishNow(id) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(
+                        scheduledPosts = runCatching { scheduledPostRepository.fetchMine() }.getOrDefault(emptyList())
+                    )
+                    fetchSupabaseData()
+                    showToast("✨ Scheduled post published")
+                }
+                .onFailure { showToast(it.message ?: "Couldn't publish scheduled post.") }
+        }
+    }
+
+    fun addPost('''
+regex_once(
+    vm,
+    r"    fun schedulePost\(post: FeedPost, timeMillis: Long, timeFormatted: String\) \{.*?\n    fun addPost\(",
+    schedule_block,
+    marker="Scheduling needs an internet connection so media can be uploaded securely.",
+)
+
+social_block = '''    fun togglePostLike(postId: String) {
+        val before = _uiState.value
+        var nextLiked = false
+        var nextCount = 0
+        val updatedPosts = before.posts.map {
+            if (it.id == postId) {
+                nextLiked = !it.isLiked
+                nextCount = (it.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
+                it.copy(isLiked = nextLiked, likes = nextCount)
+            } else it
+        }
+        val updatedReels = before.reels.map {
+            if (it.id == postId) {
+                nextLiked = !it.isLiked
+                nextCount = (it.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
+                it.copy(isLiked = nextLiked, likes = nextCount)
+            } else it
+        }
+        _uiState.value = before.copy(posts = updatedPosts, reels = updatedReels)
+        persistCurrentFeed()
+
+        if (!before.isOnline) {
+            viewModelScope.launch(Dispatchers.IO) {
+                offlineMutationStore.enqueuePostLike(postId, nextLiked, nextCount)
+            }
+            showToast("Like saved offline — it will sync automatically.")
+            return
+        }
+
+        viewModelScope.launch {
+            val result = runCatching { postRepository.togglePostLike(postId, nextLiked, nextCount) }
+            if (result.getOrDefault(false)) {
+                if (nextLiked) {
+                    val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
+                    if (target != null && target.author.isNotBlank()) {
+                        supabaseService.recordActivity(target.author, "liked your post", NotificationFilter.LIKES, postId, targetType = "POST")
+                    }
+                }
+            } else if (!_uiState.value.isOnline) {
+                withContext(Dispatchers.IO) {
+                    offlineMutationStore.enqueuePostLike(postId, nextLiked, nextCount)
+                }
+                showToast("Like queued for sync.")
+            } else {
+                _uiState.value = _uiState.value.copy(posts = before.posts, reels = before.reels)
+                persistCurrentFeed()
+                showToast("Failed to update like.")
+            }
+        }
+    }
+
+    fun toggleBookmark(postId: String) {
+        val before = _uiState.value
+        var next = false
+        val posts = before.posts.map {
+            if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it
+        }
+        val reels = before.reels.map {
+            if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it
+        }
+        _uiState.value = before.copy(posts = posts, reels = reels)
+        persistCurrentFeed()
+
+        if (!before.isOnline) {
+            viewModelScope.launch(Dispatchers.IO) { offlineMutationStore.enqueueBookmark(postId, next) }
+            showToast("Save action queued for sync.")
+            return
+        }
+        viewModelScope.launch {
+            val result = runCatching { postRepository.togglePostBookmark(postId, next) }
+            if (!result.getOrDefault(false)) {
+                if (!_uiState.value.isOnline) {
+                    withContext(Dispatchers.IO) { offlineMutationStore.enqueueBookmark(postId, next) }
+                    showToast("Save action queued for sync.")
+                } else {
+                    _uiState.value = _uiState.value.copy(posts = before.posts, reels = before.reels)
+                    persistCurrentFeed()
+                    showToast("Failed to update bookmark.")
+                }
+            }
+        }
+    }
+
+    fun sharePost(postId: String) {
+        val before = _uiState.value
+        val posts = before.posts.map { if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it }
+        val reels = before.reels.map { if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it }
+        _uiState.value = before.copy(posts = posts, reels = reels)
+        persistCurrentFeed()
+
+        if (!before.isOnline) {
+            viewModelScope.launch(Dispatchers.IO) { offlineMutationStore.enqueueShare(postId) }
+            showToast("Share recorded offline — it will sync automatically.")
+            return
+        }
+        viewModelScope.launch {
+            val result = runCatching { supabaseService.sharePost(postId, "share") }
+            if (result.getOrDefault(false)) {
+                showToast("🔗 Post shared.")
+            } else if (!_uiState.value.isOnline) {
+                withContext(Dispatchers.IO) { offlineMutationStore.enqueueShare(postId) }
+                showToast("Share queued for sync.")
+            } else {
+                _uiState.value = _uiState.value.copy(posts = before.posts, reels = before.reels)
+                persistCurrentFeed()
+                showToast("Couldn't record the share. Please try again.")
+            }
+        }
+    }
+
+    fun deletePost(postId: String) {'''
+regex_once(
+    vm,
+    r"    fun togglePostLike\(\n.*?\n    fun deletePost\(postId: String\) \{",
+    social_block,
+    marker="Like saved offline — it will sync automatically.",
+)
+
+# Composer: real date/time schedule action.
+composer = "app/src/main/java/com/example/ui/components/CreatePostSheet.kt"
+replace_once(
+    composer,
+    "package com.example.ui.components\n\n",
+    "package com.example.ui.components\n\nimport android.app.DatePickerDialog\nimport android.app.TimePickerDialog\n",
+)
+replace_once(
+    composer,
+    "import androidx.compose.material.icons.filled.Save\n",
+    "import androidx.compose.material.icons.filled.Save\nimport androidx.compose.material.icons.filled.Schedule\n",
+)
+replace_once(
+    composer,
+    "import java.util.UUID\n",
+    "import java.text.SimpleDateFormat\nimport java.util.Calendar\nimport java.util.Date\nimport java.util.Locale\nimport java.util.UUID\n",
+)
+
+schedule_function = '''    fun scheduleCurrentPost() {
+        if (!hasContent || isSubmitting) return
+        val now = Calendar.getInstance()
+        val dateDialog = DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        val scheduled = Calendar.getInstance().apply {
+                            set(year, month, day, hour, minute, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        if (scheduled.timeInMillis < System.currentTimeMillis() + 60_000L) {
+                            Toast.makeText(context, "Choose a future time.", Toast.LENGTH_SHORT).show()
+                            return@TimePickerDialog
+                        }
+                        val poll = if (pollValid) {
+                            PostPoll(
+                                question = pollQuestion.trim(),
+                                options = validPollOptions.map {
+                                    PollOption(UUID.randomUUID().toString(), it)
+                                }
+                            )
+                        } else null
+                        val preview = FeedPost(
+                            id = "scheduled_preview_${UUID.randomUUID()}",
+                            author = profile.username,
+                            authorAvatar = profile.avatarUrl,
+                            facultyTag = profile.faculty,
+                            timeAgo = "Scheduled",
+                            text = cleanText,
+                            images = selectedImages,
+                            likes = 0,
+                            commentsCount = 0,
+                            sharesCount = 0,
+                            isReel = selectedVideo != null,
+                            videoUrl = selectedVideo,
+                            poll = poll,
+                            audience = audience,
+                            category = category,
+                            allowComments = allowComments
+                        )
+                        val formatted = SimpleDateFormat(
+                            "EEE, MMM d • h:mm a",
+                            Locale.getDefault()
+                        ).format(Date(scheduled.timeInMillis))
+                        onSchedulePost(preview, scheduled.timeInMillis, formatted)
+                    },
+                    now.get(Calendar.HOUR_OF_DAY),
+                    now.get(Calendar.MINUTE),
+                    android.text.format.DateFormat.is24HourFormat(context)
+                ).show()
+            },
+            now.get(Calendar.YEAR),
+            now.get(Calendar.MONTH),
+            now.get(Calendar.DAY_OF_MONTH)
+        )
+        dateDialog.datePicker.minDate = System.currentTimeMillis()
+        dateDialog.show()
+    }
+
+'''
+replace_once(
+    composer,
+    "    ModalBottomSheet(\n",
+    schedule_function + "    ModalBottomSheet(\n",
+)
+
+actions = '''
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = ::saveDraft,
+                            enabled = hasContent && !isSubmitting,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Save draft")
+                        }
+                        OutlinedButton(
+                            onClick = ::scheduleCurrentPost,
+                            enabled = hasContent && !isSubmitting,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Schedule")
+                        }
+                    }
+                    Spacer(Modifier.height(9.dp))
+                    Button(
+                        onClick = ::submit,
+                        enabled = canSubmit,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Publishing")
+                        } else {
+                            Text(if (selectedVideo != null) "Post reel" else "Publish now")
+                        }
+                    }
+                }
+
+                if (scheduledPosts.isNotEmpty()) {'''
+regex_once(
+    composer,
+    r"\n                Row\(\n                    Modifier\n                        \.fillMaxWidth\(\)\n                        \.padding\(horizontal = 16\.dp, vertical = 14\.dp\),\n                    horizontalArrangement = Arrangement\.spacedBy\(10\.dp\)\n                \) \{.*?\n                \}\n\n                if \(scheduledPosts\.isNotEmpty\(\)\) \{",
+    actions,
+    marker="onClick = ::scheduleCurrentPost",
+)
+
+# Same hydrated feed parser, now with an optional server-side author filter.
+service = "app/src/main/java/com/example/data/supabase/SupabaseService.kt"
+replace_once(
+    service,
+    '        feedType: String = "posts",\n        searchQuery: String? = null\n',
+    '        feedType: String = "posts",\n        searchQuery: String? = null,\n        userId: String? = null\n',
+)
+replace_once(
+    service,
+    '            if (searchQuery.isNullOrBlank()) {\n                put("p_feed_type", feedType)\n            } else {\n',
+    '            if (searchQuery.isNullOrBlank()) {\n                put("p_feed_type", feedType)\n                put("p_user_id", userId ?: JSONObject.NULL)\n            } else {\n',
+)
+
+post_repo = "app/src/main/java/com/example/data/repository/PostRepository.kt"
+user_posts = '''    suspend fun fetchPostsByUser(username: String, isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
+        try {
+            val profile = supabaseService.fetchProfileByUsername(username.trim().removePrefix("@"))
+                ?: return@withContext emptyList()
+            supabaseService.fetchFeedPage(
+                limit = 60,
+                feedType = when (isReel) {
+                    true -> "reels"
+                    false -> "posts"
+                    null -> "all"
+                },
+                userId = profile.id
+            )
+        } catch (e: Exception) {
+            Log.e("PostRepository", "fetchPostsByUser error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun createPost('''
+regex_once(
+    post_repo,
+    r"    suspend fun fetchPostsByUser\(username: String, isReel: Boolean\? = null\): List<FeedPost> = withContext\(Dispatchers\.IO\) \{.*?\n    suspend fun createPost\(",
+    user_posts,
+    marker="userId = profile.id",
+)
+
+# Surface study circles in the existing Professional Center Groups tab.
+center = "app/src/main/java/com/example/ProfessionalCenterActivity.kt"
+replace_once(
+    center,
+    '        item { PremiumHeader(Icons.Default.Groups, "Group chats", "Create a private group with 3–50 Blink members. Blocks are respected server-side.") }\n',
+    '        item { PremiumHeader(Icons.Default.Groups, "Groups & Study Circles", "Create secure chats or join course-based study circles.") }\n'
+    '        item { com.example.ui.components.StudyCirclesPanel() }\n',
+)
+
+print("Final audit integration patch applied successfully.")

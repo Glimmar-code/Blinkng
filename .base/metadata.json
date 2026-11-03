@@ -1,0 +1,6 @@
+{
+  "name": "Blink",
+  "description": "A vibrant campus social network and marketplace featuring feeds, reels, stories, direct messaging, leaderboard, verified profiles, and the Aluta campus marketplace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

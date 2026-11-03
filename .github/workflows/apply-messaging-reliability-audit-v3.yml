@@ -1,0 +1,64 @@
+name: Apply messaging reliability audit v3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply_messaging_reliability_audit_v3.py'
+      - '.github/workflows/apply-messaging-reliability-audit-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: messaging-reliability-audit-v3
+  cancel-in-progress: false
+
+jobs:
+  apply-validate-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply messaging reliability fixes
+        run: python3 .github/scripts/apply_messaging_reliability_audit_v3.py
+
+      - name: Verify patch formatting
+        run: git diff --check
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Commit validated messaging sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/data/repository/ChatRepository.kt \
+            app/src/main/java/com/example/data/supabase/SupabaseRealtimeManager.kt \
+            app/src/main/java/com/example/viewmodel/BlinkViewModel.kt \
+            app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+            app/src/main/java/com/example/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "Messaging sources are already up to date."
+            exit 0
+          fi
+          git commit -m "fix: make chat history and delivery durable"
+          git pull --rebase origin main
+          git push origin HEAD:main

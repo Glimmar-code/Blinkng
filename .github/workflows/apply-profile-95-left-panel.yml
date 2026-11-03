@@ -1,0 +1,96 @@
+name: Apply 95 percent left profile panel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-profile-95-left-panel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply exact profile panel placement
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/example/ui/screens/ProfileScreen.kt')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '.align(Alignment.CenterEnd)\n                .fillMaxWidth(0.95f)',
+                  '.align(Alignment.CenterStart)\n                .fillMaxWidth(0.95f)'
+              ),
+              (
+                  '.shadow(24.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp), clip = false)',
+                  '.shadow(24.dp, RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp), clip = false)'
+              ),
+              (
+                  'overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtLeast(0f))',
+                  'overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtMost(0f))'
+              ),
+              (
+                  'if (overlayOffset.value >= overlayThresholdPx) {',
+                  'if (overlayOffset.value <= -overlayThresholdPx) {'
+              ),
+              (
+                  'shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),',
+                  'shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),'
+              ),
+          ]
+
+          changed = False
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+                  changed = True
+              elif new not in text:
+                  raise SystemExit(f'Expected profile token not found: {old}')
+
+          path.write_text(text)
+          print('changed=', changed)
+          print('Profile occupies 95% from the left; 5% remains on the right.')
+          print('Swipe-to-dismiss now tracks left with the panel direction.')
+
+      - name: Validate patch
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'fillMaxWidth(0.95f)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'align(Alignment.CenterStart)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'coerceAtMost(0f)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'overlayOffset.value <= -overlayThresholdPx' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'slideInHorizontally(initialOffsetX = { -it })' app/src/main/java/com/example/MainActivity.kt
+
+      - name: Compile app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Push profile panel changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo '95 percent left profile panel is already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          git commit -m 'Make profile a 95 percent left sliding panel'
+          git push origin HEAD:main

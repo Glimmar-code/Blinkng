@@ -1,0 +1,615 @@
+package com.example.notification
+
+import android.content.Context
+import android.util.Log
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import com.example.BuildConfig
+import com.example.update.BlinkWebsiteReleaseAlerts
+import com.example.call.CallTimeoutWorker
+import com.example.call.CallType
+import com.example.call.IncomingCallNotification
+import com.example.data.repository.ChatRepository
+import com.example.data.supabase.SupabaseConfig
+import com.example.data.supabase.SupabaseService
+import com.example.util.safeString
+import com.google.firebase.FirebaseApp
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+class BlinkFirebaseMessagingService : FirebaseMessagingService() {
+    companion object {
+        private const val TAG = "BlinkFCM"
+        private const val PUSH_PREFS = "blink_push"
+        private const val TOKEN_KEY = "fcm_token"
+        private const val REGISTERED_TOKEN = "registered_token"
+        private const val REGISTERED_ACCOUNT = "registered_account"
+
+        /**
+         * True only when Supabase most recently accepted this token for this account.
+         * This is not proof the phone can currently receive packets through its OS settings.
+         */
+        fun isRegisteredForCurrentAccount(context: Context): Boolean {
+            val prefs = context.applicationContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+            val token = prefs.safeString(TOKEN_KEY, "").orEmpty()
+            val account = runCatching {
+                SupabaseService.initialize(context.applicationContext)
+                SupabaseService().getCurrentUserId().orEmpty()
+            }.getOrDefault("")
+            return token.isNotBlank() &&
+                account.isNotBlank() &&
+                prefs.safeString(REGISTERED_TOKEN, "").orEmpty() == token &&
+                prefs.safeString(REGISTERED_ACCOUNT, "").orEmpty() == account
+        }
+
+        /**
+         * Fetches the current FCM token, stores it locally, registers it with Supabase,
+         * then refreshes server-backed notification preferences for the active account.
+         */
+        fun syncCurrentToken(context: Context) {
+            val appContext = context.applicationContext
+            FirebaseApp.initializeApp(appContext)
+                ?: run {
+                    Log.i(TAG, "Firebase is not configured; add app/google-services.json to enable FCM.")
+                    return
+                }
+
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    if (token.isBlank()) {
+                        Log.w(TAG, "Firebase returned an empty FCM token.")
+                        return@addOnSuccessListener
+                    }
+
+                    saveToken(appContext, token)
+                    logToken("Current FCM token", token)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        syncTokenNow(appContext, token)
+                    }
+                    NotificationPreferenceStore.refreshFromServerAsync(appContext)
+                    enqueueGapSync(appContext)
+                }
+                .addOnFailureListener { error ->
+                    Log.w(TAG, "Unable to obtain FCM token", error)
+                }
+        }
+
+        /**
+         * Deactivates this device token for the currently authenticated account.
+         * This must run before the Supabase access token is revoked during logout.
+         */
+        suspend fun unregisterCurrentToken(context: Context): Boolean = withContext(Dispatchers.IO) {
+            val appContext = context.applicationContext
+            val token = appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                .safeString(TOKEN_KEY, "")
+                .orEmpty()
+            if (token.isBlank()) return@withContext true
+
+            return@withContext try {
+                SupabaseService.initialize(appContext)
+                val service = SupabaseService()
+                if (!service.restoreSession()) return@withContext false
+                var accessToken = SupabaseService.accessToken() ?: return@withContext false
+                val body = JSONObject()
+                    .put("p_token", token)
+                    .toString()
+                    .toRequestBody("application/json".toMediaType())
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .build()
+
+                fun buildRequest(jwt: String): Request =
+                    Request.Builder()
+                        .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/unregister_my_fcm_token")
+                        .addHeader("apikey", SupabaseConfig.anonKey)
+                        .addHeader("Authorization", "Bearer $jwt")
+                        .addHeader("Content-Type", "application/json")
+                        .post(body)
+                        .build()
+
+                var response = client.newCall(buildRequest(accessToken)).execute()
+                if (response.code == 401) {
+                    response.close()
+                    if (!service.refreshSession()) return@withContext false
+                    accessToken = SupabaseService.accessToken() ?: return@withContext false
+                    response = client.newCall(buildRequest(accessToken)).execute()
+                }
+                response.use {
+                    if (!it.isSuccessful) {
+                        Log.w(TAG, "FCM token unregister failed: ${it.code}")
+                    } else {
+                        appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                            .edit().remove(REGISTERED_TOKEN).remove(REGISTERED_ACCOUNT).apply()
+                    }
+                    it.isSuccessful
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "FCM token unregister error", error)
+                false
+            }
+        }
+
+        private fun saveToken(context: Context, token: String) {
+            context.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(TOKEN_KEY, token)
+                .apply()
+        }
+
+        private fun logToken(label: String, token: String) {
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "$label: $token")
+            } else {
+                Log.i(TAG, "$label refreshed (${token.take(8)}…)")
+            }
+        }
+
+        private suspend fun syncTokenNow(context: Context, token: String) {
+            try {
+                val appContext = context.applicationContext
+                SupabaseService.initialize(appContext)
+                val service = SupabaseService()
+
+                // FCM callbacks can arrive hours after the last foreground session check.
+                // Restore/rotate the Supabase JWT before registering the device token.
+                if (!service.restoreSession()) return
+                val currentUid = service.getCurrentUserId() ?: return
+                var accessToken = SupabaseService.accessToken() ?: return
+
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .build()
+                val body = JSONObject()
+                    .put("p_token", token)
+                    .toString()
+                    .toRequestBody("application/json".toMediaType())
+
+                fun buildRequest(jwt: String): Request =
+                    Request.Builder()
+                        .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/register_my_fcm_token")
+                        .addHeader("apikey", SupabaseConfig.anonKey)
+                        .addHeader("Authorization", "Bearer $jwt")
+                        .addHeader("Content-Type", "application/json")
+                        .post(body)
+                        .build()
+
+                var response = client.newCall(buildRequest(accessToken)).execute()
+                if (response.code == 401) {
+                    response.close()
+                    if (!service.refreshSession()) return
+                    accessToken = SupabaseService.accessToken() ?: return
+                    response = client.newCall(buildRequest(accessToken)).execute()
+                }
+
+                response.use {
+                    val responseBody = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        Log.w(TAG, "FCM token sync failed: ${it.code} ${responseBody.take(240)}")
+                    } else {
+                        appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                            .edit()
+                            .putString(REGISTERED_TOKEN, token)
+                            .putString(REGISTERED_ACCOUNT, currentUid)
+                            .apply()
+                        Log.d(TAG, "FCM token registered with Supabase.")
+                        NotificationPreferenceStore.refreshFromServerAsync(appContext)
+                    }
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "FCM token sync error", error)
+            }
+        }
+
+        private fun enqueueGapSync(context: Context) {
+            val work = OneTimeWorkRequestBuilder<NotificationSyncWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+                "blink_fcm_gap_sync",
+                ExistingWorkPolicy.REPLACE,
+                work
+            )
+        }
+    }
+
+    override fun onNewToken(token: String) {
+        super.onNewToken(token)
+        if (token.isBlank()) return
+
+        saveToken(applicationContext, token)
+        logToken("New FCM token", token)
+        CoroutineScope(Dispatchers.IO).launch {
+            syncTokenNow(applicationContext, token)
+        }
+        enqueueGapSync(applicationContext)
+    }
+
+    override fun onMessageReceived(message: RemoteMessage) {
+        super.onMessageReceived(message)
+
+        val data = message.data
+        // Public website-release alerts are device/topic scoped, not private account messages.
+        // Handle before recipient_id enforcement; all other messages keep that protection.
+        if (BlinkWebsiteReleaseAlerts.handleReleasePush(this, data)) return
+        val type = BlinkNotificationType.fromWire(data["type"])
+        Log.d(
+            TAG,
+            "FCM message received from=${message.from} type=$type dataKeys=${data.keys.joinToString()} hasNotification=${message.notification != null}"
+        )
+
+        // Modern BLINK dispatchers always specify recipient_id. Without it a delayed
+        // packet could expose account A's private alert after switching to account B.
+        if (data["recipient_id"].isNullOrBlank() ||
+            !NotificationPreferenceStore.isIntendedForCurrentAccount(this, data["recipient_id"])) {
+            Log.w(TAG, "Ignored push intended for a different Blink account.")
+            return
+        }
+
+        val title = data["title"] ?: message.notification?.title ?: "Blink"
+        val body = data["body"] ?: message.notification?.body ?: "You have a new notification."
+        val sender = data["sender_username"].orEmpty()
+        val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
+        val senderAvatar = data["sender_avatar"].orEmpty()
+        val conversationId = data["conversation_id"].orEmpty()
+        val messageId = data["message_id"].orEmpty()
+        // Use the same account-scoped preview policy for foreground banners and
+        // for the system notification. Never copy a hidden body to a second UI.
+        val chatPreviewMode = if (type == BlinkNotificationType.MESSAGE) {
+            NotificationPreferenceStore.chatPreviewMode(this)
+        } else "full"
+        val visibleTitle = if (type == BlinkNotificationType.MESSAGE) {
+            ChatNotificationPreviewPolicy.title(chatPreviewMode, senderName)
+        } else title
+        val visibleBody = if (type == BlinkNotificationType.MESSAGE) {
+            ChatNotificationPreviewPolicy.body(chatPreviewMode, body)
+        } else body
+
+        // Delivery acknowledgement describes transport delivery, not whether the user elected
+        // to show the alert. A muted DM should still become "delivered" to the sender.
+        if (type == BlinkNotificationType.MESSAGE && messageId.isNotBlank()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching {
+                    SupabaseService.initialize(applicationContext)
+                    ChatRepository().markMessageDelivered(messageId)
+                }.onFailure { error ->
+                    Log.w(TAG, "Unable to acknowledge delivered message $messageId", error)
+                }
+            }
+        }
+
+        if (
+            type == BlinkNotificationType.MESSAGE &&
+            conversationId.isNotBlank() &&
+            ConversationNotificationMuteStore.isMuted(this, conversationId)
+        ) {
+            Log.d(TAG, "Muted conversation notification suppressed: $conversationId")
+            return
+        }
+
+        if (!NotificationPreferenceStore.isAllowed(this, type)) {
+            Log.d(TAG, "Notification suppressed by Blink preference/quiet-hour policy: $type")
+            return
+        }
+
+        val notificationId = data["notification_id"].orEmpty()
+        val currentUid = runCatching {
+            SupabaseService.initialize(applicationContext)
+            SupabaseService().getCurrentUserId().orEmpty()
+        }.getOrDefault("")
+
+        // Cache only official, recipient-matched previews, never direct-message data.
+        if ((type == BlinkNotificationType.ADMIN || type == BlinkNotificationType.SYSTEM) &&
+            currentUid.isNotBlank() &&
+            data["recipient_id"] == currentUid &&
+            notificationId.isNotBlank()
+        ) {
+            BlinkOfflineAnnouncementCache.record(
+                context = applicationContext,
+                userId = currentUid,
+                id = notificationId,
+                title = title,
+                message = body,
+                publishedAt = data["created_at"].orEmpty(),
+            )
+        }
+
+        // Social/admin pushes can arrive from both realtime recovery and FCM. Claim their
+        // server id before rendering so only one path can alert on this installation.
+        if (type != BlinkNotificationType.MESSAGE && notificationId.isNotBlank()) {
+            if (SocialNotificationRecovery.wasShown(applicationContext, currentUid, notificationId)) {
+                Log.d(TAG, "Duplicate notification suppressed: $notificationId")
+                return
+            }
+        }
+
+        val senderId = data["sender_id"].orEmpty()
+        val postTarget = data["post_id"].orEmpty()
+        val marketTarget = data["market_id"].orEmpty()
+        val genericTarget = data["target_id"].orEmpty()
+        val targetType = data["target_type"].orEmpty()
+        val inAppDestination = when {
+            targetType.equals("user", ignoreCase = true) && (sender.isNotBlank() || senderId.isNotBlank()) ->
+                BlinkInAppNotificationDestination.PROFILE
+            targetType.equals("channel", ignoreCase = true) -> BlinkInAppNotificationDestination.CHANNEL
+            targetType.equals("giveaway", ignoreCase = true) -> BlinkInAppNotificationDestination.DROPS
+            targetType.equals("boost", ignoreCase = true) -> BlinkInAppNotificationDestination.BOOST
+            else -> when (type) {
+            BlinkNotificationType.MESSAGE -> BlinkInAppNotificationDestination.CHAT
+            BlinkNotificationType.MARKET,
+            BlinkNotificationType.MARKET_ORDER -> BlinkInAppNotificationDestination.MARKET
+            BlinkNotificationType.LIKE,
+            BlinkNotificationType.COMMENT,
+            BlinkNotificationType.REPLY,
+            BlinkNotificationType.MENTION -> if (postTarget.isNotBlank()) {
+                BlinkInAppNotificationDestination.POST
+            } else {
+                BlinkInAppNotificationDestination.NOTIFICATIONS
+            }
+            BlinkNotificationType.FOLLOW -> if (sender.isNotBlank() || senderId.isNotBlank()) {
+                BlinkInAppNotificationDestination.PROFILE
+            } else {
+                BlinkInAppNotificationDestination.NOTIFICATIONS
+            }
+            else -> BlinkInAppNotificationDestination.NOTIFICATIONS
+            }
+        }
+
+        val inAppKey = when (type) {
+            BlinkNotificationType.MESSAGE -> "message:" + messageId.ifBlank {
+                conversationId + ":" + body.hashCode()
+            }
+            BlinkNotificationType.LIKE,
+            BlinkNotificationType.COMMENT,
+            BlinkNotificationType.REPLY,
+            BlinkNotificationType.MENTION,
+            BlinkNotificationType.FOLLOW -> {
+                val target = postTarget.ifBlank {
+                    genericTarget.ifBlank { notificationId.ifBlank { senderId.ifBlank { sender } } }
+                }
+                "social:" + type.name.lowercase() + ":" + senderId.ifBlank { sender } + ":" + target
+            }
+            else -> "push:" + notificationId.ifBlank { message.messageId }
+        }
+
+        val handledInApp = if (
+            type != BlinkNotificationType.INCOMING_CALL &&
+            type != BlinkNotificationType.CALL_UPDATE
+        ) {
+            BlinkInAppNotificationCenter.publish(
+                BlinkInAppNotification(
+                    key = inAppKey,
+                    notificationId = notificationId,
+                    title = visibleTitle,
+                    body = visibleBody,
+                    destination = inAppDestination,
+                    senderId = senderId,
+                    senderUsername = sender,
+                    senderName = if (type == BlinkNotificationType.MESSAGE) visibleTitle else senderName,
+                    senderAvatar = if (type == BlinkNotificationType.MESSAGE &&
+                        chatPreviewMode == "hidden") "" else senderAvatar,
+                    postId = postTarget.ifBlank { null },
+                    marketId = marketTarget.ifBlank { null },
+                    targetType = targetType.ifBlank { null },
+                    targetId = genericTarget.ifBlank { null }
+                )
+            )
+        } else {
+            false
+        }
+
+        // When Blink itself rendered the event, avoid a second Android heads-up banner.
+        // The authoritative server activity/message still remains available in-app.
+        if (handledInApp) {
+            if (type != BlinkNotificationType.MESSAGE && notificationId.isNotBlank()) {
+                SocialNotificationRecovery.markShown(applicationContext, currentUid, notificationId)
+            }
+            Log.d(TAG, "Rendered foreground notification in-app: $type")
+            return
+        }
+        // Permission-denied Android delivery is not a successful notification.
+        // Leave the server id eligible for future recovery after permission is granted.
+        if (type != BlinkNotificationType.INCOMING_CALL &&
+            type != BlinkNotificationType.CALL_UPDATE &&
+            !BlinkNotificationHelper.areNotificationsEnabled(this)) return
+        if (type != BlinkNotificationType.MESSAGE && notificationId.isNotBlank()) {
+            SocialNotificationRecovery.markShown(applicationContext, currentUid, notificationId)
+        }
+
+        // Visible notification work must stay synchronous. FCM gives this callback a short
+        // execution window; never block incoming chat/call UI on avatar or database fetches.
+        when (type) {
+            BlinkNotificationType.INCOMING_CALL -> {
+                val callId = data["call_id"].orEmpty()
+                val callerId = data["caller_id"].orEmpty()
+                if (callId.isNotBlank() && callerId.isNotBlank()) {
+                    val callType = CallType.fromWire(data["call_type"])
+                    IncomingCallNotification.showIncoming(
+                        context = this,
+                        callId = callId,
+                        callType = callType,
+                        peerId = callerId,
+                        peerUsername = sender,
+                        peerName = senderName,
+                        peerAvatar = senderAvatar,
+                        conversationId = conversationId
+                    )
+                    CallTimeoutWorker.schedule(
+                        context = this,
+                        callId = callId,
+                        callType = callType,
+                        peerName = senderName
+                    )
+                }
+            }
+
+            BlinkNotificationType.CALL_UPDATE -> {
+                val callId = data["call_id"].orEmpty()
+                val event = data["call_event"].orEmpty()
+                CallTimeoutWorker.cancel(this, callId)
+                IncomingCallNotification.handleCallUpdate(
+                    context = this,
+                    callId = callId,
+                    event = event
+                )
+                if (event.equals("missed", ignoreCase = true)) {
+                    IncomingCallNotification.showMissed(
+                        context = this,
+                        callId = callId,
+                        callType = CallType.fromWire(data["call_type"]),
+                        peerName = senderName
+                    )
+                }
+            }
+
+            BlinkNotificationType.MESSAGE -> {
+                if (sender.isNotBlank()) {
+                    InstantChatNotification.show(
+                        context = this,
+                        senderUsername = sender,
+                        senderName = senderName,
+                        messageText = body,
+                        senderAvatar = senderAvatar,
+                        conversationId = conversationId,
+                        messageId = messageId
+                    )
+                }
+            }
+
+            BlinkNotificationType.MARKET -> BlinkNotificationHelper.showMarketNotification(
+                context = this,
+                title = title,
+                body = body,
+                targetMarketId = marketTarget.ifBlank { genericTarget }.ifBlank { null }
+            )
+
+            BlinkNotificationType.MARKET_ORDER -> BlinkNotificationHelper.showMarketOrderNotification(
+                context = this,
+                title = title,
+                body = body,
+                marketId = marketTarget.ifBlank { genericTarget }
+            )
+
+            BlinkNotificationType.LIKE -> {
+                val postId = data["post_id"].orEmpty()
+                if (sender.isNotBlank() && postId.isNotBlank()) {
+                    BlinkNotificationHelper.showLikeNotification(
+                        this,
+                        sender,
+                        postId,
+                        targetType.ifBlank { "post" }
+                    )
+                } else {
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetPostId = postId.ifBlank { null },
+                        targetType = targetType.ifBlank { null },
+                        targetId = genericTarget.ifBlank { null }
+                    )
+                }
+            }
+
+            BlinkNotificationType.COMMENT,
+            BlinkNotificationType.REPLY -> {
+                val postId = data["post_id"].orEmpty()
+                if (sender.isNotBlank() && postId.isNotBlank()) {
+                    BlinkNotificationHelper.showCommentNotification(
+                        this,
+                        sender,
+                        body,
+                        postId,
+                        targetType.ifBlank { "post" }
+                    )
+                } else {
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetPostId = postId.ifBlank { null },
+                        targetType = targetType.ifBlank { null },
+                        targetId = genericTarget.ifBlank { null }
+                    )
+                }
+            }
+
+            BlinkNotificationType.MENTION -> {
+                val postId = data["post_id"].orEmpty()
+                if (sender.isNotBlank() && postId.isNotBlank()) {
+                    BlinkNotificationHelper.showMentionNotification(
+                        this,
+                        sender,
+                        postId,
+                        body,
+                        targetType.ifBlank { "post" }
+                    )
+                } else {
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetPostId = postId.ifBlank { null },
+                        targetType = targetType.ifBlank { null },
+                        targetId = genericTarget.ifBlank { null }
+                    )
+                }
+            }
+
+            BlinkNotificationType.FOLLOW -> {
+                if (sender.isNotBlank()) {
+                    BlinkNotificationHelper.showFollowNotification(this, sender)
+                } else {
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetType = "profile",
+                        targetId = genericTarget.ifBlank { senderId }.ifBlank { null }
+                    )
+                }
+            }
+
+            BlinkNotificationType.SECURITY -> BlinkNotificationHelper.showSecurityNotification(
+                context = this,
+                title = title,
+                body = body
+            )
+
+            else -> BlinkNotificationHelper.showSocialNotification(
+                context = this,
+                title = title,
+                body = body,
+                targetPostId = data["post_id"],
+                targetType = targetType.ifBlank { null },
+                targetId = genericTarget.ifBlank { null },
+                profileIdentifier = sender.ifBlank { senderId }.ifBlank { null }
+            )
+        }
+    }
+
+    override fun onDeletedMessages() {
+        super.onDeletedMessages()
+        Log.w(TAG, "FCM reported deleted pending messages; scheduling immediate Supabase reconciliation.")
+        enqueueGapSync(applicationContext)
+    }
+}

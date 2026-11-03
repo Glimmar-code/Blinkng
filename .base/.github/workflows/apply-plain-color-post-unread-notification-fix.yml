@@ -1,0 +1,61 @@
+name: Apply plain color post and unread notification fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-plain-color-post-unread-notification-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply post and notification fixes
+        run: python .github/scripts/apply_plain_color_post_unread_notification_fix.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/MainActivity.kt \
+            app/src/main/java/com/example/ui/components/CreatePostSheet.kt \
+            app/src/main/java/com/example/viewmodel/BlinkViewModel.kt \
+            app/src/main/java/com/example/notification/MessageNotificationLedger.kt \
+            app/src/main/java/com/example/notification/NotificationSyncWorker.kt \
+            app/src/main/java/com/example/notification/InstantChatNotification.kt \
+            app/src/main/java/com/example/notification/BlinkNotificationHelper.kt \
+            app/src/main/java/com/example/notification/BlinkFirebaseMessagingService.kt
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "fix: separate plain color posts and unread message alerts"
+            for attempt in 1 2 3 4 5; do
+              if git pull --rebase origin main && git push origin HEAD:main; then
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep 2
+            done
+            echo "Could not push source fixes after retries"
+            exit 1
+          fi

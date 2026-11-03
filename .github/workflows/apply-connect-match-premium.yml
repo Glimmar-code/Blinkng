@@ -1,0 +1,98 @@
+name: Apply premium Connect match upgrade
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-connect-match-premium.yml'
+      - '.github/scripts/apply_connect_match_premium.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply premium Connect match patch
+        run: python .github/scripts/apply_connect_match_premium.py
+
+      - name: Commit locally and rebase latest main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/data/models/ConnectHubModels.kt \
+            app/src/main/java/com/example/data/repository/ConnectHubRepository.kt \
+            app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt
+          if git diff --cached --quiet; then
+            echo "No premium source changes to commit"
+          else
+            git commit -m "feat: premiumize Connect smart match experience"
+          fi
+          git pull --rebase origin main
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Android lint
+        run: gradle :app:lintDebug --stacktrace --no-daemon
+
+      - name: Compile instrumentation tests
+        run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Push verified source commit
+        run: |
+          rm -rf app/schemas
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Unexpected tracked working tree changes after verification"
+            git status --short
+            exit 1
+          fi
+
+          for attempt in 1 2 3 4; do
+            echo "Push attempt $attempt"
+            git fetch origin main
+
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              echo "main advanced; rebasing premium commit and re-running the Android gate"
+              git rebase origin/main
+              gradle :app:compileDebugKotlin --stacktrace --no-daemon
+              gradle :app:testDebugUnitTest --stacktrace --no-daemon
+              gradle :app:lintDebug --stacktrace --no-daemon
+              gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
+              gradle :app:assembleDebug --stacktrace --no-daemon
+              rm -rf app/schemas
+              if ! git diff --quiet || ! git diff --cached --quiet; then
+                echo "Tracked files changed after re-verification"
+                git status --short
+                exit 1
+              fi
+            fi
+
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+
+          echo "main kept advancing during all safe push attempts"
+          exit 1

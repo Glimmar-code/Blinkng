@@ -1,0 +1,1062 @@
+package com.example.ui.components
+
+import com.blinkng.shared.BlinkDesignTokens
+
+import com.example.ui.components.BlinkSkeletonList
+
+import com.example.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.performance.rememberBlinkReduceMotion
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
+import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
+import com.example.ui.theme.*
+import com.blinkng.shared.BlinkDailyMission
+import com.blinkng.shared.BlinkEconomyDefaults
+import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.verification.BlinkVerificationPlans
+import com.blinkng.shared.verification.BlinkVerificationTier
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GetVerifiedSheet(
+    profile: UserProfile,
+    isDark: Boolean,
+    blinkCoinBalance: Long = 0L,
+    economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
+    rewardedAdsToday: Int = 0,
+    dailyMissions: List<BlinkDailyMission> = emptyList(),
+    isDailyMissionsLoading: Boolean = false,
+    onDismiss: () -> Unit,
+    onWatchAdForCoins: () -> Unit = {},
+    onBuyBlinkCoins: () -> Unit = {},
+    onRefreshDailyMissions: () -> Unit = {},
+    onClaimDailyMission: (String) -> Unit = {},
+    onVerifyWithCoins: () -> Unit = {},
+    onUpgrade: (VerificationBadge, Int) -> Unit,
+    pendingCashPayment: Boolean = false,
+    cashCheckoutBusy: Boolean = false,
+    onCheckCashPayment: () -> Unit = {},
+    onPaymentHistory: () -> Unit = {},
+    renewalStatus: String = "none",
+    renewalWorking: Boolean = false,
+    onLoadRenewal: () -> Unit = {},
+    onEnableRenewal: () -> Unit = {},
+    onCancelRenewal: () -> Unit = {},
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val reduceMotion = rememberBlinkReduceMotion()
+    var selectedBadge by remember {
+        mutableStateOf(
+            if (profile.verificationBadge == VerificationBadge.BLUE) VerificationBadge.GOLD else VerificationBadge.BLUE
+        )
+    }
+    val isGoldEligible = profile.followerCount >= 1000
+    var showDailyMissions by remember { mutableStateOf(false) }
+    var selectedMonths by remember { mutableIntStateOf(1) }
+    var agreedToRenewal by remember(profile.id) { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        onRefreshDailyMissions()
+        onLoadRenewal()
+    }
+
+    val sheetBg = if (isDark) DarkSurface else LightSurface
+    val textPrimary = if (isDark) Color.White else LightTextPrimary
+    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
+    val borderColor = if (isDark) DarkBorder else LightBorder
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = sheetBg,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(color = BlinkPink.copy(alpha = 0.5f))
+        }
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Choose payment duration", color = textPrimary,
+                        fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Row(modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        BlinkVerificationPlans.durations.forEach { duration ->
+                            FilterChip(
+                                selected = selectedMonths == duration.months,
+                                onClick = { selectedMonths = duration.months },
+                                label = { Text("${duration.months}m") }
+                            )
+                        }
+                    }
+                    Text("One-time payment • 3m saves 10%, 6m saves 20%, 12m saves 30%.",
+                        fontSize = 11.sp, color = textSecondary)
+                }
+            }
+
+            // Header
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(BlinkPink.copy(alpha = 0.3f), BlinkPurple.copy(alpha = 0.1f))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Verified,
+                            contentDescription = "Verified",
+                            tint = if (selectedBadge == VerificationBadge.GOLD) BlinkGold else BlinkBlue,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Get Verified on Blink",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = textPrimary,
+                        letterSpacing = (-0.5).sp
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Get real creator insights with Blue, and advanced content reports with Gold. Choose a plan that fits your needs.",
+                        fontSize = 13.sp,
+                        color = textSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
+
+            // User Info Snapshot
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isDark) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFFF6F4FA),
+                    border = BorderStroke(1.dp, borderColor),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.padding(14.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            AsyncImage(
+                                model = profile.avatarUrl,
+                                error = painterResource(R.drawable.ic_default_profile),
+                                fallback = painterResource(R.drawable.ic_default_profile),
+                                contentDescription = profile.fullName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                            )
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = profile.fullName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = textPrimary
+                                    )
+                                    if (profile.verificationBadge != VerificationBadge.NONE) {
+                                        VerifiedMark(badge = profile.verificationBadge, size = 14.dp)
+                                    }
+                                }
+                                Text(
+                                    text = "@${profile.username} • ${profile.followerCount} followers",
+                                    fontSize = 12.sp,
+                                    color = textSecondary
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = when (profile.verificationBadge) {
+                                VerificationBadge.GOLD -> BlinkGold.copy(alpha = 0.2f)
+                                VerificationBadge.BLUE -> BlinkBlue.copy(alpha = 0.2f)
+                                VerificationBadge.NONE -> MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        ) {
+                            Text(
+                                text = when (profile.verificationBadge) {
+                                    VerificationBadge.GOLD -> "Gold Active"
+                                    VerificationBadge.BLUE -> "Blue Active"
+                                    VerificationBadge.NONE -> "Unverified"
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when (profile.verificationBadge) {
+                                    VerificationBadge.GOLD -> BlinkGold
+                                    VerificationBadge.BLUE -> BlinkBlue
+                                    VerificationBadge.NONE -> textSecondary
+                                },
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Tiers Selector
+            // 1. Blue Verified Card (₦800)
+            item {
+                val isSelected = selectedBadge == VerificationBadge.BLUE
+                val isCurrent = profile.verificationBadge == VerificationBadge.BLUE
+                val tierInteraction = remember { MutableInteractionSource() }
+                val selectedBorder by animateColorAsState(
+                    targetValue = if (isSelected) BlinkBlue else borderColor,
+                    animationSpec = tween(if (reduceMotion) 0 else 180),
+                    label = "blueTierSelection"
+                )
+
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSelected) BlinkBlue.copy(alpha = 0.1f) else cardBg(isDark)
+                    ),
+                    border = BorderStroke(
+                        if (isSelected) 2.dp else 1.dp,
+                        selectedBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .blinkPressFeedback(tierInteraction)
+                        .clickable(
+                            interactionSource = tierInteraction,
+                            indication = null,
+                            onClick = { selectedBadge = VerificationBadge.BLUE }
+                        )
+                        .testTag("tier_blue_card")
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                VerifiedMark(badge = VerificationBadge.BLUE, size = 26.dp)
+                                Column {
+                                    Text(
+                                        text = "BLINK Verified",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 16.sp,
+                                        color = textPrimary
+                                    )
+                                    Text(
+                                        text = "Premium BLINK status",
+                                        fontSize = 12.sp,
+                                        color = BlinkBlue,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "₦${economyPolicy.blueVerificationCashNgn}",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 18.sp,
+                                    color = BlinkBlue
+                                )
+                                Text(
+                                    text = "${economyPolicy.blueVerificationValidDays} days",
+                                    fontSize = 11.sp,
+                                    color = textSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Features checklist
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Verified,
+                            text = "Blue BLINK Verified badge across supported identity surfaces",
+                            highlight = true,
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Person,
+                            text = "Premium verified profile treatment and status card",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Insights,
+                            text = "Creator Studio: content performance, interaction breakdowns and top posts",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.AutoAwesome,
+                            text = "Creator workspace: prepare tailored briefs for the existing BLINK AI service",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Storefront,
+                            text = "Recognizable seller identity on supported Marketplace surfaces",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.WorkspacePremium,
+                            text = "A ${economyPolicy.blueVerificationValidDays}-day BLINK status period — it does not claim real-world identity verification",
+                            isDark = isDark
+                        )
+
+                        if (isCurrent) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = BlinkBlue.copy(alpha = 0.15f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "✓ Currently Active on your account",
+                                    color = BlinkBlue,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Gold Verified Card (₦2000 + 1k Followers)
+            item {
+                val isSelected = selectedBadge == VerificationBadge.GOLD
+                val isCurrent = profile.verificationBadge == VerificationBadge.GOLD
+                val tierInteraction = remember { MutableInteractionSource() }
+                val selectedBorder by animateColorAsState(
+                    targetValue = if (isSelected) BlinkGold else borderColor,
+                    animationSpec = tween(if (reduceMotion) 0 else 180),
+                    label = "goldTierSelection"
+                )
+
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSelected) BlinkGold.copy(alpha = 0.12f) else cardBg(isDark)
+                    ),
+                    border = BorderStroke(
+                        if (isSelected) 2.dp else 1.dp,
+                        selectedBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .blinkPressFeedback(tierInteraction)
+                        .clickable(
+                            interactionSource = tierInteraction,
+                            indication = null,
+                            onClick = { selectedBadge = VerificationBadge.GOLD }
+                        )
+                        .testTag("tier_gold_card")
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                VerifiedMark(badge = VerificationBadge.GOLD, size = 26.dp)
+                                Column {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Gold Verification",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 16.sp,
+                                            color = textPrimary
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(100.dp),
+                                            color = BlinkGold.copy(alpha = 0.2f)
+                                        ) {
+                                            Text(
+                                                text = "VIP",
+                                                color = BlinkGold,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Black,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = "Top Campus Creator & Pro Merchant",
+                                        fontSize = 12.sp,
+                                        color = BlinkGold,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "₦2,000",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 18.sp,
+                                    color = BlinkGold
+                                )
+                                Text(
+                                    text = "+ 1k followers req",
+                                    fontSize = 11.sp,
+                                    color = textSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Follower Requirement Progress Indicator
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isGoldEligible) Color(0xFF132818) else if (isDark) Color(0xFF281C10) else Color(0xFFFFF7ED),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.5f) else BlinkGold.copy(alpha = 0.4f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Icon(
+                                            imageVector = if (isGoldEligible) Icons.Default.CheckCircle else Icons.Default.Lock,
+                                            contentDescription = "Image",
+                                            tint = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = if (isGoldEligible) "Follower Requirement Met!" else "Requirement: 1,000 Followers",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else if (isDark) Color.White else Color(0xFF9A3412)
+                                        )
+                                    }
+                                    Text(
+                                        text = "${profile.followerCount} / 1,000",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                val progress = (profile.followerCount.toFloat() / 1000f).coerceIn(0f, 1f)
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold,
+                                    trackColor = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(100.dp))
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        var showFollowerGrowthChart by remember { mutableStateOf(false) }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = BlinkGold.copy(alpha = 0.08f),
+                            border = BorderStroke(1.dp, BlinkGold.copy(alpha = 0.25f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showFollowerGrowthChart = !showFollowerGrowthChart }
+                                .testTag("toggle_follower_growth_chart")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.TrendingUp, contentDescription = "Image", tint = BlinkGold, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = if (showFollowerGrowthChart) "Hide 30-Day Growth Trends" else "View 30-Day Follower Growth Trends",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textPrimary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = if (showFollowerGrowthChart) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Image",
+                                    tint = BlinkGold,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        if (showFollowerGrowthChart) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            FollowerGrowthChart(
+                                profile = profile,
+                                isDark = isDark,
+                                onOpenGetVerified = { /* in sheet */ },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Gold features checklist
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Star,
+                            text = "Gold creator status and premium identity treatment",
+                            highlight = true,
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Bolt,
+                            text = "Gold creator cosmetics and supported premium surfaces",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Analytics,
+                            text = "Gold Creator Studio: strongest hashtags and shareable content reports",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.CalendarMonth,
+                            text = "Gold Channel Pro for admins: announcement templates and loaded-update insights",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Event,
+                            text = "Gold event invitation builder and public creator portfolio sharing",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Storefront,
+                            text = "Gold merchant identity treatment on supported Marketplace surfaces",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.Storefront,
+                            text = "Merchant Pro: stock checks, listing-photo reminders and category insights for enrolled sellers",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
+                            icon = Icons.Default.WorkspacePremium,
+                            text = "Gold status treatment on supported leaderboard and notification surfaces",
+                            isDark = isDark
+                        )
+
+                        if (isCurrent) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = BlinkGold.copy(alpha = 0.15f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "👑 Highest Verification Level Active",
+                                    color = BlinkGold,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // BLINK Verified economy progress and purchase actions
+            item {
+                val verificationCost = economyPolicy.blueVerificationCoinCost
+                val remaining = economyPolicy.verificationCoinsRemaining(blinkCoinBalance)
+                val progress = economyPolicy.verificationProgress(blinkCoinBalance)
+                val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
+                val nextAdReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
+                val canWatch = economyPolicy.canWatchRewardedAd(rewardedAdsToday, profile.hasActiveMarketVerification())
+                val alreadyBlueOrGold = profile.verificationBadge != VerificationBadge.NONE
+
+                if (selectedBadge == VerificationBadge.BLUE) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = BlinkBlue.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, BlinkBlue.copy(alpha = 0.28f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("BLINK Verified", fontSize = 16.sp, fontWeight = FontWeight.Black, color = textPrimary)
+                                    Text(
+                                        "$blinkCoinBalance / $verificationCost coins",
+                                        fontSize = 12.sp,
+                                        color = textSecondary
+                                    )
+                                }
+                                Text(
+                                    if (alreadyBlueOrGold) "ACTIVE" else if (remaining == 0L) "READY" else "$remaining left",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (alreadyBlueOrGold || remaining == 0L) Color(0xFF16A34A) else BlinkBlue
+                                )
+                            }
+
+                            LinearProgressIndicator(
+                                progress = { if (alreadyBlueOrGold) 1f else progress },
+                                color = BlinkBlue,
+                                trackColor = BlinkBlue.copy(alpha = 0.12f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(7.dp)
+                                    .clip(RoundedCornerShape(100.dp))
+                            )
+
+                            Text(
+                                if (alreadyBlueOrGold) {
+                                    "BLINK Verified is already active on this account."
+                                } else {
+                                    "Earn coins with rewarded ads or buy a coin pack. Paying ₦${economyPolicy.blueVerificationCashNgn} activates ${economyPolicy.blueVerificationValidDays} days once secure checkout is enabled."
+                                },
+                                fontSize = 11.5.sp,
+                                color = textSecondary,
+                                lineHeight = 16.sp
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                economyPolicy.rewardedMilestones.forEach { milestone ->
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (rewardedAdsToday >= milestone.ads) {
+                                            Color(0xFF16A34A).copy(alpha = 0.10f)
+                                        } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text("${milestone.ads} ads", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                            Text("${milestone.totalCoins} coins", fontSize = 10.sp, color = textSecondary)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text(
+                                "$rewardedAdsToday / ${economyPolicy.rewardedAdDailyLimit} rewarded ads today",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = textSecondary
+                            )
+
+                            Button(
+                                onClick = onVerifyWithCoins,
+                                enabled = !alreadyBlueOrGold && remaining == 0L,
+                                colors = ButtonDefaults.buttonColors(containerColor = BlinkBlue),
+                                shape = RoundedCornerShape(100.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Icon(Icons.Default.Verified, contentDescription = "Image", modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.fillMaxWidth(7.dp))
+                                Text(
+                                    when {
+                                        alreadyBlueOrGold -> "BLINK Verified Active"
+                                        remaining == 0L -> "Use $verificationCost coins"
+                                        else -> "Need $remaining more coins"
+                                    },
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onWatchAdForCoins,
+                                    enabled = canWatch,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayCircle, contentDescription = "Image", modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.fillMaxWidth(5.dp))
+                                    Text(
+                                        if (canWatch) "Watch ad +$nextAdReward" else "Daily limit",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        showDailyMissions = !showDailyMissions
+                                        if (showDailyMissions) onRefreshDailyMissions()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = "Image", modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.fillMaxWidth(5.dp))
+                                    Text(
+                                        if (showDailyMissions) "Hide missions" else "Missions",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = onBuyBlinkCoins,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Icon(Icons.Default.AccountBalanceWallet, contentDescription = "Image", modifier = Modifier.size(17.dp))
+                                Spacer(Modifier.fillMaxWidth(5.dp))
+                                Text("Buy Blink Coins", fontWeight = FontWeight.Bold)
+                            }
+
+                            AnimatedVisibility(
+                                visible = showDailyMissions,
+                                enter = if (reduceMotion) EnterTransition.None else
+                                    fadeIn(tween(180)) + expandVertically(tween(220)),
+                                exit = if (reduceMotion) ExitTransition.None else
+                                    fadeOut(tween(110)) + shrinkVertically(tween(190))
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("Daily Missions", fontSize = 13.sp, fontWeight = FontWeight.Black, color = textPrimary)
+                                                Text("Up to 20 coins + 80 XP every day", fontSize = 10.sp, color = textSecondary)
+                                            }
+                                            if (isDailyMissionsLoading) {
+                                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                            }
+                                        }
+
+                                        if (isDailyMissionsLoading && dailyMissions.isEmpty()) {
+                                            BlinkSkeletonList(rows = 3, avatar = false)
+                                        }
+
+                                        if (!isDailyMissionsLoading && dailyMissions.isEmpty()) {
+                                            Text(
+                                                "Missions are syncing. Try again shortly.",
+                                                fontSize = 10.5.sp,
+                                                color = textSecondary
+                                            )
+                                        }
+
+                                        dailyMissions.forEach { mission ->
+                                            Surface(
+                                                shape = RoundedCornerShape(13.dp),
+                                                color = if (mission.claimed) {
+                                                    Color(0xFF16A34A).copy(alpha = 0.08f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                                                },
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (mission.claimable) BlinkBlue.copy(alpha = 0.42f) else borderColor
+                                                )
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(11.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(mission.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                                            Text(mission.description, fontSize = 9.5.sp, color = textSecondary)
+                                                        }
+                                                        Spacer(Modifier.fillMaxWidth(8.dp))
+                                                        Text(
+                                                            "${mission.progress.coerceAtMost(mission.target)}/${mission.target}",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (mission.completed) Color(0xFF16A34A) else BlinkBlue
+                                                        )
+                                                    }
+
+                                                    LinearProgressIndicator(
+                                                        progress = { mission.progressFraction },
+                                                        color = if (mission.completed) Color(0xFF16A34A) else BlinkBlue,
+                                                        trackColor = borderColor,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(5.dp)
+                                                            .clip(RoundedCornerShape(100.dp))
+                                                    )
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            "+${mission.coinReward} coins • +${mission.xpReward} XP",
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = textSecondary
+                                                        )
+                                                        TextButton(
+                                                            onClick = { onClaimDailyMission(mission.key) },
+                                                            enabled = mission.claimable
+                                                        ) {
+                                                            Text(
+                                                                when {
+                                                                    mission.claimed -> "Claimed"
+                                                                    mission.claimable -> "Claim"
+                                                                    else -> "In progress"
+                                                                },
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { onUpgrade(VerificationBadge.BLUE, selectedMonths) },
+                                enabled = profile.verificationBadge != VerificationBadge.GOLD && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Text("Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.BLUE, selectedMonths).totalNgn} for ${selectedMonths}m", fontWeight = FontWeight.Bold)
+                            }
+                            if (!economyPolicy.cashCheckoutEnabled && !alreadyBlueOrGold) {
+                                Text(
+                                    "Cash checkout is prepared but stays off until a verified Paystack/payment checkout is connected. No fake payment can activate a badge.",
+                                    fontSize = 10.5.sp,
+                                    color = textSecondary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            if (economyPolicy.coinPacks.isNotEmpty()) {
+                                HorizontalDivider()
+                                Text("Blink Coin packs", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                economyPolicy.coinPacks.forEach { pack ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("₦${pack.priceNgn}", fontSize = 11.5.sp, color = textSecondary)
+                                        Text(
+                                            "${pack.coins} coins" + if (pack.bonusCoins > 0) "  (+${pack.bonusCoins})" else "",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = textPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    val isCurrentBadge = profile.verificationBadge == selectedBadge
+                    val eligible = isGoldEligible && !isCurrentBadge
+                    Button(
+                        onClick = { onUpgrade(VerificationBadge.GOLD, selectedMonths) },
+                        enabled = isGoldEligible && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
+                        colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
+                        shape = RoundedCornerShape(100.dp),
+                        modifier = Modifier.fillMaxWidth().height(52.dp)
+                    ) {
+                        Text(
+                            when {
+                                isCurrentBadge -> "Gold Verification Active"
+                                !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
+                                economyPolicy.cashCheckoutEnabled -> "Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.GOLD, selectedMonths).totalNgn} for ${selectedMonths}m"
+                                else -> "Secure Paystack checkout not available yet"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                }
+            }
+
+            if (pendingCashPayment) {
+                item {
+                    OutlinedButton(
+                        onClick = onCheckCashPayment, enabled = !cashCheckoutBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("I've paid · Verify with Paystack") }
+                    Text("Purchases activate only after BLINK independently verifies the payment.",
+                        fontSize = 11.sp, color = textSecondary)
+                }
+            }
+            item {
+                HorizontalDivider()
+                Text("Automatic renewal (optional)", fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp, color = textPrimary)
+                Text("One-time plans never turn on recurring payments automatically. " +
+                    "You may opt in after a successful payment and cancel future billing.",
+                    fontSize = 12.sp, color = textSecondary)
+                Text("Recurring billing status: ${renewalStatus.replace('_',' ')}",
+                    color = textPrimary, fontSize = 12.sp)
+                if (renewalStatus == "active") {
+                    OutlinedButton(onClick = onCancelRenewal, enabled = !renewalWorking,
+                        modifier = Modifier.fillMaxWidth()) { Text("Cancel future charges") }
+                } else if (renewalStatus == "none" || renewalStatus == "cancelled") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = agreedToRenewal,
+                            onCheckedChange = { agreedToRenewal = it })
+                        Text("I agree to recurring charges for my latest paid plan.",
+                            modifier = Modifier.weight(1f), color = textPrimary,
+                            fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { agreedToRenewal = false; onEnableRenewal() },
+                        enabled = agreedToRenewal && economyPolicy.cashCheckoutEnabled && !renewalWorking,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Enable automatic renewal") }
+                }
+                TextButton(onClick = onPaymentHistory, modifier = Modifier.fillMaxWidth()) {
+                    Text("View Paystack receipts and transaction history")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VerificationFeatureItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    highlight: Boolean = false,
+    isDark: Boolean
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = "Image",
+            tint = if (highlight) BlinkPink else if (isDark) Color(0xFF4ADE80) else Color(0xFF16A34A),
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = text,
+            fontSize = 12.5.sp,
+            fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
+            color = if (highlight && isDark) Color.White else if (highlight) LightTextPrimary else if (isDark) DarkTextSecondary else LightTextSecondary,
+            lineHeight = 17.sp
+        )
+    }
+}
+
+@Composable
+private fun cardBg(isDark: Boolean): Color {
+    return if (isDark) MaterialTheme.colorScheme.surfaceContainer else Color.White
+}

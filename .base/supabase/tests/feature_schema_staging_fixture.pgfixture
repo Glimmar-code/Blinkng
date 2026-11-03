@@ -1,0 +1,20 @@
+-- Extend the existing anonymous disposable database fixture, never production.
+\i supabase/tests/stories_universities_fixture.pgfixture
+
+create table public.profile_views (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles(id),
+  viewer_id uuid not null references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+create table public.activities (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid not null references public.profiles(id),
+  actor_id uuid not null references public.profiles(id),
+  activity_type text,
+  entity_type text,
+  entity_id uuid,
+  message text,
+  is_read boolean default false,
+  created_at timestamptz not null default now()
+);

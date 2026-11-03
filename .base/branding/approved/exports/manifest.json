@@ -1,0 +1,587 @@
+{
+  "approved_derived_source_sha256": "3f69cbbd8d662c17f2be1962ad981bb10e853f9228d5d25ad5d111550040279d",
+  "generated_assets": [
+    {
+      "path": "app/src/main/res/drawable/app_icon.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "app/src/main/res/drawable/blink_logo_foreground.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "width": 72,
+      "height": 72,
+      "sha256": "f29a3b834c499e5ddb091897d3f9b70135d3dda16135a38fbeab11649a311a78"
+    },
+    {
+      "path": "app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "width": 72,
+      "height": 72,
+      "sha256": "f29a3b834c499e5ddb091897d3f9b70135d3dda16135a38fbeab11649a311a78"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "9ff4535b983fcfc9bc73ab85d128f9561e2df275ccb0dbc99988bcfda32e1282"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "9ff4535b983fcfc9bc73ab85d128f9561e2df275ccb0dbc99988bcfda32e1282"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "width": 144,
+      "height": 144,
+      "sha256": "b3e6db69e9bbde4e54f98090114691dc713044934e6a8e7612154e6027f816dc"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "width": 144,
+      "height": 144,
+      "sha256": "b3e6db69e9bbde4e54f98090114691dc713044934e6a8e7612154e6027f816dc"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "568c437a507d13df9163744bff8e63deb337ada83b1755ba5ca275e1916dd0d3"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "568c437a507d13df9163744bff8e63deb337ada83b1755ba5ca275e1916dd0d3"
+    },
+    {
+      "path": "app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "width": 108,
+      "height": 108,
+      "sha256": "03b56113520495e55c92ec20d0f165b6a2489de9544626276ddfd57c607dcf7d"
+    },
+    {
+      "path": "app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "width": 162,
+      "height": 162,
+      "sha256": "308f0ba0afab71ea955fa29a7e7457d02dd2dd8b1cece1b41094c10dc209fe03"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "width": 216,
+      "height": 216,
+      "sha256": "de8c2113286988e006587ce3c9b3c82aca0ea45af6311987c8ba6baa77164130"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "width": 324,
+      "height": 324,
+      "sha256": "c1f3704955a050c12897d79d55f164dd0559167f87d1418f022ef3e1ac884864"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "width": 432,
+      "height": 432,
+      "sha256": "49d03cc73e4cc12986cf1bae1d403b2b7434903884414a742da07dfba2e28279"
+    },
+    {
+      "path": "app/src/main/res/drawable-mdpi/ic_stat_blink.png",
+      "width": 24,
+      "height": 24,
+      "sha256": "08e25ca811d85c5cf4e145ebbe0e4445bae32f497429a2d9b363b33ba951dd89"
+    },
+    {
+      "path": "app/src/main/res/drawable-hdpi/ic_stat_blink.png",
+      "width": 36,
+      "height": 36,
+      "sha256": "5698e7aa428a3532585f3e3264cf871ef822d28523df06f6e830595c43b211cd"
+    },
+    {
+      "path": "app/src/main/res/drawable-xhdpi/ic_stat_blink.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "29579d061dacb7ace8c927197369abccec9aa45e334b14515479d6ebedfe2727"
+    },
+    {
+      "path": "app/src/main/res/drawable-xxhdpi/ic_stat_blink.png",
+      "width": 72,
+      "height": 72,
+      "sha256": "5846eb96421d80b98e3d90a55202fb5a173339941ed1fcc9d7bfe5267c53adc2"
+    },
+    {
+      "path": "app/src/main/res/drawable-xxxhdpi/ic_stat_blink.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "434592647e60063658fa2918584f221363b8d9e5109da63a149f2660b6e929e9"
+    },
+    {
+      "path": "branding/approved/exports/android/app-icon-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/android/app-icon-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/android/app-icon-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "9a051cdde15465c117250fa67347535ba862ff5257d81f64219a0b86cc332785"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-16.png",
+      "width": 16,
+      "height": 16,
+      "sha256": "9ee4e0ef5242a54f097f16f828a087a979cd6bbadf7b4689412db9c511259a64"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-32.png",
+      "width": 32,
+      "height": 32,
+      "sha256": "ea81bb199904502e7823d53fe71d22e9b1daa4017511482c10cc89a6e471bde2"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-64.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "7f2c2db983c9e0f739ddd4c0e6a52b0b2137f1ae5516e9bd6c62df9b411fb5eb"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-96.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "9ff4535b983fcfc9bc73ab85d128f9561e2df275ccb0dbc99988bcfda32e1282"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-180.png",
+      "width": 180,
+      "height": 180,
+      "sha256": "901aba5eb7dbef0c4f75b8af29a8ed08ccc2bb3896202072bae3ab1adca9f178"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-192.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "568c437a507d13df9163744bff8e63deb337ada83b1755ba5ca275e1916dd0d3"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-384.png",
+      "width": 384,
+      "height": 384,
+      "sha256": "1f14ab10abc7a6db65f23a5ce09c7767e35801ce582925425c93f72bf45b58c6"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/web/icon-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "9a051cdde15465c117250fa67347535ba862ff5257d81f64219a0b86cc332785"
+    },
+    {
+      "path": "web/blink-logo.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "web/blink-logo-v2.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "web/apple-touch-icon.png",
+      "width": 180,
+      "height": 180,
+      "sha256": "901aba5eb7dbef0c4f75b8af29a8ed08ccc2bb3896202072bae3ab1adca9f178"
+    },
+    {
+      "path": "web/favicon-32.png",
+      "width": 32,
+      "height": 32,
+      "sha256": "ea81bb199904502e7823d53fe71d22e9b1daa4017511482c10cc89a6e471bde2"
+    },
+    {
+      "path": "web/pwa-192.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "568c437a507d13df9163744bff8e63deb337ada83b1755ba5ca275e1916dd0d3"
+    },
+    {
+      "path": "web/pwa-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "web/maskable-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "desktopApp/src/main/resources/blink-logo.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "ios/BLINKiOS/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "9a051cdde15465c117250fa67347535ba862ff5257d81f64219a0b86cc332785"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-24.png",
+      "width": 24,
+      "height": 24,
+      "sha256": "f32fdc9848844d983f728679d445de5d8062005b763f83a09674f9c79ddba754"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-32.png",
+      "width": 32,
+      "height": 32,
+      "sha256": "ea81bb199904502e7823d53fe71d22e9b1daa4017511482c10cc89a6e471bde2"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-64.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "7f2c2db983c9e0f739ddd4c0e6a52b0b2137f1ae5516e9bd6c62df9b411fb5eb"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-72.png",
+      "width": 72,
+      "height": 72,
+      "sha256": "f29a3b834c499e5ddb091897d3f9b70135d3dda16135a38fbeab11649a311a78"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-96.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "9ff4535b983fcfc9bc73ab85d128f9561e2df275ccb0dbc99988bcfda32e1282"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-200.png",
+      "width": 200,
+      "height": 200,
+      "sha256": "0414df5b490181134339f70f973f8d861d0c34660c854097e08f741ce92784a0"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-400.png",
+      "width": 400,
+      "height": 400,
+      "sha256": "5900f7c6bf33dd68a09d06f221846dec6831051aaf34d205c900ac29971591fe"
+    },
+    {
+      "path": "branding/approved/exports/ui/BLINK-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/email/BLINK-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "branding/approved/exports/email/BLINK-64.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "7f2c2db983c9e0f739ddd4c0e6a52b0b2137f1ae5516e9bd6c62df9b411fb5eb"
+    },
+    {
+      "path": "branding/approved/exports/email/BLINK-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/email/BLINK-200.png",
+      "width": 200,
+      "height": 200,
+      "sha256": "0414df5b490181134339f70f973f8d861d0c34660c854097e08f741ce92784a0"
+    },
+    {
+      "path": "branding/approved/exports/email/BLINK-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/email/BLINK-400.png",
+      "width": 400,
+      "height": 400,
+      "sha256": "5900f7c6bf33dd68a09d06f221846dec6831051aaf34d205c900ac29971591fe"
+    },
+    {
+      "path": "branding/approved/exports/payments/BLINK-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "branding/approved/exports/payments/BLINK-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/payments/BLINK-200.png",
+      "width": 200,
+      "height": 200,
+      "sha256": "0414df5b490181134339f70f973f8d861d0c34660c854097e08f741ce92784a0"
+    },
+    {
+      "path": "branding/approved/exports/payments/BLINK-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/payments/BLINK-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/marketplace/BLINK-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "branding/approved/exports/marketplace/BLINK-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/marketplace/BLINK-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/marketplace/BLINK-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/game/BLINK-64.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "7f2c2db983c9e0f739ddd4c0e6a52b0b2137f1ae5516e9bd6c62df9b411fb5eb"
+    },
+    {
+      "path": "branding/approved/exports/game/BLINK-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/game/BLINK-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/game/BLINK-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/app_store/BLINK-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "branding/approved/exports/app_store/BLINK-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "9a051cdde15465c117250fa67347535ba862ff5257d81f64219a0b86cc332785"
+    },
+    {
+      "path": "branding/approved/exports/ios/BLINK-60.png",
+      "width": 60,
+      "height": 60,
+      "sha256": "8947a187ce67f27d5ff159edb8261a2161d68f08865b0e063309e80a18905e14"
+    },
+    {
+      "path": "branding/approved/exports/ios/BLINK-120.png",
+      "width": 120,
+      "height": 120,
+      "sha256": "11d20ca5e5b614bb752fb50e255e0bfde3fa303ab8cff561aef6ef5ffc1c5dc6"
+    },
+    {
+      "path": "branding/approved/exports/ios/BLINK-180.png",
+      "width": 180,
+      "height": 180,
+      "sha256": "901aba5eb7dbef0c4f75b8af29a8ed08ccc2bb3896202072bae3ab1adca9f178"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-16.png",
+      "width": 16,
+      "height": 16,
+      "sha256": "9ee4e0ef5242a54f097f16f828a087a979cd6bbadf7b4689412db9c511259a64"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-24.png",
+      "width": 24,
+      "height": 24,
+      "sha256": "f32fdc9848844d983f728679d445de5d8062005b763f83a09674f9c79ddba754"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-32.png",
+      "width": 32,
+      "height": 32,
+      "sha256": "ea81bb199904502e7823d53fe71d22e9b1daa4017511482c10cc89a6e471bde2"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-40.png",
+      "width": 40,
+      "height": 40,
+      "sha256": "6632e6219ff9859fb2e4a65dea474ee3ffb2475916b7b9b8ac1e245c95579d8c"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-44.png",
+      "width": 44,
+      "height": 44,
+      "sha256": "013ef04e40074b9d0c6cceb00a32cb38b9e5cf57d69a0a9c432964abbe209c56"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "59a3cb646f8800f963e7cce0a00ddea5f6f970366ceb9ec7a21070fa005d1f19"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-64.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "7f2c2db983c9e0f739ddd4c0e6a52b0b2137f1ae5516e9bd6c62df9b411fb5eb"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-96.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "9ff4535b983fcfc9bc73ab85d128f9561e2df275ccb0dbc99988bcfda32e1282"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "ba78bbe389634ce027422af7a3d6c64ed08f0f0391e05413895bb7f2903b36b2"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-150.png",
+      "width": 150,
+      "height": 150,
+      "sha256": "33a29b4f7d10125055a763682d8c61141add2f124ec00c98205766e79782565e"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "8e64ab647ed13e35edf9f13895a3a67f7a5f033497d290219b682ab15b537b45"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-310.png",
+      "width": 310,
+      "height": 310,
+      "sha256": "62723259638eb3629fae5bbefe6bf3e9aaa56c68943fbc048dfa74b512e56665"
+    },
+    {
+      "path": "branding/approved/exports/windows/BLINK-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "8193a804480a68cc8ff4a3290b9adfe2d04f6aae02b11863b3c001c31b4afaee"
+    },
+    {
+      "path": "web/og-blink.png",
+      "width": 1200,
+      "height": 630,
+      "sha256": "45d6e7ed7b2bef93131981f65449f4329d307567236957070a61fee9914f2f68"
+    },
+    {
+      "path": "branding/approved/exports/app_store/google-feature-1024x500.png",
+      "width": 1024,
+      "height": 500,
+      "sha256": "9df707fd352c598013b52003f4c92fe4f26d2e1f6bfb1aabc4a13a28b4d185fb"
+    },
+    {
+      "path": "branding/approved/exports/website/hero-1200x600.png",
+      "width": 1200,
+      "height": 600,
+      "sha256": "cb378a4cd31bd92d92a15a37900fcd4e0737d719c90d0e0f65013b58d93f109b"
+    }
+  ]
+}

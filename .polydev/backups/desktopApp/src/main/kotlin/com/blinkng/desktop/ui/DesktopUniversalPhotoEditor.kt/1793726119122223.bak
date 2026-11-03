@@ -1,0 +1,61 @@
+package com.blinkng.desktop.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.blinkng.shared.ui.editor.rememberPhotoEditorState
+import com.blinkng.shared.ui.editor.EditorTopBar
+
+@Composable
+fun DesktopPhotoEditorDialog(
+    sourceUri: String,
+    onDismiss: () -> Unit,
+    onEdited: (String) -> Unit
+) {
+    val editorState = rememberPhotoEditorState(sourceUri)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column {
+            EditorTopBar(
+                title = "Edit photo",
+                onClose = onDismiss,
+                onConfirm = { onEdited(editorState.uri) },
+                confirmEnabled = !editorState.isExporting
+            )
+            // Placeholder for image preview
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Color.Gray)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(onClick = { editorState.undo() }, enabled = editorState.canUndo) {
+                    Icon(Icons.Default.Undo, "Undo")
+                }
+                IconButton(onClick = { editorState.redo() }, enabled = editorState.canRedo) {
+                    Icon(Icons.Default.Redo, "Redo")
+                }
+                Button(
+                    onClick = { onEdited(editorState.uri) },
+                    enabled = !editorState.isExporting
+                ) {
+                    Text("Send")
+                }
+            }
+        }
+    }
+}

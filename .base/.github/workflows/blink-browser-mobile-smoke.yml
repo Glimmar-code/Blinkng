@@ -1,0 +1,58 @@
+name: BLINK browser and mobile smoke
+
+on:
+  push:
+    branches:
+      - 'Testlab-web-*'
+    paths:
+      - 'web/**'
+      - 'scripts/test_web_mobile_browser.mjs'
+      - '.github/workflows/blink-browser-mobile-smoke.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'scripts/test_web_mobile_browser.mjs'
+      - '.github/workflows/blink-browser-mobile-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated Playwright browser runner
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Start BLINK website locally (no production credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory web > "$RUNNER_TEMP/blink-http.log" 2>&1 &
+          for attempt in $(seq 1 25); do
+            if curl -fsS http://127.0.0.1:8765/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo 'Local BLINK server did not start'
+          cat "$RUNNER_TEMP/blink-http.log"
+          exit 1
+      - name: Exercise BLINK in actual headless Chromium across phone, tablet and desktop sizes
+        run: node scripts/test_web_mobile_browser.mjs
+        env:
+          BLINK_TEST_WEB_ORIGIN: http://127.0.0.1:8765
+      - name: Upload failure screenshots only (mock user data)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-browser-smoke-failures
+          path: tmp/blink-browser-smoke/
+          retention-days: 3
+          if-no-files-found: ignore

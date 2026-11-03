@@ -1,0 +1,50 @@
+name: BLINK Wallet Verified Ads PostgreSQL
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261026143000_wallet_15_ads_verified_entitlement.sql"
+      - "supabase/tests/wallet_verified_ad_*"
+      - ".github/workflows/wallet-verified-ad-postgres.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20261026143000_wallet_15_ads_verified_entitlement.sql"
+      - "supabase/tests/wallet_verified_ad_*"
+      - ".github/workflows/wallet-verified-ad-postgres.yml"
+permissions:
+  contents: read
+jobs:
+  verified-rewards-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: blink_wallet_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_wallet_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 8
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: blink_wallet_ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install disposable PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Set up fake accounts and original Coin economy tables
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/wallet_verified_ad_fixture.pgfixture
+      - name: Install verified-tier entitlement without touching Coin or XP rates
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026143000_wallet_15_ads_verified_entitlement.sql
+      - name: Assert verified-only ad 11–15 and original Coin payouts
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/wallet_verified_ad_assertions.pgfixture
+      - name: Ensure transfer and XP/HP algorithms are untouched
+        run: |
+          ! grep -qi 'create or replace function public.gift_blink_coins' supabase/migrations/20261026143000_wallet_15_ads_verified_entitlement.sql
+          ! grep -qi 'create or replace function private.award_xp' supabase/migrations/20261026143000_wallet_15_ads_verified_entitlement.sql
+          echo "Only rewarded-ad entitlement changed; no production data used."

@@ -1,0 +1,24 @@
+name: BLINK New Member Delivery Safety
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/send-essential-email/**'
+      - 'supabase/migrations/*blink_essential_email*'
+      - 'supabase/functions/blink-contact-discovery/**'
+      - 'supabase/migrations/*private_contact_discovery*'
+      - 'supabase/tests/test_new_member_activation_static.py'
+      - 'app/src/main/java/com/example/auth/BlinkPhoneVerificationClient.kt'
+      - 'app/src/main/java/com/example/data/repository/BlinkContactsDiscoveryClient.kt'
+      - 'app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt'
+      - 'app/src/main/java/com/example/ui/screens/AccountOnboardingScreen.kt'
+  workflow_dispatch:
+jobs:
+  static-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: New-member regression checks
+        run: python3 -m unittest discover -s supabase/tests -p 'test_new_member_activation_static.py' -v

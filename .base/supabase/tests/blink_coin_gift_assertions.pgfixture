@@ -1,0 +1,106 @@
+-- Testing the deployed source migration in an isolated disposable GitHub CI database.
+\set ON_ERROR_STOP on
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+
+do $$
+declare
+  v_a uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  v_b uuid := 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  v_c uuid := 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  v_r20 uuid := '11111111-1111-4111-8111-111111111111';
+  v_r50 uuid := '22222222-2222-4222-8222-222222222222';
+  v_r100 uuid := '33333333-3333-4333-8333-333333333333';
+  v_balance bigint;
+  v_sender bigint;
+  v_receiver bigint;
+  v_count integer;
+begin
+  if has_function_privilege('anon','public.gift_blink_coins_once(uuid,bigint,uuid)','EXECUTE') then
+    raise exception 'SECURITY: anonymous users can execute Coin gift RPC';
+  end if;
+  if not has_function_privilege('authenticated','public.gift_blink_coins_once(uuid,bigint,uuid)','EXECUTE') then
+    raise exception 'SECURITY: authenticated users cannot execute Coin gift RPC';
+  end if;
+
+  select public.gift_blink_coins_once(v_b,20,v_r20) into v_balance;
+  if v_balance <> 980 then raise exception 'Expected first 20-Coin debit, got %',v_balance; end if;
+  select public.gift_blink_coins_once(v_b,20,v_r20) into v_balance;
+  if v_balance <> 980 then raise exception 'Idempotency failed: repeat request changed sender balance'; end if;
+
+  begin
+    perform public.gift_blink_coins_once(v_b,50,v_r20);
+    raise exception 'Security: reused gift ID accepted with modified amount';
+  exception when sqlstate '23505' then null;
+  end;
+
+  select public.gift_blink_coins_once(v_b,50,v_r50) into v_balance;
+  if v_balance <> 930 then raise exception 'Expected 50-Coin debit, got %',v_balance; end if;
+  select public.gift_blink_coins_once(v_b,100,v_r100) into v_balance;
+  if v_balance <> 830 then raise exception 'Expected 100-Coin debit, got %',v_balance; end if;
+
+  select floor(spendable_coin_balance)::bigint into v_sender from public.user_balances where user_id=v_a;
+  select floor(spendable_coin_balance)::bigint into v_receiver from public.user_balances where user_id=v_b;
+  if v_sender <> 830 or v_receiver <> 170 then
+    raise exception 'Wallet ledger mismatch: sender %, receiver %',v_sender,v_receiver;
+  end if;
+
+  select count(*) into v_count from public.blink_coin_gifts where sender_id=v_a and receiver_id=v_b;
+  if v_count <> 3 then raise exception 'Expected exactly 3 gift receipts, got %',v_count; end if;
+  select count(*) into v_count from public.notifications
+  where user_id=v_b and actor_id=v_a and type='tip'
+    and target_type='coin_gift' and (metadata->>'amount')::int in (20,50,100);
+  if v_count <> 3 then raise exception 'Expected exactly 3 recipient gift notices, got %',v_count; end if;
+  select count(*) into v_count from public.game_profiles
+  where (user_id=v_a and coins=830) or (user_id=v_b and coins=170);
+  if v_count <> 2 then raise exception 'Legacy game coin mirror mismatch'; end if;
+
+  begin
+    perform public.gift_blink_coins_once(v_a,20,gen_random_uuid());
+    raise exception 'Security: gifting to oneself incorrectly allowed';
+  exception when sqlstate '22023' then null;
+  end;
+  begin
+    perform public.gift_blink_coins_once(v_b,30,gen_random_uuid());
+    raise exception 'Security: unsupported gift value allowed';
+  exception when sqlstate '22023' then null;
+  end;
+  begin
+    perform public.gift_blink_coins_once(v_c,20,v_r20);
+    raise exception 'Security: replay gift ID against different receiver allowed';
+  exception when sqlstate '23505' then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',v_c::text,true);
+  begin
+    perform public.gift_blink_coins_once(v_b,20,gen_random_uuid());
+    raise exception 'Security: sender with insufficient Coins can gift';
+  exception when sqlstate '22003' then null;
+  end;
+  perform set_config('request.jwt.claim.sub','',true);
+  begin
+    perform public.gift_blink_coins_once(v_b,20,gen_random_uuid());
+    raise exception 'Security: anonymous transfer accepted';
+  exception when sqlstate '42501' then null;
+  end;
+
+  -- Production has a BEFORE INSERT sender-freeze trigger. A gift committed
+  -- before a freeze must replay safely, but new gifts must be denied.
+  perform set_config('request.jwt.claim.sub',v_a::text,true);
+  insert into private.admin_user_controls(user_id,coin_frozen) values(v_a,true);
+  select public.gift_blink_coins_once(v_b,20,v_r20) into v_balance;
+  if v_balance <> 830 then raise exception 'Existing gift cannot be replayed after freeze'; end if;
+  begin
+    perform public.gift_blink_coins_once(v_b,20,gen_random_uuid());
+    raise exception 'Security: new gift accepted despite sender freeze';
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'COIN_BALANCE_FROZEN' then raise; end if;
+  end;
+
+  select count(*) into v_count from public.blink_coin_gifts;
+  if v_count <> 3 then raise exception 'Blocked transfers left partial receipts'; end if;
+  select floor(spendable_coin_balance)::bigint into v_sender
+    from public.user_balances where user_id=v_a;
+  if v_sender <> 830 then raise exception 'Blocked transfer changed wallet'; end if;
+  raise notice 'PASS: Coin gifts 20/50/100, conservation, replay, freeze guard, notifications, mirror and auth.';
+end;
+$$;

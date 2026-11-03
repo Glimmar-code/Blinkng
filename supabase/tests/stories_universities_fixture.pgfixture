@@ -1,0 +1,59 @@
+-- Disposable PostgreSQL fixture for PR #398. NEVER run on BLINK production.
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin;
+create schema auth;
+create table auth.users (id uuid primary key);
+create or replace function auth.uid() returns uuid
+language sql stable as $$
+  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
+insert into auth.users(id) values
+  ('00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-000000000002'),
+  ('00000000-0000-4000-8000-000000000003');
+create table public.profiles (
+  id uuid primary key references auth.users(id),
+  username text not null unique,
+  full_name text not null,
+  avatar_url text,
+  university text not null default ''
+);
+insert into public.profiles(id, username, full_name, university) values
+ ('00000000-0000-4000-8000-000000000001','alice','Alice','Federal University of Technology, Akure'),
+ ('00000000-0000-4000-8000-000000000002','bob','Bob','University of Lagos'),
+ ('00000000-0000-4000-8000-000000000003','carol','Carol','Unknown Institution');
+create table public.stories (
+ id uuid primary key default gen_random_uuid(),
+ user_id uuid not null references auth.users(id),
+ active boolean not null default true,
+ created_at timestamptz not null default now(),
+ media_url text, image_url text, video_url text, media_type text,
+ caption text, likes_count integer not null default 0
+);
+create table public.story_views (
+ id uuid primary key default gen_random_uuid(),
+ story_id uuid not null references public.stories(id),
+ user_id uuid not null references auth.users(id),
+ created_at timestamptz not null default now()
+);
+create table public.story_likes (
+ id uuid primary key default gen_random_uuid(),
+ story_id uuid not null references public.stories(id),
+ user_id uuid not null references auth.users(id),
+ created_at timestamptz not null default now()
+);
+create table public.blocks (
+ blocker_id uuid not null references auth.users(id),
+ blocked_id uuid not null references auth.users(id),
+ created_at timestamptz not null default now()
+);
+insert into public.stories(id,user_id,media_type,media_url,caption) values
+ ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','00000000-0000-4000-8000-000000000001','image','https://example.invalid/story.jpg','private insights test');
+insert into public.story_views(story_id,user_id) values
+ ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','00000000-0000-4000-8000-000000000002'),
+ ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','00000000-0000-4000-8000-000000000003');
+insert into public.story_likes(story_id,user_id) values
+ ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','00000000-0000-4000-8000-000000000002');
+insert into public.blocks(blocker_id,blocked_id) values
+ ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003');

@@ -1,0 +1,76 @@
+package com.example.sharing
+
+import android.app.Application
+import android.net.Uri
+import com.example.BuildConfig
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [35])
+class ShareLinkContractTest {
+
+    private val postId = "11111111-2222-3333-4444-555555555555"
+    private val reelId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    @Test
+    fun `every post uses the canonical public Blink URL and routes back to that post`() {
+        val link = ShareLinkManager.generateShareLink(ShareContentType.POST, postId)
+
+        assertEquals("https://blink.com.ng/post/$postId", link)
+        assertEquals(
+            AppDeepLink(ShareContentType.POST, postId),
+            DeepLinkRouter.parse(Uri.parse(link))
+        )
+    }
+
+    @Test
+    fun `every reel uses the canonical public Blink URL and routes back to that reel`() {
+        val link = ShareLinkManager.generateShareLink(ShareContentType.REEL, reelId)
+
+        assertEquals("https://blink.com.ng/reel/$reelId", link)
+        assertEquals(
+            AppDeepLink(ShareContentType.REEL, reelId),
+            DeepLinkRouter.parse(Uri.parse(link))
+        )
+    }
+
+    @Test
+    fun `market listing uses the canonical public Blink URL and routes back to that listing`() {
+        val marketId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+        val link = ShareLinkManager.generateShareLink(ShareContentType.MARKET, marketId)
+
+        assertEquals("https://blink.com.ng/market/$marketId", link)
+        assertEquals(
+            AppDeepLink(ShareContentType.MARKET, marketId),
+            DeepLinkRouter.parse(Uri.parse(link))
+        )
+        assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://market/$marketId")))
+    }
+
+    @Test
+    fun `invite links select only valid usernames from owned HTTPS hosts`() {
+        assertEquals("glimmar", DeepLinkRouter.invitedBy(Uri.parse("https://blink.com.ng/invite/Glimmar")))
+        assertEquals("glimmar", DeepLinkRouter.invitedBy(Uri.parse("https://www.blink.com.ng/invite/glimmar")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("http://blink.com.ng/invite/glimmar")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("https://attacker.example/invite/glimmar")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("https://blink.com.ng/invite/bad%2Fpath")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("https://blink.com.ng/invite/g")))
+    }
+
+    @Test
+    fun `canonical share base remains the production Blink domain`() {
+        assertEquals("https://blink.com.ng", BuildConfig.SHARE_BASE_URL)
+        assertEquals(
+            AppDeepLink(ShareContentType.POST, postId),
+            DeepLinkRouter.parse(Uri.parse("https://www.blink.com.ng/post/$postId"))
+        )
+        assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://post/$postId")))
+        assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://reel/$reelId")))
+    }
+}

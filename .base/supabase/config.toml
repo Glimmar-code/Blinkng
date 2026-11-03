@@ -1,0 +1,147 @@
+# Blinkng local Supabase configuration.
+# Safe to commit: do not put production passwords, service-role keys,
+# SMTP passwords, OAuth client secrets, Firebase private keys, or payment
+# provider secret values in this file.
+
+project_id = "blinkng"
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = true
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+
+# Keep Edge Function authentication behavior source-controlled so a fallback
+# deployment cannot silently change which endpoints require a JWT.
+# BLINK LIFE: authenticated short-lived server tickets, no public anonymous joins.
+[functions.blink-life-session]
+verify_jwt = true
+
+[functions.game-rewards]
+verify_jwt = true
+
+[functions.moderation-action]
+verify_jwt = true
+
+[functions.verify-payment]
+verify_jwt = true
+
+# Paystack checkout is authenticated with the signed-in BLINK user.
+[functions.paystack-initialize]
+verify_jwt = true
+
+[functions.paystack-verify]
+verify_jwt = true
+
+# Paystack authenticates this webhook with x-paystack-signature (HMAC SHA-512),
+# so it must be reachable without a Supabase user JWT.
+[functions.paystack-webhook]
+verify_jwt = false
+
+# Read-only browser return page after hosted checkout.
+[functions.paystack-return]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = true
+
+[functions.send-call-notification]
+verify_jwt = true
+
+[functions.call-turn-credentials]
+verify_jwt = true
+
+# Weather is requested only by signed-in BLINK users. Provider secrets stay server-side.
+[functions.blink-weather]
+verify_jwt = true
+
+[functions.blink-ai]
+verify_jwt = false
+
+[functions.blink-ai-v2]
+verify_jwt = false
+
+[functions.username-login]
+verify_jwt = false
+
+[functions.share-preview]
+verify_jwt = false
+
+# Public read-only, allowlisted metadata. Deploy to staging before promotion.
+[functions.link-metadata]
+verify_jwt = false
+
+[functions.blink-web]
+verify_jwt = false
+
+# Anonymous browser metric aggregation is disabled by default in Edge.
+# It is additionally gated by BLINK_SITE_ANALYTICS_ENABLED=true and a
+# server-only service key; PostgreSQL enforces global anti-spam caps.
+[functions.blink-site-analytics]
+verify_jwt = false
+
+# AdMob authenticates this public webhook with Google's ECDSA signature, not a
+# Supabase user JWT. The handler rejects invalid signatures before any write.
+[functions.admob-reward-ssv]
+verify_jwt = false
+
+# Production Auth provider settings, redirect URLs, SMTP credentials and
+# third-party secret values must be configured through Supabase/secrets
+# management and documented as required configuration in RECOVERY.md.
+# Secret values must never be committed to Git.
+
+
+# NEW Paystack v2 routes: all financial functions remain disabled by server
+# flags until independent TEST-mode merchant and provider checks succeed.
+[functions.paystack-checkout]
+verify_jwt = true
+
+[functions.paystack-confirm]
+verify_jwt = true
+
+[functions.paystack-history]
+verify_jwt = true
+
+[functions.paystack-autorenew]
+verify_jwt = true
+
+# Paystack verifies webhook payload signatures; no BLINK session expected.
+# This v2 endpoint does not replace the legacy live Paystack webhook.
+[functions.paystack-webhook-v2]
+verify_jwt = false
+
+# Internal worker, requires long service-only x-blink-email-worker-secret.
+[functions.paystack-payment-email]
+verify_jwt = false
+
+# Authenticated users may request delivery/refund; owner-only financial actions are checked server-side.
+[functions.paystack-market-ops]
+verify_jwt = true
+
+# Private view-once media requires a valid user JWT and service-side one-use claim.
+[functions.blink-view-once-image]
+verify_jwt = true
+
+# Approved submissions may be publicly viewed; pending media requires user or admin auth.
+# The function performs explicit record and session authorization before signing a 60s URL.
+[functions.blink-contest-private-media]
+verify_jwt = false
+
+# Transactional email worker has a private, high-entropy header credential;
+# only trusted server-side scheduling may call this endpoint.
+[functions.send-essential-email]
+verify_jwt = false
+
+# Contact matching requires valid Supabase Auth sessions and server-side consent.
+[functions.blink-contact-discovery]
+verify_jwt = true

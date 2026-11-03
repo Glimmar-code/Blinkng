@@ -1,0 +1,383 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { verifiedNotificationActor, pushPreferenceDecision } from "../_shared/push-gates.mjs";
+import { chatPushPreview } from "../_shared/chat-preview.mjs";
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { "Content-Type": "application/json", "Connection": "keep-alive" },
+});
+
+let firebaseTokenCache: { token: string; projectId: string; expiresAt: number } | null = null;
+
+
+function base64Url(input: string): string {
+  return btoa(input).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function firebaseAccessToken(
+  serviceAccountJson: string,
+): Promise<{ token?: string; projectId?: string; error?: string }> {
+  const nowMs = Date.now();
+  if (firebaseTokenCache && firebaseTokenCache.expiresAt > nowMs + 60_000) {
+    return { token: firebaseTokenCache.token, projectId: firebaseTokenCache.projectId };
+  }
+
+  try {
+    const sa = JSON.parse(serviceAccountJson);
+    if (!sa.client_email || !sa.private_key || !sa.project_id) {
+      return { error: "Invalid Firebase service account" };
+    }
+
+    const now = Math.floor(nowMs / 1000);
+    const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+    const claim = base64Url(JSON.stringify({
+      iss: sa.client_email,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    }));
+
+    const pem = String(sa.private_key)
+      .replace("-----BEGIN PRIVATE KEY-----", "")
+      .replace("-----END PRIVATE KEY-----", "")
+      .replace(/\s/g, "");
+    const keyBytes = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey(
+      "pkcs8",
+      keyBytes,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const input = new TextEncoder().encode(`${header}.${claim}`);
+    const signature = new Uint8Array(
+      await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, input),
+    );
+    const signed = `${header}.${claim}.${base64Url(String.fromCharCode(...signature))}`;
+
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: signed,
+      }),
+    });
+    if (!response.ok) return { error: `Firebase OAuth failed (${response.status})` };
+
+    const body = await response.json();
+    const accessToken = String(body.access_token ?? "");
+    if (!accessToken) return { error: "Firebase OAuth returned no access token" };
+    const expiresInSeconds = Number(body.expires_in ?? 3600);
+    firebaseTokenCache = {
+      token: accessToken,
+      projectId: String(sa.project_id),
+      expiresAt: nowMs + Math.max(300, expiresInSeconds - 120) * 1000,
+    };
+    return { token: accessToken, projectId: String(sa.project_id) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Firebase auth failed" };
+  }
+}
+
+function isUnregisteredFcmToken(status: number, responseText: string): boolean {
+  const text = responseText.toUpperCase();
+  return status === 404 || text.includes("UNREGISTERED") || text.includes("REGISTRATION-TOKEN-NOT-REGISTERED");
+}
+
+type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string; retryable?: boolean };
+
+async function claimDispatch(
+  admin: ReturnType<typeof createClient>,
+  messageId: string,
+): Promise<DispatchClaim> {
+  const { data: existing, error: readError } = await admin
+    .from("message_push_dispatches")
+    .select("status,attempts,updated_at")
+    .eq("message_id", messageId)
+    .maybeSingle();
+
+  if (readError) return { proceed: false, tracked: false, attempts: 0, reason: "dispatch_ledger_unavailable", retryable: true };
+
+  if (existing) {
+    if (existing.status === "sent") {
+      return { proceed: false, tracked: true, attempts: Number(existing.attempts ?? 1), reason: "already_sent" };
+    }
+
+    const ageMs = Date.now() - Date.parse(String(existing.updated_at ?? ""));
+    if (existing.status === "sending" && Number.isFinite(ageMs) && ageMs < 120_000) {
+      return { proceed: false, tracked: true, attempts: Number(existing.attempts ?? 1), reason: "already_sending" };
+    }
+
+    const attempts = Number(existing.attempts ?? 0) + 1;
+    // Compare-and-swap the previous claim version. Another caller may have
+    // claimed this exact failed/expired message after our first read.
+    const { data: claimed, error } = await admin
+      .from("message_push_dispatches")
+      .update({ status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() })
+      .eq("message_id", messageId)
+      .eq("status", existing.status)
+      .eq("updated_at", existing.updated_at)
+      .select("message_id")
+      .maybeSingle();
+    if (error) return { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true };
+    return claimed
+      ? { proceed: true, tracked: true, attempts }
+      : { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
+  }
+
+  const { error: insertError } = await admin
+    .from("message_push_dispatches")
+    .insert({ message_id: messageId, status: "sending", attempts: 1, updated_at: new Date().toISOString() });
+
+  if (!insertError) return { proceed: true, tracked: true, attempts: 1 };
+  if (String(insertError.code ?? "") === "23505") {
+    return { proceed: false, tracked: true, attempts: 1, reason: "concurrent_dispatch" };
+  }
+  return { proceed: false, tracked: false, attempts: 1, reason: "dispatch_ledger_unavailable", retryable: true };
+}
+
+async function finishDispatch(
+  admin: ReturnType<typeof createClient>,
+  messageId: string,
+  tracked: boolean,
+  ok: boolean,
+  errorText = "",
+) {
+  if (!tracked) return;
+  await admin
+    .from("message_push_dispatches")
+    .update({
+      status: ok ? "sent" : "failed",
+      last_error: errorText ? errorText.slice(0, 600) : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("message_id", messageId);
+}
+
+Deno.serve(async (req) => {
+  if (req.method !== "POST") return json({ error: "POST required" }, 405);
+
+  const auth = req.headers.get("Authorization") ?? "";
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRole) {
+    return json({ error: "Supabase server configuration missing" }, 503);
+  }
+
+  let messageId = "";
+  try {
+    const payload = await req.json();
+    messageId = String(payload?.message_id ?? "").trim();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+  if (!messageId) return json({ error: "message_id is required" }, 400);
+
+  const admin = createClient(supabaseUrl, serviceRole, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  // The claimed sub in a JWT is attacker-controlled until Supabase Auth
+  // validates its signature, issuer and expiry. Never trust decode-only IDs.
+  const senderId = await verifiedNotificationActor(auth, token => admin.auth.getUser(token));
+  if (!senderId) return json({ error: "Unauthorized" }, 401);
+
+  const { data: message, error: messageError } = await admin
+    .from("messages")
+    .select("id,conversation_id,sender_id,content")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (messageError) return json({ error: "Unable to load message" }, 500);
+  if (!message) return json({ error: "Message not found" }, 404);
+  if (message.sender_id !== senderId) return json({ error: "Forbidden" }, 403);
+
+  const { data: recipientParticipant, error: participantError } = await admin
+    .from("conversation_participants")
+    .select("user_id")
+    .eq("conversation_id", message.conversation_id)
+    .neq("user_id", senderId)
+    .limit(1)
+    .maybeSingle();
+  if (participantError) return json({ error: "Unable to resolve recipient" }, 500);
+  const recipientId = String(recipientParticipant?.user_id ?? "").trim();
+  if (!recipientId) return json({ ok: true, skipped: "no_recipient" });
+
+  const { data: recipientState, error: recipientStateError } = await admin
+    .from("conversation_user_state")
+    .select("is_muted,muted_until")
+    .eq("conversation_id", message.conversation_id)
+    .eq("user_id", recipientId)
+    .maybeSingle();
+
+  // Privacy metadata unavailable is not equivalent to "unmuted".
+  if (recipientStateError) return json({ error: "conversation_preferences_unavailable", retryable: true }, 503);
+  if (recipientState?.is_muted === true) {
+    const mutedUntil = String(recipientState.muted_until ?? "").trim();
+    const timedMuteActive = !mutedUntil || Date.parse(mutedUntil) > Date.now();
+    if (timedMuteActive) {
+      return json({ ok: true, skipped: "conversation_muted" });
+    }
+  }
+
+  const { data: allowed, error: allowedError } = await admin.rpc("notification_push_allowed", {
+    p_user_id: recipientId,
+    p_type: "message",
+  });
+  const preference = pushPreferenceDecision(allowed, allowedError);
+  if (preference === "retry") return json({ error: "notification_preferences_unavailable", retryable: true }, 503);
+  if (preference === "skip") return json({ ok: true, skipped: "recipient_preferences" });
+
+  // Device settings can be stale after a change on another device. The server
+  // decides what private text is allowed in each push BEFORE constructing FCM
+  // data. A privacy lookup outage must not fall back to a full message preview.
+  const { data: chatPrivacy, error: chatPrivacyError } = await admin
+    .from("user_chat_privacy")
+    .select("notification_preview")
+    .eq("user_id", recipientId)
+    .maybeSingle();
+  if (chatPrivacyError) {
+    return json({ error: "chat_preview_preferences_unavailable", retryable: true }, 503);
+  }
+  const previewMode = String(chatPrivacy?.notification_preview ?? "hidden");
+
+  const [{ data: sender }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
+    admin.from("profiles")
+      .select("username,full_name,avatar_url")
+      .eq("id", senderId)
+      .maybeSingle(),
+    admin.from("fcm_tokens")
+      .select("token")
+      .eq("user_id", recipientId)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+    admin.from("profiles")
+      .select("fcm_token")
+      .eq("id", recipientId)
+      .maybeSingle(),
+  ]);
+
+  const tokens = new Set<string>();
+  for (const row of tokenRows ?? []) {
+    const token = String(row?.token ?? "").trim();
+    if (token) tokens.add(token);
+  }
+  const legacyToken = String(legacyRecipient?.fcm_token ?? "").trim();
+  if (legacyToken) tokens.add(legacyToken);
+
+  if (tokens.size === 0) {
+    return json({ ok: true, skipped: "recipient_has_no_push_token" });
+  }
+
+  const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
+  if (!firebaseJson) {
+    return json({ error: "Firebase server credential is not configured" }, 503);
+  }
+
+  const claim = await claimDispatch(admin, messageId);
+  if (!claim.proceed) {
+    if (claim.retryable) return json({ error: claim.reason ?? "dispatch_ledger_unavailable", retryable: true }, 503);
+    return json({ ok: true, skipped: claim.reason ?? "duplicate", attempts: claim.attempts });
+  }
+
+  const firebase = await firebaseAccessToken(firebaseJson);
+  if (!firebase.token || !firebase.projectId) {
+    await finishDispatch(admin, messageId, claim.tracked, false, firebase.error ?? "Firebase authentication failed");
+    return json({ error: firebase.error ?? "Firebase authentication failed" }, 502);
+  }
+
+  const senderUsername = String(sender?.username ?? "");
+  const senderName = String(sender?.full_name ?? (senderUsername || "Blink user"));
+  const senderAvatar = String(sender?.avatar_url ?? "");
+  const preview = chatPushPreview(
+    previewMode, senderName, message.content, senderAvatar, senderUsername, senderId
+  );
+
+  const data = {
+    type: "message",
+    title: preview.title,
+    body: preview.body,
+    recipient_id: recipientId,
+    sender_id: preview.senderId,
+    sender_username: preview.senderUsername,
+    sender_name: preview.senderName,
+    sender_avatar: preview.senderAvatar,
+    conversation_id: String(message.conversation_id),
+    message_id: String(message.id),
+  };
+
+  const sendResults = await Promise.all(
+    [...tokens].map(async (token) => {
+      try {
+        const response = await fetch(
+          `https://fcm.googleapis.com/v1/projects/${firebase.projectId}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${firebase.token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message: {
+                token,
+                data,
+                android: {
+                  priority: "HIGH",
+                  // Keep live pushes fresh. Long-offline gaps are reconstructed from authoritative
+                  // unread message state by NotificationSyncWorker instead of replaying old FCM packets.
+                  ttl: "86400s",
+                },
+              },
+            }),
+          },
+        );
+
+        const text = await response.text();
+        if (!response.ok && isUnregisteredFcmToken(response.status, text)) {
+          await admin.from("fcm_tokens")
+            .update({ is_active: false, updated_at: new Date().toISOString() })
+            .eq("token", token);
+          await admin.from("profiles")
+            .update({ fcm_token: null })
+            .eq("id", recipientId)
+            .eq("fcm_token", token);
+        }
+
+        return {
+          tokenSuffix: token.slice(-8),
+          ok: response.ok,
+          status: response.status,
+          detail: response.ok ? "" : text.slice(0, 300),
+        };
+      } catch (error) {
+        return {
+          tokenSuffix: token.slice(-8),
+          ok: false,
+          status: 0,
+          detail: error instanceof Error ? error.message : "FCM request failed",
+        };
+      }
+    }),
+  );
+
+  const delivered = sendResults.filter((result) => result.ok).length;
+  const failed = sendResults.length - delivered;
+  const failureText = sendResults
+    .filter((result) => !result.ok)
+    .map((result) => `${result.status}:${result.detail}`)
+    .join(" | ");
+
+  await finishDispatch(admin, messageId, claim.tracked, delivered > 0, failureText);
+
+  return json({
+    ok: delivered > 0,
+    delivered,
+    failed,
+    devices: sendResults.length,
+    attempts: claim.attempts,
+    failures: sendResults.filter((result) => !result.ok).slice(0, 5),
+  });
+});

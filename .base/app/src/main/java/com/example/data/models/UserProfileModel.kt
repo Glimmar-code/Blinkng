@@ -1,0 +1,110 @@
+package com.example.data.models
+
+import com.blinkng.shared.ProfileVisibilityScope
+
+enum class VerificationBadge {
+    NONE, BLUE, GOLD
+}
+
+enum class AvailabilityStatus(val label: String) {
+    NONE("None"),
+    OPEN_FOR_OPPORTUNITIES("Open for opportunities"),
+    AVAILABLE_FOR_FREELANCE("Available for freelance"),
+    STUDY_BUDDY("Looking for study buddy"),
+    BUSY("Busy / Exams")
+}
+
+data class ContactField(
+    var value: String,
+    var isPublic: Boolean = true
+)
+
+data class SocialLinks(
+    var website: String = "",
+    var linkedin: String = "",
+    var twitter: String = "",
+    var instagram: String = "",
+    var featuredLink: String = "",
+    var featuredLinkLabel: String = ""
+)
+
+data class SkillEndorsement(
+    val skill: String,
+    var endorsements: Int = 0,
+    var endorsedByMe: Boolean = false
+)
+
+data class AchievementBadge(
+    val id: String,
+    val title: String,
+    val description: String,
+    val iconName: String = "trophy"
+)
+
+data class UserProfile(
+    var id: String = "",
+    var fullName: String = "",
+    var username: String = "",
+    var avatarUrl: String = "",
+    var coverPhotoUrl: String = "",
+    var verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    var isBlinkVip: Boolean = false,
+    var blinkVipUntil: String = "",
+    var professionalHeadline: String = "",
+    var currentJobTitle: String = "",
+    var university: String = "",
+    var accountType: String = "",
+    var faculty: String = "",
+    var department: String = "",
+    var courseOfStudy: String = "",
+    var academicLevel: String = "",
+    var graduationYear: String = "",
+    var gender: String = "",
+    var birthDate: String = "",
+    var interests: List<String> = listOf(),
+    var onboardingCompleted: Boolean = true,
+    var onboardingStep: Int = 4,
+    var bio: String = "",
+    var availability: AvailabilityStatus = AvailabilityStatus.NONE,
+    var countryOfOrigin: String = "",
+    var currentCityState: String = "",
+    var email: ContactField = ContactField("", true),
+    var phone: ContactField = ContactField("", false),
+    var whatsapp: ContactField = ContactField("", false),
+    var emailVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PRIVATE,
+    var phoneVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PRIVATE,
+    var whatsappVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PRIVATE,
+    var presenceVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PUBLIC,
+    var links: SocialLinks = SocialLinks(),
+    var coreSkills: MutableList<String> = mutableListOf(),
+    var skillEndorsements: MutableList<SkillEndorsement> = mutableListOf(),
+    var hobbies: List<String> = listOf(),
+    var languages: List<String> = listOf(),
+    var favoriteQuote: String = "",
+    var followerCount: Int = 0,
+    var followingCount: Int = 0,
+    var profileViewsThisWeek: Int = 0,
+    var dailyStreak: Int = 0,
+    var worldRank: Int = 0,
+    var campusRank: Int = 0,
+    var onlineNow: Boolean = false,
+    var relationshipStatus: String = "Single",
+    var lastSeenAt: String = "",
+    var verifiedAtMillis: Long = 0L,
+    var verificationExpiresAtMillis: Long = 0L,
+    var createdAt: String = "",
+    var joinedLabel: String = "",
+    var isSellerActive: Boolean = false,
+    var sellerStoreName: String = "",
+    var points: Int = 0,
+    var totalXp: Long = 0L,
+    var xpLevel: Int = 1,
+    var badges: List<AchievementBadge> = listOf(),
+    var profileTheme: String = "black"
+) {
+    fun hasActiveMarketVerification(nowMillis: Long = System.currentTimeMillis()): Boolean =
+        verificationBadge != VerificationBadge.NONE &&
+            (verificationExpiresAtMillis > nowMillis ||
+                (verificationBadge == VerificationBadge.GOLD && verificationExpiresAtMillis == 0L))
+}
+

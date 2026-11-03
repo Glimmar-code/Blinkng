@@ -1,0 +1,708 @@
+package com.example.ui.screens
+
+import com.example.ui.components.BlinkSkeletonList
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
+import android.content.Intent
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import com.example.R
+import com.example.data.models.LeaderboardUser
+import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
+import com.example.ui.components.BlinkVipMarkForUsername
+import com.example.ui.components.VerifiedMark
+import com.example.ui.theme.BlinkGold
+import com.example.ui.theme.BlinkPink
+import com.example.util.startActivitySafely
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
+import com.blinkng.shared.rankPulseRange
+
+private enum class LeaderboardScope(val label: String) {
+    WORLD("World"),
+    CAMPUS("Campus"),
+    FACULTY("Faculty"),
+    LEVEL("Academic Level")
+}
+
+@Composable
+fun LeaderboardScreen(
+    users: List<LeaderboardUser>,
+    userProfile: UserProfile = UserProfile(),
+    onProfileClick: (String) -> Unit,
+    isDark: Boolean,
+    isLiveDataAvailable: Boolean = true,
+    activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
+    onRefresh: () -> Unit = {},
+    isLoading: Boolean = false
+) {
+    val context = LocalContext.current
+    var scope by remember { mutableStateOf(LeaderboardScope.WORLD) }
+    var verifiedOnly by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showInfo by remember { mutableStateOf(false) }
+    var previousWorldRanks by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var worldRankMovement by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var rankUpsInWindow by remember { mutableIntStateOf(0) }
+
+    val campusName = userProfile.university.cleanLabel()
+    val facultyName = userProfile.faculty.cleanLabel()
+    val levelName = userProfile.academicLevel.cleanLabel()
+
+    val world = remember(users) {
+        users.asSequence()
+            .filter { it.username.isNotBlank() }
+            .sortedWith(
+                compareBy<LeaderboardUser> {
+                    it.rank.takeIf { rank -> rank > 0 } ?: Int.MAX_VALUE
+                }
+                    .thenByDescending { it.points }
+                    .thenBy { it.username.lowercase() }
+            )
+            .mapIndexed { index, user ->
+                if (user.rank > 0) user else user.copy(rank = index + 1)
+            }
+            .toList()
+    }
+
+    LaunchedEffect(world.map { it.username to it.rank }) {
+        val current = world.associate { it.username.lowercase() to it.rank }
+        if (previousWorldRanks.isNotEmpty()) {
+            val movement = current.mapValues { (username, rank) ->
+                val oldRank = previousWorldRanks[username]
+                if (oldRank == null) 0 else oldRank - rank
+            }
+            worldRankMovement = movement
+            rankUpsInWindow += movement.values.count { it > 0 }
+        }
+        previousWorldRanks = current
+    }
+
+    val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
+    val reduceMotion = rememberReducedMotionEnabled()
+    val windowActive = rememberWindowActive()
+
+    LaunchedEffect(windowActive, policy.rankWindowMillis) {
+        if (!windowActive) return@LaunchedEffect
+        while (true) {
+            delay(policy.rankWindowMillis)
+            rankUpsInWindow = 0
+            worldRankMovement = emptyMap()
+        }
+    }
+
+    val rankPulse = rememberManagedPulse(
+        key = "leaderboard:" + userProfile.username.trim().lowercase(),
+        range = rankPulseRange(rankUpsInWindow, policy),
+        tickMillis = policy.rankTickMillis,
+        policy = policy,
+        liveDataAvailable = isLiveDataAvailable,
+        windowActive = windowActive,
+        reduceMotion = reduceMotion,
+    )
+
+    val rankStatus = remember(rankUpsInWindow, policy.hotRankUpsThreshold) {
+        when {
+            rankUpsInWindow >= policy.hotRankUpsThreshold -> "Heating up"
+            rankUpsInWindow > 0 -> "Active"
+            else -> "Stable"
+        }
+    }
+
+    val recentMovers = remember(worldRankMovement, world) {
+        worldRankMovement
+            .filterValues { it > 0 }
+            .entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .mapNotNull { movement ->
+                world.firstOrNull { it.username.equals(movement.key, ignoreCase = true) }
+                    ?.let { it to movement.value }
+            }
+    }
+
+    LaunchedEffect(rankPulse.value != null, userProfile.username, isLiveDataAvailable) {
+        val shown = rankPulse.value
+        if (shown != null && isLiveDataAvailable) {
+            onActivityPulseEvent(
+                "leaderboard",
+                "impression",
+                rankUpsInWindow,
+                shown,
+                mapOf("status" to rankStatus)
+            )
+        }
+    }
+
+    val scoped = remember(world, scope, campusName, facultyName, levelName, verifiedOnly) {
+        fun rankWithinScope(source: List<LeaderboardUser>): List<LeaderboardUser> {
+            var previousWorldRank: Int? = null
+            var previousScopedRank = 0
+
+            return source.mapIndexed { index, user ->
+                val scopedRank = if (previousWorldRank == user.rank) {
+                    previousScopedRank
+                } else {
+                    index + 1
+                }
+                previousWorldRank = user.rank
+                previousScopedRank = scopedRank
+                user.copy(rank = scopedRank)
+            }
+        }
+
+        val rankedScope = when (scope) {
+            LeaderboardScope.WORLD -> world
+            LeaderboardScope.CAMPUS -> rankWithinScope(
+                world.filter { it.university.equals(campusName, ignoreCase = true) }
+            )
+            LeaderboardScope.FACULTY -> rankWithinScope(
+                world.filter { it.faculty.equals(facultyName, ignoreCase = true) }
+            )
+            LeaderboardScope.LEVEL -> rankWithinScope(
+                world.filter { it.level.equals(levelName, ignoreCase = true) }
+            )
+        }
+
+        rankedScope.filter { !verifiedOnly || it.verificationBadge != VerificationBadge.NONE }
+    }
+
+    // Product rule: render a consistent scrollable Top 20 list.
+    val topTwenty = remember(scoped) { scoped.take(20) }
+    val visibleTopTwenty = remember(topTwenty, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) {
+            topTwenty
+        } else {
+            topTwenty.filter {
+                it.username.contains(query, ignoreCase = true) ||
+                    it.fullName.contains(query, ignoreCase = true) ||
+                    it.university.contains(query, ignoreCase = true) ||
+                    it.faculty.contains(query, ignoreCase = true)
+            }
+        }
+    }
+
+    val currentUserIndex = remember(scoped, userProfile.username) {
+        scoped.indexOfFirst { it.username.equals(userProfile.username, ignoreCase = true) }
+    }
+    val currentUser = scoped.getOrNull(currentUserIndex)
+    val nextUser = if (currentUserIndex > 0) scoped.getOrNull(currentUserIndex - 1) else null
+    val pointsToNext = if (currentUser != null && nextUser != null) {
+        (nextUser.points - currentUser.points + 1).coerceAtLeast(1)
+    } else {
+        0
+    }
+
+    if (showInfo) {
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            confirmButton = {
+                TextButton(onClick = { showInfo = false }) { Text("Got it") }
+            },
+            icon = { Icon(Icons.Default.EmojiEvents, null, tint = BlinkGold) },
+            title = { Text("How the leaderboard works") },
+            text = {
+                Text(
+                    "Blink uses Supabase's canonical leaderboard order. Higher points rank first; ties are resolved by account creation time. " +
+                        "The page shows ranks #1–#20 in one consistent scrollable list for the selected scope. Your personal rank card can still show your own position outside the Top 20."
+                )
+            }
+        )
+    }
+
+
+    BlinkReferenceLeaderboard(
+        visibleRankings = visibleTopTwenty,
+        campusPodiumUsers = if (campusName.isBlank()) emptyList() else {
+            world.filter { it.university.equals(campusName, ignoreCase = true) }
+                .take(3).mapIndexed { index, user -> user.copy(rank = index + 1) }
+        },
+        userProfile = userProfile,
+        currentUser = currentUser,
+        currentWorldRank = world.firstOrNull {
+            it.username.equals(userProfile.username, ignoreCase = true)
+        }?.rank,
+        scope = scope.label,
+        campusEnabled = campusName.isNotBlank(),
+        facultyEnabled = facultyName.isNotBlank(),
+        levelEnabled = levelName.isNotBlank(),
+        verifiedOnly = verifiedOnly,
+        searchQuery = searchQuery,
+        worldRankMovement = worldRankMovement,
+        isDark = isDark,
+        isLoading = isLoading,
+        showRankPulse = policy.enabled,
+        rankPulseContent = {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .40f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Rank Pulse", fontSize = 14.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                if (rankPulse.isStale) "Last known activity • offline"
+                                else (policy.rankWindowMillis / 1000).toString() + "-second activity window • " + rankStatus,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(30.dp),
+                            color = BlinkGold.copy(alpha = 0.13f)
+                        ) {
+                            if (reduceMotion) {
+                                Text(
+                                    rankPulse.value?.toString() ?: "—",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    color = BlinkGold, fontWeight = FontWeight.Black
+                                )
+                            } else {
+                                Crossfade(targetState = rankPulse.value, label = "leaderboardRankPulse") { value ->
+                                    Text(
+                                        value?.toString() ?: "—",
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        color = BlinkGold, fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        "Confirmed rank-ups in this window: " + rankUpsInWindow,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    recentMovers.forEach { (student, places) ->
+                        Text(
+                            "@" + student.username + " moved up " + places + if (places == 1) " place" else " places",
+                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        onScopeChange = { requested ->
+            LeaderboardScope.entries.firstOrNull { it.label == requested }?.let { scope = it }
+        },
+        onVerifiedChange = { verifiedOnly = !verifiedOnly },
+        onSearchChange = { searchQuery = it },
+        onResetFilters = {
+            scope = LeaderboardScope.WORLD
+            verifiedOnly = false
+            searchQuery = ""
+        },
+        onProfileClick = { username ->
+            onActivityPulseEvent(
+                "leaderboard",
+                "profile_open",
+                rankUpsInWindow,
+                rankPulse.value,
+                mapOf("username" to username, "scope" to scope.label)
+            )
+            onProfileClick(username)
+        },
+        onShare = { shareLeaderboardUser(context, it) },
+        onInfo = { showInfo = true },
+        onRefresh = {
+            onActivityPulseEvent(
+                "leaderboard",
+                "manual_refresh",
+                rankUpsInWindow,
+                rankPulse.value,
+                mapOf("scope" to scope.label)
+            )
+            onRefresh()
+        }
+    )
+}
+
+@Composable
+private fun SummaryPill(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                value,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun MyRankCard(
+    currentUser: LeaderboardUser?,
+    nextUser: LeaderboardUser?,
+    pointsToNext: Int,
+    onProfileClick: (String) -> Unit
+) {
+    val background = if (currentUser?.rank != null && currentUser.rank <= 10) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = .55f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .then(
+                if (currentUser != null) Modifier.clickable { onProfileClick(currentUser.username) }
+                else Modifier
+            ),
+        shape = RoundedCornerShape(20.dp),
+        color = background,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Your rank", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        currentUser?.let { "#${it.rank} · ${it.points} pts" } ?: "Unranked",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(100.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = .7f)
+                ) {
+                    Text(
+                        if (currentUser != null && currentUser.rank <= 10) "TOP 20" else "KEEP CLIMBING",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            if (currentUser != null) {
+                Spacer(Modifier.height(10.dp))
+                if (currentUser.rank == 1) {
+                    Text("You are leading this scope.", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                } else if (nextUser != null) {
+                    Text(
+                        "$pointsToNext more point${if (pointsToNext == 1) "" else "s"} to pass #${nextUser.rank}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val target = nextUser.points.coerceAtLeast(1)
+                    val progress = (currentUser.points.toFloat() / target.toFloat()).coerceIn(0f, 1f)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(100.dp))
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(progress)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Podium(
+    topThree: List<LeaderboardUser>,
+    isDark: Boolean,
+    onProfileClick: (String) -> Unit,
+    onShare: (LeaderboardUser) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        listOf(1, 0, 2).forEach { idx ->
+            topThree.getOrNull(idx)?.let { user ->
+                val isWinner = idx == 0
+                val medal = when (idx) {
+                    0 -> "👑"
+                    1 -> "🥈"
+                    else -> "🥉"
+                }
+                Surface(
+                    Modifier
+                        .weight(1f)
+                        .height(if (isWinner) 160.dp else 134.dp)
+                        .clickable { onProfileClick(user.username) },
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(
+                        if (isWinner) 1.5.dp else 1.dp,
+                        if (isWinner) BlinkGold else MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    color = if (isWinner) {
+                        BlinkGold.copy(alpha = if (isDark) .13f else .10f)
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
+                ) {
+                    Box {
+                        Column(
+                            Modifier.fillMaxSize().padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(medal, fontSize = if (isWinner) 24.sp else 19.sp)
+                            AsyncImage(
+                                model = user.avatar,
+                                error = painterResource(R.drawable.ic_default_profile),
+                                fallback = painterResource(R.drawable.ic_default_profile),
+                                contentDescription = user.fullName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(if (isWinner) 54.dp else 44.dp)
+                                    .clip(CircleShape)
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    user.fullName.ifBlank { user.username },
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (user.verificationBadge != VerificationBadge.NONE) {
+                                    Spacer(Modifier.width(3.dp))
+                                    VerifiedMark(user.verificationBadge, size = 13.dp)
+                                }
+                                BlinkVipMarkForUsername(
+                                    username = user.username,
+                                    knownVip = if (user.isVip) true else null,
+                                    modifier = Modifier.padding(start = 3.dp)
+                                )
+                            }
+                            Text(
+                                "#${user.rank} · ${user.points} pts",
+                                fontSize = 10.sp,
+                                color = BlinkPink,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        IconButton(
+                            onClick = { onShare(user) },
+                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Share, "Share ${user.fullName}", modifier = Modifier.size(15.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardRow(
+    user: LeaderboardUser,
+    isCurrentUser: Boolean,
+    movement: Int,
+    onProfileClick: (String) -> Unit,
+    onShare: (LeaderboardUser) -> Unit
+) {
+    val pressInteraction = remember { MutableInteractionSource() }
+    val cardColor by animateColorAsState(
+        targetValue = if (isCurrentUser) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .35f)
+            else MaterialTheme.colorScheme.surface,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "leaderboardRowColor"
+    )
+    Surface(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .blinkPressFeedback(pressInteraction)
+            .clickable(
+                interactionSource = pressInteraction,
+                indication = LocalIndication.current,
+                onClick = { onProfileClick(user.username) }
+            ),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(
+            if (isCurrentUser) 1.5.dp else 1.dp,
+            if (isCurrentUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        ),
+        color = cardColor
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier.width(48.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text("#${user.rank}", fontWeight = FontWeight.Black)
+                if (movement != 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (movement > 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                            contentDescription = null,
+                            tint = if (movement > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            kotlin.math.abs(movement).toString(),
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            AsyncImage(
+                model = user.avatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
+                contentDescription = user.fullName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(48.dp).clip(CircleShape)
+            )
+            Spacer(Modifier.width(11.dp))
+
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        user.fullName.ifBlank { user.username },
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (user.verificationBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedMark(user.verificationBadge, size = 14.dp)
+                    }
+                    BlinkVipMarkForUsername(
+                        username = user.username,
+                        knownVip = if (user.isVip) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    if (isCurrentUser) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "YOU",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                Text(
+                    "@${user.username}",
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                val details = buildList {
+                    user.university.cleanLabel().takeIf { it.isNotBlank() }?.let(::add)
+                    user.faculty.cleanLabel().takeIf { it.isNotBlank() }?.let(::add)
+                    user.level.cleanLabel().takeIf { it.isNotBlank() }?.let(::add)
+                }.take(2).joinToString(" · ")
+                if (details.isNotBlank()) {
+                    Text(
+                        details,
+                        fontSize = 9.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (user.streakDays > 0 || user.coins > 0) {
+                    Text(
+                        buildString {
+                            if (user.streakDays > 0) append("🔥 ${user.streakDays}d")
+                            if (user.streakDays > 0 && user.coins > 0) append("  •  ")
+                            if (user.coins > 0) append("🪙 ${user.coins}")
+                        },
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text("${user.points}", fontWeight = FontWeight.Black, color = BlinkPink)
+                Text("points", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = { onShare(user) }, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Default.Share, "Share rank", modifier = Modifier.size(15.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun String.cleanLabel(): String =
+    takeUnless { isBlank() || equals("null", ignoreCase = true) }?.trim().orEmpty()
+
+private fun shareLeaderboardUser(context: android.content.Context, user: LeaderboardUser) {
+    val displayName = user.fullName.ifBlank { "@${user.username}" }
+    val text = "$displayName is #${user.rank} on the Blink leaderboard with ${user.points} points."
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivitySafely(Intent.createChooser(intent, "Share leaderboard rank"), "No compatible app is available to share this rank.")
+}

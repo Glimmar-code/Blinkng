@@ -1,0 +1,103 @@
+-- Disposable PostgreSQL synthetic ranking benchmark (no Supabase production data).
+-- Intentionally isolates the expensive private_ranking.get_discovery_feed
+-- temporary-candidate selection phase; not an end-to-end RPC performance test.
+\set ON_ERROR_STOP on
+begin;
+set local statement_timeout='25s';
+create temporary table discovery_candidates (
+    post_id uuid primary key,
+    creator_id uuid not null,
+    is_reel boolean not null,
+    creator_tier text not null,
+    feed_score numeric not null,
+    completion_rate numeric not null default 0,
+    verification_multiplier numeric not null default 1,
+    cold_start_multiplier numeric not null default 1,
+    affinity_component numeric not null default 0,
+    proximity_component numeric not null default 0,
+    created_at timestamptz not null
+) on commit drop;
+create temporary table discovery_selected(
+    position integer primary key,
+    post_id uuid unique not null
+) on commit drop;
+
+-- 2,400 synthetic eligible posts, 240 authors, mixture of reels/new/established.
+insert into discovery_candidates(post_id,creator_id,is_reel,creator_tier,feed_score,created_at)
+select md5(('post:'||g)::text)::uuid,
+       md5(('creator:'||(g%240))::text)::uuid,
+       (g%4=0),
+       case when (g%10) in (2,5,8) then 'new' else 'established' end,
+       (2400-g) * 0.1::numeric + (g%17)*0.37::numeric,
+       now()-make_interval(secs=>g*13)
+from generate_series(1,2400) g;
+analyze discovery_candidates;
+
+-- Same priority-lane/author-repeat selection that appears inside the real
+-- production function, but on synthetic candidates. Benchmark without indexes.
+do $$
+declare t timestamptz := clock_timestamp(); i int;
+        want_reel boolean; want_tier text; chosen record;
+        last1 uuid; last2 uuid;
+begin
+  for i in 1..60 loop
+    want_reel := (i % 4 = 0);
+    want_tier := case when ((i-1)%10) in (2,5,8) then 'new' else 'established' end;
+    select c.post_id, c.creator_id into chosen from discovery_candidates c
+      where not exists (select 1 from discovery_selected s where s.post_id=c.post_id)
+      and c.is_reel=want_reel and c.creator_tier=want_tier
+      and not (last1 is not null and last2 is not distinct from last1 and c.creator_id=last1)
+      order by c.feed_score desc,c.created_at desc,c.post_id desc limit 1;
+    if not found then raise exception 'Baseline candidate missing at position %',i; end if;
+    insert into discovery_selected(position,post_id) values(i,chosen.post_id);
+    last2 := last1; last1 := chosen.creator_id;
+  end loop;
+  raise notice 'BLINK synthetic baseline unindexed 60 picks: % ms',
+    round((extract(epoch from clock_timestamp()-t)*1000)::numeric,2);
+end $$;
+select count(*) as baseline_picks from discovery_selected;
+truncate discovery_selected;
+
+create index discovery_candidates_score_idx
+  on discovery_candidates(feed_score desc,created_at desc,post_id desc);
+create index discovery_candidates_lane_idx
+  on discovery_candidates(is_reel,creator_tier,feed_score desc,created_at desc,post_id desc);
+analyze discovery_candidates;
+
+explain (analyze,buffers,format text)
+select c.post_id from discovery_candidates c
+ where c.is_reel=false and c.creator_tier='established'
+   and not exists (select 1 from discovery_selected s where s.post_id=c.post_id)
+ order by c.feed_score desc,c.created_at desc,c.post_id desc limit 1;
+
+do $$
+declare t timestamptz := clock_timestamp(); i int;
+        want_reel boolean; want_tier text; chosen record;
+        last1 uuid; last2 uuid;
+begin
+  for i in 1..60 loop
+    want_reel := (i % 4 = 0);
+    want_tier := case when ((i-1)%10) in (2,5,8) then 'new' else 'established' end;
+    select c.post_id,c.creator_id into chosen from discovery_candidates c
+      where not exists (select 1 from discovery_selected s where s.post_id=c.post_id)
+      and c.is_reel=want_reel and c.creator_tier=want_tier
+      and not (last1 is not null and last2 is not distinct from last1 and c.creator_id=last1)
+      order by c.feed_score desc,c.created_at desc,c.post_id desc limit 1;
+    if not found then raise exception 'Indexed candidate missing at position %',i; end if;
+    insert into discovery_selected(position,post_id) values(i,chosen.post_id);
+    last2 := last1; last1 := chosen.creator_id;
+  end loop;
+  raise notice 'BLINK synthetic indexed 60 picks: % ms',
+    round((extract(epoch from clock_timestamp()-t)*1000)::numeric,2);
+end $$;
+do $$
+begin
+  if (select count(*) from discovery_selected) != 60 then
+    raise exception 'Indexed ranking selected fewer than 60 candidates';
+  end if;
+  if (select count(distinct post_id) from discovery_selected) != 60 then
+    raise exception 'Indexed ranking duplicated a candidate';
+  end if;
+  raise notice 'PASS: ranked selection contains 60 unique synthetic posts.';
+end $$;
+commit;

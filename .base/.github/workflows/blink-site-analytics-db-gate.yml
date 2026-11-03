@@ -1,0 +1,57 @@
+name: BLINK site analytics isolated database test
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261018090100_blink_site_aggregate_metrics.sql'
+      - 'supabase/functions/blink-site-analytics/**'
+      - 'scripts/test_site_analytics_postgres.sql'
+      - '.github/workflows/blink-site-analytics-db-gate.yml'
+  push:
+    branches:
+      - 'Testlab-web-*'
+    paths:
+      - 'supabase/migrations/20261018090100_blink_site_aggregate_metrics.sql'
+      - 'supabase/functions/blink-site-analytics/**'
+      - 'scripts/test_site_analytics_postgres.sql'
+      - '.github/workflows/blink-site-analytics-db-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: blink_analytics_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_analytics_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SQL test client if needed
+        shell: bash
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+      - name: Exercise RLS, service-only writer, admin-only reader and rate cap
+        shell: bash
+        env:
+          PGPASSWORD: local-fixture-only
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -p 5432 -U postgres -d blink_analytics_test \
+            -v ON_ERROR_STOP=1 -f scripts/test_site_analytics_postgres.sql
+          echo "Only disposable local Postgres was used. No production migration was applied."

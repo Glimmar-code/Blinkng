@@ -1,0 +1,52 @@
+name: Apply full-screen message chat navigation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-fullscreen-message-chat.yml'
+      - '.github/scripts/apply_fullscreen_message_chat.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply full-screen chat navigation
+        run: python3 .github/scripts/apply_fullscreen_message_chat.py
+
+      - name: Verify patch formatting
+        run: git diff --check
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit validated source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/MessagesScreen.kt
+          if git diff --cached --quiet; then
+            echo "Messages navigation is already up to date."
+            exit 0
+          fi
+          git commit -m "fix: open chats fullscreen and swipe directly to messages"
+          git pull --rebase origin main
+          git push origin HEAD:main

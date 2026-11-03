@@ -1,0 +1,1903 @@
+package com.example.ui.screens
+
+import com.example.ui.components.BlinkSkeletonList
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
+import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.blinkSmoothSize
+import com.example.performance.rememberBlinkReduceMotion
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.blinkng.shared.BlinkDropAction
+import com.blinkng.shared.BlinkDropAudienceScope
+import com.blinkng.shared.BlinkDropTargetType
+import com.blinkng.shared.BlinkDropsPolicy
+import com.example.data.network.NetworkMonitor
+import com.example.data.supabase.BlinkDropsService
+import com.example.data.supabase.BlinkWalletStore
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.NumberFormat
+import java.util.Locale
+import java.util.UUID
+
+private enum class DropsColumn { GIVEAWAYS, TOP_GIVERS }
+
+private data class DropDraftSnapshot(
+    val targetType: BlinkDropTargetType = BlinkDropTargetType.POST,
+    val selectedTargetId: String = "",
+    val action: String = BlinkDropAction.LIKE.name,
+    val rewardText: String = "100",
+    val winnerText: String = "1",
+    val audience: String = BlinkDropAudienceScope.ALL_CAMPUSES.name,
+    val durationHours: Int = 24,
+)
+
+private object DropDraftStore {
+    private fun prefs(context: android.content.Context): android.content.SharedPreferences? {
+        val id = com.example.data.supabase.SupabaseService().getCurrentUserId()
+            ?.takeIf(String::isNotBlank) ?: return null
+        return context.getSharedPreferences("blink_drop_draft_" + id, android.content.Context.MODE_PRIVATE)
+    }
+
+    fun load(context: android.content.Context): DropDraftSnapshot {
+        val raw = prefs(context)?.getString("draft", null) ?: return DropDraftSnapshot()
+        return runCatching {
+            val json = JSONObject(raw)
+            DropDraftSnapshot(
+                targetType = BlinkDropTargetType.valueOf(json.optString("targetType", "POST")),
+                selectedTargetId = json.optString("selectedTargetId"),
+                action = json.optString("action", "LIKE"),
+                rewardText = json.optString("rewardText", "100"),
+                winnerText = json.optString("winnerText", "1"),
+                audience = json.optString("audience", "ALL_CAMPUSES"),
+                durationHours = json.optInt("durationHours", 24),
+            )
+        }.getOrDefault(DropDraftSnapshot())
+    }
+
+    fun save(context: android.content.Context, value: DropDraftSnapshot) {
+        val json = JSONObject()
+            .put("targetType", value.targetType.name)
+            .put("selectedTargetId", value.selectedTargetId)
+            .put("action", value.action)
+            .put("rewardText", value.rewardText)
+            .put("winnerText", value.winnerText)
+            .put("audience", value.audience)
+            .put("durationHours", value.durationHours)
+        prefs(context)?.edit()?.putString("draft", json.toString())?.apply()
+    }
+
+    fun clear(context: android.content.Context) {
+        prefs(context)?.edit()?.remove("draft")?.apply()
+    }
+}
+
+private data class DropTarget(
+    val id: String,
+    val type: String,
+    val title: String,
+    val subtitle: String,
+)
+
+private data class DropItem(
+    val id: String,
+    val creatorId: String,
+    val creatorUsername: String,
+    val creatorName: String,
+    val rewardPerUser: Int,
+    val winnerCount: Int,
+    val claimedCount: Int,
+    val totalCoins: Long,
+    val coinDistributed: Long,
+    val coinRefunded: Long,
+    val action: String,
+    val targetType: String,
+    val targetTitle: String,
+    val audienceScope: String,
+    val targetUniversity: String,
+    val status: String,
+    val createdAt: String,
+    val endsAt: String,
+    val eligible: Boolean,
+    val creatorAvatar: String = "",
+    val previewUrl: String = "",
+    val previewVideoUrl: String = "",
+)
+
+internal data class TopGiver(
+    val creatorId: String,
+    val username: String,
+    val name: String,
+    val coinsSpent: Long,
+    val giveawaysCreated: Int,
+    val peopleRewarded: Int,
+    val following: Boolean,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BlinkDropsRoute(
+    onClose: () -> Unit,
+    initialDropId: String? = null,
+    onGetCoins: () -> Unit = {},
+) {
+    val service = remember { BlinkDropsService() }
+    val scope = rememberCoroutineScope()
+    val formatter = remember { NumberFormat.getIntegerInstance(Locale.US) }
+    val context = LocalContext.current
+    val networkMonitor = remember(context) { NetworkMonitor(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
+    val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
+
+    var selectedColumn by remember { mutableStateOf(DropsColumn.GIVEAWAYS) }
+    var state by remember { mutableStateOf<JSONObject?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var refreshNonce by remember { mutableIntStateOf(0) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var showOrganizer by remember { mutableStateOf(false) }
+    var organizerError by remember { mutableStateOf<String?>(null) }
+    var pendingCancelDropId by remember { mutableStateOf<String?>(null) }
+    var cancellationError by remember { mutableStateOf<String?>(null) }
+    var commentDrop by remember { mutableStateOf<DropItem?>(null) }
+    var busyDropId by remember { mutableStateOf<String?>(null) }
+    var creatingDrop by remember { mutableStateOf(false) }
+    var pendingCreateRequestId by remember { mutableStateOf<String?>(null) }
+    var pendingCreateFingerprint by remember { mutableStateOf<String?>(null) }
+    var availablePage by remember { mutableStateOf<List<DropItem>?>(null) }
+    var minePage by remember { mutableStateOf<List<DropItem>?>(null) }
+    var availableMore by remember { mutableStateOf(false) }
+    var mineMore by remember { mutableStateOf(false) }
+    var pageBusy by remember { mutableStateOf(false) }
+    var pageError by remember { mutableStateOf<String?>(null) }
+    var notificationDrop by remember(initialDropId) { mutableStateOf<DropItem?>(null) }
+    var notificationError by remember(initialDropId) { mutableStateOf<String?>(null) }
+    var followBusyId by remember { mutableStateOf<String?>(null) }
+    var historyFilter by remember { mutableStateOf("ALL") }
+    var historyQuery by remember { mutableStateOf("") }
+    var showAllReceipts by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        refreshNonce += 1
+    }
+
+    LaunchedEffect(refreshNonce) {
+        loading = true
+        service.state(30)
+            .onSuccess {
+                state = it
+                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                error = null
+            }
+            .onFailure {
+                error = it.message ?: "Unable to load BLINK Giveaway."
+            }
+        service.page("AVAILABLE", 0).onSuccess { result ->
+            availablePage = result.optJSONArray("items").toDropItems()
+            availableMore = result.optBoolean("has_more")
+        }.onFailure { availablePage = null; availableMore = false }
+        service.page("MINE", 0).onSuccess { result ->
+            minePage = result.optJSONArray("items").toDropItems()
+            mineMore = result.optBoolean("has_more")
+        }.onFailure { minePage = null; mineMore = false }
+        loading = false
+    }
+
+    LaunchedEffect(initialDropId, refreshNonce, state) {
+        if (initialDropId == null || state == null) return@LaunchedEffect
+        notificationError = null
+        val cached = (state?.optJSONArray("active_drops").toDropItems() +
+            state?.optJSONArray("my_drops").toDropItems()).firstOrNull { it.id == initialDropId }
+        service.detail(initialDropId).onSuccess { result ->
+            notificationDrop = if (result.optBoolean("not_found")) cached
+                else JSONArray().put(result).toDropItems().firstOrNull() ?: cached
+            if (notificationDrop == null) notificationError = "This Giveaway is unavailable or no longer visible."
+        }.onFailure {
+            notificationDrop = cached
+            if (cached == null) notificationError = "Unable to load this Giveaway. Refresh to retry."
+        }
+    }
+
+    val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
+    val balance = liveWalletBalance ?: stateBalance
+    val activeDrops = availablePage ?: state?.optJSONArray("active_drops").toDropItems()
+    val allMyDrops = minePage ?: state?.optJSONArray("my_drops").toDropItems()
+    val myDrops = allMyDrops
+        .filter { historyFilter == "ALL" || it.status.equals(historyFilter, ignoreCase = true) }
+        .filter {
+            val q = historyQuery.trim()
+            q.isBlank() ||
+                it.targetTitle.contains(q, ignoreCase = true) ||
+                it.targetType.contains(q, ignoreCase = true) ||
+                it.action.contains(q, ignoreCase = true) ||
+                it.status.contains(q, ignoreCase = true)
+        }
+    val topGivers = state?.optJSONArray("top_givers").toTopGivers().take(20)
+    val targets = state?.optJSONObject("targets")
+    val postTargets = targets?.optJSONArray("posts").toTargets()
+    val listingTargets = targets?.optJSONArray("listings").toTargets()
+    val eligibleAll = state?.optInt("eligible_followers_all", 0) ?: 0
+    val eligibleCampus = state?.optInt("eligible_followers_my_campus", 0) ?: 0
+    val receipts = state?.optJSONArray("receipts").objects()
+    val analytics = state?.optJSONObject("analytics")
+    val dropsListState = rememberLazyListState()
+    var deepLinkHandled by remember(initialDropId) { mutableStateOf(false) }
+    LaunchedEffect(initialDropId, notificationDrop) {
+        if (initialDropId != null && notificationDrop != null && !deepLinkHandled) {
+            selectedColumn = DropsColumn.GIVEAWAYS
+            dropsListState.animateScrollToItem(1)
+            deepLinkHandled = true
+        }
+    }
+
+    fun complete(drop: DropItem, comment: String? = null) {
+        if (busyDropId != null) return
+        busyDropId = drop.id
+        scope.launch {
+            service.completeAction(drop.id, comment)
+                .onSuccess { result ->
+                    val reward = result.optLong("reward", drop.rewardPerUser.toLong())
+                    result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                    message = "You earned ${formatter.format(reward)} BLINK Coins."
+                    error = null
+                    commentDrop = null
+                    refresh()
+                }
+                .onFailure {
+                    error = it.message ?: "Unable to complete this Giveaway."
+                }
+            busyDropId = null
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "BLINK Giveaway",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "Reward followers with BLINK Coins. No random draws or paid entry.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = { refresh() }, enabled = isOnline && !loading) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh Giveaways")
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Close Giveaways")
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
+                    RoundedCornerShape(16.dp)
+                )
+                .padding(4.dp),
+        ) {
+            DropsTab(
+                selected = selectedColumn == DropsColumn.GIVEAWAYS,
+                icon = Icons.Default.CardGiftcard,
+                label = "Giveaways",
+                onClick = { selectedColumn = DropsColumn.GIVEAWAYS },
+                modifier = Modifier.weight(1f),
+            )
+            DropsTab(
+                selected = selectedColumn == DropsColumn.TOP_GIVERS,
+                icon = Icons.Default.EmojiEvents,
+                label = "Most Givers",
+                onClick = { selectedColumn = DropsColumn.TOP_GIVERS },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            if (selectedColumn == DropsColumn.GIVEAWAYS) "Swipe left to see the Most Givers leaderboard" else "Swipe right to return to Giveaways",
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (loading && state == null) {
+            BlinkSkeletonList(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                rows = 5
+            )
+            return@Column
+        }
+
+        PullToRefreshBox(
+            isRefreshing = loading,
+            onRefresh = { if (isOnline) refresh() },
+            modifier = Modifier.fillMaxSize().pointerInput(selectedColumn) {
+            var horizontalDrag = 0f
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { change, dragAmount ->
+                    horizontalDrag += dragAmount
+                    change.consume()
+                },
+                onDragEnd = {
+                    when {
+                        horizontalDrag <= -72f -> selectedColumn = DropsColumn.TOP_GIVERS
+                        horizontalDrag >= 72f -> selectedColumn = DropsColumn.GIVEAWAYS
+                    }
+                    horizontalDrag = 0f
+                },
+                onDragCancel = { horizontalDrag = 0f },
+            )
+        },
+        ) {
+            when (selectedColumn) {
+            DropsColumn.GIVEAWAYS -> LazyColumn(
+                state = dropsListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    BalanceAndCreateCard(
+                        balance = balance,
+                        formatter = formatter,
+                        onCreate = { showOrganizer = true }
+                    )
+                }
+
+                if (initialDropId != null) {
+                    item {
+                        notificationDrop?.let { drop ->
+                            SectionHeader("Selected Giveaway", "The Giveaway you opened from the feed or a notification.")
+                            DropCard(
+                                drop = drop, formatter = formatter, busy = busyDropId == drop.id,
+                                highlighted = true,
+                                onComplete = if (drop.eligible && drop.status == "ACTIVE") ({
+                                    if (drop.action == "COMMENT") commentDrop = drop else complete(drop)
+                                }) else null,
+                                onCancel = if (drop.creatorId == com.example.data.supabase.SupabaseService().getCurrentUserId() &&
+                                    drop.status == "ACTIVE") ({
+                                    pendingCancelDropId = drop.id
+                                    cancellationError = null
+                                }) else null,
+                            )
+                        } ?: Text(notificationError ?: "Loading Giveaway details…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                if (!isOnline) {
+                    item {
+                        StatusCard(
+                            "You're offline. Existing Giveaway history stays visible, but rewards and spending wait until you reconnect.",
+                            isError = false,
+                        )
+                    }
+                }
+
+                if (error != null && state == null) {
+                    item {
+                        OutlinedButton(
+                            onClick = { refresh() },
+                            enabled = isOnline && !loading,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Image", modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Retry Giveaways")
+                        }
+                    }
+                }
+
+                error?.let { value ->
+                    item { StatusCard(value, isError = true) }
+                }
+                message?.let { value ->
+                    item { StatusCard(value, isError = false) }
+                }
+
+                item {
+                    SectionHeader(
+                        "Active Giveaways",
+                        "Anyone can participate within the creator's selected audience. Followers are notified when a Giveaway starts."
+                    )
+                }
+
+                if (activeDrops.isEmpty()) {
+                    item {
+                        EmptyCard(
+                            "There are no active Giveaways right now. Check back soon or create the first one."
+                        )
+                    }
+                } else {
+                    items(activeDrops.filterNot { it.id == notificationDrop?.id },
+                        key = { "active-giveaway-${it.id}" }) { drop ->
+                        DropCard(
+                            drop = drop,
+                            formatter = formatter,
+                            busy = busyDropId == drop.id,
+                            highlighted = initialDropId == drop.id,
+                            onComplete = {
+                                if (drop.action == "COMMENT") commentDrop = drop
+                                else complete(drop)
+                            },
+                            onCancel = null,
+                        )
+                    }
+                }
+
+                if (availableMore || pageBusy || pageError != null) {
+                    item {
+                        pageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isOnline && !pageBusy && availableMore,
+                            onClick = {
+                                scope.launch {
+                                    pageBusy = true
+                                    pageError = null
+                                    service.page("AVAILABLE", activeDrops.size)
+                                        .onSuccess { result ->
+                                            availablePage = (activeDrops + result.optJSONArray("items").toDropItems())
+                                                .distinctBy { it.id }
+                                            availableMore = result.optBoolean("has_more")
+                                        }.onFailure { pageError = it.message ?: "Could not load more Giveaways." }
+                                    pageBusy = false
+                                }
+                            }
+                        ) { Text(if (pageBusy) "Loading…" else "Load more Giveaways") }
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    SectionHeader(
+                        "Your Giveaways",
+                        "The amount committed at publication is non-refundable, even if a Giveaway ends early or expires."
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        items(listOf("ALL", "ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED")) { status ->
+                            FilterChip(
+                                selected = historyFilter == status,
+                                onClick = { historyFilter = status },
+                                label = {
+                                    Text(
+                                        when (status) {
+                                            "EXPIRED" -> "Ended"
+                                            else -> status.lowercase().replaceFirstChar { it.uppercase() }
+                                        }
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = historyQuery,
+                        onValueChange = { historyQuery = it.take(60) },
+                        label = { Text("Search your Giveaways") },
+                        placeholder = { Text("Post, Reel, action or status") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                if (myDrops.isEmpty()) {
+                    item {
+                        EmptyCard(
+                            if (allMyDrops.isEmpty()) "You have not organized a BLINK Giveaway yet."
+                            else "No Giveaways match this history filter."
+                        )
+                    }
+                } else {
+                    items(myDrops, key = { "my-giveaway-${it.id}" }) { drop ->
+                        DropCard(
+                            drop = drop,
+                            formatter = formatter,
+                            busy = busyDropId == drop.id,
+                            highlighted = false,
+                            onComplete = null,
+                            onCancel = if (drop.status == "ACTIVE") {
+                                {
+                                    cancellationError = null
+                                    pendingCancelDropId = drop.id
+                                }
+                            } else null,
+                        )
+                    }
+                }
+
+                if (mineMore) {
+                    item {
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isOnline && !pageBusy,
+                            onClick = {
+                                scope.launch {
+                                    pageBusy = true
+                                    service.page("MINE", allMyDrops.size)
+                                        .onSuccess { result ->
+                                            minePage = (allMyDrops + result.optJSONArray("items").toDropItems())
+                                                .distinctBy { it.id }
+                                            mineMore = result.optBoolean("has_more")
+                                            pageError = null
+                                        }.onFailure { pageError = it.message ?: "Could not load more Giveaway history." }
+                                    pageBusy = false
+                                }
+                            },
+                        ) { Text(if (pageBusy) "Loading…" else "Load more Giveaway history") }
+                    }
+                }
+                analytics?.let { value ->
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        DropAnalyticsCard(value, formatter)
+                    }
+                }
+                if (receipts.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        SectionHeader(
+                            "Giveaway receipts",
+                            "Every Giveaway commitment and reward stays auditable in your BLINK Coin ledger."
+                        )
+                    }
+                    if (receipts.size > 4) {
+                        item {
+                            TextButton(onClick = { showAllReceipts = !showAllReceipts }) {
+                                Text(if (showAllReceipts) "Show fewer receipts"
+                                    else "View all ${receipts.size} recent receipts")
+                            }
+                        }
+                    }
+                    items(if (showAllReceipts) receipts else receipts.take(4),
+                        key = { "giveaway-receipt-" + it.optString("id") }) { receipt ->
+                        DropReceiptCard(receipt, formatter)
+                    }
+                }
+            }
+
+            DropsColumn.TOP_GIVERS -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item {
+                    SectionHeader(
+                        "Most Givers",
+                        "Ranked by the total BLINK Coins committed to published Giveaways."
+                    )
+                }
+                error?.let { value ->
+                    item { StatusCard(value, isError = true) }
+                }
+                message?.let { value ->
+                    item { StatusCard(value, isError = false) }
+                }
+                if (topGivers.isEmpty() && error == null) {
+                    item {
+                        TopGiversEmptyState(
+                            onBrowse = { selectedColumn = DropsColumn.GIVEAWAYS },
+                            onCreate = { showOrganizer = true }
+                        )
+                    }
+                } else if (topGivers.isEmpty()) {
+                    item { OutlinedButton(onClick = { refresh() }, enabled = isOnline && !loading) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Image")
+                        Spacer(Modifier.width(8.dp))
+                        Text("Retry Most Givers")
+                    } }
+                } else {
+                    itemsIndexed(topGivers, key = { _, giver -> "giver-${giver.creatorId}" }) { index, giver ->
+                        TopGiverCard(
+                            giver = giver,
+                            rank = index + 1,
+                            formatter = formatter,
+                            following = giver.following,
+                            followBusy = followBusyId != null,
+                            onFollow = {
+                                if (!giver.following && followBusyId == null) {
+                                    followBusyId = giver.creatorId
+                                    scope.launch {
+                                        service.followCreator(giver.creatorId)
+                                            .onSuccess {
+                                                message = "You'll be notified when this creator starts another Giveaway."
+                                                refresh()
+                                            }
+                                            .onFailure {
+                                                error = it.message ?: "Unable to follow this creator."
+                                            }
+                                        followBusyId = null
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            }
+        }
+    }
+
+    pendingCancelDropId?.let { cancelId ->
+        AlertDialog(
+            onDismissRequest = { if (busyDropId == null) pendingCancelDropId = null },
+            title = { Text("End this Giveaway?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This stops new entries. The amount committed to this Giveaway is non-refundable.")
+                    cancellationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = busyDropId == null && isOnline,
+                    onClick = {
+                        busyDropId = cancelId
+                        scope.launch {
+                            service.cancelDrop(cancelId)
+                                .onSuccess { result ->
+                                    result.takeIf { it.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                    message = "Giveaway ended. No refund was issued."
+                                    error = null
+                                    pendingCancelDropId = null
+                                    cancellationError = null
+                                    refresh()
+                                }
+                                .onFailure { cancellationError = it.message ?: "Unable to cancel this Giveaway." }
+                            busyDropId = null
+                        }
+                    }
+                ) { Text(if (busyDropId != null) "Ending…" else "End Giveaway") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCancelDropId = null }, enabled = busyDropId == null) {
+                    Text("Keep Giveaway")
+                }
+            },
+        )
+    }
+
+    if (showOrganizer) {
+        OrganizeDropDialog(
+            balance = balance,
+            posts = postTargets,
+            listings = listingTargets,
+            eligibleFollowersAll = eligibleAll,
+            eligibleFollowersCampus = eligibleCampus,
+            isOnline = isOnline,
+            creating = creatingDrop,
+            onGetCoins = onGetCoins,
+            publishError = organizerError,
+            onDismiss = {
+                if (!creatingDrop) {
+                    organizerError = null
+                    showOrganizer = false
+                    pendingCreateRequestId = null
+                    pendingCreateFingerprint = null
+                }
+            },
+            onCreate = { target, action, reward, winners, audience, duration ->
+                if (!creatingDrop && isOnline) scope.launch {
+                    creatingDrop = true
+                    val fingerprint = com.blinkng.shared.BlinkDropRequest(
+                        target.type, target.id, action, reward, winners, audience, duration
+                    ).fingerprint()
+                    if (pendingCreateRequestId == null || pendingCreateFingerprint != fingerprint) {
+                        pendingCreateRequestId = UUID.randomUUID().toString()
+                        pendingCreateFingerprint = fingerprint
+                    }
+                    service.createDrop(
+                        targetType = target.type,
+                        targetId = target.id,
+                        action = action,
+                        rewardPerUser = reward,
+                        winnerCount = winners,
+                        audienceScope = audience,
+                        durationHours = duration,
+                        requestId = pendingCreateRequestId.orEmpty(),
+                    ).onSuccess { result ->
+                        result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                        val notified = result.optInt("eligible_followers", 0)
+                        message = "Giveaway started. $notified follower${if (notified == 1) "" else "s"} notified."
+                        error = null
+                        organizerError = null
+                        pendingCreateRequestId = null
+                        pendingCreateFingerprint = null
+                        DropDraftStore.clear(context)
+                        showOrganizer = false
+                        refresh()
+                    }.onFailure {
+                        organizerError = it.message ?: "Unable to create this Giveaway. Please retry."
+                    }
+                    creatingDrop = false
+                }
+            }
+        )
+    }
+
+    commentDrop?.let { drop ->
+        CommentDropDialog(
+            reward = drop.rewardPerUser,
+            busy = busyDropId != null,
+            onDismiss = { if (busyDropId == null) commentDrop = null },
+            onSubmit = { complete(drop, it) }
+        )
+    }
+}
+
+@Composable
+private fun DropsTab(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val reduceMotion = rememberBlinkReduceMotion()
+    val interaction = remember { MutableInteractionSource() }
+    val selectionColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.surface else androidx.compose.ui.graphics.Color.Transparent,
+        animationSpec = tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.ContentReveal),
+        label = "dropsTabSelection"
+    )
+    Surface(
+        modifier = modifier.blinkPressFeedback(interaction).clickable(
+            interactionSource = interaction, indication = null, onClick = onClick
+        ),
+        shape = RoundedCornerShape(13.dp),
+        color = selectionColor,
+        tonalElevation = if (selected) 2.dp else 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 11.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = "Image", modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun BalanceAndCreateCard(
+    balance: Long?,
+    formatter: NumberFormat,
+    onCreate: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f)),
+        shape = RoundedCornerShape(22.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Available balance", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    balance?.let { "${formatter.format(it)} BLINK Coins" } ?: "Balance unavailable",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Publishing a Giveaway commits the full reward budget. It cannot be refunded.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Button(
+                onClick = onCreate,
+                enabled = balance != null,
+                interactionSource = interaction,
+                modifier = Modifier.blinkPressFeedback(interaction, enabled = balance != null),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Image", modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Create Giveaway")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DropCard(
+    drop: DropItem,
+    formatter: NumberFormat,
+    busy: Boolean,
+    highlighted: Boolean,
+    onComplete: (() -> Unit)?,
+    onCancel: (() -> Unit)?,
+) {
+    val remaining = (drop.winnerCount - drop.claimedCount).coerceAtLeast(0)
+    Card(
+        modifier = Modifier.blinkSmoothSize(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (highlighted) 3.dp else 1.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    if (drop.creatorAvatar.startsWith("https://")) {
+                        AsyncImage(
+                            model = drop.creatorAvatar, contentDescription = "Creator profile",
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                drop.creatorName.trim().firstOrNull()?.uppercase()
+                                    ?: drop.creatorUsername.trim().firstOrNull()?.uppercase() ?: "B",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        drop.creatorName.ifBlank { "@${drop.creatorUsername}" },
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (drop.creatorUsername.isNotBlank()) {
+                        Text(
+                            "@${drop.creatorUsername}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        drop.status.lowercase().replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            val previewSource = drop.previewUrl.takeIf { it.startsWith("https://") }
+                ?: drop.previewVideoUrl.takeIf { it.startsWith("https://") }
+            if (previewSource != null) {
+                val model: Any = if (previewSource == drop.previewVideoUrl) {
+                    ImageRequest.Builder(LocalContext.current).data(previewSource)
+                        .decoderFactory(VideoFrameDecoder.Factory()).videoFrameMillis(800).build()
+                } else previewSource
+                AsyncImage(
+                    model = model,
+                    contentDescription = if (drop.targetType == "REEL") "Reel video preview" else "Giveaway content preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(132.dp),
+                )
+            }
+            Text(
+                "${formatter.format(drop.rewardPerUser)} coins each · ${drop.winnerCount} people",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+            )
+            Text(
+                "${actionLabel(drop.action)} · ${drop.targetTitle.ifBlank { targetLabel(drop.targetType) }}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                if (drop.audienceScope == "MY_CAMPUS") {
+                    "Campus only · ${drop.targetUniversity}"
+                } else {
+                    "All campuses"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            LinearProgressIndicator(
+                progress = if (drop.winnerCount <= 0) 0f else {
+                    (drop.claimedCount.toFloat() / drop.winnerCount.toFloat()).coerceIn(0f, 1f)
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            val reservedRemaining = (drop.totalCoins - drop.coinDistributed - drop.coinRefunded).coerceAtLeast(0L)
+            Text(
+                "${drop.claimedCount}/${drop.winnerCount} claimed · $remaining reward${if (remaining == 1) "" else "s"} remaining",
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                "Distributed ${formatter.format(drop.coinDistributed)} · Reserved ${formatter.format(reservedRemaining)}" +
+                    if (drop.coinRefunded > 0) " · Refunded ${formatter.format(drop.coinRefunded)}" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (drop.endsAt.isNotBlank()) {
+                Text(
+                    (if (drop.status == "ACTIVE") "Ends " else "Ended ") + shortDropDate(drop.endsAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                onComplete?.let {
+                    Button(onClick = it, enabled = !busy && drop.status == "ACTIVE" && remaining > 0) {
+                        if (busy) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(actionIcon(drop.action), null, modifier = Modifier.size(17.dp))
+                        }
+                        Spacer(Modifier.width(5.dp))
+                        Text(actionLabel(drop.action) + " & claim")
+                    }
+                }
+                onCancel?.let {
+                    OutlinedButton(onClick = it, enabled = !busy) {
+                        Text("End Giveaway")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DropAnalyticsCard(
+    analytics: JSONObject,
+    formatter: NumberFormat,
+) {
+    val drops = analytics.optInt("giveaways", 0)
+    val active = analytics.optInt("active", 0)
+    val distributed = analytics.optLong("distributed", 0L)
+    val refunded = analytics.optLong("refunded", 0L)
+    val recipients = analytics.optInt("recipients", 0)
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("Giveaway performance", fontWeight = FontWeight.Black)
+            Text(
+                formatter.format(drops) + " Giveaways • " + formatter.format(active) + " active • " +
+                    formatter.format(recipients) + " recipients",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                formatter.format(distributed) + " coins distributed • " +
+                    formatter.format(refunded) + " refunded",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DropReceiptCard(
+    receipt: JSONObject,
+    formatter: NumberFormat,
+) {
+    val amount = receipt.optLong("amount", 0L)
+    val kind = receipt.optString("kind").replace('_', ' ').lowercase()
+        .replace("drop", "giveaway")
+        .replaceFirstChar { it.uppercase() }
+    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(receipt.optString("item_name").ifBlank { kind }, fontWeight = FontWeight.SemiBold)
+                Text(
+                    kind + " • " + shortDropDate(receipt.optString("created_at")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    (if (amount > 0) "+" else "") + formatter.format(amount) + " coins",
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Balance " + formatter.format(receipt.optLong("balance_after", 0L)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TopGiversEmptyState(
+    onBrowse: () -> Unit,
+    onCreate: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Icon(
+                Icons.Default.EmojiEvents,
+                contentDescription = "Image",
+                modifier = Modifier.size(38.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text("No Givers yet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White)
+            Text(
+                "Publish a Giveaway to appear in the top 20. Creators are ranked by total BLINK Coins committed, including unclaimed amounts.",
+                color = Color(0xFFCFD3DD),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
+                Text("Create a Giveaway")
+            }
+            OutlinedButton(onClick = onBrowse, modifier = Modifier.fillMaxWidth()) {
+                Text("View Active Giveaways")
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TopGiverCard(
+    giver: TopGiver,
+    rank: Int,
+    formatter: NumberFormat,
+    following: Boolean,
+    followBusy: Boolean,
+    onFollow: () -> Unit,
+) {
+    val podium = when (rank) {
+        1 -> Color(0xFFD7AC4B)
+        2 -> Color(0xFF93A4BC)
+        3 -> Color(0xFFBA7B53)
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (rank <= 3) podium.copy(alpha = .16f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .27f),
+            contentColor = Color.White
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = CircleShape,
+                color = podium.copy(alpha = if (rank <= 3) .27f else .12f),
+                contentColor = Color.White,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        "#$rank",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(giver.name.ifBlank { "@${giver.username}" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${formatter.format(giver.coinsSpent)} BLINK Coins spent · ${giver.giveawaysCreated} Giveaways · ${giver.peopleRewarded} people rewarded",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFCFD3DD),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (following) {
+                Text("Following", style = MaterialTheme.typography.labelMedium)
+            } else {
+                OutlinedButton(onClick = onFollow, enabled = !followBusy) {
+                    Text(if (followBusy) "Please wait" else "Follow")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OrganizeDropDialog(
+    balance: Long?,
+    posts: List<DropTarget>,
+    listings: List<DropTarget>,
+    eligibleFollowersAll: Int,
+    eligibleFollowersCampus: Int,
+    isOnline: Boolean,
+    creating: Boolean,
+    onGetCoins: () -> Unit,
+    publishError: String?,
+    onDismiss: () -> Unit,
+    onCreate: (
+        target: DropTarget,
+        action: String,
+        reward: Int,
+        winners: Int,
+        audience: String,
+        durationHours: Int,
+    ) -> Unit,
+) {
+    val service = remember { BlinkDropsService() }
+    val context = LocalContext.current
+    val draft = remember(context) { DropDraftStore.load(context) }
+    var targetType by remember { mutableStateOf(draft.targetType) }
+    var selectedTargetId by remember { mutableStateOf(draft.selectedTargetId) }
+    var action by remember { mutableStateOf(draft.action) }
+    var rewardText by remember { mutableStateOf(draft.rewardText) }
+    var winnerText by remember { mutableStateOf(draft.winnerText) }
+    var audience by remember { mutableStateOf(draft.audience) }
+    var duration by remember { mutableIntStateOf(draft.durationHours) }
+    var quote by remember { mutableStateOf<JSONObject?>(null) }
+    var quoteLoading by remember { mutableStateOf(false) }
+    var quoteError by remember { mutableStateOf<String?>(null) }
+    var quoteRetryNonce by remember { mutableIntStateOf(0) }
+    var confirmPublish by remember { mutableStateOf(false) }
+
+    val availableTargets = when (targetType) {
+        BlinkDropTargetType.POST -> posts.filter { it.type == "POST" }
+        BlinkDropTargetType.REEL -> posts.filter { it.type == "REEL" }
+        BlinkDropTargetType.LISTING -> listings
+    }
+    val selectedTarget = availableTargets.firstOrNull { it.id == selectedTargetId }
+    val actions = BlinkDropsPolicy.actionsFor(targetType)
+    val reward = rewardText.toIntOrNull() ?: 0
+    val winners = winnerText.toIntOrNull() ?: 0
+    val total = reward.toLong() * winners.toLong()
+    val localEligible = if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) {
+        eligibleFollowersCampus
+    } else {
+        eligibleFollowersAll
+    }
+
+    LaunchedEffect(
+        targetType,
+        selectedTargetId,
+        action,
+        rewardText,
+        winnerText,
+        audience,
+        duration,
+        isOnline,
+        quoteRetryNonce,
+    ) {
+        DropDraftStore.save(context, DropDraftSnapshot(
+            targetType = targetType,
+            selectedTargetId = selectedTargetId,
+            action = action,
+            rewardText = rewardText,
+            winnerText = winnerText,
+            audience = audience,
+            durationHours = duration,
+        ))
+
+        quote = null
+        quoteError = null
+        quoteLoading = false
+        if (
+            !isOnline ||
+            selectedTarget == null ||
+            !BlinkDropsPolicy.isRewardValid(reward) ||
+            !BlinkDropsPolicy.isWinnerCountValid(winners) ||
+            action !in actions.map { it.name }
+        ) return@LaunchedEffect
+
+        delay(250)
+        quoteLoading = true
+        service.quoteDrop(
+            targetType = selectedTarget.type,
+            targetId = selectedTarget.id,
+            action = action,
+            rewardPerUser = reward,
+            winnerCount = winners,
+            audienceScope = audience,
+            durationHours = duration,
+        ).onSuccess {
+            quote = it
+            quoteError = null
+        }.onFailure {
+            quote = null
+            quoteError = "Couldn't verify the Giveaway budget and selected audience. Please retry."
+        }
+        quoteLoading = false
+    }
+
+    val eligibleFollowers = quote?.optInt("eligible_followers", localEligible) ?: localEligible
+    val maximumPossibleRecipients = quote?.optInt(
+        "maximum_possible_recipients",
+        minOf(eligibleFollowers, winners.coerceAtLeast(0)),
+    ) ?: minOf(eligibleFollowers, winners.coerceAtLeast(0))
+    val remainingBalance = quote?.takeIf { it.has("remaining_balance_after_reserve") }
+        ?.optLong("remaining_balance_after_reserve")
+        ?: balance?.minus(total)
+
+    val valid = isOnline &&
+        !creating &&
+        selectedTarget != null &&
+        BlinkDropsPolicy.isRewardValid(reward) &&
+        BlinkDropsPolicy.isWinnerCountValid(winners) &&
+        total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
+        balance != null &&
+        total <= balance &&
+        !quoteLoading &&
+        quote != null &&
+        quoteError == null &&
+        BlinkDropsPolicy.hasEligibleRecipients(maximumPossibleRecipients) &&
+        action in actions.map { it.name }
+
+    var setupStep by remember { mutableIntStateOf(0) }
+    val stepLabels = listOf("Content", "Action", "Reward", "Audience", "Duration", "Review")
+
+    Dialog(onDismissRequest = { if (!creating) onDismiss() }) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(.94f).imePadding(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.padding(start = 18.dp, end = 10.dp, top = 14.dp, bottom = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Organize a Giveaway", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                            Text("Step ${setupStep + 1} of 6 · ${stepLabels[setupStep]}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        IconButton(onClick = onDismiss, enabled = !creating) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+                    LinearProgressIndicator(
+                        progress = { (setupStep + 1) / 6f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    if (!isOnline) {
+                        Text("Offline · Your draft is saved on this device until you reconnect.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                val reduceStepMotion = rememberBlinkReduceMotion()
+                AnimatedContent(
+                    targetState = setupStep,
+                    modifier = Modifier.weight(1f),
+                    transitionSpec = {
+                        if (reduceStepMotion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                                fadeIn(tween(210))) togetherWith
+                                (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                    fadeOut(tween(160)))
+                        }
+                    },
+                    label = "giveaway-setup-step",
+                ) { stage ->
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        when (stage) {
+                            0 -> {
+                                item {
+                                    Text("Choose a post, Reel or listing", fontWeight = FontWeight.Bold)
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        items(BlinkDropTargetType.entries) { type ->
+                                            FilterChip(
+                                                selected = targetType == type,
+                                                onClick = {
+                                                    targetType = type
+                                                    selectedTargetId = ""
+                                                    // An empty server/policy action set must not crash the selector.
+                                                    action = BlinkDropsPolicy.actionsFor(type).firstOrNull()?.name.orEmpty()
+                                                },
+                                                label = { Text(targetLabel(type.name)) },
+                                            )
+                                        }
+                                    }
+                                }
+                                item {
+                                    if (availableTargets.isEmpty()) {
+                                        EmptyCard("No active ${targetLabel(targetType.name).lowercase()} found. Refresh Giveaways after creating content.")
+                                    } else {
+                                        val listState = rememberLazyListState()
+                                        LazyRow(
+                                            state = listState,
+                                            flingBehavior = rememberSnapFlingBehavior(listState),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            contentPadding = PaddingValues(end = 16.dp),
+                                        ) {
+                                            items(availableTargets, key = { it.id }) { target ->
+                                                val selected = selectedTargetId == target.id
+                                                val scale by animateFloatAsState(
+                                                    targetValue = if (selected) 1f else .96f,
+                                                    animationSpec = tween(220),
+                                                    label = "giveaway-target-scale",
+                                                )
+                                                Card(
+                                                    modifier = Modifier.width(248.dp)
+                                                        .graphicsLayer(scaleX = scale, scaleY = scale)
+                                                        .clickable(enabled = !creating) {
+                                                            selectedTargetId = target.id
+                                                            setupStep = 1
+                                                        },
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        if (selected) 2.dp else 1.dp,
+                                                        if (selected) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.outlineVariant
+                                                    ),
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .52f)
+                                                    ),
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.fillMaxWidth().height(162.dp).padding(14.dp),
+                                                        verticalArrangement = Arrangement.SpaceBetween,
+                                                    ) {
+                                                        Text(targetLabel(target.type), style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary)
+                                                        Text(target.title.ifBlank { targetLabel(target.type) },
+                                                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                                                            fontWeight = FontWeight.SemiBold)
+                                                        Text(target.subtitle.ifBlank { "Tap to select and continue" },
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        Text(if (selected) "✓ Selected" else "Select →",
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            1 -> item {
+                                Text("Required action", fontWeight = FontWeight.Bold)
+                                Text("What should your followers do to receive the reward?",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(actions.toList(), key = { it.name }) { value ->
+                                        FilterChip(
+                                            selected = action == value.name,
+                                            onClick = { action = value.name },
+                                            label = { Text(actionLabel(value.name)) },
+                                            leadingIcon = { Icon(actionIcon(value.name), null, modifier = Modifier.size(16.dp)) },
+                                        )
+                                    }
+                                }
+                            }
+                            2 -> item {
+                                Text("Reward", fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedTextField(
+                                        value = rewardText,
+                                        onValueChange = { rewardText = it.filter(Char::isDigit).take(6) },
+                                        label = { Text("Coins/person") },
+                                        supportingText = { Text("100 minimum") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        enabled = !creating,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    OutlinedTextField(
+                                        value = winnerText,
+                                        onValueChange = { winnerText = it.filter(Char::isDigit).take(3) },
+                                        label = { Text("People") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        enabled = !creating,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                Text("Rewards must be multiples of 100 coins.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Committed: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} · Balance: " +
+                                    (balance?.let { NumberFormat.getIntegerInstance(Locale.US).format(it) } ?: "—"))
+                                if (balance != null && total > balance) {
+                                    OutlinedButton(onClick = onGetCoins, enabled = !creating) { Text("Get Blink Coins") }
+                                }
+                            }
+                            3 -> item {
+                                Text("Audience", fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    item {
+                                        FilterChip(
+                                            selected = audience == BlinkDropAudienceScope.ALL_CAMPUSES.name,
+                                            onClick = { audience = BlinkDropAudienceScope.ALL_CAMPUSES.name },
+                                            label = { Text("All campuses") },
+                                            leadingIcon = { Icon(Icons.Default.Public, null, modifier = Modifier.size(16.dp)) },
+                                        )
+                                    }
+                                    item {
+                                        FilterChip(
+                                            selected = audience == BlinkDropAudienceScope.MY_CAMPUS.name,
+                                            onClick = { audience = BlinkDropAudienceScope.MY_CAMPUS.name },
+                                            label = { Text("My campus") },
+                                            leadingIcon = { Icon(Icons.Default.School, null, modifier = Modifier.size(16.dp)) },
+                                        )
+                                    }
+                                }
+                                Text("Followers notified: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
+                                    "Maximum possible winners: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                quoteError?.let { problem ->
+                                     Text(problem, color = MaterialTheme.colorScheme.error)
+                                     OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry eligibility check") }
+                                 }
+                                 if (eligibleFollowers == 0) {
+                                    Text("No followers will be notified, but people in your selected audience can still discover and join this Giveaway.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            4 -> item {
+                                Text("Duration", fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(listOf(1, 6, 12, 24, 72, 168)) { hours ->
+                                        FilterChip(
+                                            selected = duration == hours,
+                                            onClick = { duration = hours },
+                                            label = { Text(when (hours) {
+                                                24 -> "1d"
+                                                72 -> "3d"
+                                                168 -> "7d"
+                                                else -> "${hours}h"
+                                            }) },
+                                        )
+                                    }
+                                }
+                                Text("The amount committed to a Giveaway is non-refundable, even when it ends.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            else -> item {
+                                Text("Review your Giveaway", fontWeight = FontWeight.Bold)
+                                Text(selectedTarget?.title.orEmpty().ifBlank { "Choose content first" })
+                                Text("${actionLabel(action)} · ${if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) "My campus" else "All campuses"}")
+                                Text("${NumberFormat.getIntegerInstance(Locale.US).format(total)} coins reserved for ${winners} people")
+                                Text("Remaining: " + (remainingBalance?.coerceAtLeast(0L)?.let {
+                                    NumberFormat.getIntegerInstance(Locale.US).format(it)
+                                } ?: "—") + " coins")
+                                if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                quoteError?.let { problem ->
+                                     Text(problem, color = MaterialTheme.colorScheme.error)
+                                     OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry quote") }
+                                 }
+                                 publishError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                                 if (!valid && !creating) {
+                                    Text(when {
+                                        !isOnline -> "Reconnect to publish."
+                                         quoteLoading -> "Verifying the rewards and eligibility…"
+                                         quoteError != null || quote == null -> "A verified quote is needed before publishing."
+                                         maximumPossibleRecipients < 1 -> "No other accounts are available in the selected audience."
+                                        selectedTarget == null -> "Choose content first."
+                                        !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be a multiple of 100."
+                                        !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Enter a valid number of recipients."
+                                        total > BlinkDropsPolicy.MAX_TOTAL_BUDGET -> "Total exceeds the maximum budget."
+                                        balance == null -> "Balance unavailable. Retry."
+                                        total > balance -> "Not enough Blink Coins."
+                                        else -> "Review the details before publishing."
+                                    }, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (setupStep > 0) {
+                        OutlinedButton(
+                            onClick = { setupStep-- },
+                            enabled = !creating,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Back") }
+                    }
+                    Button(
+                        onClick = {
+                            if (setupStep == 5) confirmPublish = true
+                            else setupStep++
+                        },
+                        enabled = !creating && if (setupStep == 5) valid else when (setupStep) {
+                            0 -> selectedTarget != null
+                            2 -> BlinkDropsPolicy.isRewardValid(reward) &&
+                                BlinkDropsPolicy.isWinnerCountValid(winners) &&
+                                total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
+                                    (balance ?: -1L) >= total
+                            else -> true
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.onSurface,
+                            contentColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    ) {
+                        Text(if (setupStep == 5) "Review & publish Giveaway" else "Continue →")
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmPublish) {
+        AlertDialog(
+            onDismissRequest = { if (!creating) confirmPublish = false },
+            title = { Text("Publish this Giveaway?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(selectedTarget?.title.orEmpty().ifBlank { targetLabel(targetType.name) }, fontWeight = FontWeight.Bold)
+                    Text(actionLabel(action) + " · " + (if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) "My campus" else "All campuses"))
+                    Text("$winners recipient${if (winners == 1) "" else "s"} · ${NumberFormat.getIntegerInstance(Locale.US).format(reward)} coins each")
+                    Text("Giveaway amount: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} BLINK Coins", fontWeight = FontWeight.Black)
+                    balance?.let {
+                        Text("Remaining balance: ${NumberFormat.getIntegerInstance(Locale.US).format((it - total).coerceAtLeast(0L))} Blink Coins")
+                    }
+                    Text(
+                        "Followers are notified when you publish. Your committed Giveaway amount is non-refundable after publication.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = valid && !creating,
+                    onClick = {
+                        val target = selectedTarget ?: return@Button
+                        confirmPublish = false
+                        onCreate(target, action, reward, winners, audience, duration)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.onSurface,
+                        contentColor = MaterialTheme.colorScheme.surface,
+                    ),
+                ) {
+                    Text("Publish Giveaway")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPublish = false }, enabled = !creating) {
+                    Text("Back")
+                }
+            },
+        )
+    }
+}
+@Composable
+private fun CommentDropDialog(
+    reward: Int,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Comment to earn $reward coins") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                enabled = !busy,
+                onValueChange = { if (it.length <= 2000) text = it },
+                label = { Text("Your comment") },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onSubmit(text.trim()) }, enabled = !busy && text.isNotBlank()) {
+                Text("Comment & claim")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun SectionHeader(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun StatusCard(message: String, isError: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isError) .62f else .48f)
+        )
+    ) {
+        Text(
+            message,
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun EmptyCard(message: String) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+        )
+    ) {
+        Text(
+            message,
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun shortDropDate(raw: String): String =
+    runCatching {
+        java.time.OffsetDateTime.parse(raw)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
+    }.getOrElse { raw.replace('T', ' ').take(16).ifBlank { "—" } }
+
+private fun actionLabel(value: String): String = when (value.uppercase()) {
+    "LIKE" -> "Like post"
+    "COMMENT" -> "Comment"
+    "REPOST" -> "Repost"
+    "SAVE_LISTING" -> "Save listing"
+    else -> value.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
+
+private fun targetLabel(value: String): String = when (value.uppercase()) {
+    "POST" -> "Post"
+    "REEL" -> "Reel"
+    "LISTING" -> "Listing"
+    else -> value
+}
+
+private fun actionIcon(value: String): ImageVector = when (value.uppercase()) {
+    "LIKE" -> Icons.Default.Favorite
+    "COMMENT" -> Icons.Default.ChatBubble
+    "REPOST" -> Icons.Default.Repeat
+    "SAVE_LISTING" -> Icons.Default.Bookmark
+    else -> Icons.Default.CardGiftcard
+}
+
+private fun JSONArray?.objects(): List<JSONObject> {
+    if (this == null) return emptyList()
+    return buildList {
+        repeat(length()) { index -> optJSONObject(index)?.let(::add) }
+    }
+}
+
+private fun JSONArray?.toTargets(): List<DropTarget> {
+    if (this == null) return emptyList()
+    return buildList {
+        repeat(length()) { index ->
+            optJSONObject(index)?.let { item ->
+                add(
+                    DropTarget(
+                        id = item.optString("id"),
+                        type = item.optString("type"),
+                        title = item.optString("title"),
+                        subtitle = item.optString("subtitle"),
+                    )
+                )
+            }
+        }
+    }
+}
+
+private fun JSONArray?.toDropItems(): List<DropItem> {
+    if (this == null) return emptyList()
+    return buildList {
+        repeat(length()) { index ->
+            optJSONObject(index)?.let { item ->
+                add(
+                    DropItem(
+                        id = item.optString("id"),
+                        creatorId = item.optString("creator_id"),
+                        creatorUsername = item.optString("creator_username"),
+                        creatorName = item.optString("creator_name"),
+                        rewardPerUser = item.optInt("reward_per_user"),
+                        winnerCount = item.optInt("winner_count"),
+                        claimedCount = item.optInt("claimed_count"),
+                        totalCoins = item.optLong("total_coins"),
+                        coinDistributed = item.optLong("coin_distributed", 0L),
+                        coinRefunded = item.optLong("coin_refunded", 0L),
+                        action = item.optString("action"),
+                        targetType = item.optString("target_type"),
+                        targetTitle = item.optString("target_title"),
+                        audienceScope = item.optString("audience_scope"),
+                        targetUniversity = item.optString("target_university"),
+                        status = item.optString("status"),
+                        createdAt = item.optString("created_at"),
+                        endsAt = item.optString("ends_at"),
+                        eligible = item.optBoolean("eligible", false),
+                        creatorAvatar = item.optString("creator_avatar"),
+                        previewUrl = item.optString("target_preview_url"),
+                        previewVideoUrl = item.optString("target_video_url"),
+                    )
+                )
+            }
+        }
+    }
+}
+
+private fun JSONArray?.toTopGivers(): List<TopGiver> {
+    if (this == null) return emptyList()
+    return buildList {
+        repeat(length()) { index ->
+            optJSONObject(index)?.let { item ->
+                add(
+                    TopGiver(
+                        creatorId = item.optString("creator_id"),
+                        username = item.optString("username"),
+                        name = item.optString("name"),
+                        coinsSpent = item.optLong("coins_spent"),
+                        giveawaysCreated = item.optInt("giveaways_created"),
+                        peopleRewarded = item.optInt("people_rewarded"),
+                        following = item.optBoolean("is_following"),
+                    )
+                )
+            }
+        }
+    }
+}

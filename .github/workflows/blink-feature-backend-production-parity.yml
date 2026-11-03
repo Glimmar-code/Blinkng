@@ -1,0 +1,72 @@
+name: BLINK production-feature schema integration
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261018025000_opt_in_profile_visitor_history.sql'
+      - 'supabase/migrations/20261018041000_campus_registration_account_type.sql'
+      - 'supabase/migrations/20261018063000_blink_verification_subscription_contract.sql'
+      - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/tests/feature_*'
+      - 'supabase/tests/stories_universities_fixture.pgfixture'
+      - '.github/workflows/blink-feature-backend-production-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-feature-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: temporary_ci_only
+          POSTGRES_DB: blink_staging
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_staging"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: temporary_ci_only
+      PGDATABASE: blink_staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create disposable schema and fake accounts
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feature_schema_staging_fixture.pgfixture
+      - name: Apply privacy-first profile visitor migrations
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018025000_opt_in_profile_visitor_history.sql
+      - name: Add self-reported campus roles
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018041000_campus_registration_account_type.sql
+      - name: Add non-billing Blue/Gold subscription contract
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018063000_blink_verification_subscription_contract.sql
+      - name: Add Nigerian university catalog and pending review queue
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018073500_nigerian_university_directory.sql
+      - name: Assert visitor consent, privacy, RLS, quote accuracy and directory privileges
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feature_schema_staging_assertions.pgfixture
+      - name: Assert service-only subscription writes and moderated university requests
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          begin
+            if not has_table_privilege('service_role','public.blink_verification_subscriptions','INSERT') then
+              raise exception 'Missing service role ledger grants';
+            end if;
+            if has_table_privilege('authenticated','public.profile_visit_events','SELECT') then
+              raise exception 'Visitor event table exposed';
+            end if;
+            if not has_table_privilege('service_role','public.blink_missing_university_requests','UPDATE') then
+              raise exception 'Missing moderation role privileges';
+            end if;
+          end $$;
+          SQL

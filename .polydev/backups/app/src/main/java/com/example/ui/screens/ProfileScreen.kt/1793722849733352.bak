@@ -1,0 +1,2911 @@
+package com.example.ui.screens
+
+import com.example.performance.rememberBlinkReduceMotion
+import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+
+import com.example.R
+import androidx.compose.ui.res.painterResource
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.blinkng.shared.BlinkEconomyDefaults
+import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.ProfileCompletionPolicy
+import com.blinkng.shared.ProfileContentMetrics
+import com.blinkng.shared.profileRankLabel
+import com.blinkng.shared.xpProgress
+import com.blinkng.shared.canViewProfileField
+import com.example.data.models.ChallengeGameType
+import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.FeedPost
+import com.example.data.models.MarketItem
+import com.example.data.models.ProfileConnectionKind
+import com.example.data.models.Story
+import com.example.data.models.ProfileFollowerPoint
+import com.example.data.models.ProfileNotificationMode
+import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
+import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
+import com.example.data.supabase.SupabaseService
+import com.example.ui.components.FacultyBadge
+import com.example.ui.components.FollowerGrowthChart
+import com.example.ui.components.ProfileConnectionsSheet
+import com.example.ui.components.ProfileContentSearchBar
+import com.example.ui.components.ProfileFollowInteractButton
+import com.example.ui.components.ProfileNotificationPreferenceDialog
+import com.example.ui.components.ProfileOwnerInsightsCard
+import com.example.ui.components.ProfileReportDialog
+import com.example.ui.components.PostCard
+import com.example.ui.components.shimmerBackground
+import com.example.ui.components.blinkPressFeedback
+import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkVipMarkForUsername
+import com.example.ui.components.BlinkPremiumAvatarFrame
+import com.example.ui.components.BlinkPremiumProfileSurface
+import com.example.ui.components.rememberBlinkPublicPremiumIdentity
+import com.example.ui.theme.*
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
+import com.example.util.TimeFormatters
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import kotlin.math.min
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+
+/* ============================================================================
+ * PROFILE SCREEN
+ *
+ * A polished profile experience with restrained interaction motion:
+ *  - Parallax cover header with collapsing title
+ *  - Staggered entrance for the identity block
+ *  - Spring-driven avatar reveal with a static premium glow
+ *  - A real sliding-pill tab indicator (measured, not faked)
+ *  - Lazy post and marketplace content for smooth scrolling
+ *  - A count-up animation on the follower stat
+ *  - A completion bar that animates in from zero
+ *  - A refresh FAB that spins while refreshing and hides on scroll-down
+ * ==========================================================================*/
+
+private object ProfileMotion {
+    val TabIndicatorSpec = spring<Dp>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileScreen(
+    profile: UserProfile,
+    isMe: Boolean,
+    userPosts: List<FeedPost>,
+    isPostsLoading: Boolean = false,
+    hasPostsLoadError: Boolean = false,
+    likedPosts: List<FeedPost>,
+    savedPosts: List<FeedPost>,
+    arePrivateCollectionsLoading: Boolean = false,
+    havePrivateCollectionsError: Boolean = false,
+    userMarketItems: List<MarketItem>,
+    isMarketLoading: Boolean = false,
+    hasMarketLoadError: Boolean = false,
+    onBack: () -> Unit,
+    onEditProfileClick: () -> Unit,
+    onDirectMessage: (String) -> Unit,
+    onEndorseSkill: (String) -> Unit,
+    onLikePost: (String) -> Unit,
+    onOpenPost: (String) -> Unit = {},
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit = {},
+    onProfileClick: (String) -> Unit,
+    onMarketItemClick: (MarketItem) -> Unit,
+    onOpenGetVerified: () -> Unit = {},
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
+    onOpenConnectHub: () -> Unit = {},
+    blinkCoinBalance: Long = 0L,
+    economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
+    rewardedAdsToday: Int = 0,
+    onWatchAdForCoins: () -> Unit = {},
+    onBuyBlinkCoins: () -> Unit = {},
+    onOpenCoinsWallet: () -> Unit = {},
+    storyForProfile: Story? = null,
+    onOpenProfileStory: (Story) -> Unit = {},
+    isDark: Boolean,
+    onFollowChanged: (Boolean) -> Unit = {},
+    onRefreshProfile: () -> Unit = {},
+    isProfileRefreshing: Boolean = false,
+    currentUserId: String = "",
+    selectedMainTabRoute: String = "home",
+    onNavigateMainTab: (String) -> Unit = {},
+    onTopAction: (String) -> Unit = {},
+    initialTab: Int = 0
+) {
+    // Prevent owner-only deep links from showing a visitor an invalid private tab,
+    // including during the first frame before LaunchedEffect runs.
+    var selectedTab by rememberSaveable(profile.id, initialTab, isMe) {
+        mutableIntStateOf(if (isMe) initialTab.coerceIn(0, 7)
+            else initialTab.takeIf { it in 0..4 } ?: 0)
+    }
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
+    var followBusy by remember(profile.id) { mutableStateOf(false) }
+    val overlayOffset = remember(profile.id) { Animatable(0f) }
+    // Apply finger motion in the draw layer, not by starting one coroutine
+    // for every pixel while the LazyColumn is being scrolled.
+    var overlayDragPx by remember(profile.id) { mutableFloatStateOf(Float.NaN) }
+    val overlayScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    // Preserve request UUID across retries so an unknown network outcome
+    // cannot charge the sender a second time.
+    val pendingGiftRequests = remember(profile.id) { mutableStateMapOf<Int, String>() }
+    val mentorListingId = remember(connectHub.mentors, profile.id) {
+        connectHub.mentors.firstOrNull { it.userId == profile.id }?.id
+    }
+    val roommateListingId = remember(connectHub.roommates, profile.id) {
+        connectHub.roommates.firstOrNull { it.userId == profile.id }?.id
+    }
+    val readingListingId = remember(connectHub.readingMates, profile.id) {
+        connectHub.readingMates.firstOrNull { it.userId == profile.id }?.id
+    }
+    val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
+    var showShareSheet by rememberSaveable { mutableStateOf(false) }
+    var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var showMoreSheet by rememberSaveable { mutableStateOf(false) }
+    var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
+    var showProfileVisitors by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
+    var showProgressHub by rememberSaveable { mutableStateOf(false) }
+    var showCreatorStudio by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var creatorAiPrompt by remember(profile.id) { mutableStateOf<String?>(null) }
+
+    val profileService = remember { SupabaseService() }
+    var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
+    var connectionKind by remember(profile.id) { mutableStateOf<ProfileConnectionKind?>(null) }
+    var connectionProfiles by remember(profile.id) { mutableStateOf<List<UserProfile>>(emptyList()) }
+    var connectionLoading by remember(profile.id) { mutableStateOf(false) }
+    var connectionFailed by remember(profile.id) { mutableStateOf(false) }
+    var connectionRequestId by remember(profile.id) { mutableIntStateOf(0) }
+    var profileSearchActive by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var profileSearchQuery by rememberSaveable(profile.id) { mutableStateOf("") }
+    var profileNotificationMode by remember(profile.id) { mutableStateOf(ProfileNotificationMode.OFF) }
+    var profileMuted by remember(profile.id) { mutableStateOf(false) }
+    var showNotificationDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var showReportDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var showBlockConfirm by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var reportReason by rememberSaveable(profile.id) { mutableStateOf("") }
+    var profileActionBusy by remember(profile.id) { mutableStateOf(false) }
+
+    LaunchedEffect(profile.id, isMe) {
+        if (profile.id.isBlank()) return@LaunchedEffect
+        if (!isMe) {
+            FollowStateStore.refresh()
+            profileNotificationMode = profileService.getProfileNotificationPreference(profile.id)
+            profileMuted = profileService.isProfileMuted(profile.id)
+        } else {
+            followerHistory = profileService.fetchProfileFollowerHistory(profile.id, days = 30)
+        }
+    }
+
+    // The backend stores a visit ONLY when both accounts explicitly opt in.
+    // A missing visitor-history RPC is not treated as consent or as a visit.
+    LaunchedEffect(profile.id, isMe, currentUserId) {
+        if (!isMe && profile.id.isNotBlank() && currentUserId.isNotBlank()) {
+            profileService.recordOptInProfileVisit(profile.id)
+        }
+    }
+
+    // Entrance choreography — content reveals itself once, on first composition.
+    var contentVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(40)
+        contentVisible = true
+    }
+
+    val tabs = remember(isMe) {
+        if (isMe) {
+            listOf("Posts", "Reels", "Market", "Skills", "About", "You", "Liked", "Saved")
+        } else {
+            listOf("Posts", "Reels", "Market", "Skills", "About")
+        }
+    }
+
+    LaunchedEffect(tabs.size) {
+        if (selectedTab !in tabs.indices) selectedTab = 0
+    }
+
+    // The profile owner's saved palette is public and independent of viewer theme.
+    val savedProfileTheme = com.blinkng.shared.BlinkProfileThemes.resolve(profile.profileTheme)
+    val bgColor = Color(savedProfileTheme.bottomArgb)
+    val cardBg = Color(savedProfileTheme.cardArgb)
+    val textPrimary = Color.White
+    val textSecondary = Color.White.copy(alpha = .72f)
+    val borderColor = Color.White.copy(alpha = .13f)
+
+    if (showReferGrow && isMe) {
+        BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
+    }
+
+    if (showProgressHub && isMe) {
+        ProgressHubSheet(
+            profile = profile,
+            onDismiss = { showProgressHub = false },
+            onProgressChanged = onRefreshProfile,
+        )
+    }
+
+    if (showCreatorStudio && isMe) {
+        BlinkCreatorStudioSheet(
+            profile = profile,
+            posts = userPosts,
+            postsLoading = isPostsLoading,
+            onDismiss = { showCreatorStudio = false },
+            onVerify = onOpenGetVerified,
+            onRefresh = onRefreshProfile,
+            onOpenPost = onOpenPost,
+            onUseAiPrompt = { prompt -> creatorAiPrompt = prompt }
+        )
+    }
+    if (creatorAiPrompt != null && isMe) {
+        com.example.ui.components.BlinkAiSheet(
+            onDismiss = { creatorAiPrompt = null },
+            initialPrompt = creatorAiPrompt
+        )
+    }
+
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val scrollState = rememberLazyListState()
+
+    // A deep link into Liked or Saved must reveal the selected section, not leave
+    // its tab uncomposed below the tall profile dashboard on compact phones.
+    LaunchedEffect(profile.id, initialTab, isMe) {
+        if (initialTab != 0 && initialTab in tabs.indices) {
+            scrollState.scrollToItem(1)
+        }
+    }
+
+    val presenceVisible = canViewProfileField(
+        scope = profile.presenceVisibility,
+        isOwner = isMe,
+        isFollowing = isFollowing
+    ) && (profile.onlineNow || profile.lastSeenAt.isNotBlank())
+
+    fun openConnectionList(kind: ProfileConnectionKind) {
+        if (profile.id.isBlank()) return
+        connectionKind = kind
+        connectionProfiles = emptyList()
+        connectionFailed = false
+        connectionLoading = true
+        val requestId = ++connectionRequestId
+        overlayScope.launch {
+            try {
+                val response = profileService.fetchProfileConnections(profile.id, kind, throwOnError = true)
+                if (requestId == connectionRequestId && connectionKind == kind) {
+                    connectionProfiles = response
+                }
+            } catch (_: Exception) {
+                if (requestId == connectionRequestId) connectionFailed = true
+            } finally {
+                if (requestId == connectionRequestId) connectionLoading = false
+            }
+        }
+    }
+
+    fun matchingContent(reelsOnly: Boolean): List<FeedPost> {
+        val query = profileSearchQuery.trim()
+        return userPosts
+            .asSequence()
+            .filter { it.isReel == reelsOnly }
+            .filter { post ->
+                query.isBlank() ||
+                    post.text.contains(query, ignoreCase = true) ||
+                    post.tags.any { it.contains(query, ignoreCase = true) } ||
+                    post.category.contains(query, ignoreCase = true)
+            }
+            .sortedWith(
+                compareByDescending<FeedPost> { it.isPinned }
+                    .thenByDescending { it.createdAt }
+            )
+            .toList()
+    }
+
+    var accountMetrics by remember(profile.id) { mutableStateOf<ProfileContentMetrics?>(null) }
+    LaunchedEffect(profile.id, isProfileRefreshing) {
+        if (profile.id.isNotBlank() && !isProfileRefreshing) {
+            accountMetrics = profileService.getProfileContentMetrics(profile.id)
+        }
+    }
+
+    val profileCompletion = remember(profile) {
+        ProfileCompletionPolicy.calculate(profile.fullName, profile.username, profile.avatarUrl,
+            profile.professionalHeadline, profile.bio, profile.university, profile.faculty,
+            profile.department, profile.academicLevel, profile.accountType)
+    }
+    val premiumIdentity by rememberBlinkPublicPremiumIdentity(
+        username = profile.username,
+        knownVip = profile.isBlinkVip,
+    )
+
+    val headerCollapsed by remember {
+        derivedStateOf { scrollState.firstVisibleItemIndex > 0 }
+    }
+
+    // Parallax offset derived straight from scroll position of the very first item.
+    val parallaxOffset by remember {
+        derivedStateOf {
+            if (scrollState.firstVisibleItemIndex == 0) {
+                (scrollState.firstVisibleItemScrollOffset * 0.5f)
+            } else 400f
+        }
+    }
+
+    // Update the FAB only when scroll direction meaningfully changes. Avoid mutating
+    // Compose state from inside derivedStateOf, which can invalidate every scroll frame.
+    var fabVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(scrollState) {
+        var previousIndex = scrollState.firstVisibleItemIndex
+        var previousOffset = scrollState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            scrollState.firstVisibleItemIndex to scrollState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            val nextVisible = when {
+                index == 0 && offset < 24 -> true
+                index < previousIndex -> true
+                index > previousIndex -> false
+                offset < previousOffset - 12 -> true
+                offset > previousOffset + 12 -> false
+                else -> fabVisible
+            }
+            if (nextVisible != fabVisible) fabVisible = nextVisible
+            previousIndex = index
+            previousOffset = offset
+        }
+    }
+
+    val animatedFollowScale by animateFloatAsState(
+        targetValue = if (isFollowing) 0.98f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "followScale"
+    )
+
+    // Keep the premium avatar glow static so the whole profile header does not
+    // invalidate on every animation frame while the user scrolls.
+    val glowAlpha = 0.24f
+
+    val refreshRotation by animateFloatAsState(
+        targetValue = if (isProfileRefreshing) 360f else 0f,
+        animationSpec = if (isProfileRefreshing) infiniteRepeatable(tween(800, easing = LinearEasing)) else tween(0),
+        label = "refreshRotation"
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .offset {
+                    IntOffset((if (overlayDragPx.isFinite()) overlayDragPx
+                        else overlayOffset.value).roundToInt(), 0)
+                }
+                .pointerInput(profile.id, overlayThresholdPx) {
+                    // Passive final-pass observer: LazyColumn, image carousels and
+                    // horizontal child controls always get first priority.
+                    // A rightward back drag follows the finger without consuming
+                    // scroll or producing one coroutine per touch sample.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        val touchSlop = viewConfiguration.touchSlop
+                        var childOwned = false
+                        var committed = false
+                        var lastDrag = 0f
+                        var moved = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            if (event.changes.size != 1) childOwned = true
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.pressed && change.isConsumed) childOwned = true
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            val dx = change.position.x - down.position.x
+                            val dy = change.position.y - down.position.y
+                            val eligible = !childOwned && dx > touchSlop &&
+                                dx > kotlin.math.abs(dy) * 1.35f
+                            if (change.pressed) {
+                                lastDrag = if (eligible) dx - touchSlop else 0f
+                                if (lastDrag > 0f) moved = true
+                                if (moved) overlayDragPx = lastDrag
+                            } else {
+                                committed = eligible && BlinkElasticGesturePhysics.shouldCommit(
+                                    dx,
+                                    BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                                        dx, tracker.calculateVelocity().x,
+                                        change.uptimeMillis - down.uptimeMillis
+                                    ),
+                                    overlayThresholdPx, 28.dp.toPx(), 1100.dp.toPx()
+                                )
+                                break
+                            }
+                        }
+                        if (moved) {
+                            overlayScope.launch {
+                                overlayOffset.snapTo(lastDrag)
+                                overlayDragPx = Float.NaN
+                                if (committed) onBack()
+                                else overlayOffset.animateTo(
+                                    0f, spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                .testTag("profile_screen"),
+            shape = RoundedCornerShape(0.dp),
+            color = bgColor
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(savedProfileTheme.topArgb), Color(savedProfileTheme.bottomArgb))
+                        )
+                    )
+            ) {
+
+            LazyColumn(
+                state = scrollState,
+                contentPadding = PaddingValues(bottom = 24.dp),
+                modifier = Modifier.fillMaxSize().statusBarsPadding().testTag("profile_content_list")
+            ) {
+
+                // ============================================================
+                // COVER HEADER — parallax + gradient wash
+                // ============================================================
+                item(key = "reference_dashboard") {
+                    BlinkPremiumProfileDashboard(
+                        profile = profile,
+                        isMe = isMe,
+                        blinkCoinBalance = blinkCoinBalance,
+                        isDark = isDark,
+                        isFollowing = isFollowing,
+                        followBusy = followBusy,
+                        postCount = (accountMetrics?.posts?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+                            ?: userPosts.count { !it.isReel }),
+                        totalLoadedViews = accountMetrics?.views
+                            ?: userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
+                        totalLoadedLikes = accountMetrics?.likes
+                            ?: userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
+                        profileCompletion = profileCompletion,
+                        metricsComplete = accountMetrics != null,
+                        onAvatarClick = { showAvatarViewer = true },
+                        hasActiveStory = storyForProfile != null,
+                        onStoryClick = { storyForProfile?.let(onOpenProfileStory) },
+                        onBack = onBack,
+                        onEdit = onEditProfileClick,
+                        onMessage = { onDirectMessage(profile.username) },
+                        onFollow = {
+                            if (!followBusy && profile.id.isNotBlank()) {
+                                followBusy = true
+                                overlayScope.launch {
+                                    val desired = !isFollowing
+                                    val saved = runCatching {
+                                        FollowStateStore.setFollowing(profile.id, desired)
+                                    }.getOrDefault(false)
+                                    followBusy = false
+                                    if (saved) {
+                                        onFollowChanged(desired)
+                                    } else {
+                                        Toast.makeText(context, "Couldn't update Follow. Check your connection.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        },
+                        onVerify = onOpenGetVerified,
+                        onCreatorStudio = { showCreatorStudio = true },
+                        onEarnCoins = onOpenCoinsWallet,
+                        onWallet = onOpenCoinsWallet,
+                        onCampusRank = { onNavigateMainTab("leaderboard") },
+                        onHpProgress = { if (isMe) showProgressHub = true },
+                        onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
+                        onShare = { showShareSheet = true },
+                        onCopyUsername = {
+                            clipboard.setText(AnnotatedString("@" + profile.username))
+                            Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+                        },
+                        onVisitors = { showProfileVisitors = true },
+                        onFollowers = { openConnectionList(ProfileConnectionKind.FOLLOWERS) },
+                        onFollowing = { openConnectionList(ProfileConnectionKind.FOLLOWING) },
+                        // Relationship actions live on the single reference dashboard.
+                        // Keep the existing server-authoritative callbacks when retiring
+                        // the duplicated legacy cover/identity/trust panel.
+                        onGiftCoins = { amount ->
+                            if (profile.id.isNotBlank()) {
+                                val requestId = pendingGiftRequests.getOrPut(amount) {
+                                    java.util.UUID.randomUUID().toString()
+                                }
+                                overlayScope.launch {
+                                    val sent = interactionRepository.giftCoinsOnce(
+                                        profile.id, amount, requestId
+                                    )
+                                    if (sent) pendingGiftRequests.remove(amount)
+                                    Toast.makeText(
+                                        context,
+                                        if (sent) "Sent $amount BLINK Coins"
+                                        else "Coin gift not confirmed. No transfer shown.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        onGameChallenge = {
+                            if (profile.id.isNotBlank()) {
+                                connectHubActions.challengeUser(
+                                    profile.id, ChallengeGameType.GENERAL_KNOWLEDGE.apiName
+                                )
+                            }
+                        },
+                        onMentorRequest = {
+                            if (mentorListingId != null) connectHubActions.requestMentor(mentorListingId)
+                            else onOpenConnectHub()
+                        },
+                        onFriendRequest = {
+                            if (profile.id.isNotBlank()) {
+                                overlayScope.launch {
+                                    val sent = interactionRepository.sendFriendRequest(profile.id)
+                                    Toast.makeText(
+                                        context,
+                                        if (sent) "Friend request sent" else "Unable to send friend request",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        onRoommateRequest = {
+                            if (roommateListingId != null) connectHubActions.applyRoommate(roommateListingId)
+                            else onOpenConnectHub()
+                        },
+                        onStudyMateRequest = {
+                            if (readingListingId != null) connectHubActions.requestReadingMate(readingListingId)
+                            else onOpenConnectHub()
+                        },
+                        onViewProfile = { overlayScope.launch { scrollState.animateScrollToItem(0) } },
+                        onOpenConnectHub = onOpenConnectHub,
+                        onTopAction = { action ->
+                            if (action == "menu") showMoreSheet = true
+                            else onTopAction(action)
+                        }
+                    )
+                }
+
+
+                // ============================================================
+                // TABS — real sliding pill indicator
+                // ============================================================
+                if (profileSearchActive) {
+                    item(key = "profile_content_search") {
+                        ProfileContentSearchBar(
+                            query = profileSearchQuery,
+                            onQueryChange = { profileSearchQuery = it },
+                            onClose = {
+                                profileSearchActive = false
+                                profileSearchQuery = ""
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+
+                item(key = "tabs") {
+                    PremiumProfileTabs(
+                        tabs = tabs,
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTab = it },
+                        isMe = isMe,
+                        selectedThemeCard = cardBg
+                    )
+                }
+
+                // Keep post cards as real LazyColumn items and keep private activity owner-only.
+                when (tabs.getOrNull(selectedTab)) {
+                    "Posts" -> profilePostItems(
+                        keyPrefix = "published",
+                        posts = matchingContent(reelsOnly = false),
+                        isLoading = isPostsLoading,
+                        loadFailed = hasPostsLoadError,
+                        onRetry = onRefreshProfile,
+                        profile = profile,
+                        canDelete = isMe,
+                        onDelete = onDeletePost,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
+                        onLike = onLikePost,
+                        onComment = onCommentPost,
+                        onBookmark = onBookmarkPost,
+                        onShare = onSharePost,
+                        onOptions = onOptionsClick,
+                        onProfileClick = onProfileClick,
+                        onOpenPost = onOpenPost
+                    )
+
+                    "Reels" -> premiumProfileGridItems(
+                        items = matchingContent(reelsOnly = true),
+                        emptyMessage = if (isPostsLoading) "Loading reels..." else "No reels yet",
+                        onOpen = onOpenPost,
+                        columns = 3,
+                        isLoading = isPostsLoading,
+                        hasLoadError = hasPostsLoadError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
+                        onRetry = onRefreshProfile
+                    )
+
+                    "Liked" -> if (isMe) premiumProfileGridItems(
+                        items = likedPosts,
+                        emptyMessage = "Nothing liked yet",
+                        onOpen = onOpenPost,
+                        isLoading = arePrivateCollectionsLoading,
+                        hasLoadError = havePrivateCollectionsError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
+                        onRetry = onRefreshProfile
+                    )
+
+                    "Saved" -> if (isMe) premiumProfileGridItems(
+                        items = savedPosts,
+                        emptyMessage = "Nothing saved yet",
+                        onOpen = onOpenPost,
+                        isLoading = arePrivateCollectionsLoading,
+                        hasLoadError = havePrivateCollectionsError,
+                        themeCardColor = Color(savedProfileTheme.cardArgb),
+                        onRetry = onRefreshProfile
+                    )
+
+                    "Market" -> profileMarketItems(
+                        items = userMarketItems,
+                        isLoading = isMarketLoading,
+                        loadFailed = hasMarketLoadError,
+                        onRetry = onRefreshProfile,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onItemClick = onMarketItemClick
+                    )
+
+                    "Skills" -> item(key = "skills") {
+                        SkillsAndBadgesSection(
+                            profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
+                            onEndorseSkill, onOpenGetVerified
+                        )
+                    }
+
+                    "About" -> item(key = "about") {
+                        AboutSection(
+                            profile = profile,
+                            isMe = isMe,
+                            isFollowing = isFollowing,
+                            cardBg = cardBg,
+                            borderColor = borderColor,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary
+                        )
+                    }
+
+                    "You" -> if (isMe) {
+                        item(key = "owner_insights") {
+                            ProfileOwnerInsightsCard(
+                                profile = profile,
+                                posts = userPosts,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                            )
+                        }
+                        item(key = "growth") {
+                            FollowerGrowthChart(
+                                profile = profile,
+                                history = followerHistory,
+                                isDark = isDark,
+                                onOpenGetVerified = onOpenGetVerified,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                            )
+                        }
+                        item(key = "saved_header") {
+                            Text(
+                                "Saved • private",
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
+                            )
+                        }
+                        profilePostItems(
+                            keyPrefix = "saved",
+                            posts = savedPosts,
+                            isLoading = arePrivateCollectionsLoading,
+                            loadFailed = havePrivateCollectionsError,
+                            onRetry = onRefreshProfile,
+                            profile = profile,
+                            canDelete = false,
+                            onDelete = onDeletePost,
+                            isDark = isDark,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            themeCardColor = Color(savedProfileTheme.cardArgb),
+                            emptyTitle = "Nothing saved yet",
+                            emptySubtitle = "Posts you save will stay private here.",
+                            onLike = onLikePost,
+                            onComment = onCommentPost,
+                            onBookmark = onBookmarkPost,
+                            onShare = onSharePost,
+                            onOptions = onOptionsClick,
+                            onProfileClick = onProfileClick,
+                            onOpenPost = onOpenPost
+                        )
+                        item(key = "liked_header") {
+                            Text(
+                                "Liked • private",
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
+                            )
+                        }
+                        profilePostItems(
+                            keyPrefix = "liked",
+                            posts = likedPosts,
+                            isLoading = arePrivateCollectionsLoading,
+                            loadFailed = havePrivateCollectionsError,
+                            onRetry = onRefreshProfile,
+                            profile = profile,
+                            canDelete = false,
+                            onDelete = onDeletePost,
+                            isDark = isDark,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            themeCardColor = Color(savedProfileTheme.cardArgb),
+                            emptyTitle = "No liked posts yet",
+                            emptySubtitle = "Posts you like will stay private here.",
+                            onLike = onLikePost,
+                            onComment = onCommentPost,
+                            onBookmark = onBookmarkPost,
+                            onShare = onSharePost,
+                            onOptions = onOptionsClick,
+                            onProfileClick = onProfileClick,
+                            onOpenPost = onOpenPost
+                        )
+                    }
+                }
+            }
+
+            // ============================================================
+            // FLOATING REFRESH — hides on scroll-down, spins while active
+            // ============================================================
+            AnimatedVisibility(
+                visible = fabVisible,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 18.dp, bottom = 18.dp),
+                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
+                FloatingActionButton(
+                    onClick = { if (!isProfileRefreshing) onRefreshProfile() },
+                    containerColor = cardBg,
+                    contentColor = BlinkPink,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh profile",
+                        modifier = Modifier.graphicsLayer { rotationZ = refreshRotation }
+                    )
+                }
+            }
+        }
+    }
+    }
+
+    // ================================================================
+    // CONSENT-BASED OWNER-ONLY PROFILE VISITOR HISTORY
+    // ================================================================
+    if (showProfileVisitors && isMe) {
+        ProfileVisitorsSheet(
+            service = profileService,
+            onDismiss = { showProfileVisitors = false },
+            onOpenProfile = onProfileClick
+        )
+    }
+
+    // ================================================================
+    // AVATAR VIEWER
+    // ================================================================
+    if (showAvatarViewer) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showAvatarViewer = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val reduceAvatarMotion = rememberBlinkReduceMotion()
+            var avatarVisible by remember(profile.avatarUrl) { mutableStateOf(false) }
+            LaunchedEffect(profile.avatarUrl) { avatarVisible = true }
+            Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                AnimatedVisibility(
+                    visible = avatarVisible,
+                    enter = if (reduceAvatarMotion) EnterTransition.None else
+                        fadeIn(tween(170)) + scaleIn(initialScale = 0.98f, animationSpec = tween(170)),
+                    exit = ExitTransition.None
+                ) {
+                    AsyncImage(
+                        model = profile.avatarUrl,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
+                        contentDescription = "Full profile picture",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f)
+                    )
+                }
+                IconButton(
+                    onClick = { showAvatarViewer = false },
+                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()
+                        .padding(12.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                        .size(48.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close profile picture", tint = Color.White)
+                }
+            }
+        }
+    }
+
+    // ================================================================
+    // EARN BLINK COIN — server-controlled rewarded economy
+    // ================================================================
+    if (showEarnCoinDialog && isMe) {
+        val canWatchRewardedAd = economyPolicy.canWatchRewardedAd(rewardedAdsToday, profile.hasActiveMarketVerification())
+        val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
+        val nextReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
+
+        AlertDialog(
+            onDismissRequest = { showEarnCoinDialog = false },
+            title = { Text("Earn Blink Coins", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "$rewardedAdsToday / ${economyPolicy.rewardedAdDailyLimit} rewarded ads today",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        economyPolicy.rewardedMilestones.forEach { milestone ->
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (rewardedAdsToday >= milestone.ads) {
+                                    Color(0xFF16A34A).copy(alpha = 0.12f)
+                                } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("${milestone.ads} ads", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("${milestone.totalCoins} coins", fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = canWatchRewardedAd) {
+                                showEarnCoinDialog = false
+                                onWatchAdForCoins()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (canWatchRewardedAd) 0.72f else 0.35f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.PlayCircle, contentDescription = "Image", tint = BlinkPink)
+                            Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+                            Column {
+                                Text(
+                                    if (canWatchRewardedAd) "Watch rewarded ad • +$nextReward coins" else "Daily ad limit reached",
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (canWatchRewardedAd) {
+                                        "Base reward is ${economyPolicy.rewardedAdBaseCoins}; milestone ads include the bonus automatically."
+                                    } else {
+                                        "Come back after the daily counter resets."
+                                    },
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showEarnCoinDialog = false
+                                onOpenGetVerified()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = "Image", tint = BlinkBlue)
+                            Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+                            Column {
+                                Text("Daily missions", fontWeight = FontWeight.Bold)
+                                Text("Build XP and earn up to 20 Blink Coins per day", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showEarnCoinDialog = false
+                                onBuyBlinkCoins()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ShoppingCart, contentDescription = "Image", tint = BlinkGold)
+                            Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+                            Column {
+                                Text("Buy Blink Coins", fontWeight = FontWeight.Bold)
+                                Text(
+                                    economyPolicy.coinPacks.joinToString("  •  ") { "₦${it.priceNgn} → ${it.coins}" },
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showEarnCoinDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
+    // ================================================================
+    // SHARE SHEET
+    // ================================================================
+    if (showShareSheet) {
+        val shareProfileId = profile.username.ifBlank { profile.id }
+        ProfileShareSheet(
+            username = profile.username,
+            fullName = profile.fullName,
+            avatarUrl = profile.avatarUrl,
+            onDismiss = { showShareSheet = false },
+            onShare = {
+                ShareLinkManager.share(
+                    context = context,
+                    type = ShareContentType.PROFILE,
+                    id = shareProfileId,
+                    title = "Share ${profile.fullName}",
+                    message = "View @${profile.username} on Blink",
+                    previewImageUrl = profile.avatarUrl
+                )
+                showShareSheet = false
+            },
+            onCopy = {
+                ShareLinkManager.copyLink(
+                    context = context,
+                    type = ShareContentType.PROFILE,
+                    id = shareProfileId,
+                    toastMessage = "Profile link copied"
+                )
+                showShareSheet = false
+            }
+        )
+    }
+
+    // ================================================================
+    // MORE SHEET
+    // ================================================================
+    if (showMoreSheet) {
+        ProfileMoreSheet(
+            isMe = isMe,
+            profile = profile,
+            isMuted = profileMuted,
+            notificationMode = profileNotificationMode,
+            onDismiss = { showMoreSheet = false },
+            onEdit = {
+                showMoreSheet = false
+                onEditProfileClick()
+            },
+            onCopyUsername = {
+                showMoreSheet = false
+                clipboard.setText(AnnotatedString("@" + profile.username))
+                Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+            },
+            onReferGrow = { showMoreSheet = false; showReferGrow = true },
+            onProgressHub = { showMoreSheet = false; showProgressHub = true },
+            onSearch = {
+                showMoreSheet = false
+                profileSearchActive = true
+                selectedTab = tabs.indexOf("Posts").coerceAtLeast(0)
+            },
+            onShare = {
+                showMoreSheet = false
+                showShareSheet = true
+            },
+            onNotifications = {
+                showMoreSheet = false
+                showNotificationDialog = true
+            },
+            onMute = {
+                showMoreSheet = false
+                if (!profileActionBusy && profile.id.isNotBlank()) {
+                    overlayScope.launch {
+                        profileActionBusy = true
+                        val desired = !profileMuted
+                        val saved = profileService.setProfileMuted(profile.id, desired)
+                        if (saved) {
+                            profileMuted = desired
+                            Toast.makeText(
+                                context,
+                                if (desired) "Profile muted" else "Profile unmuted",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(context, "Unable to update mute", Toast.LENGTH_SHORT).show()
+                        }
+                        profileActionBusy = false
+                    }
+                }
+            },
+            onReport = {
+                showMoreSheet = false
+                reportReason = ""
+                showReportDialog = true
+            },
+            onBlock = {
+                showMoreSheet = false
+                showBlockConfirm = true
+            }
+        )
+    }
+
+    connectionKind?.let { kind ->
+        ProfileConnectionsSheet(
+            kind = kind,
+            profiles = connectionProfiles,
+            loading = connectionLoading,
+            loadFailed = connectionFailed,
+            onRetry = { openConnectionList(kind) },
+            currentUserId = currentUserId,
+            followingIds = followingIds,
+            onDismiss = {
+                connectionKind = null
+                connectionRequestId++
+                connectionProfiles = emptyList()
+            },
+            onOpenProfile = { username ->
+                connectionKind = null
+                onProfileClick(username)
+            },
+            onFollowToggle = { item, desired ->
+                val saved = FollowStateStore.setFollowing(item.id, desired)
+                if (!saved) {
+                    Toast.makeText(context, "Unable to update follow", Toast.LENGTH_SHORT).show()
+                } else {
+                    onRefreshProfile()
+                }
+                saved
+            }
+        )
+    }
+
+    if (showNotificationDialog && !isMe) {
+        ProfileNotificationPreferenceDialog(
+            selected = profileNotificationMode,
+            saving = profileActionBusy,
+            onDismiss = { if (!profileActionBusy) showNotificationDialog = false },
+            onSelect = { mode ->
+                if (!profileActionBusy && profile.id.isNotBlank()) {
+                    overlayScope.launch {
+                        profileActionBusy = true
+                        val saved = profileService.setProfileNotificationPreference(profile.id, mode)
+                        if (saved) {
+                            profileNotificationMode = mode
+                        } else {
+                            Toast.makeText(context, "Unable to save notification preference", Toast.LENGTH_SHORT).show()
+                        }
+                        profileActionBusy = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showReportDialog && !isMe) {
+        ProfileReportDialog(
+            reason = reportReason,
+            saving = profileActionBusy,
+            onReasonChange = { reportReason = it },
+            onDismiss = { if (!profileActionBusy) showReportDialog = false },
+            onSubmit = {
+                if (!profileActionBusy && profile.id.isNotBlank() && reportReason.isNotBlank()) {
+                    overlayScope.launch {
+                        profileActionBusy = true
+                        val sent = profileService.reportUser(profile.id, reportReason)
+                        if (sent) {
+                            showReportDialog = false
+                            Toast.makeText(context, "Report sent", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Unable to send report", Toast.LENGTH_SHORT).show()
+                        }
+                        profileActionBusy = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showBlockConfirm && !isMe) {
+        AlertDialog(
+            onDismissRequest = { if (!profileActionBusy) showBlockConfirm = false },
+            title = { Text("Block @${profile.username}?", fontWeight = FontWeight.Black) },
+            text = {
+                Text("Blocking removes follow connections and prevents normal interaction between both accounts.")
+            },
+            confirmButton = {
+                Button(
+                    enabled = !profileActionBusy,
+                    onClick = {
+                        if (!profileActionBusy && profile.id.isNotBlank()) {
+                            overlayScope.launch {
+                                profileActionBusy = true
+                                val blocked = profileService.blockUser(profile.id)
+                                if (blocked) {
+                                    showBlockConfirm = false
+                                    FollowStateStore.refresh()
+                                    Toast.makeText(context, "Profile blocked", Toast.LENGTH_SHORT).show()
+                                    onBack()
+                                } else {
+                                    Toast.makeText(context, "Unable to block profile", Toast.LENGTH_SHORT).show()
+                                }
+                                profileActionBusy = false
+                            }
+                        }
+                    }
+                ) { Text(if (profileActionBusy) "Blocking…" else "Block") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !profileActionBusy,
+                    onClick = { showBlockConfirm = false }
+                ) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+
+/** Four-icon primary chrome matching the compact reference. Existing sections remain in More. */
+@Composable
+private fun PremiumProfileTabs(
+    tabs: List<String>,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    isMe: Boolean,
+    selectedThemeCard: Color
+) {
+    var moreOpen by remember { mutableStateOf(false) }
+    val primary = if (isMe) listOf("Posts", "Reels", "Liked", "Saved")
+                  else listOf("Posts", "Reels", "Market", "About")
+    val icons = listOf(
+        Icons.Default.GridView, Icons.Default.Videocam,
+        if (isMe) Icons.Default.FavoriteBorder else Icons.Default.Storefront,
+        if (isMe) Icons.Default.BookmarkBorder else Icons.Default.Info
+    )
+    val density = LocalDensity.current
+    val tabActivation = with(density) { 76.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
+    var rawTabDrag by remember(selectedTab) { mutableFloatStateOf(0f) }
+    var tabDragging by remember(selectedTab) { mutableStateOf(false) }
+    val tabVisual by animateFloatAsState(
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(rawTabDrag, tabActivation) * .32f,
+        animationSpec = if (tabDragging || reducedMotion) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ), label = "profileTabElastic"
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .graphicsLayer { translationX = tabVisual }
+            .pointerInput(selectedTab, tabs) {
+                var velocity = VelocityTracker()
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        velocity = VelocityTracker()
+                        tabDragging = true
+                        rawTabDrag = 0f
+                    },
+                    onHorizontalDrag = { change, delta ->
+                        rawTabDrag += delta
+                        velocity.addPosition(change.uptimeMillis, change.position)
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        val commit = BlinkElasticGesturePhysics.shouldCommit(
+                            rawTabDrag, velocity.calculateVelocity().x, tabActivation,
+                            28.dp.toPx(), 1100.dp.toPx()
+                        )
+                        if (commit) {
+                            val current = primary.indexOf(tabs.getOrNull(selectedTab))
+                            val targetVisible = (if (current < 0) 0 else current +
+                                (if (rawTabDrag < 0f) 1 else -1)).coerceIn(0, primary.lastIndex)
+                            val target = tabs.indexOf(primary[targetVisible])
+                            if (target >= 0 && target != selectedTab) onTabSelected(target)
+                        }
+                        rawTabDrag = 0f
+                        tabDragging = false
+                    },
+                    onDragCancel = {
+                        rawTabDrag = 0f
+                        tabDragging = false
+                    }
+                )
+            }
+            .padding(horizontal = 17.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        primary.forEachIndexed { i, name ->
+            val selected = tabs.getOrNull(selectedTab) == name
+            IconButton(
+                onClick = { onTabSelected(tabs.indexOf(name)) },
+                modifier = Modifier.size(54.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (selected) selectedThemeCard else Color.Transparent)
+                    .testTag("premium_profile_tab_${name.lowercase()}")
+                    .semantics { this.selected = selected }
+            ) {
+                Icon(
+                    icons[i], contentDescription = name,
+                    tint = if (selected) Color.White else Color.White.copy(alpha = .62f),
+                    modifier = Modifier.size(25.dp)
+                )
+            }
+        }
+        Box {
+            IconButton(
+                onClick = { moreOpen = true },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.MoreHoriz, "Other profile sections", tint = Color.White)
+            }
+            DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                tabs.filterNot { it in primary }.forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = { moreOpen = false; onTabSelected(tabs.indexOf(name)) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun LazyListScope.premiumProfileGridItems(
+    items: List<FeedPost>,
+    emptyMessage: String,
+    onOpen: (String) -> Unit,
+    columns: Int = 2,
+    isLoading: Boolean = false,
+    hasLoadError: Boolean = false,
+    onRetry: () -> Unit = {},
+    themeCardColor: Color? = null
+) {
+    if (items.isEmpty() && isLoading) {
+        item(key = "premium_grid_loading_${emptyMessage}") {
+            Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+            }
+        }
+        return
+    }
+    if (items.isEmpty() && hasLoadError) {
+        item(key = "premium_grid_error_${emptyMessage}") {
+            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Couldn't load content", color = Color.White)
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
+    if (items.isEmpty()) {
+        item(key = "premium_grid_empty_${emptyMessage}") {
+            Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                Text(emptyMessage, color = Color.White.copy(alpha = .72f), fontSize = 12.sp)
+            }
+        }
+    } else {
+        items.chunked(columns).forEachIndexed { index, pair ->
+            item(key = "premium_grid_row_${index}_${pair.first().id}") {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = if (columns == 3) 9.dp else 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (columns == 3) 6.dp else 8.dp)
+                ) {
+                    pair.forEach { post ->
+                        Box(
+                            modifier = Modifier.weight(1f)
+                                .aspectRatio(if (columns == 3) .72f else .86f)
+                                .clip(RoundedCornerShape(if (columns == 3) 9.dp else 14.dp))
+                                .background(themeCardColor ?: Color(0xFF1B1525))
+                                .clickable { onOpen(post.id) }
+                                .testTag("premium_profile_post_${post.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val image = post.images.firstOrNull()
+                            if (!image.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = image, contentDescription = "Open post",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else if (!post.videoUrl.isNullOrBlank()) {
+                                // Existing pre-poster Reels: decode a single frame lazily,
+                                // with a play icon if the source cannot provide a frame.
+                                val videoThumbnail = coil.request.ImageRequest.Builder(LocalContext.current)
+                                    .data(post.videoUrl)
+                                    .decoderFactory(coil.decode.VideoFrameDecoder.Factory())
+                                    .build()
+                                AsyncImage(
+                                    model = videoThumbnail,
+                                    contentDescription = "Open reel preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Icon(Icons.Default.PlayCircleFilled, "Open reel",
+                                    tint = Color.White, modifier = Modifier.size(29.dp))
+                            } else {
+                                Text(
+                                    post.text, color = Color.White,
+                                    maxLines = 6, overflow = TextOverflow.Ellipsis,
+                                    fontSize = 12.sp, lineHeight = 16.sp,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                            if (post.isReel) {
+                                Icon(
+                                    Icons.Default.PlayArrow, null,
+                                    tint = Color.White,
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                        .padding(8.dp).size(18.dp)
+                                )
+                                Row(
+                                    modifier = Modifier.align(Alignment.BottomStart)
+                                        .fillMaxWidth()
+                                        .background(Color.Black.copy(alpha = .52f))
+                                        .padding(horizontal = 6.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(Icons.Default.Visibility, null, tint = Color.White,
+                                        modifier = Modifier.size(12.dp))
+                                    Text(
+                                        text = post.viewsCount.coerceAtLeast(0).toString(),
+                                        color = Color.White, fontSize = 10.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    repeat(columns - pair.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// ENTRANCE HELPER — fade + slide, staggered by delayMillis
+// =====================================================================
+
+@Composable
+private fun EntranceItem(
+    visible: Boolean,
+    delayMillis: Int,
+    fromRight: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    val reduceMotion = rememberBlinkReduceMotion()
+    AnimatedVisibility(
+        visible = visible,
+        enter = if (reduceMotion) EnterTransition.None else fadeIn(
+            animationSpec = tween(320, delayMillis = delayMillis, easing = FastOutSlowInEasing)
+        ) + slideInHorizontally(
+            animationSpec = tween(360, delayMillis = delayMillis, easing = FastOutSlowInEasing),
+            initialOffsetX = { full -> if (fromRight) full / 4 else -full / 4 }
+        ),
+        exit = if (reduceMotion) ExitTransition.None else fadeOut()
+    ) {
+        content()
+    }
+}
+
+// =====================================================================
+// ANIMATED TAB ROW — measured, spring-driven sliding indicator
+// =====================================================================
+
+@Composable
+private fun AnimatedTabRow(
+    tabs: List<String>,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color
+) {
+    val density = LocalDensity.current
+    val reduceMotion = rememberBlinkReduceMotion()
+    val tabOffsets = remember { mutableStateMapOf<Int, Pair<Dp, Dp>>() } // index -> (x, width)
+    val scrollState = rememberLazyListState()
+
+    val indicatorX by animateDpAsState(
+        targetValue = tabOffsets[selectedTab]?.first ?: 0.dp,
+        animationSpec = if (reduceMotion) snap() else ProfileMotion.TabIndicatorSpec,
+        label = "tabIndicatorX"
+    )
+    val indicatorWidth by animateDpAsState(
+        targetValue = tabOffsets[selectedTab]?.second ?: 0.dp,
+        animationSpec = if (reduceMotion) snap() else ProfileMotion.TabIndicatorSpec,
+        label = "tabIndicatorWidth"
+    )
+
+    Box(
+        modifier = Modifier.padding(top = 10.dp, bottom = 8.dp)
+    ) {
+        // Sliding highlight, drawn behind the tab labels.
+        if (tabOffsets.containsKey(selectedTab)) {
+            Box(
+                modifier = Modifier
+                    // positionInParent() already includes the LazyRow content padding.
+                    // Adding another 16.dp shifted the purple selection pill to the right.
+                    .offset(x = indicatorX)
+                    .width(indicatorWidth)
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(100.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+
+        LazyRow(
+            state = scrollState,
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            items(tabs.indices.toList(), key = { it }) { index ->
+                val selected = selectedTab == index
+                val tabInteraction = remember { MutableInteractionSource() }
+                val textColor by animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else textPrimary,
+                    animationSpec = tween(if (reduceMotion) 0 else 220),
+                    label = "tabTextColor"
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(100.dp),
+                    color = Color.Transparent,
+                    border = BorderStroke(1.dp, if (selected) Color.Transparent else borderColor),
+                    modifier = Modifier
+                        .blinkPressFeedback(tabInteraction)
+                        .clickable(
+                            interactionSource = tabInteraction,
+                            indication = null
+                        ) { onTabSelected(index) }
+                        .onGloballyPositioned { coords ->
+                            val x = with(density) { coords.positionInParent().x.toDp() }
+                            val w = with(density) { coords.size.width.toDp() }
+                            tabOffsets[index] = x to w
+                        }
+                        .testTag("profile_tab_$index")
+                ) {
+                    Text(
+                        tabs[index],
+                        fontSize = 11.5.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        color = textColor,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // Auto-scroll the row so the active tab stays in view.
+        LaunchedEffect(selectedTab) {
+            if (reduceMotion) scrollState.scrollToItem((selectedTab - 1).coerceAtLeast(0))
+            else scrollState.animateScrollToItem(
+                index = (selectedTab - 1).coerceAtLeast(0)
+            )
+        }
+    }
+}
+
+// =====================================================================
+// PROFILE POSTS
+// =====================================================================
+
+@Composable
+private fun ProfilePostSkeleton() {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val base = if (dark) MaterialTheme.colorScheme.surface else Color(0xFFE6E6E6)
+    val highlight = if (dark) MaterialTheme.colorScheme.surfaceContainerHighest else Color(0xFFF5F5F5)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
+            Spacer(Modifier.fillMaxWidth(12.dp))
+            Box(Modifier.fillMaxWidth(148.dp).height(15.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        }
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth(0.74f).height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+private fun LazyListScope.profilePostItems(
+    keyPrefix: String,
+    posts: List<FeedPost>,
+    isLoading: Boolean = false,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
+    profile: UserProfile,
+    canDelete: Boolean,
+    onDelete: (String) -> Unit,
+    isDark: Boolean,
+    textPrimary: Color,
+    textSecondary: Color,
+    themeCardColor: Color? = null,
+    emptyTitle: String = "No posts yet",
+    emptySubtitle: String = "Posts published by @${profile.username} will show up here.",
+    onLike: (String) -> Unit,
+    onComment: (String) -> Unit,
+    onBookmark: (String) -> Unit,
+    onShare: (String) -> Unit,
+    onOptions: (FeedPost) -> Unit,
+    onProfileClick: (String) -> Unit,
+    onPin: ((FeedPost) -> Unit)? = null,
+    onOpenPost: ((String) -> Unit)? = null
+) {
+    if (posts.isEmpty() && isLoading) {
+        items(3, key = { index -> "${keyPrefix}_skeleton_$index" }, contentType = { "profile_skeleton" }) {
+            ProfilePostSkeleton()
+        }
+        return
+    }
+    if (posts.isEmpty() && loadFailed) {
+        item(key = "${keyPrefix}_error", contentType = "profile_error") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Posts couldn't load", color = textPrimary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text("Your posts are safe. Check your connection and try again.", color = textSecondary)
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
+    if (posts.isEmpty()) {
+        item(key = "${keyPrefix}_empty", contentType = "profile_empty") {
+            EmptyProfileState(
+                title = emptyTitle,
+                subtitle = emptySubtitle,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
+        }
+        return
+    }
+
+    val orderedPosts = posts.sortedWith(
+        compareByDescending<FeedPost> { it.isPinned }
+            .thenByDescending { it.createdAt }
+    )
+
+    items(
+        items = orderedPosts,
+        key = { post -> "${keyPrefix}_${post.id}" },
+        contentType = { "profile_post" }
+    ) { post ->
+        val authoredByProfile =
+            post.authorUsername.equals(profile.username, ignoreCase = true) ||
+                post.author.equals(profile.username, ignoreCase = true) ||
+                post.author.equals(profile.fullName, ignoreCase = true)
+
+        Column {
+            PostCard(
+                post = post,
+                isDark = isDark,
+                onLike = { onLike(post.id) },
+                onComment = { onComment(post.id) },
+                onBookmark = { onBookmark(post.id) },
+                onShare = { onShare(post.id) },
+                onOptionsClick = { onOptions(post) },
+                onProfileClick = onProfileClick,
+                isAuthor = canDelete && authoredByProfile,
+                onDelete = { onDelete(post.id) },
+                onOpenPost = { onOpenPost?.invoke(post.id) },
+                xFeedStyle = true,
+                profileSurfaceColor = themeCardColor
+            )
+
+            if (canDelete && authoredByProfile && onPin != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { onPin(post) }) {
+                        Icon(
+                            if (post.isPinned) Icons.Default.PushPin else Icons.Default.PushPin,
+                            contentDescription = "Image",
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.fillMaxWidth(5.dp))
+                        Text(if (post.isPinned) "Unpin" else "Pin to profile", fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// COMPLETION
+// =====================================================================
+
+@Composable
+private fun ProfileCompletionCard(
+    completion: Int,
+    animate: Boolean,
+    onClick: () -> Unit
+) {
+    val animatedCompletion by animateIntAsState(
+        targetValue = if (animate) completion else 0,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "completionProgress"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = BlinkPink.copy(alpha = 0.07f)),
+        border = BorderStroke(1.dp, BlinkPink.copy(alpha = 0.25f))
+    ) {
+        Column(modifier = Modifier.padding(13.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = BlinkPink.copy(alpha = 0.12f)) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = "Image",
+                        tint = BlinkPink,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.fillMaxWidth(9.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Complete your profile", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "A complete profile gets more trust and discoverability.",
+                        fontSize = 9.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Text(
+                    "$animatedCompletion%",
+                    color = BlinkPink,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LinearProgressIndicator(
+                progress = { animatedCompletion / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(100.dp)),
+                color = BlinkPink,
+                trackColor = BlinkPink.copy(alpha = 0.10f)
+            )
+        }
+    }
+}
+
+// =====================================================================
+// TRUST
+// =====================================================================
+
+@Composable
+private fun TrustBanner(
+    profile: UserProfile,
+    isMe: Boolean,
+    cardBg: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    borderColor: Color,
+    onVerify: () -> Unit
+) {
+    val verified = profile.verificationBadge != VerificationBadge.NONE
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(17.dp),
+        color = if (verified) {
+            when (profile.verificationBadge) {
+                VerificationBadge.GOLD -> BlinkGold.copy(alpha = 0.10f)
+                VerificationBadge.BLUE -> BlinkBlue.copy(alpha = 0.08f)
+                VerificationBadge.NONE -> cardBg
+            }
+        } else cardBg,
+        border = BorderStroke(
+            1.dp,
+            when (profile.verificationBadge) {
+                VerificationBadge.GOLD -> BlinkGold
+                VerificationBadge.BLUE -> BlinkBlue
+                VerificationBadge.NONE -> borderColor
+            }.copy(alpha = if (verified) 0.55f else 1f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (verified) {
+                VerifiedMark(badge = profile.verificationBadge, size = 28.dp)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Not verified",
+                    tint = textSecondary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    when {
+                        profile.verificationBadge == VerificationBadge.GOLD -> "Gold BLINK status"
+                        profile.verificationBadge == VerificationBadge.BLUE -> "BLINK Verified"
+                        else -> "Unlock BLINK Verified"
+                    },
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+
+                Text(
+                    if (verified) {
+                        "Premium BLINK status is active on this profile."
+                    } else {
+                        "Earn coins or use the secure cash route when available."
+                    },
+                    fontSize = 9.5.sp,
+                    color = textSecondary
+                )
+            }
+
+            if (isMe) {
+                TextButton(onClick = onVerify) {
+                    Text(
+                        when (profile.verificationBadge) {
+                            VerificationBadge.GOLD -> "VIP"
+                            VerificationBadge.BLUE -> "Upgrade"
+                            VerificationBadge.NONE -> "Verify"
+                        },
+                        color = when (profile.verificationBadge) {
+                            VerificationBadge.GOLD -> BlinkGold
+                            VerificationBadge.BLUE -> BlinkBlue
+                            VerificationBadge.NONE -> BlinkPink
+                        },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// SKILLS
+// =====================================================================
+
+@Composable
+private fun SkillsAndBadgesSection(
+    profile: UserProfile,
+    isMe: Boolean,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    onEndorseSkill: (String) -> Unit,
+    onOpenGetVerified: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp)
+    ) {
+        Text("Skills & Campus Endorsements", fontSize = 16.sp, fontWeight = FontWeight.Black, color = textPrimary)
+
+        profile.skillEndorsements.forEachIndexed { index, endorsement ->
+            var visible by remember(endorsement.skill) { mutableStateOf(false) }
+            LaunchedEffect(endorsement.skill) {
+                delay(index * 40L)
+                visible = true
+            }
+
+            AnimatedVisibility(
+                visible = visible,
+                enter = fadeIn(tween(240)) + slideInVertically(initialOffsetY = { it / 8 })
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(15.dp),
+                    color = cardBg,
+                    border = BorderStroke(1.dp, borderColor),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isMe && !endorsement.endorsedByMe) { onEndorseSkill(endorsement.skill) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (endorsement.endorsedByMe) {
+                                BlinkGold.copy(alpha = 0.14f)
+                            } else {
+                                BlinkPink.copy(alpha = 0.10f)
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = "Image",
+                                tint = if (endorsement.endorsedByMe) BlinkGold else BlinkPink,
+                                modifier = Modifier.padding(9.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(endorsement.skill, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = textPrimary)
+                            Text("Campus endorsement", fontSize = 9.sp, color = textSecondary)
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = if (endorsement.endorsedByMe) BlinkGold else BlinkPink.copy(alpha = 0.10f)
+                        ) {
+                            Text(
+                                "${endorsement.endorsements}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (endorsement.endorsedByMe) Color.Black else BlinkPink,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Text("Campus achievements", fontSize = 16.sp, fontWeight = FontWeight.Black, color = textPrimary)
+
+        profile.badges.forEachIndexed { index, badge ->
+            var visible by remember(badge.title) { mutableStateOf(false) }
+            LaunchedEffect(badge.title) {
+                delay(index * 40L)
+                visible = true
+            }
+
+            AnimatedVisibility(
+                visible = visible,
+                enter = fadeIn(tween(240)) + scaleIn(initialScale = 0.94f)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(15.dp),
+                    color = cardBg,
+                    border = BorderStroke(1.dp, borderColor),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(shape = CircleShape, color = BlinkGold.copy(alpha = 0.12f)) {
+                            Icon(
+                                Icons.Default.WorkspacePremium,
+                                contentDescription = "Image",
+                                tint = BlinkGold,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+
+                        Column {
+                            Text(badge.title, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            Text(badge.description, fontSize = 9.5.sp, color = textSecondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// ABOUT
+// =====================================================================
+
+@Composable
+private fun AboutSection(
+    profile: UserProfile,
+    isMe: Boolean,
+    isFollowing: Boolean,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    val showEmail = profile.email.value.isNotBlank() &&
+        canViewProfileField(profile.emailVisibility, isMe, isFollowing)
+    val showPhone = profile.phone.value.isNotBlank() &&
+        canViewProfileField(profile.phoneVisibility, isMe, isFollowing)
+    val showWhatsapp = profile.whatsapp.value.isNotBlank() &&
+        canViewProfileField(profile.whatsappVisibility, isMe, isFollowing)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+        InfoCard(title = "Academic identity", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+            if (profile.university.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.School, "University", profile.university, textPrimary, textSecondary)
+            }
+            if (profile.faculty.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.AccountBalance, "Faculty", profile.faculty, textPrimary, textSecondary)
+            }
+            if (profile.department.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.MenuBook, "Department", profile.department, textPrimary, textSecondary)
+            }
+            if (profile.academicLevel.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.TrendingUp, "Academic level", profile.academicLevel, textPrimary, textSecondary)
+            }
+            if (profile.courseOfStudy.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.AutoStories, "Course of study", profile.courseOfStudy, textPrimary, textSecondary)
+            }
+            if (profile.graduationYear.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.Event, "Graduation year", profile.graduationYear, textPrimary, textSecondary)
+            }
+        }
+        }
+
+        if (profile.currentJobTitle.isNotBlank() || profile.professionalHeadline.isNotBlank()) {
+            InfoCard(title = "Work", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.currentJobTitle.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Work, "Current role", profile.currentJobTitle, textPrimary, textSecondary)
+                }
+                if (profile.professionalHeadline.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Badge, "Headline", profile.professionalHeadline, textPrimary, textSecondary)
+                }
+            }
+        }
+
+        if (isMe && profile.relationshipStatus.isNotBlank() &&
+            !profile.relationshipStatus.equals("Private", ignoreCase = true)) {
+            InfoCard(title = "Personal", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                ProfileInfoRow(Icons.Default.FavoriteBorder, "Relationship status",
+                    profile.relationshipStatus, textPrimary, textSecondary)
+            }
+        }
+
+        if (showEmail || showPhone || showWhatsapp || (isMe && profile.currentCityState.isNotBlank())) {
+            InfoCard(title = "Contact", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (showEmail) {
+                    ProfileInfoRow(Icons.Default.Email, "Email", profile.email.value, textPrimary, textSecondary)
+                }
+                if (showPhone) {
+                    ProfileInfoRow(Icons.Default.Phone, "Phone", profile.phone.value, textPrimary, textSecondary)
+                }
+                if (showWhatsapp) {
+                    ProfileInfoRow(Icons.Default.Chat, "WhatsApp", profile.whatsapp.value, textPrimary, textSecondary)
+                }
+                if (isMe && profile.currentCityState.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.LocationOn, "Location", profile.currentCityState, textPrimary, textSecondary)
+                }
+            }
+        } else if (!isMe) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(15.dp),
+                color = cardBg,
+                border = BorderStroke(1.dp, borderColor)
+            ) {
+                Text(
+                    "Contact details are private.",
+                    modifier = Modifier.padding(13.dp),
+                    fontSize = 11.sp,
+                    color = textSecondary
+                )
+            }
+        }
+
+        if (profile.availability != com.example.data.models.AvailabilityStatus.NONE ||
+            profile.joinedLabel.isNotBlank() ||
+            profile.createdAt.isNotBlank()
+        ) {
+            InfoCard(title = "Profile", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.availability != com.example.data.models.AvailabilityStatus.NONE) {
+                    ProfileInfoRow(
+                        Icons.Default.Work,
+                        "Availability",
+                        profile.availability.label,
+                        textPrimary,
+                        textSecondary
+                    )
+                }
+                val joined = profile.joinedLabel.ifBlank { profile.createdAt }
+                if (joined.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Event, "Joined", joined, textPrimary, textSecondary)
+                }
+            }
+        }
+
+        val hasLinks = profile.links.website.isNotBlank() ||
+            profile.links.linkedin.isNotBlank() ||
+            profile.links.twitter.isNotBlank() ||
+            profile.links.instagram.isNotBlank() ||
+            profile.links.featuredLink.isNotBlank()
+
+        if (hasLinks) {
+            InfoCard(title = "Links & portfolio", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.links.featuredLink.isNotBlank()) {
+                    ProfileLink(
+                        Icons.Default.Star,
+                        profile.links.featuredLinkLabel.ifBlank { "Featured" },
+                        profile.links.featuredLink
+                    )
+                }
+                if (profile.links.website.isNotBlank()) {
+                    ProfileLink(Icons.Default.Language, "Website", profile.links.website)
+                    com.example.ui.components.BlinkRichLinkPreview(
+                        text = profile.links.website,
+                        modifier = Modifier.padding(top = 6.dp),
+                        compact = true
+                    )
+                }
+                if (profile.links.linkedin.isNotBlank()) {
+                    ProfileLink(Icons.Default.Link, "LinkedIn", profile.links.linkedin)
+                }
+                if (profile.links.twitter.isNotBlank()) {
+                    ProfileLink(Icons.Default.Share, "X / Twitter", profile.links.twitter)
+                }
+                if (profile.links.instagram.isNotBlank()) {
+                    ProfileLink(Icons.Default.CameraAlt, "Instagram", profile.links.instagram)
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// MARKET
+// =====================================================================
+
+private fun LazyListScope.profileMarketItems(
+    items: List<MarketItem>,
+    isLoading: Boolean = false,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
+    isDark: Boolean,
+    textPrimary: Color,
+    textSecondary: Color,
+    onItemClick: (MarketItem) -> Unit
+) {
+    if (items.isEmpty() && isLoading) {
+        items(3, key = { "market_skeleton_$it" }, contentType = { "profile_skeleton" }) {
+            ProfilePostSkeleton()
+        }
+        return
+    }
+    if (items.isEmpty() && loadFailed) {
+        item(key = "market_error", contentType = "profile_error") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Listings couldn't load", color = textPrimary, fontWeight = FontWeight.SemiBold)
+                Text("Check your connection and retry.", color = textSecondary)
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
+    if (items.isEmpty()) {
+        item(key = "market_empty", contentType = "profile_empty") {
+            EmptyProfileState(
+                title = "No market listings 🛒",
+                subtitle = "Listings from this account will appear here.",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
+        }
+        return
+    }
+
+    items(
+        items = items.chunked(2),
+        key = { row -> "market_${row.joinToString("_") { it.id }}" },
+        contentType = { "market_row" }
+    ) { row ->
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+        ) {
+            row.forEach { item ->
+                Box(modifier = Modifier.weight(1f)) {
+                    ProductCard(item = item, onClick = { onItemClick(item) }, isDark = isDark)
+                }
+            }
+
+            if (row.size == 1) {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+// =====================================================================
+// COMMON UI
+// =====================================================================
+
+@Composable
+private fun CircleToolbarButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    testTag: String = ""
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(48.dp)
+            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+            .testTag(testTag)
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(19.dp)
+        )
+    }
+
+}
+
+@Composable
+private fun SmallActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    tint: Color,
+    background: Color? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String = ""
+) {
+    val animatedBackground by animateColorAsState(
+        targetValue = background ?: MaterialTheme.colorScheme.surfaceVariant,
+        animationSpec = tween(220),
+        label = "actionBtnBg"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(100.dp),
+        color = animatedBackground,
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clickable { onClick() }
+            .testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AnimatedContent(
+                targetState = icon,
+                transitionSpec = {
+                    (scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn())
+                        .togetherWith(scaleOut() + fadeOut())
+                },
+                label = "actionBtnIcon"
+            ) { animatedIcon ->
+                Icon(animatedIcon, contentDescription = title, tint = tint, modifier = Modifier.size(15.dp))
+            }
+
+            Spacer(modifier = Modifier.fillMaxWidth(5.dp))
+
+            AnimatedContent(
+                targetState = title,
+                transitionSpec = {
+                    (fadeIn(tween(180)) + slideInVertically { it / 2 })
+                        .togetherWith(fadeOut(tween(120)))
+                },
+                label = "actionBtnText"
+            ) { animatedTitle ->
+                Text(animatedTitle, color = tint, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutlinePill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioHighBouncy),
+        label = "pillScale"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(100.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .scale(scale)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                pressed = true
+                onClick()
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = "Image", modifier = Modifier.size(13.dp))
+            Spacer(modifier = Modifier.fillMaxWidth(4.dp))
+            Text(text, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            delay(100)
+            pressed = false
+        }
+    }
+}
+
+@Composable
+private fun ProfileMetric(
+    value: Int,
+    label: String,
+    animateCount: Boolean = false,
+    isLoading: Boolean = false,
+    onClick: (() -> Unit)? = null
+) {
+    val displayValue by if (animateCount) {
+        val animatable = remember { Animatable(0f) }
+        LaunchedEffect(value) {
+            animatable.animateTo(
+                targetValue = value.toFloat(),
+                animationSpec = tween(900, easing = FastOutSlowInEasing)
+            )
+        }
+        remember { derivedStateOf { animatable.value.roundToInt() } }
+    } else {
+        remember(value) { mutableIntStateOf(value) }
+    }
+
+    val clickModifier = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = clickModifier.padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
+        Text(if (isLoading) "—" else displayValue.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun DividerMetric() {
+    Box(
+        modifier = Modifier
+            .height(25.dp)
+            .width(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant)
+    )
+}
+
+@Composable
+private fun EmptyProfileState(
+    title: String,
+    subtitle: String,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(280)) + scaleIn(initialScale = 0.92f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 30.dp, vertical = 38.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(shape = CircleShape, color = BlinkPink.copy(alpha = 0.10f)) {
+                Icon(
+                    Icons.Default.Inbox,
+                    contentDescription = "Image",
+                    tint = BlinkPink,
+                    modifier = Modifier.padding(15.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(11.dp))
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = textPrimary)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(subtitle, fontSize = 11.sp, color = textSecondary, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = cardBg,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ProfileInfoRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    value: String,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    if (value.isBlank()) return
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = title, tint = BlinkPink, modifier = Modifier.size(17.dp))
+        Spacer(modifier = Modifier.fillMaxWidth(9.dp))
+        Column {
+            Text(title, fontSize = 8.5.sp, color = textSecondary)
+            Text(value, fontSize = 11.sp, color = textPrimary, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun ProfileLink(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    url: String
+) {
+    val context = LocalContext.current
+    var pressed by remember { mutableStateOf(false) }
+    val alpha by animateFloatAsState(if (pressed) 0.6f else 1f, tween(100), label = "linkAlpha")
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(alpha)
+            .clickable {
+                pressed = true
+                openExternalUrl(context, url)
+            },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = title, tint = BlinkPink, modifier = Modifier.size(17.dp))
+        Spacer(modifier = Modifier.fillMaxWidth(9.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(url, fontSize = 11.sp, color = BlinkPurple, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+
+        Icon(Icons.Default.OpenInNew, contentDescription = "Open $title", modifier = Modifier.size(15.dp))
+    }
+
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            delay(120)
+            pressed = false
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileShareSheet(
+    username: String,
+    fullName: String,
+    avatarUrl: String,
+    onDismiss: () -> Unit,
+    onShare: () -> Unit,
+    onCopy: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+            Text("Share profile", fontSize = 21.sp, fontWeight = FontWeight.Black)
+            Text("@$username", fontSize = 11.sp, color = BlinkPink)
+
+            Spacer(modifier = Modifier.height(15.dp))
+
+            if (avatarUrl.isNotBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
+                    contentDescription = "$fullName profile preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFF303544))
+                        .testTag("profile_share_default_avatar"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "$fullName default profile picture",
+                        tint = if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFC5CAD8),
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
+            }
+
+            val profileLink = remember(username) {
+                ShareLinkManager.generateShareLink(ShareContentType.PROFILE, username)
+            }
+            val qrMatrix = remember(profileLink) {
+                runCatching {
+                    QRCodeWriter().encode(profileLink, BarcodeFormat.QR_CODE, 41, 41)
+                }.getOrNull()
+            }
+
+            qrMatrix?.let { matrix ->
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 12.dp)
+                        .testTag("profile_share_qr"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.12f))
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(178.dp)
+                            .padding(12.dp)
+                    ) {
+                        val cell = min(size.width / matrix.width, size.height / matrix.height)
+                        val qrSize = cell * matrix.width
+                        val left = (size.width - qrSize) / 2f
+                        val top = (size.height - qrSize) / 2f
+                        for (x in 0 until matrix.width) {
+                            for (y in 0 until matrix.height) {
+                                if (matrix[x, y]) {
+                                    drawRect(
+                                        color = Color.Black,
+                                        topLeft = Offset(left + x * cell, top + y * cell),
+                                        size = androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Scan to open @$username on BLINK",
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Button(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Share, contentDescription = "Image")
+                Spacer(modifier = Modifier.fillMaxWidth(7.dp))
+                Text("Share via…")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            FilledTonalButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.ContentCopy, contentDescription = "Image")
+                Spacer(modifier = Modifier.fillMaxWidth(7.dp))
+                Text("Copy profile link")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                "$fullName • Blink Campus",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 15.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileMoreSheet(
+    isMe: Boolean,
+    profile: UserProfile,
+    isMuted: Boolean,
+    notificationMode: ProfileNotificationMode,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onCopyUsername: () -> Unit,
+    onReferGrow: () -> Unit,
+    onProgressHub: () -> Unit,
+    onSearch: () -> Unit,
+    onShare: () -> Unit,
+    onNotifications: () -> Unit,
+    onMute: () -> Unit,
+    onReport: () -> Unit,
+    onBlock: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)
+            .verticalScroll(rememberScrollState())) {
+            Text("Profile options", fontSize = 21.sp, fontWeight = FontWeight.Black)
+            Spacer(modifier = Modifier.height(10.dp))
+            if (isMe) {
+                ProfileOption(Icons.Default.Edit, "Edit profile",
+                    "Personal details, pictures and profile theme", onEdit)
+                ProfileOption(Icons.Default.GroupAdd, "Refer & Grow",
+                    "My referrals and profile discovery", onReferGrow)
+                ProfileOption(Icons.Default.EmojiEvents, "Progress & achievements",
+                    "Campus rank, XP and milestones", onProgressHub)
+            }
+            ProfileOption(Icons.Default.ContentCopy, "Copy profile username",
+                "@${profile.username}", onCopyUsername)
+
+            ProfileOption(
+                Icons.Default.Search,
+                "Search posts & reels",
+                "Find content from @${profile.username}",
+                onSearch
+            )
+            ProfileOption(
+                Icons.Default.Share,
+                "Share profile",
+                "Share this Blink profile",
+                onShare
+            )
+
+            if (!isMe) {
+                ProfileOption(
+                    Icons.Default.NotificationsNone,
+                    "Profile notifications",
+                    when (notificationMode) {
+                        ProfileNotificationMode.ALL -> "All posts and reels"
+                        ProfileNotificationMode.REELS -> "Reels only"
+                        ProfileNotificationMode.IMPORTANT -> "Important updates"
+                        ProfileNotificationMode.OFF -> "Off"
+                    },
+                    onNotifications
+                )
+                ProfileOption(
+                    Icons.Default.VolumeOff,
+                    if (isMuted) "Unmute user" else "Mute user",
+                    if (isMuted) "Allow this profile back into your feed" else "See fewer updates from this profile",
+                    onMute
+                )
+                ProfileOption(
+                    Icons.Default.Flag,
+                    "Report profile",
+                    "Send this profile to moderation",
+                    onReport
+                )
+                ProfileOption(
+                    Icons.Default.Block,
+                    "Block profile",
+                    "Remove connections and prevent normal interaction",
+                    onBlock
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun ProfileOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val translateX by animateDpAsState(if (pressed) 4.dp else 0.dp, tween(120), label = "optionTranslate")
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset(x = translateX)
+            .clickable {
+                pressed = true
+                onClick()
+            }
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+            Icon(icon, contentDescription = title, modifier = Modifier.padding(10.dp))
+        }
+
+        Spacer(modifier = Modifier.fillMaxWidth(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+            Text(subtitle, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Icon(Icons.Default.ChevronRight, contentDescription = "Image", modifier = Modifier.size(16.dp))
+    }
+
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            delay(140)
+            pressed = false
+        }
+    }
+}
+
+private fun openExternalUrl(context: android.content.Context, url: String) {
+    try {
+        val normalized = if (url.startsWith("http://") || url.startsWith("https://")) {
+            url
+        } else {
+            "https://$url"
+        }
+
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(normalized)))
+    } catch (_: Exception) {
+        Toast.makeText(context, "Unable to open link", Toast.LENGTH_SHORT).show()
+    }
+}
+
+
+@Composable
+private fun ProfileXpProgressCard(
+    profile: UserProfile,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    val progress = remember(profile.totalXp, profile.xpLevel) {
+        xpProgress(profile.totalXp, profile.xpLevel)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = cardBg,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(100.dp), color = BlinkPurple.copy(alpha = 0.14f)) {
+                    Text(
+                        text = "LV. ${progress.level}",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = BlinkPurple,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                Spacer(modifier = Modifier.fillMaxWidth(9.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = progress.tierLabel.uppercase(), color = textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    Text(text = "${progress.totalXp} XP", color = textSecondary, fontSize = 10.sp)
+                }
+                if (progress.level < 100) {
+                    Text(
+                        text = "${progress.xpToNextLevel} XP to Lv. ${progress.level + 1}",
+                        color = textSecondary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else {
+                    Text(text = "MAX LEVEL", color = BlinkGold, fontSize = 9.5.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)).background(borderColor)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.progressFraction)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(Brush.horizontalGradient(listOf(BlinkPink, BlinkPurple, BlinkBlue)))
+                )
+            }
+            Spacer(modifier = Modifier.height(7.dp))
+            Text(
+                text = if (progress.level >= 100) {
+                    "Long-term BLINK progression complete"
+                } else {
+                    "${progress.xpIntoLevel} / ${progress.xpForLevel} XP in this level"
+                },
+                color = textSecondary,
+                fontSize = 9.5.sp
+            )
+        }
+    }
+}

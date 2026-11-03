@@ -1,0 +1,54 @@
+name: Apply profile to chat drawer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-message-profile-drawer.yml'
+      - '.github/scripts/apply_message_profile_drawer.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply chat drawer interaction patch
+        run: python3 .github/scripts/apply_message_profile_drawer.py
+
+      - name: Verify patch formatting
+        run: git diff --check
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit validated source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+                  app/src/main/java/com/example/MainActivity.kt \
+                  app/src/main/java/com/example/viewmodel/BlinkViewModel.kt
+          if git diff --cached --quiet; then
+            echo "Source already up to date."
+            exit 0
+          fi
+          git commit -m "feat: add profile-to-chat drawer transitions"
+          git pull --rebase origin main
+          git push origin HEAD:main

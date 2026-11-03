@@ -1,0 +1,80 @@
+name: Delta updater Android 15 preservation
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/blink_delta.py'
+      - '.github/scripts/test_blink_delta.py'
+      - '.github/workflows/delta-android15-emulator.yml'
+      - 'app/src/main/java/com/example/update/**'
+      - 'shared/src/main/kotlin/com/blinkng/shared/update/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  delta-android15:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test ten-version skip and corrupt deltas
+        run: python3 .github/scripts/test_blink_delta.py
+      - name: Build original Android APK
+        env:
+          VERSION_CODE: '10000001'
+          VERSION_NAME: '1.0.10000001'
+        run: |
+          gradle :app:assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/blink-old.apk
+      - name: Build updated Android APK
+        env:
+          VERSION_CODE: '10000011'
+          VERSION_NAME: '1.0.10000011'
+        run: |
+          gradle :app:assembleDebug --rerun-tasks --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/blink-new.apk
+      - name: Reconstruct and compare APK bytes
+        run: |
+          python3 .github/scripts/blink_delta.py --old /tmp/blink-old.apk --new /tmp/blink-new.apk --output /tmp/blink-patch.bdp
+          python3 - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location("blink_delta", ".github/scripts/blink_delta.py")
+          delta = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(delta)
+          old, new = Path('/tmp/blink-old.apk'), Path('/tmp/blink-new.apk')
+          patch, rebuilt = Path('/tmp/blink-patch.bdp'), Path('/tmp/blink-rebuilt.apk')
+          delta.apply_patch(old, patch, rebuilt)
+          assert new.read_bytes()[:2] == b'PK'
+          assert delta.digest(new) == delta.digest(rebuilt), 'Rebuilt signed APK does not match'
+          assert patch.stat().st_size < new.stat().st_size, 'Delta saves no data'
+          print('Patch bytes:', patch.stat().st_size)
+          PY
+      - name: Upgrade on Android 15 with app data preserved
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -eu
+            adb install /tmp/blink-old.apk
+            adb shell run-as com.aistudio.blink.appvtwo mkdir -p files
+            # adb shell strips nested quotes before sh -c; the old redirect ran
+            # outside the run-as app context and could not find files/.
+            # tee writes as the app UID, preserving the exact private-data marker.
+            printf 'BLINK-PERSISTENT-STATE\n' | adb shell run-as com.aistudio.blink.appvtwo tee files/delta_marker >/dev/null
+            adb shell run-as com.aistudio.blink.appvtwo ls -l files/delta_marker
+            test "$(adb shell run-as com.aistudio.blink.appvtwo cat files/delta_marker | tr -d '\r')" = 'BLINK-PERSISTENT-STATE'
+            adb install -r /tmp/blink-rebuilt.apk
+            test "$(adb shell run-as com.aistudio.blink.appvtwo cat files/delta_marker | tr -d '\r')" = 'BLINK-PERSISTENT-STATE'
+            adb shell dumpsys package com.aistudio.blink.appvtwo | grep -q 'versionCode=10000011'
+            echo 'PASS: Android 15 upgrade retained private app data and installed newer signed APK'

@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Contacts permission is requested only after explicit consent. No call-log access. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Only used for explicit website APK updates with Android installer approval. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Optional photo-grid access; Android Photo Picker remains permission-free. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <application android:name=".BlinkApplication" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.MyApplication">
+        <!-- Scoped, non-exported full-resolution camera output for direct messages. -->
+        <provider
+            android:name=".media.BlinkChatFileProvider"
+            android:authorities="${applicationId}.chatfiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/blink_chat_file_paths" />
+        </provider>
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9152580730716304~4430294008" />
+        <!-- Expose ONLY already-verified APKs from private cache to Android's installer. -->
+        <!-- WorkManager foreground dataSync service for visible user-approved downloads. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.update.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_apk_provider_paths" />
+        </provider>
+        <!-- Isolated WebGL game viewer: optional files never load when BLINK starts. -->
+        <activity android:name=".game.BlinkLifeWebActivity"
+            android:exported="false"
+            android:process=":blink_life_web"
+            android:screenOrientation="sensorLandscape" />
+        <receiver android:name=".game.BlinkLifeGameDownloadReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+        <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
+        <activity android:name=".BlinkDropsActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
+        <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
+        <activity android:name=".AdminControlCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
+        <activity android:name=".auth.AccountSwitcherActivity" android:exported="false" />
+        <activity
+            android:name=".notification.NotificationAndCallSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name=".call.CallHistoryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name=".call.IncomingCallBannerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:theme="@style/Theme.Blink.IncomingCallBanner" />
+        <activity
+            android:name=".auth.GoogleAuthCallbackActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name=".call.CallActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.MyApplication" />
+        <receiver
+            android:name=".items.BlinkStepNotificationBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".items.BlinkStepNotificationControlsReceiver"
+            android:exported="false" />
+        <service
+            android:name=".items.BlinkStepNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
+        <service
+            android:name=".items.BlinkLiveLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        <service
+            android:name=".call.BlinkCallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall|microphone|camera" />
+        <receiver
+            android:name=".call.CallActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <activity
+            android:name=".auth.PasswordResetActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="auth" android:path="/reset-password" />
+            </intent-filter>
+            <!-- Older recovery redirects also belong to the recovery UI, never MainActivity. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="reset-password" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".notification.BlinkFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".notification.NotificationReplyReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.MyApplication"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Verified public BLINK links. Production builds resolve shareHost to
+                 www.blink.com.ng; sharePathPrefix is empty on the canonical domain. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/@" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/invite/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/channel/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/contest/" />
+            </intent-filter>
+
+            <!-- Referral links work from both the canonical domain and www. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/contest/" />
+                <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/contest/" />
+            </intent-filter>
+
+
+            <!-- Paystack hosted checkout returns through the server first. This
+                 app-only link merely reopens BLINK; payment is still verified server-side. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="payment" />
+            </intent-filter>
+
+            <!-- Temporary/fallback app-only links let the web preview hand an
+                 interaction to Blink before the production domain is available. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="profile" />
+                <data android:scheme="blink" android:host="post" />
+                <data android:scheme="blink" android:host="reel" />
+                <data android:scheme="blink" android:host="channel" />
+                <data android:scheme="blink" android:host="contest" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

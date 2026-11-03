@@ -1,0 +1,356 @@
+package com.blinkng.desktop.data
+
+data class DesktopSession(
+    val accessToken: String,
+    val refreshToken: String,
+    val userId: String,
+    val email: String,
+    val expiresAtEpochSeconds: Long,
+)
+
+data class DesktopProfile(
+    val id: String,
+    val fullName: String,
+    val username: String,
+    val avatarUrl: String?,
+    val university: String?,
+    val accountType: String = "",
+    val faculty: String?,
+    val department: String?,
+    val bio: String?,
+    val isVerified: Boolean,
+    val verificationTier: String,
+    val followerCount: Int,
+    val followingCount: Int,
+    val postsCount: Int,
+    val coinBalance: Long,
+    val isOnline: Boolean,
+    val lastSeenAt: String?,
+    val points: Int = 0,
+    val totalXp: Long = 0L,
+    val xpLevel: Int = 1,
+    val createdAt: String = "",
+    val isBlinkVip: Boolean = false,
+    val blinkVipUntil: String? = null,
+    val verifiedAtMillis: Long = 0L,
+    val profileViewsThisWeek: Int = 0,
+    val academicLevel: String? = null,
+    val gender: String? = null,
+    val birthDate: String? = null,
+    val interests: List<String> = emptyList(),
+    val onboardingCompleted: Boolean = true,
+    val onboardingStep: Int = 4,
+    val email: String? = null,
+    val phone: String? = null,
+    val whatsapp: String? = null,
+    val presenceVisibility: String = "PUBLIC",
+    val coverPhotoUrl: String? = null,
+    val professionalHeadline: String? = null,
+    val dailyStreak: Int = 0,
+    val profileTheme: String = "black",
+    val verificationExpiresAtMillis: Long = 0L,
+    val currentJobTitle: String? = null,
+    val courseOfStudy: String? = null,
+    val graduationYear: String? = null,
+    val relationshipStatus: String? = null,
+    val phoneVisibility: String = "PRIVATE",
+    val whatsappVisibility: String = "PRIVATE",
+    val emailVisibility: String = "PRIVATE",
+    val website: String? = null,
+    val linkedin: String? = null,
+    val twitter: String? = null,
+    val instagram: String? = null,
+    val featuredLink: String? = null,
+    val featuredLinkLabel: String? = null,
+)
+
+data class DesktopProfileFollowerPoint(
+    val date: String,
+    val followerCount: Int,
+)
+
+enum class DesktopProfileNotificationMode {
+    OFF,
+    ALL,
+    REELS,
+    IMPORTANT,
+}
+
+data class DesktopFeedPost(
+    val id: String,
+    val userId: String,
+    val authorName: String,
+    val authorUsername: String,
+    val authorVerified: Boolean,
+    val authorVerificationTier: String,
+    val authorOnline: Boolean,
+    val text: String?,
+    val caption: String?,
+    val imageUrl: String?,
+    val videoUrl: String?,
+    val images: List<String>,
+    val hashtags: List<String>,
+    val likeCount: Int,
+    val commentCount: Int,
+    val shareCount: Int,
+    val viewCount: Int,
+    val isReel: Boolean,
+    val isPinned: Boolean = false,
+    val createdAt: String,
+    val isLiked: Boolean,
+    val isBookmarked: Boolean = false,
+    val isRepostedByMe: Boolean = false,
+    val repostCount: Int = 0,
+    val linkUrl: String? = null,
+    val hasPoll: Boolean = false,
+    val pollMetadataAvailable: Boolean = true,
+    val textStyle: String? = null,
+)
+
+data class DesktopFeedPollOption(val id: String, val text: String, val votes: Int)
+data class DesktopFeedPoll(
+    val id: String, val question: String, val expiresAt: String?,
+    val options: List<DesktopFeedPollOption>, val votedOptionId: String?,
+)
+
+data class DesktopComment(
+    val id: String,
+    val postId: String,
+    val authorId: String,
+    val authorName: String,
+    val authorVerified: Boolean,
+    val content: String,
+    val likesCount: Int,
+    val createdAt: String,
+    val parentCommentId: String? = null,
+    val premiumStyleId: String? = null,
+    val premiumStyleSource: String? = null,
+)
+
+data class DesktopGroupInvitation(
+    val conversationId: String,
+    val title: String,
+    val inviterUsername: String,
+    val invitedAt: String,
+)
+
+data class DesktopGroupMember(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val isAdmin: Boolean,
+)
+
+data class DesktopProfileMembership(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val role: String,
+    val status: String,
+)
+
+data class DesktopCommunity(
+    val id: String,
+    val ownerId: String,
+    val name: String,
+    val description: String,
+    val university: String,
+    val category: String,
+    val visibility: String,
+    val coverUrl: String?,
+    val rules: List<String>,
+)
+
+data class DesktopConversation(
+    val id: String,
+    val title: String,
+    val avatarUrl: String?,
+    val isGroup: Boolean,
+    val lastMessageAt: String?,
+    val isOnline: Boolean = false,
+    val lastSeenAt: String? = null,
+    val isArchived: Boolean = false,
+    val isPinned: Boolean = false,
+    val markedUnread: Boolean = false,
+    val unreadCount: Long = 0,
+    val requestStatus: String = "accepted",
+    val lastMessage: String = "",
+    // Authenticated server summary username; never infer recipient identity from display title.
+    val partnerUsername: String? = null,
+    val notificationMode: String = "all",
+    val muteUntil: String? = null,
+    val controlsAvailable: Boolean = false,
+)
+
+data class DesktopMessage(
+    val id: String,
+    val conversationId: String,
+    val senderId: String,
+    val content: String,
+    val mediaUrl: String?,
+    val messageType: String,
+    val isRead: Boolean,
+    val deliveredAt: String?,
+    val readAt: String?,
+    val createdAt: String,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false,
+    val reactionCounts: Map<String, Int> = emptyMap(),
+    val myReactions: Set<String> = emptySet(),
+    val isStarred: Boolean = false,
+    val isPinned: Boolean = false,
+    val replyToMessageId: String? = null,
+)
+
+data class DesktopNotification(
+    val id: String,
+    val type: String,
+    val text: String,
+    val subText: String?,
+    val postId: String?,
+    val isRead: Boolean,
+    val actorIsVip: Boolean,
+    val vipPriority: Boolean,
+    val createdAt: String,
+    val actorId: String? = null,
+    val targetType: String? = null,
+    val targetId: String? = null,
+)
+
+data class DesktopMarketItem(
+    val id: String,
+    val title: String,
+    val price: Long,
+    val currency: String,
+    val category: String,
+    val condition: String,
+    val description: String,
+    val imageUrl: String?,
+    val sellerId: String?,
+    val sellerName: String,
+    val sellerUsername: String,
+    val sellerVerified: Boolean,
+    val university: String,
+    val location: String,
+    val isFeatured: Boolean,
+    val isSold: Boolean,
+    val imageUrls: List<String> = emptyList(),
+    val videoUrl: String? = null,
+    val createdAt: String = "",
+    val quantity: Int? = null,
+    val viewCount: Long? = null,
+    val saveCount: Long? = null,
+)
+
+data class DesktopConnectListing(
+    val id: String,
+    val userId: String,
+    val listingType: String,
+    val title: String,
+    val description: String,
+    val university: String?,
+    val department: String?,
+    val academicLevel: String?,
+    val location: String?,
+    val tags: List<String>,
+    val createdAt: String,
+    val categorySlug: String? = null,
+)
+
+data class DesktopConnectApplication(
+    val id: String,
+    val listingId: String,
+    val applicantId: String,
+    val message: String,
+    val status: String,
+)
+
+data class DesktopConnectRequestItem(
+    val kind: String,
+    val requestId: String,
+    val direction: String,
+    val status: String,
+    val title: String,
+    val otherUserId: String,
+    val createdAt: String,
+)
+
+data class DesktopGameChallenge(
+    val id: String,
+    val challengerId: String,
+    val opponentId: String,
+    val gameType: String,
+    val status: String,
+    val createdAt: String,
+)
+
+data class DesktopConnectInbox(
+    val requests: List<DesktopConnectRequestItem> = emptyList(),
+    val challenges: List<DesktopGameChallenge> = emptyList(),
+)
+
+data class DesktopStoreItem(
+    val id: String,
+    val name: String,
+    val description: String,
+    val category: String,
+    val price: Int,
+    val itemType: String,
+    val targetType: String,
+    val durationSeconds: Long?,
+    val vipOnly: Boolean,
+    val boostMultipliers: List<Int>,
+)
+
+data class DesktopInventoryItem(
+    val id: String,
+    val catalogId: String,
+    val quantity: Int,
+    val status: String,
+    val purchasedAt: String,
+    val activatedAt: String?,
+    val expiresAt: String?,
+    val targetType: String?,
+    val targetId: String?,
+    val boostMultiplier: Int?,
+)
+
+data class DesktopLeaderboardEntry(
+    val userId: String,
+    val name: String,
+    val handle: String,
+    val university: String?,
+    val verificationTier: String,
+    val worldScore: Long,
+    val worldRank: Int?,
+    val campusScore: Long,
+    val campusRank: Int?,
+)
+
+data class DesktopUserSettings(
+    val theme: String,
+    val language: String,
+    val pushNotificationsEnabled: Boolean,
+    val emailNotificationsEnabled: Boolean,
+    val dmPrivacy: String,
+    val privateAccount: Boolean,
+    val showOnlineStatus: Boolean,
+    val readReceipts: Boolean,
+    val autoplayVideos: Boolean,
+    val dataSaver: Boolean,
+    val reduceMotion: Boolean,
+)
+
+data class DesktopAdminCapability(
+    val allowed: Boolean,
+    val role: String?,
+    val isOwner: Boolean,
+)
+
+data class DesktopSearchResults(
+    val profiles: List<DesktopProfile>,
+    val posts: List<DesktopFeedPost>,
+)

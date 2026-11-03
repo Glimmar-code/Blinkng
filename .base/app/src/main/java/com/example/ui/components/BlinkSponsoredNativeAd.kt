@@ -1,0 +1,411 @@
+package com.example.ui.components
+
+import android.graphics.Color as AndroidColor
+import android.graphics.Typeface
+import android.util.Log
+import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
+import android.view.Gravity
+import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.dp
+import com.example.ads.BlinkAdAnalytics
+import com.example.ads.BlinkAdsRuntime
+import com.google.android.gms.ads.AdListener
+import com.google.android.gms.ads.AdLoader
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.nativead.MediaView
+import com.google.android.gms.ads.nativead.NativeAd
+import com.google.android.gms.ads.nativead.NativeAdView
+
+enum class BlinkNativeAdPlacement {
+    FEED,
+    REEL
+}
+
+/**
+ * Google Mobile Ads native placement used for Blink's explicitly-labelled Sponsored content.
+ *
+ * The SDK owns clicks/impressions through NativeAdView. Blink never wraps the ad in its own
+ * clickable surface, and the SDK-provided AdChoices overlay remains enabled.
+ */
+@Composable
+fun BlinkSponsoredNativeAd(
+    adUnitId: String,
+    placement: BlinkNativeAdPlacement,
+    requestKey: Int = 0,
+    modifier: Modifier = Modifier,
+    onUnavailable: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
+    var nativeAd by remember(adUnitId, requestKey) { mutableStateOf<NativeAd?>(null) }
+    var loadFailed by remember(adUnitId, requestKey) { mutableStateOf(false) }
+    val latestOnUnavailable by rememberUpdatedState(onUnavailable)
+    // Reels remove failed slots immediately and retry on explicit refresh.
+    // Feed slots remain mounted, so allow two delayed retries there.
+    var retryCount by remember(adUnitId, requestKey, placement) { mutableStateOf(0) }
+    LaunchedEffect(loadFailed, canRequestAds, retryCount, placement) {
+        if (placement == BlinkNativeAdPlacement.FEED && loadFailed && canRequestAds &&
+            adUnitId.isNotBlank() && retryCount < 2) {
+            delay(30_000L * (retryCount + 1))
+            retryCount++
+        }
+    }
+
+    // The SDK may never return (poor signal or disconnected Google services).
+    // Time out BOTH native placements. A timed-out Feed slot collapses instead
+    // of suddenly injecting an ad long after the reader has scrolled past.
+    // Reels notify their pager to remove the unfilled full-screen placement.
+    LaunchedEffect(adUnitId, requestKey, canRequestAds, placement, nativeAd, loadFailed, retryCount) {
+        if (!canRequestAds || nativeAd != null || loadFailed) return@LaunchedEffect
+        if (adUnitId.isNotBlank()) {
+            delay(if (placement == BlinkNativeAdPlacement.FEED) 8_000L else 6_000L)
+        }
+        if (nativeAd == null && !loadFailed) {
+            loadFailed = true
+            val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
+            BlinkAdAnalytics.failed(context, placementName, "native", -1)
+            Log.w("BlinkSponsoredAds", "$placementName native request timed out")
+            latestOnUnavailable()
+        }
+    }
+
+    DisposableEffect(adUnitId, requestKey, canRequestAds, placement, retryCount) {
+        if (!canRequestAds) {
+            nativeAd?.destroy()
+            nativeAd = null
+            loadFailed = false
+            return@DisposableEffect onDispose {}
+        }
+
+        // AdLoader has no cancel method: ignore callbacks from a recycled/disposed slot.
+        var disposed = false
+        loadFailed = false
+        val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
+        if (adUnitId.isBlank()) {
+            loadFailed = true
+            latestOnUnavailable()
+            return@DisposableEffect onDispose { disposed = true }
+        }
+        val adLoader = AdLoader.Builder(context, adUnitId)
+            .forNativeAd { loaded ->
+                if (disposed || loadFailed || !BlinkAdsRuntime.canRequestAds.value) {
+                    loaded.destroy()
+                    return@forNativeAd
+                }
+                nativeAd?.destroy()
+                nativeAd = loaded
+                loadFailed = false
+            }
+            .withAdListener(
+                object : AdListener() {
+                    override fun onAdLoaded() {
+                        if (!disposed && !loadFailed) {
+                            BlinkAdAnalytics.loaded(context, placementName, "native")
+                        }
+                    }
+
+                    override fun onAdImpression() {
+                        BlinkAdAnalytics.impression(context, placementName, "native")
+                    }
+
+                    override fun onAdClicked() {
+                        BlinkAdAnalytics.clicked(context, placementName, "native")
+                    }
+
+                    override fun onAdFailedToLoad(error: LoadAdError) {
+                        if (disposed || loadFailed) return
+                        loadFailed = true
+                        BlinkAdAnalytics.failed(context, placementName, "native", error.code)
+                        Log.w("BlinkSponsoredAds", "$placementName native no-fill/failure: ${error.domain}/${error.code} ${error.message}; response=${error.responseInfo}")
+                        latestOnUnavailable()
+                    }
+                }
+            )
+            .build()
+
+        adLoader.loadAd(AdRequest.Builder().build())
+
+        onDispose {
+            disposed = true
+            nativeAd?.destroy()
+            nativeAd = null
+        }
+    }
+
+    val ad = nativeAd
+    when {
+        !canRequestAds -> Box(modifier = modifier)
+
+        ad != null -> {
+            AndroidView(
+                factory = { createBlinkNativeAdView(it, placement) },
+                update = { bindBlinkNativeAd(it, ad) },
+                modifier = modifier
+                    .then(
+                        if (placement == BlinkNativeAdPlacement.FEED) {
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 280.dp)
+                        } else {
+                            Modifier.fillMaxSize()
+                        }
+                    )
+            )
+        }
+
+        placement == BlinkNativeAdPlacement.REEL -> {
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            )
+        }
+
+        loadFailed -> {
+            // A no-fill or network failure should not leave a blank card in the feed.
+            Box(modifier = modifier)
+        }
+
+        else -> Box(modifier = modifier)
+    }
+}
+
+private fun createBlinkNativeAdView(
+    context: android.content.Context,
+    placement: BlinkNativeAdPlacement
+): NativeAdView {
+    val density = context.resources.displayMetrics.density
+    fun dp(value: Int): Int = (value * density).toInt()
+
+    val adView = NativeAdView(context)
+    // Feed ads share the same edge-to-edge black timeline as organic posts.
+    // The SDK retains the native ad view and its AdChoices disclosure.
+    adView.setBackgroundColor(AndroidColor.BLACK)
+
+    val root = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(12), dp(12), dp(12), dp(14))
+        gravity = Gravity.CENTER_HORIZONTAL
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+    }
+
+    val attribution = TextView(context).apply {
+        text = "Sponsored"
+        textSize = 12f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(AndroidColor.LTGRAY)
+        setPadding(dp(6), dp(4), 0, dp(4))
+    }
+
+    val advertiser = TextView(context).apply {
+        textSize = 15f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(AndroidColor.WHITE)
+        maxLines = 1
+    }
+
+    val brandIcon = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        background = GradientDrawable().apply {
+            setColor(AndroidColor.rgb(26, 26, 26))
+            cornerRadius = dp(18).toFloat()
+        }
+        clipToOutline = true
+    }
+
+    val topRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(
+            brandIcon,
+            LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                marginEnd = dp(8)
+            }
+        )
+        addView(
+            advertiser,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        addView(
+            attribution,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
+    val headline = TextView(context).apply {
+        textSize = if (placement == BlinkNativeAdPlacement.REEL) 20f else 17f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(AndroidColor.WHITE)
+        setPadding(0, dp(10), 0, dp(6))
+        maxLines = 2
+    }
+
+    val media = MediaView(context).apply {
+        background = GradientDrawable().apply {
+            setColor(AndroidColor.rgb(22, 22, 22))
+            cornerRadius = dp(14).toFloat()
+        }
+        clipToOutline = true
+    }
+
+    val body = TextView(context).apply {
+        textSize = 13f
+        setTextColor(AndroidColor.LTGRAY)
+        setPadding(0, dp(8), 0, dp(10))
+        maxLines = if (placement == BlinkNativeAdPlacement.REEL) 3 else 2
+    }
+
+    val cta = Button(context).apply {
+        isAllCaps = false
+        textSize = 14f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(AndroidColor.BLACK)
+        backgroundTintList = ColorStateList.valueOf(AndroidColor.WHITE)
+        minHeight = dp(44)
+    }
+
+    root.addView(
+        topRow,
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    )
+    root.addView(
+        headline,
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    )
+
+    if (placement == BlinkNativeAdPlacement.FEED) {
+        root.addView(
+            body,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
+    if (placement == BlinkNativeAdPlacement.REEL) {
+        root.addView(
+            media,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(8)
+            }
+        )
+    } else {
+        root.addView(
+            media,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(240)
+            ).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            }
+        )
+    }
+
+    if (placement == BlinkNativeAdPlacement.REEL) {
+        root.addView(
+            body,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+    root.addView(
+        cta,
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    )
+
+    // Register all advertiser-controlled assets with NativeAdView so the Google SDK owns
+    // click handling and impression measurement. The explicit "Sponsored" label is Blink UI.
+    adView.headlineView = headline
+    adView.bodyView = body
+    adView.callToActionView = cta
+    adView.advertiserView = advertiser
+    adView.iconView = brandIcon
+    adView.mediaView = media
+    adView.addView(root)
+
+    return adView
+}
+
+private fun bindBlinkNativeAd(
+    adView: NativeAdView,
+    nativeAd: NativeAd
+) {
+    (adView.headlineView as? TextView)?.text = nativeAd.headline
+
+    (adView.advertiserView as? TextView)?.apply {
+        val value = nativeAd.advertiser
+        text = value.orEmpty()
+        visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    (adView.iconView as? ImageView)?.apply {
+        val iconDrawable = nativeAd.icon?.drawable
+        setImageDrawable(iconDrawable)
+        visibility = if (iconDrawable == null) View.GONE else View.VISIBLE
+    }
+
+    (adView.bodyView as? TextView)?.apply {
+        val value = nativeAd.body
+        text = value.orEmpty()
+        visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    (adView.callToActionView as? Button)?.apply {
+        val value = nativeAd.callToAction
+        text = value.orEmpty()
+        visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    adView.mediaView?.mediaContent = nativeAd.mediaContent
+    adView.setNativeAd(nativeAd)
+}

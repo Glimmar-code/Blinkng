@@ -1,0 +1,42 @@
+name: BLINK Coin Gift Receipt Disposable PostgreSQL Check
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261031104500_coin_gift_sender_receipt_notifications.sql'
+      - 'tests/sql/coin_gift_sender_notifications.sql'
+      - '.github/workflows/coin-gift-sender-notification-test.yml'
+  push:
+    branches: ['Testlab/**']
+    paths:
+      - 'supabase/migrations/20261031104500_coin_gift_sender_receipt_notifications.sql'
+      - 'tests/sql/coin_gift_sender_notifications.sql'
+      - '.github/workflows/coin-gift-sender-notification-test.yml'
+permissions:
+  contents: read
+jobs:
+  test-gift-sender-receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: blink
+          POSTGRES_PASSWORD: disposable_test_only
+          POSTGRES_DB: blink_notification_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U blink -d blink_notification_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: blink
+      PGPASSWORD: disposable_test_only
+      PGDATABASE: blink_notification_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate sender receipt trigger, reapply and replay in isolated PostgreSQL
+        run: psql --set=ON_ERROR_STOP=1 --file=tests/sql/coin_gift_sender_notifications.sql

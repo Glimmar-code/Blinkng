@@ -1,0 +1,1152 @@
+package com.example.ui.screens
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Interests
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.example.data.models.BlinkOnboardingCatalog
+import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
+import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
+import com.example.data.repository.FollowStateStore
+import com.example.data.repository.ProfileRepository
+import com.example.ui.components.BlinkMark
+import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkContactDiscoveryCard
+import com.example.ui.theme.BlinkPink
+import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.DarkTextSecondary
+import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.discovery.BlinkBirthdayPolicy
+import com.blinkng.shared.BlinkPhonePolicy
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private const val PINNED_BLINK_CREATOR = BlinkOnboardingPolicy.PINNED_CREATOR_USERNAME
+private const val REQUIRED_ONBOARDING_FOLLOWS = BlinkOnboardingPolicy.REQUIRED_FOLLOWS
+
+@Composable
+fun AccountOnboardingScreen(
+    profile: UserProfile,
+    candidates: List<UserProfile>,
+    onCheckUsername: (String, (Boolean, String?) -> Unit) -> Unit,
+    onSaveUsername: (String, String, (Boolean, String?) -> Unit) -> Unit,
+    onSaveReferrer: (String, (Boolean, String?) -> Unit) -> Unit,
+    onSaveBasics: (
+        university: String,
+        department: String,
+        level: String,
+        gender: String,
+        birthDate: String,
+        avatarUrl: String,
+        onResult: (Boolean, String?) -> Unit
+    ) -> Unit,
+    onSavePhone: (String, (Boolean, String?) -> Unit) -> Unit,
+    onSaveInterests: (List<String>, (Boolean, String?) -> Unit) -> Unit,
+    onFinish: ((Boolean, String?) -> Unit) -> Unit,
+    onRefreshSuggestions: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val profileRepository = remember { ProfileRepository() }
+
+    val startingStep = profile.onboardingStep.coerceIn(0, 3)
+    var step by rememberSaveable(profile.id) { mutableIntStateOf(startingStep) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val initialUsername = profile.username
+        .takeUnless { it.startsWith("blink_", ignoreCase = true) }
+        .orEmpty()
+    var username by rememberSaveable(profile.id) { mutableStateOf(initialUsername) }
+    var displayName by rememberSaveable(profile.id) { mutableStateOf(profile.fullName) }
+    var selectedReferrer by remember { mutableStateOf<BlinkReferralSuggestion?>(null) }
+    var usernameChecking by remember { mutableStateOf(false) }
+    var usernameAvailable by remember { mutableStateOf<Boolean?>(null) }
+    var usernameMessage by remember { mutableStateOf<String?>(null) }
+
+    var university by rememberSaveable(profile.id) {
+        mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) }.let { NigerianUniversitySearch.canonical(it) ?: it })
+    }
+    var department by rememberSaveable(profile.id) { mutableStateOf(profile.department) }
+    var notStudent by rememberSaveable(profile.id) { mutableStateOf(profile.accountType == BlinkOnboardingPolicy.NON_STUDENT) }
+    var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
+    var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
+    var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
+    var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
+    // Optional profile number is provided by the user, not verified by SMS.
+    // Keep it private and out of Activity saved-state; do not imply ownership proof.
+    var phoneNumber by remember(profile.id) { mutableStateOf(profile.phone.value) }
+    var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
+    var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
+
+    val selectedInterests = remember(profile.id) {
+        mutableStateListOf<String>().apply {
+            addAll(profile.interests.ifEmpty { profile.hobbies })
+        }
+    }
+
+    var universityPicker by remember { mutableStateOf(false) }
+    var departmentPicker by remember { mutableStateOf(false) }
+    var levelPicker by remember { mutableStateOf(false) }
+    var genderPicker by remember { mutableStateOf(false) }
+
+    val avatarPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) avatarUriToEdit = uri
+    }
+    avatarUriToEdit?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { result ->
+                pendingAvatarUri = result
+                avatarUriToEdit = null
+            },
+            onDismiss = { avatarUriToEdit = null }
+        )
+    }
+
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+
+    LaunchedEffect(username, step) {
+        if (step != 0) return@LaunchedEffect
+        val clean = username.trim().lowercase().removePrefix("@")
+        if (clean.length < 3) {
+            usernameAvailable = null
+            usernameMessage = if (clean.isBlank()) null else "Use at least 3 characters."
+            return@LaunchedEffect
+        }
+
+        usernameChecking = true
+        usernameAvailable = null
+        delay(350)
+        onCheckUsername(clean) { available, message ->
+            usernameChecking = false
+            usernameAvailable = available
+            usernameMessage = message
+        }
+    }
+
+    LaunchedEffect(step) {
+        if (step == 3) {
+            FollowStateStore.refresh()
+            onRefreshSuggestions()
+        }
+    }
+
+    val orderedCandidates = remember(
+        candidates,
+        university,
+        department,
+        level,
+        selectedInterests.toList(),
+        profile.id
+    ) {
+        candidates
+            .asSequence()
+            .filter { it.id.isNotBlank() && it.id != profile.id }
+            .distinctBy { it.id }
+            .sortedWith(
+                compareByDescending<UserProfile> {
+                    it.username.equals(PINNED_BLINK_CREATOR, ignoreCase = true)
+                }.thenByDescending {
+                    var score = 0
+                    if (university.isNotBlank() && it.university.equals(university, ignoreCase = true)) score += 8
+                    if (department.isNotBlank() && it.department.equals(department, ignoreCase = true)) score += 6
+                    if (level.isNotBlank() && it.academicLevel.equals(level, ignoreCase = true)) score += 2
+                    val otherInterests = it.interests.ifEmpty { it.hobbies }
+                    score += selectedInterests.count { chosen ->
+                        otherInterests.any { it.equals(chosen, ignoreCase = true) }
+                    } * 3
+                    score + (it.followerCount.coerceAtMost(1000) / 100)
+                }
+            )
+            .take(20)
+            .toList()
+    }
+
+    val stepProgress by animateFloatAsState(
+        targetValue = (step + 1) / 4f,
+        animationSpec = tween(BlinkDesignTokens.Motion.Navigation),
+        label = "onboardingStepProgress"
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp),
+            contentPadding = PaddingValues(top = 14.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BlinkMark(size = 34.dp, showText = true)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "STEP ${step + 1}/4",
+                        color = BlinkPink,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.fillMaxHeight(12.dp))
+
+                LinearProgressIndicator(
+                    progress = stepProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = BlinkPink,
+                    trackColor = DarkBorder
+                )
+            }
+
+            if (error != null) {
+                item {
+                    AuthMessageCard(
+                        message = error.orEmpty(),
+                        success = false,
+                        onDismiss = { error = null }
+                    )
+                }
+            }
+
+            when (step) {
+                0 -> {
+                    item {
+                        StepHeader(
+                            title = "Choose your username",
+                            subtitle = "This is your unique BLINK identity for mentions, search and shared profile links.",
+                            icon = Icons.Default.AlternateEmail
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(8.dp))
+
+                        // Google OAuth already verified the email. New accounts still
+                        // choose the public name and username just like email signups.
+                        OutlinedTextField(
+                            value = displayName,
+                            onValueChange = { displayName = it.take(80); error = null },
+                            label = { Text("Your name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_display_name")
+                        )
+                        Spacer(Modifier.fillMaxHeight(10.dp))
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = {
+                                username = it
+                                    .lowercase()
+                                    .filter { char ->
+                                        char.isLetterOrDigit() || char == '_' || char == '.'
+                                    }
+                                    .take(25)
+                                error = null
+                            },
+                            label = { Text("Username") },
+                            prefix = { Text("@") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("onboarding_username")
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(8.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            when {
+                                usernameChecking -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.fillMaxWidth(7.dp))
+                                    Text("Checking availability...", color = DarkTextSecondary, fontSize = 11.sp)
+                                }
+
+                                usernameAvailable == true -> {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = "Image",
+                                        tint = Color(0xFF51D88A),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Spacer(Modifier.fillMaxWidth(7.dp))
+                                    Text(
+                                        usernameMessage ?: "Username available",
+                                        color = Color(0xFF51D88A),
+                                        fontSize = 11.sp
+                                    )
+                                }
+
+                                usernameAvailable == false -> {
+                                    Text(
+                                        usernameMessage ?: "Username is unavailable.",
+                                        color = Color(0xFFFF7A7A),
+                                        fontSize = 11.sp
+                                    )
+                                }
+
+                                !usernameMessage.isNullOrBlank() -> {
+                                    Text(usernameMessage.orEmpty(), color = DarkTextSecondary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.fillMaxHeight(20.dp))
+
+                        PrimaryOnboardingButton(
+                            text = "Continue",
+                            enabled = usernameAvailable == true &&
+                                displayName.trim().length in 2..80 && !saving
+                        ) {
+                            saving = true
+                            onSaveUsername(username, displayName.trim()) { ok, message ->
+                                saving = false
+                                if (ok) {
+                                    step = 1
+                                    error = null
+                                } else {
+                                    error = message ?: "Unable to save username."
+                                }
+                            }
+                        }
+                    }
+                }
+
+                1 -> {
+                    item {
+                        StepHeader(
+                            title = "Build your basic profile",
+                            subtitle = "Students choose their university and department. All members choose gender.",
+                            icon = Icons.Default.Person
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val avatarModel = pendingAvatarUri?.toString() ?: avatarUrl
+                            Surface(
+                                shape = CircleShape,
+                                color = DarkSurface,
+                                border = BorderStroke(1.dp, DarkBorder),
+                                modifier = Modifier.size(82.dp)
+                            ) {
+                                if (avatarModel.isNotBlank()) {
+                                    AsyncImage(
+                                        model = avatarModel,
+                                        contentDescription = "Profile picture",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape)
+                                    )
+                                } else {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = "Image",
+                                            tint = Color.White.copy(alpha = .70f),
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.fillMaxWidth(14.dp))
+
+                            Column {
+                                OutlinedButton(
+                                    onClick = { avatarPicker.launch("image/*") }
+                                ) {
+                                    Icon(Icons.Default.CameraAlt, contentDescription = "Image")
+                                    Spacer(Modifier.fillMaxWidth(7.dp))
+                                    Text("Add profile picture")
+                                }
+                                Text(
+                                    "Optional — you can skip this.",
+                                    color = DarkTextSecondary,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(top = 5.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.fillMaxHeight(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = notStudent, onCheckedChange = { checked ->
+                                notStudent = checked
+                                universityPicker = false
+                                departmentPicker = false
+                                levelPicker = false
+                                if (checked) { university = ""; department = ""; level = "" }
+                            }, modifier = Modifier.testTag("onboarding_not_student"))
+                            Text("I am not a university student", color = Color.White)
+                        }
+                        PickerField(
+                            label = "University",
+                            value = university,
+                            icon = Icons.Default.AccountBalance,
+                            placeholder = "Select university",
+                            enabled = !notStudent,
+                            onClick = { universityPicker = true }
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(10.dp))
+
+                        PickerField(
+                            label = "Department",
+                            value = department,
+                            icon = Icons.Default.MenuBook,
+                            placeholder = "Select department",
+                            enabled = !notStudent,
+                            onClick = { departmentPicker = true }
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(10.dp))
+
+                        PickerField(
+                            label = "Level",
+                            value = level,
+                            icon = Icons.Default.School,
+                            placeholder = "Optional — select or skip",
+                            enabled = !notStudent,
+                            onClick = { levelPicker = true }
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(10.dp))
+
+                        PickerField(
+                            label = "Gender",
+                            value = gender,
+                            icon = Icons.Default.Person,
+                            placeholder = "Select gender",
+                            onClick = { genderPicker = true }
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(10.dp))
+
+                        OutlinedTextField(
+                            value = birthDate,
+                            onValueChange = { value ->
+                                birthDate = value.filter { it.isDigit() || it == '-' }.take(10)
+                                error = null
+                            },
+                            label = { Text("Birthday (required)") },
+                            placeholder = { Text("YYYY-MM-DD") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(14.dp))
+                        OutlinedTextField(
+                            value = phoneNumber,
+                            onValueChange = { phoneNumber = it.take(24); error = null },
+                            label = { Text("Phone number (optional)") },
+                            placeholder = { Text("+2348012345678") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_phone")
+                        )
+                        Text(
+                            "No SMS verification. Your number stays private by default; " +
+                                "you can change who sees it later in Edit Profile. " +
+                                "An unverified number is not proof of ownership.",
+                            color = DarkTextSecondary,
+                            fontSize = 11.sp
+                        )
+                        val phoneValid = phoneNumber.isBlank() ||
+                            BlinkPhonePolicy.normalize(phoneNumber) != null
+                        if (!phoneValid) {
+                            Text(
+                                "Enter a valid number or leave this field empty.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Spacer(Modifier.fillMaxHeight(8.dp))
+                        BlinkReferrerPicker(
+                            selected = selectedReferrer,
+                            onSelected = { selectedReferrer = it },
+                            lightSurface = false,
+                        )
+                        Spacer(Modifier.fillMaxHeight(18.dp))
+
+                        val birthdayValid = BlinkBirthdayPolicy.isValid(birthDate)
+                        if (!birthdayValid) {
+                            Text(
+                                "Enter a real date in YYYY-MM-DD format, not a future date.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.fillMaxHeight(8.dp))
+                        }
+
+                        PrimaryOnboardingButton(
+                            text = if (saving) "Saving..." else "Continue",
+                            enabled = (notStudent || (university.isNotBlank() && department.isNotBlank())) &&
+                                gender.isNotBlank() &&
+                                phoneValid &&
+                                birthdayValid &&
+                                !saving
+                        ) {
+                            scope.launch {
+                                saving = true
+                                error = null
+
+                                val finalAvatar = if (pendingAvatarUri != null) {
+                                    profileRepository.uploadAvatar(
+                                        context = context,
+                                        uri = pendingAvatarUri!!,
+                                        userId = profile.id
+                                    ) ?: run {
+                                        saving = false
+                                        error = "Profile picture upload failed. You can remove it and continue."
+                                        return@launch
+                                    }
+                                } else {
+                                    avatarUrl
+                                }
+
+                                onSaveBasics(
+                                    if (notStudent) "" else (NigerianUniversitySearch.canonical(university) ?: university),
+                                    if (notStudent) "" else department,
+                                    if (notStudent) "" else level,
+                                    gender,
+                                    birthDate,
+                                    finalAvatar
+                                ) { ok, message ->
+                                    if (ok) {
+                                        val number = if (phoneNumber.isBlank()) ""
+                                            else BlinkPhonePolicy.normalize(phoneNumber).orEmpty()
+                                        onSavePhone(number) { phoneSaved, phoneError ->
+                                            if (!phoneSaved) {
+                                                saving = false
+                                                error = phoneError ?: "Unable to save phone. Please retry."
+                                            } else {
+                                                val referralId = selectedReferrer?.id.orEmpty()
+                                                onSaveReferrer(referralId) { accepted, referralError ->
+                                                    saving = false
+                                                    if (accepted) {
+                                                        SignupCampusPreference.clear(context)
+                                                        avatarUrl = finalAvatar
+                                                        pendingAvatarUri = null
+                                                        step = 2
+                                                    } else {
+                                                        error = referralError ?: "Could not confirm your optional referral."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        saving = false
+                                        error = message ?: "Unable to save profile."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                2 -> {
+                    item {
+                        StepHeader(
+                            title = "Choose your interests",
+                            subtitle = "Pick what you care about. BLINK uses these signals for discovery, Connect and recommendation personalization.",
+                            icon = Icons.Default.Interests
+                        )
+                    }
+
+                    BlinkOnboardingCatalog.interestGroups.forEach { (group, interests) ->
+                        item(key = "interest_group:$group") {
+                            Text(
+                                text = group,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.fillMaxHeight(7.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                items(interests, key = { it }) { interest ->
+                                    val selected = interest in selectedInterests
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = {
+                                            if (selected) selectedInterests.remove(interest)
+                                            else selectedInterests.add(interest)
+                                        },
+                                        label = { Text(interest) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = BlinkPink.copy(alpha = .22f),
+                                            selectedLabelColor = Color.White
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Text(
+                            text = "${selectedInterests.size} selected",
+                            color = DarkTextSecondary,
+                            fontSize = 11.sp
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(12.dp))
+
+                        PrimaryOnboardingButton(
+                            text = "Continue",
+                            enabled = selectedInterests.isNotEmpty() && !saving
+                        ) {
+                            saving = true
+                            onSaveInterests(selectedInterests.toList()) { ok, message ->
+                                saving = false
+                                if (ok) {
+                                    step = 3
+                                    onRefreshSuggestions()
+                                } else {
+                                    error = message ?: "Unable to save interests."
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    item(key = "onboarding_optional_contact_discovery") {
+                        BlinkContactDiscoveryCard(profile.id)
+                    }
+                    item {
+                        StepHeader(
+                            title = "Find your people",
+                            subtitle = "Follow at least 5 accounts to continue. Suggestions use your university, department, level and interests.",
+                            icon = Icons.Default.GroupAdd
+                        )
+
+                        Spacer(Modifier.fillMaxHeight(8.dp))
+
+                        Surface(
+                            color = BlinkPink.copy(alpha = .10f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, BlinkPink.copy(alpha = .25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "${followingIds.size.coerceAtMost(REQUIRED_ONBOARDING_FOLLOWS)} / $REQUIRED_ONBOARDING_FOLLOWS followed",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    }
+
+                    if (orderedCandidates.isEmpty()) {
+                        item {
+                            Surface(
+                                color = DarkSurface,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(18.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "Finding people for you...",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.fillMaxHeight(8.dp))
+                                    Text(
+                                        "Check your connection and refresh if suggestions do not appear.",
+                                        color = DarkTextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(Modifier.fillMaxHeight(10.dp))
+                                    OutlinedButton(onClick = onRefreshSuggestions) {
+                                        Text("Refresh suggestions")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        items(
+                            items = orderedCandidates,
+                            key = { it.id }
+                        ) { candidate ->
+                            SuggestedUserRow(
+                                profile = candidate,
+                                followed = candidate.id in followingIds,
+                                featured = candidate.username.equals(
+                                    PINNED_BLINK_CREATOR,
+                                    ignoreCase = true
+                                ),
+                                onToggle = {
+                                    scope.launch {
+                                        FollowStateStore.setFollowing(
+                                            candidate.id,
+                                            candidate.id !in followingIds
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    item {
+                        Spacer(Modifier.fillMaxHeight(6.dp))
+
+                        PrimaryOnboardingButton(
+                            text = if (followingIds.size >= REQUIRED_ONBOARDING_FOLLOWS)
+                                "Enter BLINK"
+                            else
+                                "Follow ${REQUIRED_ONBOARDING_FOLLOWS - followingIds.size.coerceAtMost(REQUIRED_ONBOARDING_FOLLOWS)} more",
+                            enabled = followingIds.size >= REQUIRED_ONBOARDING_FOLLOWS && !saving
+                        ) {
+                            saving = true
+                            onFinish { ok, message ->
+                                saving = false
+                                if (!ok) error = message ?: "Unable to finish onboarding."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (universityPicker && !notStudent) {
+        UniversityCampusPickerDialog(
+            selected = university,
+            onDismiss = { universityPicker = false },
+            onSelect = {
+                university = it
+                universityPicker = false
+            }
+        )
+    }
+
+    if (departmentPicker && !notStudent) {
+        SearchablePickerDialog(
+            title = "Select department",
+            items = BlinkOnboardingCatalog.departments,
+            selected = department,
+            onDismiss = { departmentPicker = false },
+            onSelected = {
+                department = it
+                departmentPicker = false
+            }
+        )
+    }
+
+    if (levelPicker) {
+        SearchablePickerDialog(
+            title = "Select level",
+            items = BlinkOnboardingCatalog.levels,
+            selected = level,
+            onDismiss = { levelPicker = false },
+            onSelected = {
+                level = it
+                levelPicker = false
+            },
+            allowClear = true
+        )
+    }
+
+    if (genderPicker) {
+        SearchablePickerDialog(
+            title = "Select gender",
+            items = BlinkOnboardingCatalog.genders,
+            selected = gender,
+            onDismiss = { genderPicker = false },
+            onSelected = {
+                gender = it
+                genderPicker = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun StepHeader(
+    title: String,
+    subtitle: String,
+    icon: ImageVector
+) {
+    Row(verticalAlignment = Alignment.Top) {
+        Surface(
+            shape = CircleShape,
+            color = BlinkPink.copy(alpha = .13f),
+            modifier = Modifier.size(42.dp)
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = "Image", tint = BlinkPink)
+            }
+        }
+
+        Spacer(Modifier.fillMaxWidth(12.dp))
+
+        Column {
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                subtitle,
+                color = DarkTextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PickerField(
+    label: String,
+    value: String,
+    icon: ImageVector,
+    placeholder: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = DarkSurface,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, DarkBorder),
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else .38f)
+            .clickable(enabled = enabled, onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = "Image", tint = BlinkPink)
+            Spacer(Modifier.fillMaxWidth(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, color = DarkTextSecondary, fontSize = 9.sp)
+                Text(
+                    value.ifBlank { placeholder },
+                    color = if (value.isBlank()) DarkTextSecondary else Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Icon(Icons.Default.ExpandMore, contentDescription = "Image", tint = DarkTextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun SearchablePickerDialog(
+    title: String,
+    items: List<String>,
+    selected: String,
+    onDismiss: () -> Unit,
+    onSelected: (String) -> Unit,
+    allowClear: Boolean = false
+) {
+    var query by rememberSaveable(title) { mutableStateOf("") }
+    val filtered = remember(query, items) {
+        if (query.isBlank()) items
+        else items.filter { it.contains(query, ignoreCase = true) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(title, fontWeight = FontWeight.Black)
+                Spacer(Modifier.fillMaxHeight(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Image")
+                    },
+                    placeholder = { Text("Search") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxHeight(330.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (allowClear) {
+                    item {
+                        TextButton(
+                            onClick = { onSelected("") },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Skip / not specified")
+                        }
+                    }
+                }
+
+                items(filtered, key = { it }) { value ->
+                    Surface(
+                        color = if (value == selected)
+                            BlinkPink.copy(alpha = .10f)
+                        else
+                            Color.Transparent,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelected(value) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (value == selected) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "Image",
+                                    tint = BlinkPink,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(Modifier.fillMaxWidth(8.dp))
+                            }
+                            Text(value, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun SuggestedUserRow(
+    profile: UserProfile,
+    followed: Boolean,
+    featured: Boolean,
+    onToggle: () -> Unit
+) {
+    Surface(
+        color = DarkSurface,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(
+            1.dp,
+            if (featured) BlinkPink.copy(alpha = .45f) else DarkBorder
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.Black,
+                modifier = Modifier.size(50.dp)
+            ) {
+                if (profile.avatarUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = profile.avatarUrl,
+                        contentDescription = profile.fullName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            Spacer(Modifier.fillMaxWidth(11.dp))
+
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        profile.fullName.ifBlank { profile.username },
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    if (profile.verificationBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.fillMaxWidth(4.dp))
+                        VerifiedMark(
+                            badge = profile.verificationBadge,
+                            size = 12.dp
+                        )
+                    }
+                }
+
+                Text(
+                    "@${profile.username}",
+                    color = DarkTextSecondary,
+                    fontSize = 10.5.sp
+                )
+
+                val detail = listOf(profile.university, profile.department)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" • ")
+                if (detail.isNotBlank()) {
+                    Text(
+                        detail,
+                        color = DarkTextSecondary,
+                        fontSize = 9.5.sp,
+                        maxLines = 1
+                    )
+                }
+
+                if (featured) {
+                    Text(
+                        "Featured BLINK creator",
+                        color = BlinkPink,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+            }
+
+            Button(
+                onClick = onToggle,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (followed) Color.White.copy(alpha = .12f) else BlinkPink,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(100.dp),
+                contentPadding = PaddingValues(horizontal = 15.dp, vertical = 8.dp)
+            ) {
+                Text(if (followed) "Following" else "Follow", fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrimaryOnboardingButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = BlinkPink,
+            contentColor = Color.White,
+            disabledContainerColor = DarkSurface,
+            disabledContentColor = DarkTextSecondary
+        ),
+        shape = RoundedCornerShape(100.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+    ) {
+        Text(text, fontWeight = FontWeight.Bold)
+    }
+}

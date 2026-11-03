@@ -1,0 +1,188 @@
+\set ON_ERROR_STOP on
+-- None of the content tables are writable via an app role.
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+do $$
+begin
+  begin
+    update public.blink_live_config set enabled=true;
+    raise exception 'SECURITY_FAIL: client updated config';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.blink_live_campaigns(title) values ('Unauthorized');
+    raise exception 'SECURITY_FAIL: client inserted campaign';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+reset role;
+
+-- Authenticated non-admin cannot open the admin console RPC.
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+do $$
+begin
+  begin
+    perform public.admin_list_blink_live_campaigns();
+    raise exception 'SECURITY_FAIL: nonadmin accessed drafts';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+-- Admin creates draft and submits for owner publication.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',false);
+select public.admin_save_blink_live_campaign(
+ null,
+ '{
+   "kind":"announcement","title":"FUTA only","message":"BLINK campus notice",
+   "placements":["home","marketplace"],"audience_universities":["FUTA"],
+   "audience_badge":"all","image_url":null,
+   "action_label":"Open Market","action_route":"marketplace",
+   "style":"highlight","accent":"neutral","priority":80,"pinned":true,
+   "starts_at":null,"ends_at":null,"min_app_version":null,
+   "max_app_version":null,"frequency_hours":24,"is_template":false
+ }'::jsonb,null
+)->>'id' as campaign_id \gset
+select set_config('test.campaign', :'campaign_id', false);
+select (public.admin_transition_blink_live_campaign(current_setting('test.campaign')::uuid,1,'submit')->>'revision')::bigint as submitted_rev \gset
+
+-- Admin can prepare but cannot approve.
+do $$
+begin
+  begin
+    perform public.admin_transition_blink_live_campaign(current_setting('test.campaign')::uuid,2,'approve');
+    raise exception 'SECURITY_FAIL: admin approved content';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+-- Owner approves; user targeting and schedule are enforced server-side.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false);
+select (public.admin_transition_blink_live_campaign(current_setting('test.campaign')::uuid,2,'approve')->>'revision')::bigint as approved_rev \gset
+do $$
+begin
+ if jsonb_array_length(public.get_blink_live_campaigns('home',0))<>1 then
+   raise exception 'OWNER_VISIBILITY_FAIL';
+ end if;
+ if jsonb_array_length(public.get_blink_live_campaigns('messages',0))<>0 then
+   raise exception 'WRONG_PLACEMENT_EXPOSED';
+ end if;
+end;
+$$;
+
+-- A free student at another school receives no FUTA campaign.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+do $$
+begin
+ if jsonb_array_length(public.get_blink_live_campaigns('home',0))<>0 then
+   raise exception 'CAMPUS_TARGETING_LEAK';
+ end if;
+ if public.record_blink_live_campaign_event(current_setting('test.campaign')::uuid,'home',0,'impression') then
+   raise exception 'UNAUTHORIZED_IMPRESSION';
+ end if;
+end;
+$$;
+
+-- Allowed FUTA user: deduplicated engagement, click needs prior view.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',false);
+do $$
+begin
+ if jsonb_array_length(public.get_blink_live_campaigns('home',0))<>1 then
+   raise exception 'VALID_CAMPUS_MEMBER_NOT_TARGETED';
+ end if;
+ if public.record_blink_live_campaign_event(current_setting('test.campaign')::uuid,'home',0,'click') then
+   raise exception 'CLICK_WITHOUT_IMPRESSION';
+ end if;
+ if not public.record_blink_live_campaign_event(current_setting('test.campaign')::uuid,'home',0,'impression') then
+   raise exception 'VALID_IMPRESSION_BLOCKED';
+ end if;
+ if not public.record_blink_live_campaign_event(current_setting('test.campaign')::uuid,'home',0,'impression') then
+   raise exception 'DUPLICATE_IMPRESSION_REJECTED';
+ end if;
+ if not public.record_blink_live_campaign_event(current_setting('test.campaign')::uuid,'home',0,'click') then
+   raise exception 'VALID_CLICK_BLOCKED';
+ end if;
+end;
+$$;
+
+-- Owner can see aggregated analytics, pause instantly, and restore as draft.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false);
+do $$
+declare items jsonb;
+begin
+ items:=public.admin_list_blink_live_campaigns();
+ if ((items->0->>'impressions')::int)<>1 or ((items->0->>'clicks')::int)<>1 then
+   raise exception 'ANALYTICS_FAILED %',items;
+ end if;
+end;
+$$;
+select public.admin_transition_blink_live_campaign(current_setting('test.campaign')::uuid,3,'pause');
+do $$
+begin
+ if jsonb_array_length(public.get_blink_live_campaigns('home',0))<>0 then
+   raise exception 'PAUSED_CAMPAIGN_STILL_LIVE';
+ end if;
+end;
+$$;
+select public.admin_restore_blink_live_campaign(current_setting('test.campaign')::uuid,4,2);
+do $$
+begin
+ if jsonb_array_length(public.get_blink_live_campaigns('home',0))<>0 then
+   raise exception 'RESTORE_MUST_NOT_AUTOPUBLISH';
+ end if;
+ if jsonb_array_length(public.admin_blink_live_campaign_history(current_setting('test.campaign')::uuid))<4 then
+   raise exception 'AUDIT_HISTORY_MISSING';
+ end if;
+end;
+$$;
+reset role;
+
+
+-- Storage API tests use synthetic object metadata in disposable CI only.
+-- Production uploads MUST go through the Storage HTTP API.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+set role authenticated;
+do $$
+begin
+ if public.blink_live_can_upload_banner() then
+   raise exception 'NONOWNER_WAS_GRANTED_BANNER_UPLOAD';
+ end if;
+ begin
+   insert into storage.objects(bucket_id,name)
+   values('blink-live-banners','banners/11111111-1111-4111-8111-111111111111.jpg');
+   raise exception 'NONOWNER_INSERTED_BANNER_OBJECT';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$$;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false);
+do $$
+begin
+ if not public.blink_live_can_upload_banner() then
+   raise exception 'OWNER_BANNER_UPLOAD_DENIED';
+ end if;
+ begin
+   insert into storage.objects(bucket_id,name)
+   values('blink-live-banners','banners/11111111-1111-4111-8111-111111111111.svg');
+   raise exception 'DISALLOWED_BANNER_EXTENSION';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$$;
+insert into storage.objects(bucket_id,name)
+values('blink-live-banners','banners/11111111-1111-4111-8111-111111111111.jpg');
+reset role;
+do $$
+begin
+ if not exists(
+   select 1 from storage.buckets b
+   where b.id='blink-live-banners' and b.public=true and b.file_size_limit=2097152
+   and b.allowed_mime_types @> array['image/jpeg','image/png']::text[]
+ ) then
+   raise exception 'BANNER_BUCKET_MIME_SIZE_LIMITS_NOT_ENFORCED';
+ end if;
+end;
+$$;

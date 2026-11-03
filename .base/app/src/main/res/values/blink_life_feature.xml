@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Google Play resolves dynamic-feature titles from base resources. -->
+    <string name="blink_life_feature_name">BLINK LIFE 3D</string>
+</resources>

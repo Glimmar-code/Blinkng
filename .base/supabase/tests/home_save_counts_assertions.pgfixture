@@ -1,0 +1,48 @@
+-- Prove the function is authenticated-only, aggregate-only and public-only.
+do $$
+declare
+ ids uuid[] := array[
+  '10000000-0000-0000-0000-000000000001'::uuid,
+  '10000000-0000-0000-0000-000000000002'::uuid,
+  '10000000-0000-0000-0000-000000000003'::uuid,
+  '10000000-0000-0000-0000-000000000004'::uuid,
+  '10000000-0000-0000-0000-000000000005'::uuid];
+ n bigint;
+ rec record;
+begin
+ if has_function_privilege('anon','public.get_visible_post_save_counts(uuid[])','EXECUTE') then
+   raise exception 'anon may execute the RPC';
+ end if;
+ if not has_function_privilege('authenticated','public.get_visible_post_save_counts(uuid[])','EXECUTE') then
+   raise exception 'authenticated users cannot execute';
+ end if;
+
+ perform set_config('request.jwt.claim.sub','','false');
+ begin
+   perform public.get_visible_post_save_counts(ids);
+   raise exception 'Unauthenticated call was incorrectly accepted';
+ exception
+   when sqlstate '42501' then null;
+ end;
+ perform set_config('request.jwt.claim.sub','30000000-0000-0000-0000-000000000001',false);
+ select count(*) into n from public.get_visible_post_save_counts(ids);
+ if n != 2 then raise exception 'Expected exactly two visible posts, got %', n; end if;
+ select save_count into n from public.get_visible_post_save_counts(ids)
+ where post_id = '10000000-0000-0000-0000-000000000001'::uuid;
+ if n != 2 then raise exception 'Expected two distinct bookmarks, got %', n; end if;
+ select save_count into n from public.get_visible_post_save_counts(ids)
+ where post_id = '10000000-0000-0000-0000-000000000005'::uuid;
+ if n != 1 then raise exception 'Expected one Public bookmark, got %', n; end if;
+ if exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='get_visible_post_save_counts'
+    and column_name='user_id') then
+   raise exception 'Aggregate leaks bookmark user IDs';
+ end if;
+ begin
+   perform public.get_visible_post_save_counts(array_fill('10000000-0000-0000-0000-000000000001'::uuid,array[61]));
+   raise exception 'Over-limit input was incorrectly accepted';
+ exception
+   when sqlstate '22023' then null;
+ end;
+ raise notice 'PASS: authenticated-only, counts 2/1, private/inactive/expired hidden, max-size protected';
+end $$;

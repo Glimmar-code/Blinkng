@@ -1,0 +1,2338 @@
+package com.example.ui.screens
+
+import com.blinkng.shared.ProfileVisibilityScope
+
+import com.example.data.local.rememberPersistentTextState
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import com.example.ui.components.blinkSmoothSize
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.horizontalScroll
+import com.blinkng.shared.BlinkProfileThemes
+import com.blinkng.shared.ProfileCompletionPolicy
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.data.models.ContactField
+import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
+import com.example.data.models.UserProfile
+import com.example.data.repository.ProfileRepository
+import com.example.data.supabase.ProfileMediaType
+import com.example.ui.components.CropAdjustDialog
+import com.example.ui.theme.BlinkPink
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditProfileScreen(
+    profile: UserProfile,
+    onBack: () -> Unit,
+    onSave: (UserProfile) -> Unit,
+    isDark: Boolean
+) {
+    val context =
+        LocalContext.current
+
+    val scope =
+        rememberCoroutineScope()
+
+    val repository =
+        remember {
+            ProfileRepository()
+        }
+
+    var profileTheme by rememberSaveable(profile.id) {
+        mutableStateOf(BlinkProfileThemes.normalize(profile.profileTheme))
+    }
+
+    var fullName by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.fullName
+        )
+    }
+
+    var username by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.username
+        )
+    }
+
+    var avatarUrl by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.avatarUrl
+        )
+    }
+
+    var coverUrl by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.coverPhotoUrl
+        )
+    }
+
+    var headline by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.professionalHeadline
+        )
+    }
+
+    var jobTitle by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.currentJobTitle
+        )
+    }
+
+    var bio by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.bio
+        )
+    }
+
+    var university by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.university
+        )
+    }
+
+    var faculty by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.faculty
+        )
+    }
+
+    var department by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.department
+        )
+    }
+
+    var courseOfStudy by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.courseOfStudy
+        )
+    }
+
+    var academicLevel by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.academicLevel
+        )
+    }
+
+    var graduationYear by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.graduationYear
+        )
+    }
+
+    var skillsText by rememberSaveable(profile.id) {
+        mutableStateOf(profile.coreSkills.joinToString(", "))
+    }
+
+    var relationshipStatus by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.relationshipStatus
+        )
+    }
+
+    var email by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.email.value
+        )
+    }
+
+    var phone by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.phone.value
+        )
+    }
+
+    var whatsapp by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.whatsapp.value
+        )
+    }
+
+    var emailVisibility by rememberSaveable(profile.id) {
+        mutableStateOf(profile.emailVisibility)
+    }
+
+    var phoneVisibility by rememberSaveable(profile.id) {
+        mutableStateOf(profile.phoneVisibility)
+    }
+
+    var whatsappVisibility by rememberSaveable(profile.id) {
+        mutableStateOf(profile.whatsappVisibility)
+    }
+
+    var presenceVisibility by rememberSaveable(profile.id) {
+        mutableStateOf(profile.presenceVisibility)
+    }
+
+    var website by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.links.website
+        )
+    }
+
+    var linkedin by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.links.linkedin
+        )
+    }
+
+    var twitter by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.links.twitter
+        )
+    }
+
+    var instagram by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.links.instagram
+        )
+    }
+
+    var featuredLink by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.links.featuredLink
+        )
+    }
+
+    var featuredLinkLabel by rememberSaveable(profile.id) {
+        mutableStateOf(
+            profile.links.featuredLinkLabel
+        )
+    }
+
+    var selectedAvatarUri by rememberSaveable(profile.id) {
+        mutableStateOf<Uri?>(null)
+    }
+
+    var selectedCoverUri by rememberSaveable(profile.id) {
+        mutableStateOf<Uri?>(null)
+    }
+
+    var cropUri by remember {
+        mutableStateOf<Uri?>(null)
+    }
+    var universalEditUri by remember { mutableStateOf<Uri?>(null) }
+    var universalEditIsAvatar by remember { mutableStateOf(true) }
+
+    var cropIsAvatar by remember {
+        mutableStateOf(true)
+    }
+
+    var universityDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var showSocials by remember {
+        mutableStateOf(false)
+    }
+
+    var saving by remember {
+        mutableStateOf(false)
+    }
+
+    var errorMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var successMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var showDiscardChangesDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    val hasUnsavedChanges =
+        profileTheme != BlinkProfileThemes.normalize(profile.profileTheme) ||
+        fullName != profile.fullName ||
+        username != profile.username ||
+        avatarUrl != profile.avatarUrl ||
+        coverUrl != profile.coverPhotoUrl ||
+        headline != profile.professionalHeadline ||
+        jobTitle != profile.currentJobTitle ||
+        bio != profile.bio ||
+        university != profile.university ||
+        faculty != profile.faculty ||
+        department != profile.department ||
+        courseOfStudy != profile.courseOfStudy ||
+        academicLevel != profile.academicLevel ||
+        graduationYear != profile.graduationYear ||
+        relationshipStatus != profile.relationshipStatus ||
+        skillsText != profile.coreSkills.joinToString(", ") ||
+        email != profile.email.value ||
+        phone != profile.phone.value ||
+        whatsapp != profile.whatsapp.value ||
+        emailVisibility != profile.emailVisibility ||
+        phoneVisibility != profile.phoneVisibility ||
+        whatsappVisibility != profile.whatsappVisibility ||
+        presenceVisibility != profile.presenceVisibility ||
+        website != profile.links.website ||
+        linkedin != profile.links.linkedin ||
+        twitter != profile.links.twitter ||
+        instagram != profile.links.instagram ||
+        featuredLink != profile.links.featuredLink ||
+        featuredLinkLabel != profile.links.featuredLinkLabel ||
+        selectedAvatarUri != null || selectedCoverUri != null
+
+    fun requestLeaveEditor() {
+        if (saving) return
+        if (hasUnsavedChanges) showDiscardChangesDialog = true
+        else onBack()
+    }
+
+    BackHandler(enabled = !saving) { requestLeaveEditor() }
+
+    if (showDiscardChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChangesDialog = false },
+            title = { Text("Discard profile changes?") },
+            text = { Text("You have changes that haven't been saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardChangesDialog = false
+                    onBack()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardChangesDialog = false }) { Text("Keep editing") }
+            }
+        )
+    }
+
+    val avatarPicker =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+
+            if (
+                uri != null
+            ) {
+
+                cropUri =
+                    uri
+
+                cropIsAvatar =
+                    true
+            }
+        }
+
+    val coverPicker =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+
+            if (
+                uri != null
+            ) {
+
+                cropUri =
+                    uri
+
+                cropIsAvatar =
+                    false
+            }
+        }
+
+    if (
+        cropUri != null
+    ) {
+
+        CropAdjustDialog(
+            imageUri =
+                cropUri!!,
+            isCircle =
+                cropIsAvatar,
+            onDismiss = {
+                cropUri =
+                    null
+            },
+            onCropComplete = { uri ->
+
+                if (
+                    cropIsAvatar
+                ) {
+
+                    selectedAvatarUri =
+                        uri
+
+                } else {
+
+                    selectedCoverUri =
+                        uri
+                }
+
+                universalEditUri = uri
+                universalEditIsAvatar = cropIsAvatar
+                cropUri = null
+            }
+        )
+    }
+    universalEditUri?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { result ->
+                if (universalEditIsAvatar) selectedAvatarUri = result
+                else selectedCoverUri = result
+                universalEditUri = null
+            },
+            onDismiss = { universalEditUri = null }
+        )
+    }
+
+    val isNonStudent = profile.accountType.equals("NON_STUDENT", ignoreCase = true)
+    val completion = ProfileCompletionPolicy.calculate(
+        fullName, username, if (selectedAvatarUri != null) "pending" else avatarUrl,
+        headline, bio, university, faculty, department, academicLevel, profile.accountType
+    )
+
+    // Both Save actions use one validated, idempotent submission path.
+    fun saveProfileChanges() {
+        if (saving) return
+        errorMessage = null
+        successMessage = null
+        scope.launch {
+
+                                saving =
+                                    true
+
+                                try {
+
+                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, if (isNonStudent) "" else graduationYear, website, linkedin, twitter, instagram, featuredLink)
+
+                                    if (validationError != null) throw IllegalArgumentException(validationError)
+
+                                    val availability = com.example.data.supabase.SupabaseService().checkProfileIdentity(username.trim().lowercase().removePrefix("@"), fullName.trim(), excludeCurrentUser = true)
+
+                                    if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
+
+
+                                    var finalAvatar =
+                                        avatarUrl
+
+                                    var finalCover =
+                                        coverUrl
+
+                                    if (
+                                        selectedAvatarUri != null
+                                    ) {
+
+                                        finalAvatar =
+                                            repository.uploadProfileMedia(
+                                                context =
+                                                    context,
+                                                uri =
+                                                    selectedAvatarUri!!,
+                                                userId =
+                                                    profile.id,
+                                                type =
+                                                    ProfileMediaType.AVATAR
+                                            )
+                                                ?: throw Exception(
+                                                    "Could not upload the profile picture. Use an image under 8 MB and try again."
+                                                )
+                                    }
+
+                                    if (
+                                        selectedCoverUri != null
+                                    ) {
+
+                                        finalCover =
+                                            repository.uploadProfileMedia(
+                                                context =
+                                                    context,
+                                                uri =
+                                                    selectedCoverUri!!,
+                                                userId =
+                                                    profile.id,
+                                                type =
+                                                    ProfileMediaType.COVER
+                                            )
+                                                ?: throw Exception(
+                                                    "Could not upload the cover photo. Use an image under 8 MB and try again."
+                                                )
+                                    }
+
+                                    val updated =
+                                        profile.copy(
+
+                                            profileTheme = BlinkProfileThemes.normalize(profileTheme),
+
+                                            fullName =
+                                                fullName.trim(),
+
+                                            username = username.trim().lowercase().removePrefix("@"),
+
+                                            avatarUrl =
+                                                finalAvatar,
+
+                                            coverPhotoUrl =
+                                                finalCover,
+
+                                            professionalHeadline =
+                                                headline.trim(),
+
+                                            currentJobTitle =
+                                                jobTitle.trim(),
+
+                                            bio =
+                                                bio.trim(),
+
+                                            university =
+                                                if (isNonStudent) "" else university.trim(),
+
+                                            faculty =
+                                                if (isNonStudent) "" else faculty.trim(),
+
+                                            department =
+                                                if (isNonStudent) "" else department.trim(),
+
+                                            courseOfStudy =
+                                                if (isNonStudent) "" else courseOfStudy.trim(),
+
+                                            academicLevel =
+                                                if (isNonStudent) "" else academicLevel.trim(),
+
+                                            graduationYear =
+                                                if (isNonStudent) "" else graduationYear.trim(),
+
+                                            relationshipStatus =
+                                                relationshipStatus,
+
+                                             coreSkills = skillsText.split(",").map { it.trim() }
+                                                 .filter { it.isNotBlank() }.distinct().take(20).toMutableList(),
+
+                                            email =
+                                                ContactField(
+                                                    email.trim(),
+                                                    emailVisibility == ProfileVisibilityScope.PUBLIC
+                                                ),
+
+                                            phone =
+                                                ContactField(
+                                                    phone.trim(),
+                                                    phoneVisibility == ProfileVisibilityScope.PUBLIC
+                                                ),
+
+                                            whatsapp =
+                                                ContactField(
+                                                    whatsapp.trim(),
+                                                    whatsappVisibility == ProfileVisibilityScope.PUBLIC
+                                                ),
+
+                                            emailVisibility =
+                                                emailVisibility,
+
+                                            phoneVisibility =
+                                                phoneVisibility,
+
+                                            whatsappVisibility =
+                                                whatsappVisibility,
+
+                                            presenceVisibility =
+                                                presenceVisibility,
+
+                                            links =
+                                                profile.links.copy(
+                                                    website =
+                                                        website.trim(),
+                                                    linkedin =
+                                                        linkedin.trim(),
+                                                    twitter =
+                                                        twitter.trim(),
+                                                    instagram =
+                                                        instagram.trim(),
+                                                    featuredLink =
+                                                        featuredLink.trim(),
+                                                    featuredLinkLabel =
+                                                        featuredLinkLabel.trim()
+                                                )
+                                        )
+
+                                    if (!repository.updateProfile(updated)) throw IllegalStateException("Could not save profile to the server. Please retry.")
+
+                                    onSave(
+                                        updated
+                                    )
+
+                                    avatarUrl =
+                                        finalAvatar
+
+                                    coverUrl =
+                                        finalCover
+
+                                    selectedAvatarUri =
+                                        null
+
+                                    selectedCoverUri =
+                                        null
+
+                                    successMessage =
+                                        "Profile synced successfully."
+
+                                } catch (
+                                    e: Exception
+                                ) {
+
+                                    errorMessage =
+                                        e.message
+                                            ?: "Unable to save profile."
+
+                                } finally {
+
+                                    saving =
+                                        false
+                                }
+                            }
+    }
+
+    Scaffold(
+        topBar = {
+
+            TopAppBar(
+
+                title = {
+
+                    Column {
+
+                        Text(
+                            "Edit profile",
+                            fontWeight =
+                                FontWeight.Black
+                        )
+
+                        Text(
+                            "$completion% complete",
+                            fontSize =
+                                12.sp,
+                            color =
+                                MaterialTheme
+                                    .colorScheme
+                                    .onSurfaceVariant
+                        )
+                    }
+                },
+
+                navigationIcon = {
+
+                    IconButton(
+                        onClick = { requestLeaveEditor() },
+                        enabled =
+                            !saving
+                    ) {
+
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription =
+                                "Close"
+                        )
+                    }
+                },
+
+                actions = {
+
+                    TextButton(
+                        onClick = { saveProfileChanges() },
+                        enabled =
+                            !saving
+                    ) {
+
+                        if (
+                            saving
+                        ) {
+
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.size(
+                                        18.dp
+                                    ),
+                                strokeWidth =
+                                    2.dp
+                            )
+
+                        } else {
+
+                            Text(
+                                "Save",
+                                color =
+                                    MaterialTheme.colorScheme.primary,
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+
+        LazyColumn(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        padding
+                    ),
+            contentPadding =
+                PaddingValues(
+                    horizontal =
+                        16.dp,
+                    vertical =
+                        14.dp
+                ),
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    12.dp
+                )
+        ) {
+
+            item {
+
+                ProfileCompletionCard(
+                    completion =
+                        completion
+                )
+            }
+
+            item(key = "premium_profile_theme") {
+                EditorSection(
+                    title = "Profile theme",
+                    subtitle = "Visitors see your selected profile colors, even in a different app theme."
+                ) {
+                    val preview = BlinkProfileThemes.resolve(profileTheme)
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(preview.topArgb), Color(preview.bottomArgb))
+                                )
+                            )
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text("Your premium profile", color = Color.White,
+                            fontWeight = FontWeight.Black, fontSize = 16.sp)
+                        Text("@${username.trim().removePrefix("@")}", color = Color.White.copy(alpha = .82f),
+                            fontSize = 12.sp)
+                        Text("Preview · ${preview.label}", color = Color.White,
+                            fontSize = 11.sp)
+                    }
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(BlinkProfileThemes.all, key = { it.id }) { option ->
+                            val selected = option.id == profileTheme
+                            Column(
+                                modifier = Modifier.fillMaxWidth(94.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(option.cardArgb))
+                                    .border(
+                                        if (selected) 2.dp else 1.dp,
+                                        if (selected) Color(option.accentArgb) else Color.White.copy(alpha = .15f),
+                                        RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { profileTheme = option.id }
+                                    .padding(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(46.dp).clip(CircleShape)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(Color(option.topArgb), Color(option.bottomArgb))
+                                            )
+                                        )
+                                )
+                                Spacer(Modifier.fillMaxHeight(6.dp))
+                                Text(option.label, color = Color.White,
+                                    fontSize = 10.sp, maxLines = 2)
+                                if (selected) Text("Selected", color = Color(option.accentArgb),
+                                    fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+
+                AnimatedVisibility(
+                    visible =
+                        errorMessage != null
+                                ||
+                                successMessage != null
+                ) {
+
+                    Surface(
+                        shape =
+                            RoundedCornerShape(
+                                14.dp
+                            ),
+                        color =
+                            if (
+                                successMessage !=
+                                    null
+                            ) {
+                                Color(
+                                    0xFF22C55E
+                                ).copy(
+                                    alpha =
+                                        0.08f
+                                )
+                            } else {
+                                Color(
+                                    0xFFFF5252
+                                ).copy(
+                                    alpha =
+                                        0.08f
+                                )
+                            },
+                        border =
+                            BorderStroke(
+                                1.dp,
+                                if (
+                                    successMessage !=
+                                        null
+                                ) {
+                                    Color(
+                                        0xFF22C55E
+                                    ).copy(
+                                        alpha =
+                                            0.25f
+                                    )
+                                } else {
+                                    Color(
+                                        0xFFFF5252
+                                    ).copy(
+                                        alpha =
+                                            0.25f
+                                    )
+                                }
+                            )
+                    ) {
+
+                        Row(
+                            modifier =
+                                Modifier.padding(
+                                    12.dp
+                                ),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            Icon(
+                                if (
+                                    successMessage !=
+                                        null
+                                )
+                                    Icons.Default.CheckCircle
+                                else
+                                    Icons.Default.ErrorOutline,
+                                contentDescription =
+                                    null,
+                                tint =
+                                    if (
+                                        successMessage !=
+                                            null
+                                    )
+                                        Color(
+                                            0xFF22C55E
+                                        )
+                                    else
+                                        Color(
+                                            0xFFFF5252
+                                        )
+                            )
+
+                            Spacer(
+                                modifier =
+                                    Modifier.fillMaxWidth(
+                                        8.dp
+                                    )
+                            )
+
+                            Text(
+                                successMessage
+                                    ?: errorMessage
+                                    ?: "",
+                                fontSize =
+                                    11.sp,
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+
+                EditorSection(
+                    title =
+                        "Profile media",
+                    subtitle =
+                        "JPEG, PNG or WebP, up to 8 MB. Images upload when you save."
+                ) {
+
+                    CoverEditor(
+                        currentUrl = coverUrl,
+                        pendingUri = selectedCoverUri,
+                        onPick = { coverPicker.launch("image/*") },
+                        onRemove = {
+                            coverUrl = ""
+                            selectedCoverUri = null
+                        }
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.fillMaxHeight(
+                                12.dp
+                            )
+                    )
+
+                    AvatarEditor(
+                        currentUrl = avatarUrl,
+                        pendingUri = selectedAvatarUri,
+                        onPick = { avatarPicker.launch("image/*") },
+                        onRemove = {
+                            avatarUrl = ""
+                            selectedAvatarUri = null
+                        }
+                    )
+                }
+            }
+
+            item {
+
+                EditorSection(
+                    title =
+                        "Personal identity",
+                    subtitle =
+                        "Your public profile identity."
+                ) {
+
+                    ProfileField(
+                        value =
+                            fullName,
+                        onValueChange = {
+                            fullName =
+                                it
+                        },
+                        label =
+                            "Full name",
+                        icon =
+                            Icons.Default.Person
+                    )
+
+                    ProfileField(
+                        value =
+                            username,
+                        onValueChange = {
+                            username =
+                                it
+                                    .lowercase()
+                                    .replace(
+                                        " ",
+                                        "_"
+                                    )
+                        },
+                        label =
+                            "Username",
+                        icon =
+                            Icons.Default.AlternateEmail
+                    )
+
+                    ProfileField(
+                        value =
+                            headline,
+                        onValueChange = {
+                            headline =
+                                it
+                        },
+                        label =
+                            "Professional headline",
+                        icon =
+                            Icons.Default.Work
+                    )
+
+                    ProfileField(
+                        value =
+                            jobTitle,
+                        onValueChange = {
+                            jobTitle =
+                                it
+                        },
+                        label =
+                            "Current role / title",
+                        icon =
+                            Icons.Default.Badge
+                    )
+
+                    ProfileField(
+                        value =
+                            bio,
+                        onValueChange = {
+                            bio =
+                                it
+                        },
+                        label =
+                            "Campus bio",
+                        icon =
+                            Icons.Default.EditNote,
+                        minLines =
+                            4,
+                        singleLine =
+                            false
+                    )
+
+                    Text(
+                        "Connection status",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(listOf("Single", "Taken", "Married", "It's complicated", "Prefer not to say", "Private")) { status ->
+                            FilterChip(
+                                selected = relationshipStatus == status,
+                                onClick = { relationshipStatus = status },
+                                label = { Text(status) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (!isNonStudent) item {
+
+                EditorSection(
+                    title =
+                        "Academic identity",
+                    subtitle =
+                        "Pick your institution from the Nigerian university database."
+                ) {
+
+                    UniversityPicker(
+                        selected =
+                            university,
+                        onClick =
+                            {
+                                universityDialog =
+                                    true
+                            }
+                    )
+
+                    ProfileField(
+                        value =
+                            faculty,
+                        onValueChange = {
+                            faculty =
+                                it
+                        },
+                        label =
+                            "Faculty / school",
+                        icon =
+                            Icons.Default.AccountBalance
+                    )
+
+                    ProfileField(
+                        value =
+                            department,
+                        onValueChange = {
+                            department =
+                                it
+                        },
+                        label =
+                            "Department",
+                        icon =
+                            Icons.Default.MenuBook
+                    )
+
+                    ProfileField(
+                        value =
+                            courseOfStudy,
+                        onValueChange = {
+                            courseOfStudy =
+                                it
+                        },
+                        label =
+                            "Course of study",
+                        icon =
+                            Icons.Default.AutoStories
+                    )
+
+                    Row(
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                9.dp
+                            )
+                    ) {
+
+                        ProfileField(
+                            value =
+                                academicLevel,
+                            onValueChange = {
+                                academicLevel =
+                                    it
+                            },
+                            label =
+                                "Level",
+                            icon =
+                                Icons.Default.TrendingUp,
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                )
+                        )
+
+                        ProfileField(
+                            value =
+                                graduationYear,
+                            onValueChange = {
+                                graduationYear =
+                                    it
+                            },
+                            label =
+                                "Graduation",
+                            icon =
+                                Icons.Default.Event,
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                )
+                        )
+                    }
+                }
+            }
+
+            item {
+                EditorSection(
+                    title = "Skills",
+                    subtitle = "Add up to 20 comma-separated skills."
+                ) {
+                    ProfileField(
+                        value = skillsText,
+                        onValueChange = { skillsText = it },
+                        label = "Skills",
+                        icon = Icons.Default.Star
+                    )
+                }
+            }
+
+            item {
+
+                EditorSection(
+                    title =
+                        "Contact",
+                    subtitle =
+                        "Choose which contact details are visible to other users."
+                ) {
+
+                    ProfileField(
+                        value =
+                            email,
+                        onValueChange = {
+                            email =
+                                it
+                        },
+                        label =
+                            "Sign-in email (managed in Account Security)",
+                        icon =
+                            Icons.Default.Email,
+                        keyboardType =
+                            KeyboardType.Email,
+                        readOnly = true
+                    )
+
+                    ProfileField(
+                        value =
+                            phone,
+                        onValueChange = {
+                            phone =
+                                it
+                        },
+                        label =
+                            "Phone",
+                        icon =
+                            Icons.Default.Phone,
+                        keyboardType =
+                            KeyboardType.Phone
+                    )
+
+                    ProfileField(
+                        value =
+                            whatsapp,
+                        onValueChange = {
+                                whatsapp =
+                                    it
+                        },
+                        label =
+                            "WhatsApp",
+                        icon =
+                            Icons.Default.Chat,
+                        keyboardType =
+                            KeyboardType.Phone
+                    )
+
+                    VisibilitySelector(
+                        label = "Email visibility",
+                        value = emailVisibility,
+                        onChange = { emailVisibility = it }
+                    )
+
+                    VisibilitySelector(
+                        label = "Phone visibility",
+                        value = phoneVisibility,
+                        onChange = { phoneVisibility = it }
+                    )
+
+                    VisibilitySelector(
+                        label = "WhatsApp visibility",
+                        value = whatsappVisibility,
+                        onChange = { whatsappVisibility = it }
+                    )
+
+                    VisibilitySelector(
+                        label = "Online / last seen",
+                        value = presenceVisibility,
+                        onChange = { presenceVisibility = it }
+                    )
+                }
+            }
+
+            item {
+
+                EditorSection(
+                    title =
+                        "Social & portfolio links",
+                    subtitle =
+                        "Showcase your work and social profiles."
+                ) {
+
+                    ProfileField(
+                        value =
+                            website,
+                        onValueChange = {
+                            website =
+                                it
+                        },
+                        label =
+                            "Website",
+                        icon =
+                            Icons.Default.Language
+                    )
+
+                    ProfileField(
+                        value =
+                            linkedin,
+                        onValueChange = {
+                            linkedin =
+                                it
+                        },
+                        label =
+                            "LinkedIn",
+                        icon =
+                            Icons.Default.Link
+                    )
+
+                    ProfileField(
+                        value =
+                            twitter,
+                        onValueChange = {
+                            twitter =
+                                it
+                        },
+                        label =
+                            "X / Twitter",
+                        icon =
+                            Icons.Default.Share
+                    )
+
+                    ProfileField(
+                        value =
+                            instagram,
+                        onValueChange = {
+                            instagram =
+                                it
+                        },
+                        label =
+                            "Instagram",
+                        icon =
+                            Icons.Default.CameraAlt
+                    )
+
+                    ProfileField(
+                        value =
+                            featuredLinkLabel,
+                        onValueChange = {
+                            featuredLinkLabel =
+                                it
+                        },
+                        label =
+                            "Featured link label",
+                        icon =
+                            Icons.Default.Star
+                    )
+
+                    ProfileField(
+                        value =
+                            featuredLink,
+                        onValueChange = {
+                            featuredLink =
+                                it
+                        },
+                        label =
+                            "Featured link",
+                        icon =
+                            Icons.Default.OpenInNew
+                    )
+                }
+            }
+
+            item {
+
+                Surface(
+                    shape =
+                        RoundedCornerShape(
+                            17.dp
+                        ),
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .surfaceVariant
+                            .copy(
+                                alpha =
+                                    0.45f
+                            ),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showSocials =
+                                    !showSocials
+                            }
+                            .animateContentSize()
+                ) {
+
+                    Row(
+                        modifier =
+                            Modifier.padding(
+                                14.dp
+                            ),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription =
+                                null,
+                            tint =
+                                BlinkPink
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.fillMaxWidth(
+                                    8.dp
+                                )
+                        )
+
+                        Column(
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                )
+                        ) {
+
+                            Text(
+                                "Profile settings",
+                                fontSize =
+                                    12.sp,
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+
+                            AnimatedVisibility(
+                                visible =
+                                    showSocials
+                            ) {
+
+                                Text(
+                                    "Your profile data is synchronized.",
+                                    fontSize =
+                                        9.sp,
+                                    color =
+                                        MaterialTheme
+                                            .colorScheme
+                                            .onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Icon(
+                            if (
+                                showSocials
+                            )
+                                Icons.Default.ExpandLess
+                            else
+                                Icons.Default.ExpandMore,
+                            contentDescription =
+                                null
+                        )
+                    }
+                }
+            }
+
+            item {
+
+                Button(
+                    onClick = { saveProfileChanges() },
+                    enabled =
+                        !saving,
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor =
+                                BlinkPink
+                        ),
+                    shape =
+                        RoundedCornerShape(
+                            100.dp
+                        ),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(
+                                54.dp
+                            )
+                            .testTag(
+                                "save_profile_btn"
+                            )
+                            .scale(
+                                animateFloatAsState(
+                                    if (saving)
+                                        0.98f
+                                    else
+                                        1f,
+                                    animationSpec =
+                                        spring(),
+                                    label =
+                                        "saveButtonScale"
+                                ).value
+                            )
+                ) {
+
+                    if (
+                        saving
+                    ) {
+
+                        CircularProgressIndicator(
+                            color =
+                                Color.White,
+                            strokeWidth =
+                                2.dp,
+                            modifier =
+                                Modifier.size(
+                                    20.dp
+                                )
+                        )
+
+                    } else {
+
+                        Icon(
+                            Icons.Default.CloudUpload,
+                            contentDescription =
+                                null
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.fillMaxWidth(
+                                    7.dp
+                                )
+                        )
+
+                        Text(
+                            "Save & Sync Profile",
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            item {
+                Spacer(
+                    modifier =
+                        Modifier.fillMaxHeight(
+                            25.dp
+                        )
+                )
+            }
+        }
+    }
+
+    if (
+        universityDialog
+    ) {
+
+        UniversityPickerDialog(
+            selected =
+                university,
+            onDismiss = {
+                universityDialog =
+                    false
+            },
+            onSelected = {
+                university =
+                    it
+
+                universityDialog =
+                    false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ProfileCompletionCard(
+    completion: Int
+) {
+
+    Surface(
+        modifier =
+            Modifier.fillMaxWidth(),
+        shape =
+            RoundedCornerShape(
+                17.dp
+            ),
+        color =
+            BlinkPink.copy(
+                alpha =
+                    0.07f
+            ),
+        border =
+            BorderStroke(
+                1.dp,
+                BlinkPink.copy(
+                    alpha =
+                        0.24f
+                )
+            )
+    ) {
+
+        Column(
+            modifier =
+                Modifier.padding(
+                    13.dp
+                )
+        ) {
+
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription =
+                        null,
+                    tint =
+                        BlinkPink
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.fillMaxWidth(
+                            7.dp
+                        )
+                )
+
+                Text(
+                    "Profile strength",
+                    fontSize =
+                        12.sp,
+                    fontWeight =
+                        FontWeight.Bold
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.weight(
+                            1f
+                        )
+                )
+
+                Text(
+                    "$completion%",
+                    color =
+                        BlinkPink,
+                    fontWeight =
+                        FontWeight.Black
+                )
+            }
+
+            Spacer(
+                modifier =
+                    Modifier.fillMaxHeight(
+                        7.dp
+                    )
+            )
+
+            LinearProgressIndicator(
+                progress = {
+                    completion / 100f
+                },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(
+                            5.dp
+                        )
+                        .clip(
+                            RoundedCornerShape(
+                                50
+                            )
+                        ),
+                color =
+                    BlinkPink,
+                trackColor =
+                    BlinkPink.copy(
+                        alpha =
+                            0.12f
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorSection(
+    title: String,
+    subtitle: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+
+    Surface(
+        modifier =
+            Modifier.fillMaxWidth().blinkSmoothSize(),
+        shape =
+            RoundedCornerShape(
+                19.dp
+            ),
+        color =
+            MaterialTheme
+                .colorScheme
+                .surface,
+        border =
+            BorderStroke(
+                1.dp,
+                MaterialTheme
+                    .colorScheme
+                    .outlineVariant
+            )
+    ) {
+
+        Column(
+            modifier =
+                Modifier.padding(
+                    14.dp
+                ),
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    9.dp
+                )
+        ) {
+
+            Text(
+                title,
+                fontSize =
+                    14.sp,
+                fontWeight =
+                    FontWeight.Black
+            )
+
+            Text(
+                subtitle,
+                fontSize =
+                    9.sp,
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
+            )
+
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ProfileField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    icon:
+        androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    minLines: Int = 1,
+    singleLine: Boolean = true,
+    readOnly: Boolean = false
+) {
+
+    OutlinedTextField(
+        value =
+            value,
+        onValueChange =
+            onValueChange,
+        label = {
+            Text(label)
+        },
+        leadingIcon = {
+            Icon(
+                icon,
+                contentDescription =
+                    null,
+                tint =
+                    BlinkPink,
+                modifier =
+                    Modifier.size(
+                        18.dp
+                    )
+            )
+        },
+        keyboardOptions =
+            androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType =
+                    keyboardType
+            ),
+        minLines =
+            minLines,
+        singleLine =
+            singleLine,
+        readOnly = readOnly,
+        shape =
+            RoundedCornerShape(
+                14.dp
+            ),
+        modifier =
+            modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun VisibilitySelector(
+    label: String,
+    value: ProfileVisibilityScope,
+    onChange: (ProfileVisibilityScope) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(ProfileVisibilityScope.entries) { scope ->
+                FilterChip(
+                    selected = value == scope,
+                    onClick = { onChange(scope) },
+                    label = {
+                        Text(
+                            when (scope) {
+                                ProfileVisibilityScope.PUBLIC -> "Public"
+                                ProfileVisibilityScope.FOLLOWERS -> "Followers"
+                                ProfileVisibilityScope.PRIVATE -> "Private"
+                            },
+                            maxLines = 1,
+                            fontSize = 12.sp
+                        )
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UniversityPicker(
+    selected: String,
+    onClick: () -> Unit
+) {
+
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    onClick()
+                },
+        shape =
+            RoundedCornerShape(
+                14.dp
+            ),
+        color =
+            MaterialTheme
+                .colorScheme
+                .surface,
+        border =
+            BorderStroke(
+                1.dp,
+                MaterialTheme
+                    .colorScheme
+                    .outline
+            )
+    ) {
+
+        Row(
+            modifier =
+                Modifier.padding(
+                    13.dp
+                ),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+
+            Icon(
+                Icons.Default.School,
+                contentDescription =
+                    null,
+                tint =
+                    BlinkPink
+            )
+
+            Spacer(
+                modifier =
+                    Modifier.fillMaxWidth(
+                        9.dp
+                    )
+            )
+
+            Column(
+                modifier =
+                    Modifier.weight(
+                        1f
+                    )
+            ) {
+
+                Text(
+                    "University / institution",
+                    fontSize =
+                        9.sp,
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
+                )
+
+                Text(
+                    selected
+                        .ifBlank {
+                            "Select university"
+                        },
+                    fontSize =
+                        12.sp,
+                    fontWeight =
+                        FontWeight.SemiBold
+                )
+            }
+
+            Icon(
+                Icons.Default.ExpandMore,
+                contentDescription =
+                    "Choose university"
+            )
+        }
+    }
+}
+
+@Composable
+private fun UniversityPickerDialog(
+    selected: String,
+    onDismiss: () -> Unit,
+    onSelected: (String) -> Unit
+) {
+
+    var query by rememberPersistentTextState(key = "com/example/ui/screens/EditProfileScreen.kt:query:1")
+
+    val universities = remember(query) {
+        if (query.isBlank()) NigerianUniversities.all
+        else NigerianUniversitySearch.search(query, limit = 120)
+    }
+
+    AlertDialog(
+        onDismissRequest =
+            onDismiss,
+
+        title = {
+
+            Column {
+
+                Text(
+                    "Select university",
+                    fontWeight =
+                        FontWeight.Black
+                )
+
+                Text(
+                    "${NigerianUniversities.all.size} institutions",
+                    fontSize =
+                        9.sp,
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.fillMaxHeight(
+                            8.dp
+                        )
+                )
+
+                OutlinedTextField(
+                    value =
+                        query,
+                    onValueChange = {
+                        query =
+                            it
+                    },
+                    singleLine =
+                        true,
+                    leadingIcon = {
+
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription =
+                                null
+                        )
+                    },
+                    placeholder = {
+
+                        Text(
+                            "Search..."
+                        )
+                    },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                )
+            }
+        },
+
+        text = {
+
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(
+                            max = 470.dp
+                        ),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        2.dp
+                    )
+            ) {
+
+                items(
+                    items =
+                        universities,
+                    key = {
+                        it
+                    }
+                ) { university ->
+
+                    Surface(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelected(
+                                        university
+                                    )
+                                },
+                        shape =
+                            RoundedCornerShape(
+                                10.dp
+                            ),
+                        color =
+                            if (
+                                selected ==
+                                    university
+                            )
+                                BlinkPink.copy(
+                                    alpha =
+                                        0.09f
+                                )
+                            else
+                                Color.Transparent
+                    ) {
+
+                        Row(
+                            modifier =
+                                Modifier.padding(
+                                    10.dp
+                                ),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            Icon(
+                                if (
+                                    selected ==
+                                        university
+                                )
+                                    Icons.Default.CheckCircle
+                                else
+                                    Icons.Default.School,
+                                contentDescription =
+                                    null,
+                                tint =
+                                    if (
+                                        selected ==
+                                            university
+                                    )
+                                        BlinkPink
+                                    else
+                                        MaterialTheme
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                modifier =
+                                    Modifier.size(
+                                        17.dp
+                                    )
+                            )
+
+                            Spacer(
+                                modifier =
+                                    Modifier.fillMaxWidth(
+                                        8.dp
+                                    )
+                            )
+
+                            Text(
+                                university,
+                                fontSize =
+                                    10.5.sp
+                            )
+                        }
+                    }
+                }
+            }
+        },
+
+        confirmButton = {},
+
+        dismissButton = {
+
+            TextButton(
+                onClick =
+                    onDismiss
+            ) {
+                Text(
+                    "Close"
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun CoverEditor(
+    currentUrl: String,
+    pendingUri: Uri?,
+    onPick: () -> Unit,
+    onRemove: () -> Unit
+) {
+
+    val model =
+        pendingUri?.toString()
+            ?: currentUrl
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(
+                    150.dp
+                )
+                .clip(
+                    RoundedCornerShape(
+                        17.dp
+                    )
+                )
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            BlinkPink,
+                            Color(
+                                0xFF7C3AED
+                            )
+                        )
+                    )
+                )
+                .clickable {
+                    onPick()
+                }
+    ) {
+
+        if (
+            model.isNotBlank()
+        ) {
+
+            AsyncImage(
+                model =
+                    model,
+                contentDescription =
+                    "Cover photo",
+                contentScale =
+                    ContentScale.Crop,
+                modifier =
+                    Modifier.fillMaxSize()
+            )
+
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Color.Black.copy(
+                                alpha =
+                                    0.25f
+                            )
+                        )
+            )
+        }
+
+        Column(
+            modifier =
+                Modifier.align(
+                    Alignment.Center
+                ),
+            horizontalAlignment =
+                Alignment.CenterHorizontally
+        ) {
+
+            Icon(
+                Icons.Default.AddPhotoAlternate,
+                contentDescription =
+                    null,
+                tint =
+                    Color.White,
+                modifier =
+                    Modifier.size(
+                        30.dp
+                    )
+            )
+
+            Text(
+                "Change cover photo",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        if (model.isNotBlank()) {
+            TextButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                Text("Remove cover", color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AvatarEditor(
+    currentUrl: String,
+    pendingUri: Uri?,
+    onPick: () -> Unit,
+    onRemove: () -> Unit
+) {
+
+    val model = pendingUri?.toString() ?: currentUrl
+    Row(
+        verticalAlignment =
+            Alignment.CenterVertically
+    ) {
+
+        Box(
+            modifier =
+                Modifier.size(
+                    88.dp
+                )
+        ) {
+
+            if (
+                model.isNotBlank()
+            ) {
+
+                AsyncImage(
+                    model =
+                        model,
+                    contentDescription =
+                        "Avatar",
+                    contentScale =
+                        ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clip(
+                                CircleShape
+                            )
+                            .border(
+                                2.dp,
+                                BlinkPink,
+                                CircleShape
+                            )
+                )
+            }
+
+            IconButton(
+                onClick =
+                    onPick,
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.BottomEnd
+                        )
+                        .size(
+                            32.dp
+                        )
+                        .background(
+                            BlinkPink,
+                            CircleShape
+                        )
+            ) {
+
+                Icon(
+                    Icons.Default.CameraAlt,
+                    contentDescription =
+                        "Change avatar",
+                    tint =
+                        Color.White,
+                    modifier =
+                        Modifier.size(
+                            16.dp
+                        )
+                )
+            }
+        }
+
+        Spacer(
+            modifier =
+                Modifier.fillMaxWidth(
+                    13.dp
+                )
+        )
+
+        Column {
+
+            Text(
+                "Profile picture",
+                fontSize =
+                    13.sp,
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+            Text(
+                "JPEG, PNG or WebP, up to 8 MB. Uploaded when saved.",
+                fontSize =
+                    9.sp,
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
+            )
+
+            Spacer(
+                modifier =
+                    Modifier.fillMaxHeight(
+                        6.dp
+                    )
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPick) {
+                    Text("Choose image", fontSize = 10.sp)
+                }
+                if (model.isNotBlank()) {
+                    TextButton(onClick = onRemove) {
+                        Text("Remove", fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * Local validation shared by both editor Save entry points. Run before any media upload.
+ * The server remains authoritative for username uniqueness and database constraints.
+ */
+private fun validateProfileEditInputs(
+    fullName: String,
+    username: String,
+    email: String,
+    phone: String,
+    whatsapp: String,
+    graduationYear: String,
+    website: String,
+    linkedin: String,
+    twitter: String,
+    instagram: String,
+    featuredLink: String
+): String? = com.blinkng.shared.ProfileEditValidation.validate(
+    fullName = fullName,
+    username = username,
+    email = email,
+    phone = phone,
+    whatsapp = whatsapp,
+    graduationYear = graduationYear,
+    links = listOf(website, linkedin, twitter, instagram, featuredLink)
+)

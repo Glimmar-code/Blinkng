@@ -1,0 +1,66 @@
+name: Apply fullscreen colored text posts v2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fullscreen-color-text-posts-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply fullscreen colored-text post changes
+        run: python .github/scripts/apply_fullscreen_color_text_posts.py
+
+      - name: Add missing Compose layout import
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/ui/components/CreatePostSheet.kt')
+          s = p.read_text()
+          needle = 'import androidx.compose.foundation.layout.height\n'
+          if 'import androidx.compose.foundation.layout.heightIn\n' not in s:
+              if needle not in s:
+                  raise SystemExit('height import marker not found')
+              s = s.replace(needle, needle + 'import androidx.compose.foundation.layout.heightIn\n', 1)
+              p.write_text(s)
+          PY
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/MainActivity.kt \
+            app/src/main/java/com/example/data/models/PostModel.kt \
+            app/src/main/java/com/example/data/supabase/SupabaseService.kt \
+            app/src/main/java/com/example/ui/components/CreatePostSheet.kt \
+            app/src/main/java/com/example/ui/components/PostCard.kt \
+            app/src/main/java/com/example/ui/components/TextPostStyle.kt \
+            app/src/main/java/com/example/viewmodel/BlinkViewModel.kt
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "feat: fullscreen composer and colored text posts"
+            git push origin HEAD:main
+          fi

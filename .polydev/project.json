@@ -1,0 +1,7 @@
+{
+  "templateId": "empty",
+  "ai": {
+    "provider": "hnt8cr2x3f",
+    "model": "gemini-1.5-pro"
+  }
+}

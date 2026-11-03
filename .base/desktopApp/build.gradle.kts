@@ -1,0 +1,99 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.Sync
+import org.gradle.api.tasks.testing.Test
+
+plugins {
+    kotlin("jvm") version "2.4.10"
+    id("org.jetbrains.compose") version "1.12.0"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
+}
+
+apply(from = file("../gradle/png-integrity.gradle.kts"))
+
+tasks.matching { it.name == "processResources" }.configureEach {
+    dependsOn("validatePngIntegrity")
+}
+
+kotlin {
+    jvmToolchain(17)
+    sourceSets {
+        main {
+            // Compile the same platform-neutral Blinkng contracts/logic as Android.
+            kotlin.srcDir("../shared/src/main/kotlin")
+        }
+    }
+}
+
+dependencies {
+    implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
+    implementation(compose.materialIconsExtended)
+
+    // Desktop networking uses the same Supabase REST/Auth endpoints as Android.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.json:json:20250517")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.4")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.11.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
+
+    // Cached network media for avatars, posts, marketplace and reel thumbnails.
+    implementation("io.coil-kt.coil3:coil-compose:3.6.2")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.2")
+
+    // Native Windows Media Foundation video playback for Blinkng reels/posts.
+    implementation("io.github.kdroidfilter:composemediaplayer:0.11.4")
+
+    // Windows DPAPI wrapper used to protect persisted refresh/access tokens at rest.
+    implementation("net.java.dev.jna:jna-platform:5.17.0")
+    implementation("com.google.zxing:core:3.5.3")
+    // LGPL FFmpeg tools, pinned and packaged for the build host. Windows installers
+    // carry their own processor; users do not need an external FFmpeg installation.
+    implementation("org.bytedeco:ffmpeg:8.1.2-1.5.14")
+    val mediaPlatform = if (System.getProperty("os.name").startsWith("Windows")) "windows-x86_64" else "linux-x86_64"
+    runtimeOnly("org.bytedeco:ffmpeg:8.1.2-1.5.14:$mediaPlatform")
+    runtimeOnly("org.bytedeco:javacpp:1.5.14:$mediaPlatform")
+}
+
+tasks.withType<Test>().configureEach { useJUnitPlatform() }
+
+val desktopPackageVersion = providers.environmentVariable("BLINK_DESKTOP_VERSION")
+    .orElse(providers.gradleProperty("BLINK_DESKTOP_VERSION"))
+    .orElse("1.0.0")
+
+
+val stageBlinkLifeWindowsAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("../game3d")) {
+        include("project.godot", "scenes/**", "scripts/**")
+    }
+    into(layout.buildDirectory.dir("nativeResources/windows/blink-life/game"))
+}
+tasks.matching { it.name.startsWith("prepareAppResources") }
+    .configureEach { dependsOn(stageBlinkLifeWindowsAssets) }
+
+compose.desktop {
+    application {
+        mainClass = "com.blinkng.desktop.MainKt"
+
+        nativeDistributions {
+            modules("java.desktop", "jdk.unsupported")
+            targetFormats(TargetFormat.Exe, TargetFormat.Msi)
+            appResourcesRootDir.set(layout.buildDirectory.dir("nativeResources"))
+            packageName = "Blinkng"
+            packageVersion = desktopPackageVersion.get()
+            description = "Blinkng social platform for Windows"
+            vendor = "Blinkng"
+
+            windows {
+                dirChooser = true
+                perUserInstall = true
+                menuGroup = "Blinkng"
+                shortcut = true
+                menu = true
+                iconFile.set(project.file("src/main/resources/blink.ico"))
+                upgradeUuid = "5F71C5F0-0D14-4FCE-9A92-8E29A3A5F7A1"
+            }
+        }
+    }
+}
