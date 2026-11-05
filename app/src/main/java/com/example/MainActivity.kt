@@ -2105,7 +2105,7 @@ fun MainAppContent(
                             viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                         },
                         onCreateGroup = { showGroupInvitations = true },
-                        onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
+                        onMyProfileClick = { viewModel.openMyProfile() },
                         onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
@@ -2447,7 +2447,7 @@ fun MainAppContent(
                                 "notifications" -> viewModel.openActivity(true)
                                 "store" -> showStoreComingSoon = true
                                 "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
-                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                                "profile" -> viewModel.openMyProfile()
                             }
                         }
                     )
@@ -3449,7 +3449,7 @@ fun MainAppContent(
                 onViewProfile = {
                     showSavedProfile = false
                     viewModel.openMenu(false)
-                    viewModel.openProfile("you")
+                    viewModel.openMyProfile()
                 },
                 onLeaderboard = {
                     viewModel.openMenu(false)
@@ -3467,7 +3467,7 @@ fun MainAppContent(
                 onSaved = {
                     showSavedProfile = true
                     viewModel.openMenu(false)
-                    viewModel.openProfile("you")
+                    viewModel.openMyProfile()
                 },
                 onVerification = {
                     viewModel.openMenu(false)
