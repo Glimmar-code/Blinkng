@@ -1,3 +1,9 @@
+## 2026-11-05 — Android own-profile shortcut routing (PR #662)
+
+- **PARITY-EXCEPTION: self-profile-entry-routing** — Android Activity entry points (chat profile shortcut, top-bar Profile action and profile menu actions) now use the canonical `you` self-profile route rather than a username that may still be blank during profile hydration. This is Android navigation wiring only; it does not add or remove profile capabilities or change backend behavior.
+- **Windows equivalent:** The existing desktop profile dialog resolves ownership from `initialProfile.id == state.session?.userId` and loads the signed-in user's profile by authenticated user ID. It does not depend on the Android `you` route or a hydrated username, so the desktop flow already avoids this timing issue.
+- **Verification:** Android runtime/build checks are required for the navigation change; Windows parity is covered by the existing authenticated-ID profile flow. This exception does not claim a Windows code change.
+
 ## 2026-10-29 — Combined Contest, Create Post and Chat repair
 
 - Preserves PR #638, #639 and #644 histories on `Testlab/contest-create-post-chat-20261029`.
