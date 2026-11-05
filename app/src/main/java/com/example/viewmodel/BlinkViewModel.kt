@@ -3770,6 +3770,9 @@ private suspend fun restoreSupabaseSession() {
         return supabaseService.searchProfilesPage(clean, limit, afterUsername, afterId)
     }
 
+    /** Open the signed-in account profile without depending on username hydration. */
+    fun openMyProfile() = openProfile("you")
+
     fun openProfile(username: String) {
         if (isMe(username)) {
             val current = _uiState.value
