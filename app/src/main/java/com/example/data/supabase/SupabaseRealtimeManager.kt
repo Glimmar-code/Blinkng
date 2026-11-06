@@ -185,10 +185,59 @@ class SupabaseRealtimeManager private constructor() {
         ) == true
         if (sent) lastAccessTokenSent = token
     }
-    private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","conversation_presence","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes","user_balances")
-        tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
+    private val alwaysOnTables = listOf("messages","conversations","conversation_presence","notifications","activities","user_balances","calls")
+    private val screenSubscriptionLock = Any()
+    private val screenScopedTables = mutableSetOf<String>()
+
+    fun subscribeToTables() {
+        synchronized(screenSubscriptionLock) {
+            alwaysOnTables.forEach { joinTable(it) }
+            screenScopedTables.forEach { joinTable(it) }
+        }
     }
+
+    fun subscribeToScreenTable(table: String) {
+        if (table in alwaysOnTables) return
+        synchronized(screenSubscriptionLock) {
+            if (screenScopedTables.add(table)) joinTable(table)
+        }
+    }
+
+    fun unsubscribeFromScreenTable(table: String) {
+        if (table in alwaysOnTables) return
+        synchronized(screenSubscriptionLock) {
+            if (screenScopedTables.remove(table)) {
+                webSocket?.send(buildLeave(table))
+            }
+        }
+    }
+
+    private fun joinTable(table: String) {
+        val join = JSONObject().apply {
+            put("topic", "realtime:public:$table")
+            put("event", "phx_join")
+            put("payload", JSONObject().apply {
+                put("config", JSONObject().apply {
+                    put("postgres_changes", org.json.JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("event", "*")
+                            put("schema", "public")
+                            put("table", table)
+                        })
+                    })
+                })
+            })
+            put("ref", refCounter.getAndIncrement().toString())
+        }
+        webSocket?.send(join.toString())
+    }
+
+    private fun buildLeave(table: String) = JSONObject().apply {
+        put("topic", "realtime:public:$table")
+        put("event", "phx_leave")
+        put("payload", JSONObject())
+        put("ref", refCounter.getAndIncrement().toString())
+    }.toString()
     private fun handleIncomingMessage(text: String) {
         try {
             val json = JSONObject(text)

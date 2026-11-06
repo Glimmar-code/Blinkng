@@ -1,3 +1,9 @@
+## 2026-11-06 — Android realtime lifecycle and credential hardening (PR #663)
+
+- **PARITY-EXCEPTION: android-realtime-and-secure-storage-adapters-20261106** — Android keeps messages, conversations, presence, notifications, activities, balances and incoming calls live; feed-post events are joined only while the Home feed is active, and ConnectHub-specific tables are joined only while Connect is active. The subscription set is replayed safely after reconnects. Android's identifier-only remembered-login migration uses Android Keystore/SharedPreferences; its private bug-report screenshot reader accepts `jpg`, `jpeg`, `png`, `webp`, `heic` and `heif` without changing storage authorization. The Android-only config fallback warning and conversation cursor pagination are client-adapter changes; the pinned `blink-web` frontend response is shared by both clients.
+- **Windows equivalent:** Windows keeps its independent REST-backed desktop data/session workflows and manual refresh affordances; it does not use Android's OkHttp Realtime socket or Android Keystore. The desktop sign-in flow does not persist passwords. Windows bug reports remain text-only (`p_screenshot=false`) with the existing admin review flow; Windows screenshot attachment/rendering is not introduced by this PR. No shared database schema, authorization or endpoint contract changes are made.
+- **Scope:** This exception covers OS-specific realtime lifecycle, local identifier storage and Android screenshot-file handling only; it does not claim new Windows screenshot support or change Windows behavior.
+
 ## 2026-11-05 — Android own-profile shortcut routing (PR #662)
 
 - **PARITY-EXCEPTION: self-profile-entry-routing** — Android Activity entry points (chat profile shortcut, top-bar Profile action and profile menu actions) now use the canonical `you` self-profile route rather than a username that may still be blank during profile hydration. This is Android navigation wiring only; it does not add or remove profile capabilities or change backend behavior.
@@ -1866,4 +1872,3 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 
 - Android FCM and in-app launch alerts route to the Contest tab using the existing Home feed subtab destination. Windows foreground and notification-centre alerts route to the existing `connect` Contest destination.
 - The notification event and target are server-generated and validated against a currently published contest. Windows has no Android FCM receiver; email and the durable in-app notification rows remain cross-platform.
-

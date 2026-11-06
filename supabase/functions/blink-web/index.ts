@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const RAW_FRONTEND = "https://raw.githubusercontent.com/Glimmar-code/Blinkng/main/web/index.html";
+// Pinned to commit 10509492f247301aa2db0a66f974b3e1094c7f4e. Update this SHA in docs/ whenever web/index.html changes.
+const RAW_FRONTEND = "https://raw.githubusercontent.com/Glimmar-code/Blinkng/10509492f247301aa2db0a66f974b3e1094c7f4e/web/index.html";
 const EDGE_BASE = "/functions/v1/blink-web";
 
 Deno.serve(async (req: Request) => {
