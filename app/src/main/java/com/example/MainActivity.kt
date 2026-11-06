@@ -1794,6 +1794,38 @@ fun MainAppContent(
         uiState.activeViewingStory == null &&
         !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3)
 
+    val feedRealtimeActive = selectedPage == 0 && pagerState.currentPage == 0 &&
+        !pagerState.isScrollInProgress &&
+        (mainPageSwipeEnabled || uiState.activeCommentsPostId != null ||
+            uiState.activePostOptionsPost != null || sharingPostId != null)
+    DisposableEffect(viewModel, feedRealtimeActive) {
+        if (feedRealtimeActive) viewModel.realtimeManager.subscribeToScreenTable("feed_posts")
+        onDispose {
+            if (feedRealtimeActive) viewModel.realtimeManager.unsubscribeFromScreenTable("feed_posts")
+        }
+    }
+
+    val connectHubRealtimeTables = remember {
+        listOf(
+            "roommate_profiles", "roommate_applications", "mentor_profiles", "mentor_requests",
+            "reading_mate_profiles", "reading_mate_requests", "housing_agent_profiles",
+            "housing_requests", "housing_request_applications", "game_challenges",
+            "study_circles", "study_circle_members"
+        )
+    }
+    val connectHubRealtimeActive = selectedPage == 3 && pagerState.currentPage == 3 &&
+        !pagerState.isScrollInProgress
+    DisposableEffect(viewModel, connectHubRealtimeActive) {
+        if (connectHubRealtimeActive) {
+            connectHubRealtimeTables.forEach(viewModel.realtimeManager::subscribeToScreenTable)
+        }
+        onDispose {
+            if (connectHubRealtimeActive) {
+                connectHubRealtimeTables.forEach(viewModel.realtimeManager::unsubscribeFromScreenTable)
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(
             state = pagerState,

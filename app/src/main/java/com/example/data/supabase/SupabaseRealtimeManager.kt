@@ -185,21 +185,30 @@ class SupabaseRealtimeManager private constructor() {
         ) == true
         if (sent) lastAccessTokenSent = token
     }
-    private val alwaysOnTables = listOf("messages","conversations","conversation_presence","notifications","activities","user_balances")
+    private val alwaysOnTables = listOf("messages","conversations","conversation_presence","notifications","activities","user_balances","calls")
+    private val screenSubscriptionLock = Any()
     private val screenScopedTables = mutableSetOf<String>()
 
     fun subscribeToTables() {
-        alwaysOnTables.forEach { joinTable(it) }
-        screenScopedTables.forEach { joinTable(it) }
+        synchronized(screenSubscriptionLock) {
+            alwaysOnTables.forEach { joinTable(it) }
+            screenScopedTables.forEach { joinTable(it) }
+        }
     }
 
     fun subscribeToScreenTable(table: String) {
-        if (screenScopedTables.add(table)) joinTable(table)
+        if (table in alwaysOnTables) return
+        synchronized(screenSubscriptionLock) {
+            if (screenScopedTables.add(table)) joinTable(table)
+        }
     }
 
     fun unsubscribeFromScreenTable(table: String) {
-        if (screenScopedTables.remove(table)) {
-            webSocket?.send(buildLeave(table))
+        if (table in alwaysOnTables) return
+        synchronized(screenSubscriptionLock) {
+            if (screenScopedTables.remove(table)) {
+                webSocket?.send(buildLeave(table))
+            }
         }
     }
 

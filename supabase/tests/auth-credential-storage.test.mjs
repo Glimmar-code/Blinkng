@@ -33,6 +33,7 @@ test("legacy login store migrates away from saved passwords without restoring th
   assert.match(remember, /val raw = JSONObject\(\)\.put\("identifier", clean\)/);
   assert.match(remember, /if \(obj\.has\("password"\)\)/);
   assert.match(remember, /if \(identifier\.isBlank\(\)\) clear\(context\)/);
-  assert.match(remember, /else save\(context, identifier, ""\)/);
+  assert.match(remember, /else save\(context, identifier\)/);
+  assert.doesNotMatch(remember, /fun save\(context: Context, identifier: String, password: String\)/);
   assert.match(remember, /Login\(identifier\)\.takeIf/);
 });
