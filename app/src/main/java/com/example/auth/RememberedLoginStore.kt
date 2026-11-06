@@ -72,9 +72,7 @@ object RememberedLoginStore {
         return String(cipher.doFinal(combined.copyOfRange(12, combined.size)), StandardCharsets.UTF_8)
     }
 
-    /** Retain the old call shape for older callers, but NEVER store the password. */
-    @Suppress("UNUSED_PARAMETER")
-    fun save(context: Context, identifier: String, password: String) {
+    fun save(context: Context, identifier: String) {
         val clean = identifier.trim()
         if (clean.isBlank()) return
         val raw = JSONObject().put("identifier", clean).toString()
@@ -97,7 +95,7 @@ object RememberedLoginStore {
         // expose a legacy password to a Composable or restore it into fields.
         if (obj.has("password")) {
             if (identifier.isBlank()) clear(context)
-            else save(context, identifier, "")
+            else save(context, identifier)
         }
         Login(identifier).takeIf { it.identifier.isNotBlank() }
     } catch (_: Exception) {

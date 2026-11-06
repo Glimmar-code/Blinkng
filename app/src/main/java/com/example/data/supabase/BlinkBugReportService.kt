@@ -151,7 +151,7 @@ class BlinkBugReportService {
 
     /** A private authenticated read: never expose screenshot URLs as public links. */
     suspend fun screenshot(path: String): Result<ByteArray> = runCatching {
-        require(Regex("^[a-f0-9-]{36}/[a-f0-9-]{36}\\.jpg$").matches(path)) { "Invalid screenshot." }
+        require(Regex("^[a-f0-9-]{36}/[a-f0-9-]{36}\\.(jpg|jpeg|png|webp|heic|heif)$").matches(path)) { "Invalid screenshot." }
         withContext(Dispatchers.IO) {
             val session = SupabaseService()
             if (!session.restoreSession()) error("Sign in again.")

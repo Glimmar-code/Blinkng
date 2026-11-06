@@ -266,7 +266,7 @@ class ChatRepository(
             items = items,
             nextBeforeAt = last?.optString("cursor_at")?.takeIf { it.isNotBlank() && !it.equals("null", true) },
             nextBeforeId = last?.optString("conversation_id")?.takeIf { it.isNotBlank() },
-            hasMore = array.length() >= CONVERSATION_PAGE_SIZE
+            hasMore = last?.optString("cursor_at")?.takeIf { it.isNotBlank() && !it.equals("null", true) } != null
         )
     }
 
