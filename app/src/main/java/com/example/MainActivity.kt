@@ -697,9 +697,20 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val reduceAppMotion = rememberBlinkReduceMotion()
-            // Covers auth/session restoration too: returning users must see the intro.
-            var showStartupIntro by remember { mutableStateOf(true) }
-            var introAnimationFinished by remember { mutableStateOf(false) }
+            // Do not replay the full launch animation when Android recreates the task
+            // after the user briefly switches apps. That feels like a logout/restart even
+            // though the authenticated session and navigation state are still recoverable.
+            // New/signed-out launches retain the branded intro.
+            val hasRecoverableAccount = remember {
+                !AccountSessionStore.isSignInRequired(this@MainActivity) &&
+                    getSharedPreferences("blink_user_session", MODE_PRIVATE)
+                        .getString("username", "")
+                        .orEmpty()
+                        .isNotBlank()
+            }
+            val skipStartupIntro = savedInstanceState != null || hasRecoverableAccount
+            var showStartupIntro by remember { mutableStateOf(!skipStartupIntro) }
+            var introAnimationFinished by remember { mutableStateOf(skipStartupIntro) }
             // Never reveal the legacy black SPLASH placeholder after the wordmark.
             // Keep the final BLINK frame visible until a real destination is ready.
             LaunchedEffect(introAnimationFinished, uiState.destination) {
@@ -964,8 +975,25 @@ class MainActivity : ComponentActivity() {
                                         ) + fadeOut(animationSpec = tween(150))
                                     )
                                 } else {
-                                    fadeIn(animationSpec = tween(160)) togetherWith
-                                        fadeOut(animationSpec = tween(120))
+                                    // Premium app motion: pages feel connected instead of
+                                    // blinking between unrelated surfaces. Keep the movement
+                                    // restrained so it remains fast on feed/chat transitions.
+                                    (
+                                        slideInHorizontally(
+                                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                                            initialOffsetX = { it / 14 }
+                                        ) +
+                                            fadeIn(animationSpec = tween(180)) +
+                                            scaleIn(
+                                                initialScale = 0.985f,
+                                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                                            )
+                                    ) togetherWith (
+                                        slideOutHorizontally(
+                                            animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                            targetOffsetX = { -it / 20 }
+                                        ) + fadeOut(animationSpec = tween(130))
+                                    )
                                 }
                             },
                             label = "AppNavigation"
@@ -3041,9 +3069,16 @@ fun MainAppContent(
 
         // Modals: Post Options Menu Sheet (Save, Share, Delete, Report, Mute)
         uiState.activePostOptionsPost?.let { post ->
+            val currentUsername = uiState.myProfile.username.trim().removePrefix("@")
+            val postAuthorUsername = post.authorUsername.trim().removePrefix("@")
+            val postAuthorDisplayName = post.author.trim().removePrefix("@")
+            val canDeletePost = currentUsername.isNotBlank() && (
+                postAuthorUsername.equals(currentUsername, ignoreCase = true) ||
+                    postAuthorDisplayName.equals(currentUsername, ignoreCase = true)
+                )
             PostOptionsMenuSheet(
                 post = post,
-                isAuthor = post.author.equals(uiState.myProfile.username, ignoreCase = true),
+                isAuthor = canDeletePost,
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openPostOptions(null) },
                 onToggleSave = { viewModel.toggleBookmark(post.id) },
@@ -3530,7 +3565,10 @@ fun MainAppContent(
                 },
                 onOpenAdmin = {
                     viewModel.openMenu(false)
-                    if (canOpenAdmin) context.startActivitySafely(
+                    // Keep the entry point discoverable while the async capability check
+                    // is resolving. AdminControlCenterActivity performs the authoritative
+                    // server-side check before showing any protected controls.
+                    context.startActivitySafely(
                         Intent(context, AdminControlCenterActivity::class.java),
                         "Could not open administration."
                     )

@@ -113,7 +113,9 @@ fun BlinkReferenceMenuScreen(
     var page by rememberSaveable(profile.id) { mutableStateOf("menu") }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
     var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
-    val adminModeAvailable = canOpenAdmin
+    // Keep the destination discoverable while the capability RPC is resolving.
+    // AdminControlCenterActivity performs the authoritative server-side check.
+    val adminModeAvailable = profile.id.isNotBlank()
     var updateMessage by rememberSaveable { mutableStateOf("Check for the latest verified BLINK release.") }
     var checkingUpdate by remember { mutableStateOf(false) }
     val updateScope = rememberCoroutineScope()
