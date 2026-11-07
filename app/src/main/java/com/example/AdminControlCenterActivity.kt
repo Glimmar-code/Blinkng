@@ -65,9 +65,17 @@ private fun AdminControlCenter(onExit: () -> Unit) {
     var leaving by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        service.fetchCapability()
-            .onSuccess { capability = it }
-            .onFailure { error = it.message ?: "Unable to verify admin access." }
+        var lastError: Throwable? = null
+        repeat(3) { attempt ->
+            if (capability != null) return@repeat
+            service.fetchCapability()
+                .onSuccess { capability = it; lastError = null }
+                .onFailure { lastError = it }
+            if (capability == null && attempt < 2) delay(750L)
+        }
+        if (capability == null) {
+            error = lastError?.message ?: "Unable to verify admin access. Please try again."
+        }
     }
     LaunchedEffect(leaving) {
         if (leaving) {

@@ -12,6 +12,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import com.example.auth.AccountSessionStore
+import com.example.data.local.BlinkDataUsagePreferences
 import com.example.call.IncomingCallNotification
 import com.example.call.BlinkTelecomManager
 import com.example.data.supabase.SupabaseService
@@ -24,6 +25,8 @@ import com.example.performance.HighRefreshRateController
 import com.example.util.safeString
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.concurrent.TimeUnit
+import java.io.IOException
+import okhttp3.OkHttpClient
 
 class BlinkApplication : Application(), ImageLoaderFactory {
     // Non-essential services must not prevent the main BLINK feed from starting.
@@ -165,6 +168,18 @@ class BlinkApplication : Application(), ImageLoaderFactory {
 
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addInterceptor { chain ->
+                        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                        if (BlinkDataUsagePreferences.isReduceMobileDataEnabled(this) &&
+                            connectivity?.isActiveNetworkMetered == true) {
+                            throw IOException("BLINK data saver blocked an uncached image on a metered network")
+                        }
+                        chain.proceed(chain.request())
+                    }
+                    .build()
+            }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.18)

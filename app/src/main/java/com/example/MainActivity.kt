@@ -3530,7 +3530,10 @@ fun MainAppContent(
                 },
                 onOpenAdmin = {
                     viewModel.openMenu(false)
-                    if (canOpenAdmin) context.startActivitySafely(
+                    // Keep the entry point discoverable while the async capability check
+                    // is resolving. AdminControlCenterActivity performs the authoritative
+                    // server-side check before showing any protected controls.
+                    context.startActivitySafely(
                         Intent(context, AdminControlCenterActivity::class.java),
                         "Could not open administration."
                     )
