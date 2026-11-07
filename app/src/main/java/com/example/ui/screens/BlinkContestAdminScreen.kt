@@ -90,6 +90,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var pendingContestError by remember { mutableStateOf<String?>(null) }
 
     var topicRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicsLoading by remember { mutableStateOf(false) }
+    var topicLoadError by remember { mutableStateOf<String?>(null) }
     var topicId by remember { mutableStateOf("") }
     var topicMenu by remember { mutableStateOf(false) }
     var competitionScope by remember { mutableStateOf("campus") }
@@ -139,7 +141,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         if (message.isNotBlank()) snackbarHostState.showSnackbar(message)
     }
     LaunchedEffect(revision) {
-        api.topicDirectory().onSuccess { topicRows = it.contestObjects() }
+        topicsLoading = true
+        topicLoadError = null
+        api.topicDirectory()
+            .onSuccess { topicRows = it.contestObjects() }
+            .onFailure { topicLoadError = it.message ?: "Contest topics could not be loaded." }
+        topicsLoading = false
         contestsLoading = true
         api.adminContests().onSuccess { contests = it.contestObjects() }
             .onFailure { message = it.message ?: "Cannot load contests." }
@@ -260,6 +267,15 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             }
             Text("Choose one of the public topics users can browse. You can add new topics through the admin topic library.",
                 style = MaterialTheme.typography.bodySmall)
+            if (topicsLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            topicLoadError?.let { error ->
+                Text("Topics unavailable: $error. Refresh the manager before creating a contest.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (!topicsLoading && topicLoadError == null && topicRows.isEmpty()) {
+                Text("No contest topics are available yet. Add a topic to the library first.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             OutlinedTextField(newTopicName, { newTopicName = it.take(100) },
                 label = { Text("Create custom topic name") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(newTopicCategory, { newTopicCategory = it.take(60) },
@@ -305,7 +321,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 label = { Text("Season (optional, e.g. BLINK Season 1)") },
                 modifier = Modifier.fillMaxWidth())
         }
-        item { OutlinedTextField(university, { university = it.take(120) }, label = { Text("University (optional, blank = all)") }, modifier = Modifier.fillMaxWidth()) }
+        item {
+            if (topicId.isBlank() && !topicsLoading && topicLoadError == null) {
+                Text("Select a contest topic before saving.", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
         item {
             Text("Contest cover", style = MaterialTheme.typography.titleMedium)
             OutlinedButton(onClick = {
@@ -367,7 +388,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Text(draftError, color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             }
-            Button(enabled = !busy && draftError == null,
+            Button(enabled = !busy && draftError == null && topicId.isNotBlank() &&
+                !topicsLoading && topicLoadError == null,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(14.dp), onClick = {
                 busy = true

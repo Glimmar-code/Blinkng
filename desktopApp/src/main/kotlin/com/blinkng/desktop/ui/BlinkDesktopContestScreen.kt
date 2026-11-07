@@ -663,6 +663,8 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var topics by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicsLoading by remember { mutableStateOf(false) }
+    var topicLoadError by remember { mutableStateOf<String?>(null) }
     var topicId by remember { mutableStateOf("") }
     var topicMenu by remember { mutableStateOf(false) }
     var scopeType by remember { mutableStateOf("campus") }
@@ -706,7 +708,12 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var third by remember { mutableStateOf("0") }
 
     LaunchedEffect(revision) {
-        runCatching { api.contestTopicDirectory() }.onSuccess { topics = it.rows() }
+        topicsLoading = true
+        topicLoadError = null
+        runCatching { api.contestTopicDirectory() }
+            .onSuccess { topics = it.rows() }
+            .onFailure { topicLoadError = it.message ?: "Contest topics could not be loaded." }
+        topicsLoading = false
         runCatching { api.adminContestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
     }
@@ -751,7 +758,8 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
         OutlinedTextField(description, { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(rules, { rules = it }, label = { Text("Rules and eligibility") }, modifier = Modifier.fillMaxWidth())
         Box {
-            OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(enabled = !topicsLoading && topicLoadError == null && topics.isNotEmpty(),
+                onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(topics.firstOrNull { it.optString("id") == topicId }?.optString("name") ?: "Select contest topic")
             }
             DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
@@ -762,6 +770,13 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (topicsLoading) CircularProgressIndicator()
+        topicLoadError?.let { Text("Topics unavailable: $it. Refresh before creating a contest.",
+            color = MaterialTheme.colorScheme.error) }
+        if (!topicsLoading && topicLoadError == null && topics.isEmpty()) Text(
+            "No contest topics are available. Add a topic to the library first.", color = MaterialTheme.colorScheme.error)
+        if (topicId.isBlank() && !topicsLoading && topicLoadError == null) Text(
+            "Select a contest topic before saving.", color = MaterialTheme.colorScheme.error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = scopeType == "campus", onClick = { scopeType = "campus" }, label = { Text("Campus") })
             FilterChip(selected = scopeType == "nationwide", onClick = { scopeType = "nationwide"; university = "" },
@@ -808,7 +823,9 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
             OutlinedTextField(second, { second = it }, label = { Text("2nd prize ₦") }, modifier = Modifier.weight(1f))
             OutlinedTextField(third, { third = it }, label = { Text("3rd prize ₦") }, modifier = Modifier.weight(1f))
         }
-        Button(enabled = !busy && title.length >= 4, onClick = {
+        Button(enabled = !busy && title.trim().length >= 4 && topicId.isNotBlank() &&
+            !topicsLoading && topicLoadError == null &&
+            (scopeType != "campus" || university.isNotBlank()), onClick = {
             busy = true
             val data = JSONObject().put("title", title).put("description", description)
                 .put("rules", rules).put("category", topics.firstOrNull { it.optString("id") == topicId }?.optString("category") ?: "General")
