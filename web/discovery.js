@@ -20,7 +20,8 @@
     ['oau', 'Obafemi Awolowo University, Ile-Ife'],
     ['unn', 'University of Nigeria, Nsukka'],
     ['abu', 'Ahmadu Bello University, Zaria'],
-    ['n o u n', 'National Open University of Nigeria']
+    ['n o u n', 'National Open University of Nigeria'],
+    ['noun', 'National Open University of Nigeria']
   ]);
   const normalize = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   let universitiesPromise;
@@ -72,7 +73,7 @@
   const tour = {
     feed:{heading:'A space for real conversations',body:'Share a post, follow people you know and explore updates from BLINK accounts.',action:'Browse BLINK features',path:'/features/'},
     reels:{heading:'Short videos, big moments',body:'Watch reels and discover creators. Sign in to engage with content and share your own.',action:'Explore Reels',path:'/features/'},
-    market:{heading:'Discover the BLINK marketplace',body:'Explore product listings and connect with sellers from inside the BLINK community. Seller posting requires approval.',action:'Learn about BLINK Market',path:'/features/'},
+    market:{heading:'Discover the BLINK marketplace',body:'Explore product listings and connect with sellers from inside the BLINK community. Seller posting requires approval.',action:'Learn about BLINK Market',path:'/marketplace/'},
     connect:{heading:'Connections beyond the feed',body:'Explore university connections, reading partners and other opportunities available in BLINK Connect.',action:'Learn about Connect',path:'/features/'}
   };
   function initTour(root){

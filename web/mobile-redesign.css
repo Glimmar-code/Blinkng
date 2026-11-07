@@ -13,11 +13,13 @@
  .app-shell .mobile-nav button{color:#bdbdbd;font-size:11px;min-width:0}
  .app-shell .mobile-nav button span{font-size:20px}
  .app-shell .mobile-nav button.active{color:#fff;background:#202020}
- body:has(.feed) .app-shell .story-strip,body:has(.feed) .app-shell .stories,body:has(.feed) .app-shell [class*="story-bar"]{display:none!important}
+ body:has(.feed) .app-shell .stories{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding:10px 12px 14px;scrollbar-width:none}
+ body:has(.feed) .app-shell .stories::-webkit-scrollbar{display:none}
+ body:has(.feed) .app-shell .story-ring{scroll-snap-align:start}
  body:has(.feed) .app-shell .tabs{display:flex;gap:6px;padding:10px 12px;margin:0;background:#080808}
  body:has(.feed) .app-shell .tab{border-radius:999px;border:1px solid #343434;background:#121212;color:#ddd;font-size:14px}
  body:has(.feed) .app-shell .tab.active{background:#fff;color:#080808;border-color:#fff}
- body:has(.feed) .app-shell .composer{display:none!important}
+ body:has(.feed) .app-shell .composer{display:block!important}
  body:has(.feed) .app-shell .feed{gap:2px}
  body:has(.feed) .app-shell .post-card{border:0;border-radius:0;border-bottom:1px solid #262626;background:#0d0d0d}
  body:has(.feed) .app-shell .post-head{padding:10px 12px}
