@@ -9,7 +9,12 @@ const seedSql = fs.readFileSync(
 const db = new PGlite();
 
 try {
-  await db.exec('create schema private;');
+  await db.exec(`
+    create role anon;
+    create role authenticated;
+    create role service_role;
+    create schema private;
+  `);
   await db.exec(seedSql);
 
   const summary = (await db.query(`
@@ -54,11 +59,13 @@ try {
     select
       has_schema_privilege('anon', 'private', 'USAGE') as anon_schema_access,
       has_schema_privilege('authenticated', 'private', 'USAGE') as auth_schema_access,
-      has_table_privilege('authenticated', 'private.blink_test_synthetic_accounts', 'SELECT') as auth_table_access
+      has_table_privilege('authenticated', 'private.blink_test_synthetic_accounts', 'SELECT') as auth_table_access,
+      has_table_privilege('service_role', 'private.blink_test_synthetic_accounts', 'SELECT') as service_table_access
   `)).rows[0];
   assert.equal(privileges.anon_schema_access, false);
   assert.equal(privileges.auth_schema_access, false);
   assert.equal(privileges.auth_table_access, false);
+  assert.equal(privileges.service_table_access, false);
 
   console.log('PASS 2,000 isolated synthetic campus fixtures; policy, privacy, and idempotency verified');
 } finally {
