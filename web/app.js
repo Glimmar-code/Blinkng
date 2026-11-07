@@ -1510,9 +1510,11 @@
       const [pr,po]=await Promise.allSettled([profileResults,rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
       const profiles=pr.status==='fulfilled'?(pr.value||[]):[],posts=po.status==='fulfilled'?(po.value||[]):[];
-      const pmap=posts.length?await fetchProfiles(posts.map(x=>x.user_id)).catch(()=>new Map()):new Map();
+      if(pr.status==='rejected')toast('People search unavailable.');
+      if(po.status==='rejected')toast('Post search unavailable.');
+      const pmap=await fetchProfiles(posts.map(x=>x.user_id)).catch(()=>new Map());
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
-      out.innerHTML=`<h3>People</h3><div class="list">${pr.status==='rejected'?'<p class="error">People search unavailable. Try again.</p>':(profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>')}</div><h3>Posts</h3><div class="feed">${po.status==='rejected'?'<p class="error">Post search unavailable. Try again.</p>':(posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>')}</div>`;
+      out.innerHTML=`<h3>People</h3><div class="list">${profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
       bindPostCards();
       if(typeof IntersectionObserver==='function'){
         const timers=new Map(),tracked=new Set();
