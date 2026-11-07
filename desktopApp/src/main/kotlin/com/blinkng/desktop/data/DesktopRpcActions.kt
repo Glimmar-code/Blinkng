@@ -317,13 +317,18 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun getBoostMissions(limit: Int = 12): JSONObject =
         rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
 
-    suspend fun getPromotedBoostSlots(surface: String, limit: Int = 3): JSONObject =
-        rpc(
-            "get_blink_promoted_slots",
+    suspend fun getPromotedBoostSlots(surface: String, limit: Int = 3): JSONObject {
+        val normalizedSurface = surface.trim().uppercase()
+        require(normalizedSurface in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET", "REELS")) {
+            "Unknown Boost placement."
+        }
+        return rpc(
+            if (normalizedSurface == "MARKET") "get_market_promoted_slots" else "get_blink_promoted_slots",
             JSONObject()
-                .put("p_surface", surface.trim().uppercase())
+                .put("p_surface", normalizedSurface)
                 .put("p_limit", limit.coerceIn(1, 10)),
         )
+    }
 
     suspend fun quoteBoostCampaign(
         targetType: String,
@@ -408,14 +413,20 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun followDropCreator(id: String): JSONObject =
         rpc("follow_blink_drop_creator", JSONObject().put("p_creator_id", id))
 
-    suspend fun recordBoostDelivery(campaignId: String, eventType: String, surface: String): JSONObject =
-        rpc(
+    suspend fun recordBoostDelivery(campaignId: String, eventType: String, surface: String): JSONObject {
+        require(campaignId.isNotBlank()) { "Campaign is missing." }
+        val normalizedSurface = surface.trim().uppercase()
+        require(normalizedSurface in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET", "REELS")) {
+            "Unknown Boost delivery surface."
+        }
+        return rpc(
             "record_blink_boost_delivery",
             JSONObject()
                 .put("p_campaign_id", campaignId.trim())
                 .put("p_event_type", eventType.trim().uppercase())
-                .put("p_surface", surface.trim().uppercase()),
+                .put("p_surface", normalizedSurface),
         )
+    }
 
     suspend fun completeBoostMissionAction(
         campaignId: String,
