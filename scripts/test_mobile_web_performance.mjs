@@ -5,7 +5,7 @@ import {readFileSync,statSync} from 'node:fs';
 
 const read=p=>readFileSync(p,'utf8');
 const sizes={
-  'web/app.js':160_000,
+  'web/app.js':162_000,
   'web/link-previews.js':10_000,
   'web/profile-theme.js':10_000,
   'web/parity.js':115_000,
@@ -29,6 +29,9 @@ const diagnostics=read('web/performance-diagnostics.js');
 const discovery=read('web/discovery.js');
 const manifest=JSON.parse(read('web/manifest.webmanifest'));
 const html=read('web/index.html');
+const app=read('web/app.js');
+const styles=read('web/styles.css');
+const mobile=read('web/mobile-redesign.css');
 assert.ok(sw.includes("blink-web-v30-landing-contest"),'Mobile service worker cache version mismatch');
 assert.ok(!sw.includes("'./blink-logo.png'"),'Do not precache large 512px PWA icon on each phone');
 assert.ok(manifest.icons.some(icon=>icon.src==='pwa-512.png'),'PWA icon must remain available on demand');
@@ -50,6 +53,16 @@ for(const metric of ['fcp','lcp','cls','inp','ttfb']){
 assert.ok(diagnostics.includes("console.info('[BLINK performance diagnostics — local only]'"),'Report should stay within browser developer console');
 assert.ok(read('web/landing.css').includes('@media(max-width:680px)'),'Mobile landing breakpoints missing');
 assert.ok(read('web/landing.css').includes('prefers-reduced-motion'),'Site must respect reduced-motion');
+assert.ok(app.includes('syncMotionDataPreference')&&app.includes('connection?.saveData===true'),'App must opt out of nonessential motion for data-saver users');
+assert.ok(styles.includes('.route-content:not([data-motion-sensitive="true"])')&&styles.includes('prefers-reduced-motion:reduce'),'Route motion must be subtle, scoped, and disabled for reduced-motion');
+assert.ok(styles.includes('html.save-data .app-shell .route-content')&&styles.includes('data-motion-sensitive="true"'),'Data-saver and sensitive confirmation routes must not animate');
+assert.ok(styles.includes('.route-content[data-motion-sensitive="true"] .btn:active'),'Sensitive route controls must not animate when confirming privacy or payment actions');
+assert.ok(styles.includes('.premium-profile-surface::after{display:none}')&&styles.includes('html.save-data .premium-profile-surface::after'),'Decorative premium loops must honor reduced-motion and data-saver preferences');
+assert.ok(!styles.includes('.app-shell .card,.app-shell .post-card'),'Individual cards must not replay entrance motion on async refresh');
+assert.ok(mobile.includes('body:has(.feed) .app-shell .stories{display:flex')&&!mobile.includes('body:has(.feed) .app-shell .stories{display:none'),'Mobile feed stories must remain reachable');
+assert.ok(app.includes('alt="${alt}"')&&app.includes("post.alt_text||'Post image'"),'Every feed image must use authored alt text or a meaningful fallback');
+assert.ok(app.includes("post.liked_by_viewer?'on':''")&&app.includes("post.bookmarked_by_viewer?'on':''"),'Initial post reaction states must be visible and accessible');
+assert.ok(app.includes('data-post-count="likes"')&&app.includes('data-post-count="reposts"'),'Visible reaction counts must be reconciled after successful actions');
 new Function(discovery);
 new Function(diagnostics);
 new Function(sw);

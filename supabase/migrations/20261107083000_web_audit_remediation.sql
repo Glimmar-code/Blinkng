@@ -7,7 +7,9 @@ create table if not exists public.blink_store_settings (
   updated_at timestamptz not null default now()
 );
 insert into public.blink_store_settings(id,is_paused) values(true,true) on conflict(id) do nothing;
+alter table public.blink_store_settings enable row level security;
 revoke all on public.blink_store_settings from public, anon, authenticated;
+grant select, update on table public.blink_store_settings to service_role;
 create or replace function private.blink_store_is_paused() returns boolean
 language sql stable security definer set search_path=''
 as $$ select coalesce((select is_paused from public.blink_store_settings where id=true),true); $$;
