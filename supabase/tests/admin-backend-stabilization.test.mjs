@@ -45,8 +45,8 @@ test('all private-backed admin wrappers are elevated narrowly', () => {
 test('private schema remains closed and implementation-level authorization is retained', () => {
   assert.ok(normalized.includes('never grant clients access to private'));
   assert.ok(!normalized.includes('grant usage on schema private'));
-  assert.ok(normalized.includes('private.require_blink_admin()'));
-  assert.ok(normalized.includes('private.require_blink_owner()'));
+  assert.ok(normalized.includes('require_blink_admin()'));
+  assert.ok(normalized.includes('require_blink_owner()'));
 });
 
 test('daily streak helper is scoped to the authenticated user', () => {
