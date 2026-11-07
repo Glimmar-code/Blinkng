@@ -62,6 +62,7 @@ try {
   )).rows[0].is_active;
   assert.equal(paused, false);
 
+  await db.exec('reset role');
   const audit = (await db.query(`
     select count(*)::int as n
     from private.blink_test_bot_admin_audit
@@ -70,6 +71,7 @@ try {
   `, [actorId])).rows[0].n;
   assert.equal(audit, 1);
 
+  await db.exec('set role service_role');
   const bulk = (await db.query(
     'select public.blink_test_bot_bulk_set_status(false, $1, $2) as n',
     [actorId, 'pause all test fixtures']
