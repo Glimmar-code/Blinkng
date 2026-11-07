@@ -1125,13 +1125,7 @@
   }
   function postCard(post){const a=post.author||{},r=!!post.is_reel,path=`/${r?'reel':'post'}/${post.id}`,c=post.allow_comments!==false,l=post.hide_likes?null:fmt(post.like_count);return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button><button class="icon-btn" aria-label="Open post" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${richLinkCard([post.text||post.caption||'',post.link_url||''].join(' '))}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span data-post-count="reposts" data-count="${Math.max(0,Number(post.repost_count)||0)}">${fmt(post.repost_count)} reposts</span>${c?`<span>${fmt(post.comment_count)} comments</span>`:''}${l===null?'':`<span data-post-count="likes" data-count="${Math.max(0,Number(post.like_count)||0)}">${l} likes</span>`}</div><div class="post-actions"><button data-like="${esc(post.id)}" class="like ${post.liked_by_viewer?'on':''}" aria-pressed="${!!post.liked_by_viewer}">♡ Like</button><button data-repost="${esc(post.id)}" class="${post.reposted_by_viewer?'on':''}" aria-pressed="${!!post.reposted_by_viewer}">↻ Repost</button>${c?`<button data-comments="${esc(post.id)}">◌ Comment</button>`:''}<button data-bookmark="${esc(post.id)}" class="bookmark ${post.bookmarked_by_viewer?'on':''}" aria-pressed="${!!post.bookmarked_by_viewer}">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`;}
   function bindPostCards(){
-    document.querySelectorAll('[data-media-image]').forEach(img=>img.addEventListener('error',()=>{
-      const fallback=document.createElement('div');
-      fallback.className='media-unavailable';
-      fallback.setAttribute('role','status');
-      fallback.textContent='Image unavailable';
-      img.replaceWith(fallback);
-    },{once:true}));
+    document.querySelectorAll('[data-media-image]').forEach(img=>img.addEventListener('error',()=>{const f=document.createElement('div');f.className='media-unavailable';f.setAttribute('role','status');f.textContent='Image unavailable';img.replaceWith(f);},{once:true}));
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
     document.querySelectorAll('[data-like]').forEach(x=>x.onclick=async()=>{if(!requireAuth()||x.disabled)return;const on=x.classList.toggle('on'),card=x.closest('[data-post-id]'),count=card?.querySelector('[data-post-count="likes"]'),old=count?Number(count.dataset.count)||0:0;x.disabled=true;x.setAttribute('aria-pressed',String(on));if(count){const next=Math.max(0,old+(on?1:-1));count.dataset.count=String(next);count.textContent=`${fmt(next)} likes`;}try{await rpc(on?'like_post':'unlike_post',{p_post_id:x.dataset.like});toast(on?'Liked':'Like removed');}catch(e){x.classList.toggle('on');x.setAttribute('aria-pressed',String(!on));if(count){count.dataset.count=String(old);count.textContent=`${fmt(old)} likes`;}toast(e.message);}finally{x.disabled=false;}});
     document.querySelectorAll('[data-bookmark]').forEach(x=>x.onclick=async()=>{if(!requireAuth()||x.disabled)return;const on=x.classList.toggle('on');x.disabled=true;x.setAttribute('aria-pressed',String(on));try{await rpc(on?'bookmark_post':'unbookmark_post',{p_post_id:x.dataset.bookmark});toast(on?'Saved':'Removed from saved');}catch(e){x.classList.toggle('on');x.setAttribute('aria-pressed',String(!on));toast(e.message);}finally{x.disabled=false;}});
@@ -1513,26 +1507,12 @@
         ? rpc('blink_referral_profile_search',{p_query:q,p_limit:20})
             .catch(()=>rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}))
         : rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null});
-      const [profileResult,postResult]=await Promise.allSettled([
-        profileResults,
-        rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})
-      ]);
+      const [pr,po]=await Promise.allSettled([profileResults,rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
-      const profiles=profileResult.status==='fulfilled'?(profileResult.value||[]):[];
-      const posts=postResult.status==='fulfilled'?(postResult.value||[]):[];
-      let pmap=new Map();
-      if(posts.length){
-        try{pmap=await fetchProfiles(posts.map(x=>x.user_id));}
-        catch{pmap=new Map();}
-      }
+      const profiles=pr.status==='fulfilled'?(pr.value||[]):[],posts=po.status==='fulfilled'?(po.value||[]):[];
+      const pmap=posts.length?await fetchProfiles(posts.map(x=>x.user_id)).catch(()=>new Map()):new Map();
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
-      const peopleContent=profileResult.status==='fulfilled'
-        ?(profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>')
-        :'<p class="error">People search is temporarily unavailable. Try again shortly.</p>';
-      const postContent=postResult.status==='fulfilled'
-        ?(posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>')
-        :'<p class="error">Post search is temporarily unavailable. Try again shortly.</p>';
-      out.innerHTML=`<h3>People</h3><div class="list">${peopleContent}</div><h3>Posts</h3><div class="feed">${postContent}</div>`;
+      out.innerHTML=`<h3>People</h3><div class="list">${pr.status==='rejected'?'<p class="error">People search unavailable. Try again.</p>':(profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>')}</div><h3>Posts</h3><div class="feed">${po.status==='rejected'?'<p class="error">Post search unavailable. Try again.</p>':(posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>')}</div>`;
       bindPostCards();
       if(typeof IntersectionObserver==='function'){
         const timers=new Map(),tracked=new Set();
@@ -1593,12 +1573,7 @@
         if(el.dataset.wasUnread!=='1')return;
         el.dataset.wasUnread='0';el.classList.remove('unread');
         const id=el.dataset.activity,kind=el.dataset.kind;
-        const rollback=()=>{
-          if(!el.isConnected)return;
-          el.dataset.wasUnread='1';
-          el.classList.add('unread');
-          toast('Could not mark this activity as read. Please try again.');
-        };
+        const rollback=()=>{if(el.isConnected){el.dataset.wasUnread='1';el.classList.add('unread');toast('Could not mark as read. Try again.');}};
         if(kind==='notification')patch('notifications',`id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{is_read:true})
           .then(()=>state.notificationsUnread=Math.max(0,state.notificationsUnread-1)).catch(rollback);
         else patch('activities',`id=eq.${encodeQ(id)}&recipient_id=eq.${encodeQ(uid())}`,{is_read:true}).catch(rollback);
@@ -1622,8 +1597,7 @@
       try{summaries=await rpc('get_conversation_summaries_page',{p_limit:100,p_before:null,p_before_id:null});}
       catch(error){
         if(!/NOT_FOUND|does not exist|undefined function|42883/i.test(String(error?.message||'')))throw error;
-        // Unread notifications are not a conversation list and must not masquerade as one.
-        throw new Error('Your full inbox is temporarily unavailable. Please try again after BLINK reconnects.');
+        throw new Error('Full inbox temporarily unavailable. Please try again later.');
       }
       const byConversation=new Map();
       for(const row of summaries||[]){
@@ -2027,16 +2001,8 @@
   async function init(){
     syncMotionDataPreference();
     if(!SUPABASE_URL||!KEY){
-      const path=currentPath();
-      // Keep public, static landing content useful even when app credentials are unavailable.
-      if(path==='/'||path==='/index.html'){
-        ROOT.classList.remove('boot');
-        scheduleServiceWorkerRegistration();
-        return;
-      }
-      ROOT.innerHTML='<div class="auth-wrap"><div class="card empty"><h2>BLINK app configuration unavailable</h2><p>The interactive app cannot connect right now. Public information pages remain available.</p><a class="btn" href="'+esc(routeHref('/'))+'">Visit BLINK homepage</a></div></div>';
-      scheduleServiceWorkerRegistration();
-      return;
+      if(location.pathname!=='/'&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<div class="auth-wrap"><div class="card empty"><h2>BLINK app configuration unavailable</h2><a class="btn" href="/">Visit BLINK homepage</a></div></div>';
+      scheduleServiceWorkerRegistration();return;
     }
     if(relayDesktopOAuth())return;
     try{await bootstrapSession();}catch(e){console.warn(e);} await render(currentPath());
