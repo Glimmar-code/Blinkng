@@ -1125,7 +1125,7 @@
   }
   function postCard(post){const a=post.author||{},r=!!post.is_reel,path=`/${r?'reel':'post'}/${post.id}`,c=post.allow_comments!==false,l=post.hide_likes?null:fmt(post.like_count);return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button><button class="icon-btn" aria-label="Open post" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${richLinkCard([post.text||post.caption||'',post.link_url||''].join(' '))}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span data-post-count="reposts" data-count="${Math.max(0,Number(post.repost_count)||0)}">${fmt(post.repost_count)} reposts</span>${c?`<span>${fmt(post.comment_count)} comments</span>`:''}${l===null?'':`<span data-post-count="likes" data-count="${Math.max(0,Number(post.like_count)||0)}">${l} likes</span>`}</div><div class="post-actions"><button data-like="${esc(post.id)}" class="like ${post.liked_by_viewer?'on':''}" aria-pressed="${!!post.liked_by_viewer}">♡ Like</button><button data-repost="${esc(post.id)}" class="${post.reposted_by_viewer?'on':''}" aria-pressed="${!!post.reposted_by_viewer}">↻ Repost</button>${c?`<button data-comments="${esc(post.id)}">◌ Comment</button>`:''}<button data-bookmark="${esc(post.id)}" class="bookmark ${post.bookmarked_by_viewer?'on':''}" aria-pressed="${!!post.bookmarked_by_viewer}">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`;}
   function bindPostCards(){
-    document.querySelectorAll('[data-media-image]').forEach(img=>img.addEventListener('error',()=>{const f=document.createElement('div');f.className='media-unavailable';f.setAttribute('role','status');f.textContent='Image unavailable';img.replaceWith(f);},{once:true}));
+    document.querySelectorAll('[data-media-image]').forEach(i=>i.onerror=()=>{i.alt='Image unavailable';i.classList.add('media-error');});
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
     document.querySelectorAll('[data-like]').forEach(x=>x.onclick=async()=>{if(!requireAuth()||x.disabled)return;const on=x.classList.toggle('on'),card=x.closest('[data-post-id]'),count=card?.querySelector('[data-post-count="likes"]'),old=count?Number(count.dataset.count)||0:0;x.disabled=true;x.setAttribute('aria-pressed',String(on));if(count){const next=Math.max(0,old+(on?1:-1));count.dataset.count=String(next);count.textContent=`${fmt(next)} likes`;}try{await rpc(on?'like_post':'unlike_post',{p_post_id:x.dataset.like});toast(on?'Liked':'Like removed');}catch(e){x.classList.toggle('on');x.setAttribute('aria-pressed',String(!on));if(count){count.dataset.count=String(old);count.textContent=`${fmt(old)} likes`;}toast(e.message);}finally{x.disabled=false;}});
     document.querySelectorAll('[data-bookmark]').forEach(x=>x.onclick=async()=>{if(!requireAuth()||x.disabled)return;const on=x.classList.toggle('on');x.disabled=true;x.setAttribute('aria-pressed',String(on));try{await rpc(on?'bookmark_post':'unbookmark_post',{p_post_id:x.dataset.bookmark});toast(on?'Saved':'Removed from saved');}catch(e){x.classList.toggle('on');x.setAttribute('aria-pressed',String(!on));toast(e.message);}finally{x.disabled=false;}});
@@ -1510,8 +1510,7 @@
       const [pr,po]=await Promise.allSettled([profileResults,rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
       const profiles=pr.status==='fulfilled'?(pr.value||[]):[],posts=po.status==='fulfilled'?(po.value||[]):[];
-      if(pr.status==='rejected')toast('People search unavailable.');
-      if(po.status==='rejected')toast('Post search unavailable.');
+      if(pr.status==='rejected'||po.status==='rejected')toast('Some search results unavailable.');
       const pmap=await fetchProfiles(posts.map(x=>x.user_id)).catch(()=>new Map());
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
       out.innerHTML=`<h3>People</h3><div class="list">${profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
@@ -2003,7 +2002,7 @@
   async function init(){
     syncMotionDataPreference();
     if(!SUPABASE_URL||!KEY){
-      if(location.pathname!=='/'&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<p>BLINK app unavailable.</p>';
+      if(!location.pathname.endsWith('/')&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<p>BLINK app unavailable.</p>';
       scheduleServiceWorkerRegistration();return;
     }
     if(relayDesktopOAuth())return;
