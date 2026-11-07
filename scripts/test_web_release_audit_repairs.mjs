@@ -16,7 +16,6 @@ assert.match(app,/const rollback=\(\)=>\{[\s\S]*?el\.dataset\.wasUnread='1'[\s\S
 assert.match(app,/data-media-image/);
 assert.match(app,/Image unavailable/);
 assert.match(app,/Promise\.allSettled\(\[/,'people and post search must fail independently');
-assert.match(app,/People search unavailable/);
-assert.match(app,/Post search unavailable/);
+assert.match(app,/Search incomplete/);
 assert.match(styles,/\.post-media img\.media-error/);
 console.log('Web release-audit regression contracts passed.');
