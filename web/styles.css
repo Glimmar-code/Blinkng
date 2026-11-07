@@ -137,3 +137,7 @@ html.save-data .app-shell .route-content,html.save-data .app-shell .btn,html.sav
 .app-shell .route-content[data-motion-sensitive="true"]{animation:none!important;transition:none!important;transform:none!important}
 .app-shell .route-content[data-motion-sensitive="true"] .btn,.app-shell .route-content[data-motion-sensitive="true"] .tab,.app-shell .route-content[data-motion-sensitive="true"] .post-actions button{animation:none!important;transition:none!important}
 .app-shell .route-content[data-motion-sensitive="true"] .btn:active,.app-shell .route-content[data-motion-sensitive="true"] .tab:active,.app-shell .route-content[data-motion-sensitive="true"] .post-actions button:active{transform:none!important}
+
+
+/* Explicit, stable fallback for unavailable feed images. */
+.post-media .media-unavailable{display:grid;place-items:center;min-height:120px;padding:18px;color:var(--muted,#8b8b8b);background:var(--surface-soft,rgba(127,127,127,.08));text-align:center;font-size:13px;}
