@@ -663,6 +663,8 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     val scope = rememberCoroutineScope()
     var contests by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var topics by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicsLoading by remember { mutableStateOf(false) }
+    var topicLoadError by remember { mutableStateOf<String?>(null) }
     var topicId by remember { mutableStateOf("") }
     var topicMenu by remember { mutableStateOf(false) }
     var scopeType by remember { mutableStateOf("campus") }
@@ -706,7 +708,12 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var third by remember { mutableStateOf("0") }
 
     LaunchedEffect(revision) {
-        runCatching { api.contestTopicDirectory() }.onSuccess { topics = it.rows() }
+        topicsLoading = true
+        topicLoadError = null
+        runCatching { api.contestTopicDirectory() }
+            .onSuccess { topics = it.rows() }
+            .onFailure { topicLoadError = it.message ?: "Contest topics could not be loaded." }
+        topicsLoading = false
         runCatching { api.adminContestList() }.onSuccess { contests = it.rows() }
             .onFailure { message = it.message.orEmpty() }
     }
