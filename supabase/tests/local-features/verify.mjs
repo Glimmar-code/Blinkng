@@ -116,7 +116,7 @@ assert.ok(topicDetails.contests.some(row => row.id === contest.id), 'Published c
 const confidentialDraft = await rpc('admin_save_blink_contest', admin, { p_id:null,
   p_data: {
     title:'Confidential cancelled draft',description:'Not launched publicly',rules:'Private',
-    category:'General',topic_id:seededTopic.id,competition_scope:'campus',university:'FUTA',
+    category:'General',topic_id:seededTopic.id,competition_scope:'nationwide',
     prize_first:100,prize_second:0,prize_third:0,
     registration_opens_at:later(-1),registration_closes_at:later(1),
     voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
@@ -126,6 +126,7 @@ const confidentialDraft = await rpc('admin_save_blink_contest', admin, { p_id:nu
 await rpc('admin_transition_blink_contest', admin, {
   p_contest_id:confidentialDraft.id,p_action:'cancel'
 });
+assert.equal(confidentialDraft.competition_scope,'nationwide', 'Nationwide contests must not require a university');
 const completedNow = await rpc('admin_save_blink_contest', admin, { p_id:null,
   p_data: {
     title:'Public cancelled challenge',description:'Launched then cancelled',rules:'Public',
@@ -146,6 +147,10 @@ const catalogue = await rpc('list_blink_contests', outsider, {});
 assert.ok(catalogue.some(c=>c.id===completedNow.id && c.status==='cancelled'));
 assert.ok(!catalogue.some(c=>c.id===confidentialDraft.id),
   'Cancelled unpublished draft must remain private');
+const cancelledTopicDetails = await rpc('get_blink_contest_topic', outsider, { p_topic_id: seededTopic.id });
+assert.ok(cancelledTopicDetails.contests.some(c=>c.id===completedNow.id && c.status==='cancelled'));
+assert.ok(!cancelledTopicDetails.contests.some(c=>c.id===confidentialDraft.id),
+  'Topic detail must not reveal cancelled unpublished drafts');
 const cancelledDetails = await rpc('get_blink_contest', outsider, {
   p_contest_id:completedNow.id
 });
