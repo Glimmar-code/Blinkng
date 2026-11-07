@@ -139,5 +139,5 @@ html.save-data .app-shell .route-content,html.save-data .app-shell .btn,html.sav
 .app-shell .route-content[data-motion-sensitive="true"] .btn:active,.app-shell .route-content[data-motion-sensitive="true"] .tab:active,.app-shell .route-content[data-motion-sensitive="true"] .post-actions button:active{transform:none!important}
 
 
-/* Explicit, stable fallback for unavailable feed images. */
-.post-media .media-unavailable{display:grid;place-items:center;min-height:120px;padding:18px;color:var(--muted,#8b8b8b);background:var(--surface-soft,rgba(127,127,127,.08));text-align:center;font-size:13px;}
+/* Keep failed feed media visibly distinct without hiding its accessible alt text. */
+.post-media img.media-error{min-height:120px;background:var(--surface-soft,#222);}

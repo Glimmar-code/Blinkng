@@ -1510,7 +1510,7 @@
       const [pr,po]=await Promise.allSettled([profileResults,rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
       const profiles=pr.status==='fulfilled'?(pr.value||[]):[],posts=po.status==='fulfilled'?(po.value||[]):[];
-      if(pr.status==='rejected'||po.status==='rejected')toast('Some search results unavailable.');
+      if(pr.status==='rejected'||po.status==='rejected')toast('Search incomplete.');
       const pmap=await fetchProfiles(posts.map(x=>x.user_id)).catch(()=>new Map());
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
       out.innerHTML=`<h3>People</h3><div class="list">${profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
@@ -1598,7 +1598,7 @@
       try{summaries=await rpc('get_conversation_summaries_page',{p_limit:100,p_before:null,p_before_id:null});}
       catch(error){
         if(!/NOT_FOUND|does not exist|undefined function|42883/i.test(String(error?.message||'')))throw error;
-        throw new Error('Full inbox temporarily unavailable. Please try again later.');
+        throw new Error('Inbox unavailable. Please try again later.');
       }
       const byConversation=new Map();
       for(const row of summaries||[]){
