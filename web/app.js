@@ -1513,14 +1513,26 @@
         ? rpc('blink_referral_profile_search',{p_query:q,p_limit:20})
             .catch(()=>rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}))
         : rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null});
-      const [profiles,posts]=await Promise.all([
+      const [profileResult,postResult]=await Promise.allSettled([
         profileResults,
         rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})
       ]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
-      const pmap=await fetchProfiles((posts||[]).map(x=>x.user_id));
+      const profiles=profileResult.status==='fulfilled'?(profileResult.value||[]):[];
+      const posts=postResult.status==='fulfilled'?(postResult.value||[]):[];
+      let pmap=new Map();
+      if(posts.length){
+        try{pmap=await fetchProfiles(posts.map(x=>x.user_id));}
+        catch{pmap=new Map();}
+      }
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
-      out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
+      const peopleContent=profileResult.status==='fulfilled'
+        ?(profiles.map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>')
+        :'<p class="error">People search is temporarily unavailable. Try again shortly.</p>';
+      const postContent=postResult.status==='fulfilled'
+        ?(posts.map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>')
+        :'<p class="error">Post search is temporarily unavailable. Try again shortly.</p>';
+      out.innerHTML=`<h3>People</h3><div class="list">${peopleContent}</div><h3>Posts</h3><div class="feed">${postContent}</div>`;
       bindPostCards();
       if(typeof IntersectionObserver==='function'){
         const timers=new Map(),tracked=new Set();
