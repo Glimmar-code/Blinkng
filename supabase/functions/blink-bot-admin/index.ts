@@ -49,9 +49,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return new Response(JSON.stringify({ error: "INVALID_INPUT" }), { status: 400, headers });
+    }
     const actorId = user.id;
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-    if (reason.length < 5 || reason.length > 500) {
+    if (body.action !== "list" && (reason.length < 5 || reason.length > 500)) {
       return new Response(JSON.stringify({ error: "INVALID_REASON", message: "Provide a reason of 5–500 characters." }), { status: 400, headers });
     }
 
