@@ -697,9 +697,20 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val reduceAppMotion = rememberBlinkReduceMotion()
-            // Covers auth/session restoration too: returning users must see the intro.
-            var showStartupIntro by remember { mutableStateOf(true) }
-            var introAnimationFinished by remember { mutableStateOf(false) }
+            // Do not replay the full launch animation when Android recreates the task
+            // after the user briefly switches apps. That feels like a logout/restart even
+            // though the authenticated session and navigation state are still recoverable.
+            // New/signed-out launches retain the branded intro.
+            val hasRecoverableAccount = remember {
+                !AccountSessionStore.isSignInRequired(this@MainActivity) &&
+                    getSharedPreferences("blink_user_session", MODE_PRIVATE)
+                        .getString("username", "")
+                        .orEmpty()
+                        .isNotBlank()
+            }
+            val skipStartupIntro = savedInstanceState != null || hasRecoverableAccount
+            var showStartupIntro by remember { mutableStateOf(!skipStartupIntro) }
+            var introAnimationFinished by remember { mutableStateOf(skipStartupIntro) }
             // Never reveal the legacy black SPLASH placeholder after the wordmark.
             // Keep the final BLINK frame visible until a real destination is ready.
             LaunchedEffect(introAnimationFinished, uiState.destination) {
