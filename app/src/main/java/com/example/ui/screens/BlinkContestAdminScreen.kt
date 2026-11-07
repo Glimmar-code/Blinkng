@@ -250,12 +250,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             Box {
                 OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(topicRows.firstOrNull { it.optString("id") == topicId }?.optString("name")
-                        ?: "Select a topic (or leave unassigned)")
+                        ?: "Select a required contest topic")
                 }
                 DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
-                    DropdownMenuItem(text = { Text("No topic selected") }, onClick = {
-                        topicId = ""; topicMenu = false
-                    })
                     topicRows.forEach { topic ->
                         DropdownMenuItem(text = { Text(topic.optString("name")) }, onClick = {
                             topicId = topic.optString("id")
@@ -265,12 +262,15 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            Text("Choose one of the public topics users can browse. You can add new topics through the admin topic library.",
+            Text("Choose a public topic before saving a contest. To create a new topic, add it to the library below; it will be selected automatically.",
                 style = MaterialTheme.typography.bodySmall)
             if (topicsLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             topicLoadError?.let { error ->
-                Text("Topics unavailable: $error. Refresh the manager before creating a contest.",
+                Text("Topics unavailable: $error",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                TextButton(enabled = !topicsLoading, onClick = { revision++ }) {
+                    Text("Retry loading topics")
+                }
             }
             if (!topicsLoading && topicLoadError == null && topicRows.isEmpty()) {
                 Text("No contest topics are available yet. Add a topic to the library first.",
@@ -323,7 +323,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         }
         item {
             if (topicId.isBlank() && !topicsLoading && topicLoadError == null) {
-                Text("Select a contest topic before saving.", color = MaterialTheme.colorScheme.error,
+                Text("A contest topic is required. Select an existing topic or add your custom topic to the library above.",
+                    color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             }
         }
