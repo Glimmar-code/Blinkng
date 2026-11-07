@@ -31,9 +31,8 @@ const wrappers = [
 
 test('all private-backed admin wrappers are elevated narrowly', () => {
   for (const signature of wrappers) {
-    assert.match(
-      migration,
-      new RegExp('alter\\s+function\\s+public\\.' + signature.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\s+security\\s+definer', 'i'),
+    assert.ok(
+      migration.toLowerCase().includes(`alter function public.${signature} security definer;`),
       `missing SECURITY DEFINER repair for ${signature}`
     );
   }
