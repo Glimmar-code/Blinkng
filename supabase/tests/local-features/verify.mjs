@@ -37,6 +37,7 @@ for (const name of [
   '20261031110000_blink_contest_cancelled_visibility.sql',
   '20261031120000_blink_contest_entry_appeals.sql',
   '20261031130000_blink_contest_orphan_media_audit.sql',
+  '20261101180000_blink_contest_topics_history.sql',
   '20261028215500_chat_video_albums.sql',
   '20261028220000_blink_chat_native_polls.sql',
 ]) sql(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -76,18 +77,47 @@ const [admin, creator, voter, outsider] = await Promise.all(['admin', 'creator',
 sql(`insert into private.local_fixture_admins values('${admin.id}');`);
 console.log('PASS local GoTrue: four real password-grant sessions with distinct verified identities');
 const rpc = async (name, actor, body) => ok(await request(`/rest/v1/rpc/${name}`, actor.token, body), name);
+const topics = await rpc('list_blink_contest_topics', outsider, {});
+assert.equal(topics.length, 100, 'Seeded public topic directory must contain 100 entries');
+const customTopic = await rpc('admin_save_blink_contest_topic', admin, {
+  p_id: null, p_data: { name: 'Local Integration Topic', category: 'Testing', description: 'Disposable RPC integration topic' }
+});
+assert.ok(customTopic.id && customTopic.slug === 'local-integration-topic');
+const expandedTopics = await rpc('list_blink_contest_topics', outsider, {});
+assert.ok(expandedTopics.some(topic => topic.id === customTopic.id));
+await rpc('follow_blink_contest_topic', creator, { p_topic_id: customTopic.id });
+const followedTopic = await rpc('get_blink_contest_topic', creator, { p_topic_id: customTopic.id });
+assert.equal(followedTopic.topic.following, true);
+await rpc('unfollow_blink_contest_topic', creator, { p_topic_id: customTopic.id });
+const seededTopic = topics[0];
+assert.ok(seededTopic?.id, 'Seeded topic must have an id for contest creation');
+console.log('PASS local Contest topics: 100 seeded topics, admin custom topic creation, public listing and authenticated follow/unfollow');
 const later = days => new Date(Date.now() + days * 86400000).toISOString();
 const contest = await rpc('admin_save_blink_contest', admin, { p_id: null, p_data: {
   title: 'Local authenticated contest', description: 'Disposable integration fixture', rules: 'One free vote', category: 'Creators',
+  topic_id: seededTopic.id, competition_scope: 'campus', university: 'FUTA',
   prize_first: 30000, prize_second: 15000, prize_third: 5000,
   registration_opens_at: later(-1), registration_closes_at: later(1), voting_opens_at: later(2), voting_closes_at: later(3), results_at: later(4), auto_approve: false,
 } });
 await rejected('/rest/v1/rpc/admin_transition_blink_contest', creator.token, { p_contest_id: contest.id, p_action: 'publish' }, /ADMIN_REQUIRED/);
+await rejected('/rest/v1/rpc/admin_save_blink_contest', admin.token, { p_id: null, p_data: {
+  title: 'Missing topic must fail', category: 'General', competition_scope: 'campus', university: 'FUTA',
+  prize_first: 0, prize_second: 0, prize_third: 0,
+  registration_opens_at: later(-1), registration_closes_at: later(1), voting_opens_at: later(2), voting_closes_at: later(3), results_at: later(4)
+} }, /CONTEST_TOPIC_REQUIRED/);
+await rejected('/rest/v1/rpc/admin_save_blink_contest', admin.token, { p_id: null, p_data: {
+  title: 'Campus without university', category: 'General', topic_id: seededTopic.id, competition_scope: 'campus',
+  prize_first: 0, prize_second: 0, prize_third: 0,
+  registration_opens_at: later(-1), registration_closes_at: later(1), voting_opens_at: later(2), voting_closes_at: later(3), results_at: later(4)
+} }, /CAMPUS_COMPETITION_REQUIRES_UNIVERSITY/);
 await rpc('admin_transition_blink_contest', admin, { p_contest_id: contest.id, p_action: 'publish' });
+const topicDetails = await rpc('get_blink_contest_topic', outsider, { p_topic_id: seededTopic.id });
+assert.ok(topicDetails.contests.some(row => row.id === contest.id), 'Published contest must appear under its topic');
 const confidentialDraft = await rpc('admin_save_blink_contest', admin, { p_id:null,
   p_data: {
     title:'Confidential cancelled draft',description:'Not launched publicly',rules:'Private',
-    category:'General',prize_first:100,prize_second:0,prize_third:0,
+    category:'General',topic_id:seededTopic.id,competition_scope:'campus',university:'FUTA',
+    prize_first:100,prize_second:0,prize_third:0,
     registration_opens_at:later(-1),registration_closes_at:later(1),
     voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
     auto_approve:false
@@ -99,7 +129,8 @@ await rpc('admin_transition_blink_contest', admin, {
 const completedNow = await rpc('admin_save_blink_contest', admin, { p_id:null,
   p_data: {
     title:'Public cancelled challenge',description:'Launched then cancelled',rules:'Public',
-    category:'General',prize_first:100,prize_second:0,prize_third:0,
+    category:'General',topic_id:seededTopic.id,competition_scope:'campus',university:'FUTA',
+    prize_first:100,prize_second:0,prize_third:0,
     registration_opens_at:later(-1),registration_closes_at:later(1),
     voting_opens_at:later(2),voting_closes_at:later(3),results_at:later(4),
     auto_approve:false
