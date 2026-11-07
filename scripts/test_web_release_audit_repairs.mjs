@@ -5,7 +5,7 @@ const styles=readFileSync('web/styles.css','utf8');
 const initStart=app.indexOf('async function init(){');
 assert.notEqual(initStart,-1);
 const init=app.slice(initStart);
-assert.match(init,/location\.pathname!=='\/'[\s\S]*?scheduleServiceWorkerRegistration\(\)/,'public homepage must survive missing app credentials');
+assert.ok(init.includes("!location.pathname.endsWith('/')")&&init.includes('scheduleServiceWorkerRegistration()'),'public homepage must survive missing app credentials');
 const ms=app.indexOf('async function renderMessages(path){');
 const me=app.indexOf('async function renderGroupInvitations(){',ms);
 assert.ok(ms>=0&&me>ms);
