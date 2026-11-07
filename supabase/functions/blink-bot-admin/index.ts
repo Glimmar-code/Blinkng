@@ -27,26 +27,31 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!url || !serviceKey) {
+    if (!url || !anonKey || !serviceKey) {
       return new Response(JSON.stringify({ error: "SERVER_CONFIGURATION_ERROR" }), { status: 500, headers });
     }
 
-    const adminClient = createClient(url, serviceKey, {
+    // Match the Admin Control Center's authoritative admin_roles capability check.
+    // The user's own JWT is used for this check; user-editable metadata is never trusted.
+    const userClient = createClient(url, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
+    const { data: { user }, error: authError } = await userClient.auth.getUser(token);
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "AUTHENTICATION_REQUIRED" }), { status: 401, headers });
     }
-
-    // Only trusted app_metadata is accepted; user-editable user_metadata is never authorization.
-    const isAdmin = user.app_metadata?.admin === true ||
-      user.app_metadata?.role === "admin" ||
-      user.app_metadata?.role === "developer";
-    if (!isAdmin) {
+    const { data: capability, error: capabilityError } = await userClient.rpc("admin_get_capability");
+    if (capabilityError || capability?.is_admin !== true) {
       return new Response(JSON.stringify({ error: "NOT_AUTHORIZED" }), { status: 403, headers });
     }
+
+    // This service-role client is created only after the caller passes the admin capability gate.
+    const adminClient = createClient(url, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     const body = await req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) {
