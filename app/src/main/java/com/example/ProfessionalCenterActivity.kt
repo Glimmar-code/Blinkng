@@ -97,6 +97,7 @@ import com.example.data.local.BlinkDataUsagePreferences
 import com.example.data.repository.ProfessionalRepository
 import com.example.data.repository.ScheduledPostRepository
 import com.example.data.supabase.SupabaseService
+import com.example.notification.BlinkFirebaseMessagingService
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.BlinkUserPickerSheet
 import com.example.ui.components.BlinkCommunitiesPanel
@@ -160,6 +161,9 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var accountUsername by remember {
+        mutableStateOf(service.getCurrentUsername().orEmpty().trim().removePrefix("@"))
+    }
 
     suspend fun reload() {
         loading = true
@@ -170,6 +174,13 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
             orders = repository.fetchMarketplaceOrders()
             scheduledPosts = scheduledRepository.fetchMine(includeHistory = true)
             wishlistCount = repository.fetchWishlistIds().size
+            if (accountUsername.isBlank()) {
+                accountUsername = service.getCurrentUserId()
+                    ?.let { service.fetchProfileById(it)?.username }
+                    .orEmpty()
+                    .trim()
+                    .removePrefix("@")
+            }
         }.onFailure { errorText = it.message ?: "Couldn't load Professional Center." }
         loading = false
     }
@@ -383,7 +394,7 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
                     )
 
                     ProfessionalSection.ACCOUNT -> AccountSection(
-                        username = service.getCurrentUsername().orEmpty(),
+                        username = accountUsername,
                         busy = busy,
                         reduceMobileData = BlinkDataUsagePreferences.isReduceMobileDataEnabled(context),
                         onReduceMobileDataChanged = { enabled ->
@@ -428,6 +439,10 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
                                 busy = true
                                 runCatching { repository.deleteAccount(confirmation) }
                                     .onSuccess {
+                                        runCatching {
+                                            BlinkFirebaseMessagingService.unregisterCurrentToken(context)
+                                        }
+                                        SupabaseService.clearSession()
                                         context.getSharedPreferences("blink_user_session", Context.MODE_PRIVATE).edit().clear().apply()
                                         context.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).edit().clear().apply()
                                         Toast.makeText(context, "Account deleted.", Toast.LENGTH_LONG).show()

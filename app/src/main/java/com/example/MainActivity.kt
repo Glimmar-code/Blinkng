@@ -3058,9 +3058,16 @@ fun MainAppContent(
 
         // Modals: Post Options Menu Sheet (Save, Share, Delete, Report, Mute)
         uiState.activePostOptionsPost?.let { post ->
+            val currentUsername = uiState.myProfile.username.trim().removePrefix("@")
+            val postAuthorUsername = post.authorUsername.trim().removePrefix("@")
+            val postAuthorDisplayName = post.author.trim().removePrefix("@")
+            val canDeletePost = currentUsername.isNotBlank() && (
+                postAuthorUsername.equals(currentUsername, ignoreCase = true) ||
+                    postAuthorDisplayName.equals(currentUsername, ignoreCase = true)
+                )
             PostOptionsMenuSheet(
                 post = post,
-                isAuthor = post.author.equals(uiState.myProfile.username, ignoreCase = true),
+                isAuthor = canDeletePost,
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openPostOptions(null) },
                 onToggleSave = { viewModel.toggleBookmark(post.id) },
