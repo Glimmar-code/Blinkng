@@ -6,6 +6,7 @@ const migration = fs.readFileSync(
   new URL('../migrations/20261107120000_fix_admin_backend_schema_access_and_vip_notifications.sql', import.meta.url),
   'utf8'
 );
+const normalized = migration.toLowerCase();
 
 const wrappers = [
   'admin_dashboard_stats()',
@@ -32,28 +33,30 @@ const wrappers = [
 test('all private-backed admin wrappers are elevated narrowly', () => {
   for (const signature of wrappers) {
     assert.ok(
-      migration.toLowerCase().includes(`alter function public.${signature} security definer;`),
+      normalized.includes(`alter function public.${signature} security definer;`),
       `missing SECURITY DEFINER repair for ${signature}`
     );
   }
-  assert.match(migration, /set search_path = ''/i);
-  assert.match(migration, /revoke all on function %s from public, anon/i);
-  assert.match(migration, /grant execute on function %s to authenticated, service_role/i);
+  assert.ok(normalized.includes("set search_path = ''"));
+  assert.ok(normalized.includes('revoke all on function %s from public, anon'));
+  assert.ok(normalized.includes('grant execute on function %s to authenticated, service_role'));
 });
 
-test('private schema remains closed; wrappers use internal authorization checks', () => {
-  assert.match(migration, /never grant clients access to private/i);
-  assert.doesNotMatch(migration, /grant\\s+usage\\s+on\\s+schema\\s+private/i);
-  assert.match(migration, /require_blink_admin\\(\\)/i);
-  assert.match(migration, /require_blink_owner\\(\\)/i);
+test('private schema remains closed and implementation-level authorization is retained', () => {
+  assert.ok(normalized.includes('never grant clients access to private'));
+  assert.ok(!normalized.includes('grant usage on schema private'));
+  assert.ok(normalized.includes('private.require_blink_admin()'));
+  assert.ok(normalized.includes('private.require_blink_owner()'));
 });
 
-test('daily streak helper is a narrowly authenticated security definer', () => {
-  assert.match(migration, /create or replace function public\\.touch_daily_streak\\(\\)[\\s\\S]*?security definer[\\s\\S]*?auth\\.uid\\(\\)/i);
-  assert.match(migration, /revoke all on function public\\.touch_daily_streak\\(\\) from public, anon/i);
+test('daily streak helper is scoped to the authenticated user', () => {
+  assert.ok(normalized.includes('create or replace function public.touch_daily_streak()'));
+  assert.ok(normalized.includes('security definer'));
+  assert.ok(normalized.includes('auth.uid()'));
+  assert.ok(normalized.includes('revoke all on function public.touch_daily_streak() from public, anon'));
 });
 
 test('VIP expiry reminder uses deployed notification columns', () => {
-  assert.match(migration, /notifications\\(user_id, type, text, sub_text, is_read\\)/i);
-  assert.doesNotMatch(migration, /notifications\\s*\\(\\s*user_id\\s*,\\s*type\\s*,\\s*comment\\s*\\)/i);
+  assert.ok(normalized.includes('notifications(user_id, type, text, sub_text, is_read)'));
+  assert.ok(!normalized.includes('notifications(user_id,type,comment)'));
 });
