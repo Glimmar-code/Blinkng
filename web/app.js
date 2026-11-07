@@ -2001,7 +2001,7 @@
   async function init(){
     syncMotionDataPreference();
     if(!SUPABASE_URL||!KEY){
-      if(location.pathname!=='/'&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<p>BLINK app configuration unavailable.</p>';
+      if(location.pathname!=='/'&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<p>BLINK app unavailable.</p>';
       scheduleServiceWorkerRegistration();return;
     }
     if(relayDesktopOAuth())return;
