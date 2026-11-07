@@ -126,3 +126,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .rich-link-card img{display:block;max-height:165px;width:100%;object-fit:cover;border-radius:8px}
 .bubble .rich-link-card{max-width:min(100%,330px);background:rgba(127,127,127,.12)}
 .reel-overlay .rich-link-card{max-width:320px;background:rgba(0,0,0,.72);border-color:rgba(255,255,255,.3);color:#fff}
+
+/* Classic premium motion: brief, purposeful, and disabled for reduced-motion users. */
+@keyframes blink-rise-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.app-shell .card,.app-shell .post-card,.app-shell .market-card,.app-shell .connect-card{animation:blink-rise-in 220ms cubic-bezier(.2,.8,.2,1) both}
+.app-shell .btn,.app-shell .tab,.app-shell .post-actions button,.app-shell .mobile-nav button{transition:transform 140ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,box-shadow 180ms ease}
+.app-shell .btn:active,.app-shell .tab:active,.app-shell .post-actions button:active{transform:translateY(1px) scale(.985)}
+@media(prefers-reduced-motion:reduce){.app-shell .card,.app-shell .post-card,.app-shell .market-card,.app-shell .connect-card{animation:none}.app-shell .btn,.app-shell .tab,.app-shell .post-actions button,.app-shell .mobile-nav button{transition:none}.app-shell .btn:active,.app-shell .tab:active,.app-shell .post-actions button:active{transform:none}}
