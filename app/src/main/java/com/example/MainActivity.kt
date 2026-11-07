@@ -964,8 +964,25 @@ class MainActivity : ComponentActivity() {
                                         ) + fadeOut(animationSpec = tween(150))
                                     )
                                 } else {
-                                    fadeIn(animationSpec = tween(160)) togetherWith
-                                        fadeOut(animationSpec = tween(120))
+                                    // Premium app motion: pages feel connected instead of
+                                    // blinking between unrelated surfaces. Keep the movement
+                                    // restrained so it remains fast on feed/chat transitions.
+                                    (
+                                        slideInHorizontally(
+                                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                                            initialOffsetX = { it / 14 }
+                                        ) +
+                                            fadeIn(animationSpec = tween(180)) +
+                                            scaleIn(
+                                                initialScale = 0.985f,
+                                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                                            )
+                                    ) togetherWith (
+                                        slideOutHorizontally(
+                                            animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                            targetOffsetX = { -it / 20 }
+                                        ) + fadeOut(animationSpec = tween(130))
+                                    )
                                 }
                             },
                             label = "AppNavigation"
