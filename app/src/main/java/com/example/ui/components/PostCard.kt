@@ -986,6 +986,13 @@ fun PostCard(
                             )
                         }
                         PremiumPostAction(
+                            icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            value = if (compactActions) null else "Save",
+                            tint = savedTint,
+                            description = if (post.isBookmarked) "Remove saved post" else "Save post",
+                            onClick = onBookmark
+                        )
+                        PremiumPostAction(
                             icon = Icons.Default.Share,
                             value = if (compactActions) null else "Share",
                             tint = secondaryText,
