@@ -1573,7 +1573,7 @@
         if(el.dataset.wasUnread!=='1')return;
         el.dataset.wasUnread='0';el.classList.remove('unread');
         const id=el.dataset.activity,kind=el.dataset.kind;
-        const rollback=()=>{if(el.isConnected){el.dataset.wasUnread='1';el.classList.add('unread');toast('Could not mark as read. Try again.');}};
+        const rollback=()=>{if(el.isConnected){el.dataset.wasUnread='1';el.classList.add('unread');}};
         if(kind==='notification')patch('notifications',`id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{is_read:true})
           .then(()=>state.notificationsUnread=Math.max(0,state.notificationsUnread-1)).catch(rollback);
         else patch('activities',`id=eq.${encodeQ(id)}&recipient_id=eq.${encodeQ(uid())}`,{is_read:true}).catch(rollback);
@@ -2001,7 +2001,7 @@
   async function init(){
     syncMotionDataPreference();
     if(!SUPABASE_URL||!KEY){
-      if(location.pathname!=='/'&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<div class="auth-wrap"><div class="card empty"><h2>BLINK app configuration unavailable</h2><a class="btn" href="/">Visit BLINK homepage</a></div></div>';
+      if(location.pathname!=='/'&&!location.pathname.endsWith('/index.html'))ROOT.innerHTML='<p>BLINK app configuration unavailable.</p>';
       scheduleServiceWorkerRegistration();return;
     }
     if(relayDesktopOAuth())return;
