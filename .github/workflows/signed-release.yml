@@ -252,14 +252,14 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
-        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
+        run: gradle :app:assembleRelease :app:bundlePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify website APK excludes native Godot (no secondary install)
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/playStoreRelease -name '*.aab' -type f | head -n 1)"
           test -s "$APK"
           test -s "$AAB"
           unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-website-files.txt"
@@ -270,6 +270,22 @@ jobs:
           unzip -Z1 "$AAB" > "$RUNNER_TEMP/blink-play-bundle-files.txt"
           grep -Fxq blinkLifeFeature/manifest/AndroidManifest.xml "$RUNNER_TEMP/blink-play-bundle-files.txt"
           grep -Fxq blinkLifeFeature/assets/project.godot "$RUNNER_TEMP/blink-play-bundle-files.txt"
+
+          # Website APK may use the user-approved package installer; the Play AAB must not.
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/aapt" dump permissions "$APK" | grep -Fq android.permission.REQUEST_INSTALL_PACKAGES || {
+            echo "::error::Website APK lost its documented self-update capability."
+            exit 1
+          }
+          PLAY_MERGED_MANIFEST="$(find app/build/intermediates -type f -path '*playStoreRelease*' -name AndroidManifest.xml | grep -E 'merged_manifest|packaged_manifests' | head -n 1)"
+          if [ -z "$PLAY_MERGED_MANIFEST" ]; then
+            echo "::error::Cannot locate the merged Play Store manifest; refusing an unverified Play bundle."
+            exit 1
+          fi
+          if grep -Fq android.permission.REQUEST_INSTALL_PACKAGES "$PLAY_MERGED_MANIFEST"; then
+            echo "::error::Play Store manifest still requests restricted REQUEST_INSTALL_PACKAGES."
+            exit 1
+          fi
           # Fail closed: publishing the old ~345 MB universal APK would break Option B.
           # The optional game is published separately, never silently fused into Blink.
           APK_BYTES="$(stat -c %s "$APK")"
@@ -335,7 +351,7 @@ jobs:
             exit 1
           }
 
-          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/playStoreRelease -name '*.aab' -type f | head -n 1)"
           if [ -z "$AAB" ]; then
             echo "::error::Signed release AAB was not produced."
             exit 1
@@ -413,7 +429,7 @@ jobs:
           retention-days: 30
           path: |
             app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/bundle/playStoreRelease/*.aab
             app/build/outputs/publish/release-info.txt
             app/build/outputs/publish/blink-life-web.zip
             app/build/outputs/publish/blink-life-web.zip.sha256

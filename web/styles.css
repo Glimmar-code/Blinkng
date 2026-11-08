@@ -137,3 +137,7 @@ html.save-data .app-shell .route-content,html.save-data .app-shell .btn,html.sav
 .app-shell .route-content[data-motion-sensitive="true"]{animation:none!important;transition:none!important;transform:none!important}
 .app-shell .route-content[data-motion-sensitive="true"] .btn,.app-shell .route-content[data-motion-sensitive="true"] .tab,.app-shell .route-content[data-motion-sensitive="true"] .post-actions button{animation:none!important;transition:none!important}
 .app-shell .route-content[data-motion-sensitive="true"] .btn:active,.app-shell .route-content[data-motion-sensitive="true"] .tab:active,.app-shell .route-content[data-motion-sensitive="true"] .post-actions button:active{transform:none!important}
+
+
+/* Keep failed feed media visibly distinct without hiding its accessible alt text. */
+.post-media img.media-error{min-height:120px;background:var(--surface-soft,#222);}
