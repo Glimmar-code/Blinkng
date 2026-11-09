@@ -252,7 +252,13 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
-        run: gradle :app:assembleRelease :app:bundlePlayStoreRelease --stacktrace --no-daemon
+        run: |
+          set -euo pipefail
+          # Room KSP exports the same schema location for both release variants.
+          # Run the variants in separate Gradle invocations so their schema JSON
+          # cannot be read while the other KSP task is still writing it.
+          gradle :app:assembleRelease --stacktrace --no-daemon
+          gradle :app:bundlePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify website APK excludes native Godot (no secondary install)
         shell: bash
