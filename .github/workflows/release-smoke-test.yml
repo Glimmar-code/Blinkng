@@ -155,7 +155,9 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
-        run: gradle :app:assembleRelease :app:bundlePlayStoreRelease -x :app:uploadCrashlyticsMappingFileRelease -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
+        # Release smoke builds must not reuse partial KSP state from a restored Gradle cache.
+        # Clean outputs and disable KSP incrementality/build-cache reuse to keep this disposable signing build deterministic.
+        run: gradle clean :app:assembleRelease :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify small website APK plus native on-demand Play split
         shell: bash
