@@ -776,11 +776,15 @@ private fun PremiumHomeFeed(
     val density = LocalDensity.current
     // Bottom navigation includes the system gesture bar inset.
     val bottomNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // The bottom rail contains a single-line label. At large accessibility font
+    // scales, the old fixed 64dp reservation allowed that label to be clipped and
+    // let the feed content slide under the expanded rail.
+    val bottomRailHeight = maxOf(64.dp, (38f + 14f * density.fontScale).dp)
     val reduceMotion = rememberBlinkReduceMotion()
     // The bottom bar lives in MainActivity's overlay. Reserving its 64dp
     // while hidden creates an invisible viewport gap on narrow phones.
     val bottomRailClearance by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset,
+        targetValue = if (isBottomNavigationVisible) bottomRailHeight + bottomNavigationInset else bottomNavigationInset,
         animationSpec = tween(if (reduceMotion) 0 else 180),
         label = "feedBottomRailClearance"
     )
@@ -790,6 +794,15 @@ private fun PremiumHomeFeed(
         targetValue = if (isBottomNavigationVisible) 144.dp + bottomNavigationInset else 24.dp + bottomNavigationInset,
         animationSpec = tween(if (reduceMotion) 0 else 180),
         label = "feedCreateFabClearance"
+    )
+    // The list needs a small tail so the last post can clear the floating Create
+    // action, but it must not keep reserving the full navigation rail after that
+    // rail has been dismissed. A fixed 64dp tail made the feed look like it had
+    // stopped scrolling on compact phones.
+    val feedContentBottomClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 64.dp else 24.dp,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedContentBottomClearance"
     )
     // Organic Home post views belong exclusively to PostCard's content-view pipeline.
     // The older list observer also called record_post_view and could double count.
@@ -1706,7 +1719,10 @@ private fun PremiumHomeFeed(
                         modifier = Modifier.fillMaxSize(),
                         // Keep the final post's actions scrollable above the floating
                         // create control, without reserving a permanent empty rail.
-                        contentPadding = PaddingValues(top = 0.dp, bottom = 64.dp)
+                        contentPadding = PaddingValues(
+                            top = 0.dp,
+                            bottom = feedContentBottomClearance
+                        )
                     ) {
                         if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
@@ -2584,4 +2600,3 @@ private fun PremiumEmptyFeed(
         }
     }
 }
-
