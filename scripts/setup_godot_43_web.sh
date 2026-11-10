@@ -3,6 +3,7 @@
 # Production releases must use the exact same Godot version as CI.
 # GitHub release assets occasionally return transient 5xx/504 responses;
 # retry those failures fully and validate each archive before installing it.
+# The release-smoke workflow uses the same helper as the signed production release.
 set -euo pipefail
 
 GODOT_VERSION=4.3-stable
