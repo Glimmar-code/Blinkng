@@ -42,7 +42,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -749,7 +751,7 @@ private fun ConversationSwitchRail(
                 .statusBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.fillMaxHeight(8.dp))
             Text(
                 text = "Chats",
                 color = palette.textSecondary,
@@ -1149,7 +1151,7 @@ private fun SearchMatchesField(
         leadingIcon = {
             Icon(
                 Icons.Default.Search,
-                contentDescription = null,
+                contentDescription = "Image",
                 tint = palette.textSecondary,
                 modifier = Modifier.size(19.dp)
             )
@@ -1288,7 +1290,7 @@ private fun AddMatchItem(palette: MessagePalette, onClick: () -> Unit) {
                 modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.fillMaxHeight(5.dp))
         Text("Me", color = palette.textSecondary, fontSize = 10.sp, maxLines = 1)
     }
 }
@@ -1309,7 +1311,7 @@ private fun MatchItem(person: MatchPerson, palette: MessagePalette, onClick: () 
             online = person.isOnline,
             emphasizeRing = person.isOnline || person.hasUnseenStory
         )
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.fillMaxHeight(5.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = person.name.substringBefore(" ").take(10),
@@ -1370,23 +1372,23 @@ private fun PremiumConversationListSkeleton(
                         Modifier.size(52.dp).clip(CircleShape)
                             .background(palette.glass.copy(alpha = .88f))
                     )
-                    Spacer(Modifier.width(11.dp))
+                    Spacer(Modifier.fillMaxWidth(11.dp))
                     Column(Modifier.weight(1f)) {
                         Box(
                             Modifier.fillMaxWidth(.46f).height(13.dp)
                                 .clip(RoundedCornerShape(7.dp))
                                 .background(palette.glass.copy(alpha = .90f))
                         )
-                        Spacer(Modifier.height(9.dp))
+                        Spacer(Modifier.fillMaxHeight(9.dp))
                         Box(
                             Modifier.fillMaxWidth(.78f).height(10.dp)
                                 .clip(RoundedCornerShape(7.dp))
                                 .background(palette.glass.copy(alpha = .66f))
                         )
                     }
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.fillMaxWidth(10.dp))
                     Box(
-                        Modifier.width(38.dp).height(9.dp)
+                        Modifier.fillMaxWidth(38.dp).height(9.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(palette.glass.copy(alpha = .62f))
                     )
@@ -1419,12 +1421,12 @@ private fun ConversationList(
                 ) {
                     Icon(
                         Icons.Default.EmojiEmotions,
-                        contentDescription = null,
+                        contentDescription = "Image",
                         tint = palette.accent,
                         modifier = Modifier.padding(16.dp).size(26.dp)
                     )
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.fillMaxHeight(12.dp))
                 Text("No conversations found", color = palette.textPrimary, fontWeight = FontWeight.SemiBold)
                 Text(
                     "Start a match or search for someone to message.",
@@ -1504,7 +1506,7 @@ private fun ConversationCard(
                 online = conversation.isOnline,
                 modifier = Modifier.clickable(onClick = onAvatarClick)
             )
-            Spacer(Modifier.width(11.dp))
+            Spacer(Modifier.fillMaxWidth(11.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1523,7 +1525,7 @@ private fun ConversationCard(
                         modifier = Modifier.padding(start = 4.dp)
                     )
                 }
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.fillMaxHeight(3.dp))
                 Text(
                     when {
                         conversation.presenceLabel.isNotBlank() -> conversation.presenceLabel
@@ -1551,7 +1553,7 @@ private fun ConversationCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.fillMaxWidth(8.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     conversation.lastMessageTime,
@@ -1560,7 +1562,7 @@ private fun ConversationCard(
                     maxLines = 1
                 )
                 if (conversation.unreadCount > 0 || conversation.isMarkedUnread) {
-                    Spacer(Modifier.height(7.dp))
+                    Spacer(Modifier.fillMaxHeight(7.dp))
                     Badge(containerColor = palette.accent, contentColor = Color.White) {
                         Text(
                             if (conversation.unreadCount > 0) {
@@ -2144,11 +2146,11 @@ private fun PremiumChatDetail(
                     ) {
                         Icon(
                             Icons.Default.PushPin,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.accent,
                             modifier = Modifier.size(19.dp)
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.fillMaxWidth(10.dp))
                         Text(
                             "Pinned: " + pinnedPreview.text.ifBlank { "Pinned media" }
                                 .replace(Regex("^Pinned:\\s*", RegexOption.IGNORE_CASE), ""),
@@ -2158,7 +2160,7 @@ private fun PremiumChatDetail(
                         )
                         Icon(
                             Icons.Default.ChevronRight,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.textSecondary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -2264,7 +2266,7 @@ private fun PremiumChatDetail(
                     onValueChange = { searchQuery = it },
                     placeholder = { Text("Search this chat", color = palette.textMuted) },
                     singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.textSecondary) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Image", tint = palette.textSecondary) },
                     trailingIcon = {
                         IconButton(onClick = { searchVisible = false; searchQuery = "" }) {
                             Icon(Icons.Default.Close, contentDescription = "Close search", tint = palette.textSecondary)
@@ -2396,12 +2398,7 @@ private fun PremiumChatDetail(
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
                                 videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
-                                BlinkChatVideoAlbumBubble(
-                                    messages = videoAlbumGroups[message.imageAlbumId].orEmpty(),
-                                    palette = palette,
-                                    onRetry = { onRetry(it) },
-                                    onCancelAttachment = { onCancelAttachment(it) },
-                                )
+                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty(), palette)
                             } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
@@ -2409,9 +2406,7 @@ private fun PremiumChatDetail(
                                     palette = palette,
                                     onOpen = { viewedImageMessage = it },
                                     onReply = { replyingTo = message; editingMessage = null },
-                                    onActions = { selectedMessage = message },
-                                    onRetry = { onRetry(it) },
-                                    onCancelAttachment = { onCancelAttachment(it) },
+                                    onActions = { selectedMessage = message }
                                 )
                             } else MessageBubble(
                             message = message,
@@ -2507,11 +2502,11 @@ private fun PremiumChatDetail(
                     ) {
                         Icon(
                             if (editingMessage != null) Icons.Default.Edit else Icons.Default.Reply,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.accent,
                             modifier = Modifier.size(18.dp)
                         )
-                        Spacer(Modifier.width(9.dp))
+                        Spacer(Modifier.fillMaxWidth(9.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 if (editingMessage != null) "Editing message" else "Replying to ${if (target?.isFromMe == true) "yourself" else conversation.partnerName}",
@@ -3009,7 +3004,7 @@ private fun PremiumChatDetail(
                                             .clip(RoundedCornerShape(10.dp)),
                                         contentScale = ContentScale.Crop
                                     )
-                                    Spacer(Modifier.width(8.dp))
+                                    Spacer(Modifier.fillMaxWidth(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(
                                             "Photo ${index + 1}",
@@ -3163,9 +3158,9 @@ private fun PremiumChatDetail(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.testTag("chat_reference_multi_video_preview")) {
                         itemsIndexed(pendingVideoBatch) { index, uri ->
-                            Column(Modifier.width(126.dp),
+                            Column(Modifier.fillMaxWidth(126.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.width(126.dp).height(120.dp)
+                                Box(Modifier.fillMaxWidth(126.dp).height(120.dp)
                                     .clip(RoundedCornerShape(12.dp))) {
                                     AsyncImage(
                                         model = remember(uri) {
@@ -3433,7 +3428,7 @@ private fun ChatHeader(
             Icon(Icons.Default.ArrowBack, contentDescription = "Back",
                 tint = palette.textPrimary, modifier = Modifier.size(25.dp))
         }
-        Spacer(Modifier.width(5.dp))
+        Spacer(Modifier.fillMaxWidth(5.dp))
         RingAvatar(
             url = conversation.partnerAvatar,
             name = conversation.partnerName,
@@ -3442,7 +3437,7 @@ private fun ChatHeader(
             emphasizeRing = false,
             modifier = Modifier.clickable(onClick = onProfileClick)
         )
-        Spacer(Modifier.width(9.dp))
+        Spacer(Modifier.fillMaxWidth(9.dp))
         Column(
             modifier = Modifier.weight(1f).clickable(onClick = onProfileClick),
             verticalArrangement = Arrangement.Center
@@ -3467,7 +3462,7 @@ private fun ChatHeader(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (conversation.isOnline) {
                     Box(Modifier.size(7.dp).background(palette.online, CircleShape))
-                    Spacer(Modifier.width(5.dp))
+                    Spacer(Modifier.fillMaxWidth(5.dp))
                 }
                 Text(
                     text = when {
@@ -3519,7 +3514,7 @@ private fun ChatContactProfileOverlay(
         if (conversation.partnerAvatar.isNotBlank()) {
             AsyncImage(
                 model = conversation.partnerAvatar,
-                contentDescription = null,
+                contentDescription = "Image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
@@ -3622,7 +3617,7 @@ private fun ChatContactProfileOverlay(
                     )
                 }
 
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.fillMaxHeight(18.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ChatContactAction(
@@ -3655,9 +3650,9 @@ private fun ChatContactProfileOverlay(
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.fillMaxHeight(16.dp))
                 HorizontalDivider(color = palette.border.copy(alpha = .65f))
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.fillMaxHeight(12.dp))
 
                 Surface(
                     color = palette.glassElevated.copy(alpha = .72f),
@@ -3713,7 +3708,7 @@ private fun ChatContactAction(
             modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
         ) {
             Icon(icon, contentDescription = label, tint = palette.accent, modifier = Modifier.size(21.dp))
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.fillMaxHeight(6.dp))
             Text(
                 label,
                 color = palette.textSecondary,
@@ -3743,7 +3738,7 @@ private fun EmptyConversation(
             size = 86.dp,
             online = conversation.isOnline
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.fillMaxHeight(14.dp))
         Text(
             conversation.partnerName,
             color = palette.textPrimary,
@@ -3831,7 +3826,7 @@ private fun MessageBubble(
         if (displayOffset > 10f) {
             Icon(
                 Icons.Default.Reply,
-                contentDescription = null,
+                contentDescription = "Image",
                 tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
                 modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
             )
@@ -3884,7 +3879,7 @@ private fun MessageBubble(
         ) {
             if (!isMine && palette.mode != MessageThemeMode.DARK) {
                 RingAvatar(url = partnerAvatar, name = partnerName, palette = palette, size = 31.dp)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.fillMaxWidth(8.dp))
             }
             if (showReferenceTail && !isMine) {
                 BlinkReferenceTextBubbleTail(isMine = false, color = palette.incomingBubble)
@@ -3971,10 +3966,10 @@ private fun MessageBubble(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
-                                    Modifier.width(3.dp).height(30.dp)
+                                    Modifier.fillMaxWidth(3.dp).height(30.dp)
                                         .background(palette.accent, RoundedCornerShape(3.dp))
                                 )
-                                Spacer(Modifier.width(7.dp))
+                                Spacer(Modifier.fillMaxWidth(7.dp))
                                 Column {
                                     Text(
                                         if (replyTarget?.isFromMe == true) "You" else partnerName,
@@ -4108,7 +4103,7 @@ private fun MessageBubble(
                         if (isMine && message.status in setOf(
                                 MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
                             )) {
-                            Spacer(Modifier.width(3.dp))
+                            Spacer(Modifier.fillMaxWidth(3.dp))
                             AnimatedContent(
                                 targetState = message.status,
                                 transitionSpec = {
@@ -4326,7 +4321,7 @@ private fun MessageContent(
                 var imageRetry by remember(message.id, message.attachedImageUrl) { mutableIntStateOf(0) }
                 var imageFailed by remember(message.id, message.attachedImageUrl) { mutableStateOf(false) }
                 Box(
-                    modifier = Modifier.width(235.dp).height(190.dp)
+                    modifier = Modifier.fillMaxWidth(235.dp).height(190.dp)
                         .clip(RoundedCornerShape(13.dp))
                         .background(Color(0xFF12171D))
                         .testTag("chat_reference_single_photo"),
@@ -4368,7 +4363,7 @@ private fun MessageContent(
                     isActive = videoActive,
                     onActivate = onVideoActivate,
                     onDeactivate = onVideoDeactivate,
-                    modifier = Modifier.width(240.dp),
+                    modifier = Modifier.fillMaxWidth(240.dp),
                 )
             }
             if (!message.attachedAudioUrl.isNullOrBlank()) {
@@ -4413,25 +4408,17 @@ private fun MessageContent(
                         modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val documentType = BlinkChatDocumentPresentation.typeLabel(
-                            documentName, message.attachmentMimeType
-                        )
-                        val documentTypeColor = Color(
-                            BlinkChatDocumentPresentation.typeColorArgb(
-                                documentName, message.attachmentMimeType
-                            ).toInt()
-                        )
                         Surface(
                             shape = RoundedCornerShape(5.dp),
-                            color = documentTypeColor,
+                            color = if (pdf) Color(0xFFEB404D) else palette.accent,
                             modifier = Modifier.size(width = 36.dp, height = 44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(documentType, color = Color.White,
+                                Text(if (pdf) "PDF" else "FILE", color = Color.White,
                                     fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.fillMaxWidth(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 documentName,
@@ -4441,7 +4428,7 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(if (pdf) "PDF · Tap to view" else "$documentType · Tap to open",
+                            Text(if (pdf) "PDF · Tap to view" else "Document · Tap to open",
                                 color = contentColor.copy(alpha = .60f), fontSize = 10.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -4575,7 +4562,7 @@ private fun MessageActionsPopover(
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.fillMaxHeight(6.dp))
 
             Surface(
                 color = if (palette.isLight) {
@@ -4700,10 +4687,10 @@ private fun MessageActionRow(
             text = symbol,
             color = foreground,
             fontSize = 17.sp,
-            modifier = Modifier.width(26.dp),
+            modifier = Modifier.fillMaxWidth(26.dp),
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.fillMaxWidth(8.dp))
         Text(
             text = label,
             color = foreground,
@@ -4852,7 +4839,7 @@ internal fun MessageComposer(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Outlined.Mic,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.textPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
@@ -5032,7 +5019,7 @@ private fun SharedChatContentSheet(
                                     modifier = Modifier.size(76.dp)
                                         .clip(RoundedCornerShape(10.dp))
                                 )
-                                Spacer(Modifier.width(12.dp))
+                                Spacer(Modifier.fillMaxWidth(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Photo", color = palette.textPrimary,
                                         fontWeight = FontWeight.SemiBold)
@@ -5142,7 +5129,7 @@ private fun SharedChatContentSheet(
                 }
             }
         }
-        Spacer(Modifier.height(16.dp).navigationBarsPadding())
+        Spacer(Modifier.fillMaxHeight(16.dp).navigationBarsPadding())
     }
 
 
@@ -5275,7 +5262,7 @@ private fun ChatNotificationSettingsSheet(
                 }
             }
         }
-        Spacer(Modifier.height(18.dp).navigationBarsPadding())
+        Spacer(Modifier.fillMaxHeight(18.dp).navigationBarsPadding())
     }
 }
 
@@ -5380,7 +5367,7 @@ private fun AttachmentSheet(
                 onClick = onDocument
             )
         }
-        Spacer(Modifier.height(18.dp).navigationBarsPadding())
+        Spacer(Modifier.fillMaxHeight(18.dp).navigationBarsPadding())
     }
 }
 
@@ -5405,12 +5392,12 @@ private fun AttachmentOption(
             Surface(shape = CircleShape, color = palette.accent.copy(alpha = .16f)) {
                 Icon(
                     icon,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(22.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.fillMaxWidth(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(description, color = palette.textSecondary, fontSize = 11.sp)
@@ -5456,7 +5443,7 @@ private fun PremiumCallScreen(
                 model = call.conversation.partnerAvatar,
                 error = painterResource(R.drawable.ic_default_profile),
                 fallback = painterResource(R.drawable.ic_default_profile),
-                contentDescription = null,
+                contentDescription = "Image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
@@ -5513,7 +5500,7 @@ private fun PremiumCallScreen(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(top = 4.dp)
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.fillMaxHeight(32.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -5539,7 +5526,7 @@ private fun PremiumCallScreen(
                     onClick = { muted = !muted }
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.fillMaxHeight(16.dp))
         }
     }
 }
@@ -5771,7 +5758,7 @@ private fun ChatPrivacySettingsSheet(
                 )
             }
         }
-        Spacer(Modifier.height(16.dp).navigationBarsPadding())
+        Spacer(Modifier.fillMaxHeight(16.dp).navigationBarsPadding())
     }
 }
 
@@ -5942,12 +5929,12 @@ private fun MessageAppearanceSheet(
             Surface(shape = CircleShape, color = palette.accent.copy(alpha = .18f)) {
                 Icon(
                     Icons.Default.Palette,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(22.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.fillMaxWidth(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Message appearance", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 Text("Black is the default theme", color = palette.textSecondary, fontSize = 11.sp)
@@ -5983,12 +5970,12 @@ private fun MessageAppearanceSheet(
             Surface(shape = CircleShape, color = palette.glassElevated) {
                 Icon(
                     Icons.Default.Menu,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(21.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.fillMaxWidth(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Privacy & messaging", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Who can message, call and see your activity", color = palette.textSecondary, fontSize = 11.sp)
@@ -6008,12 +5995,12 @@ private fun MessageAppearanceSheet(
             Surface(shape = CircleShape, color = palette.glassElevated) {
                 Icon(
                     Icons.Default.Notifications,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(21.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.fillMaxWidth(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Activity", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Open message-related notifications", color = palette.textSecondary, fontSize = 11.sp)
@@ -6024,7 +6011,7 @@ private fun MessageAppearanceSheet(
                 }
             }
         }
-        Spacer(Modifier.height(18.dp).navigationBarsPadding())
+        Spacer(Modifier.fillMaxHeight(18.dp).navigationBarsPadding())
     }
 }
 
@@ -6082,11 +6069,11 @@ private fun ThemePreviewCard(
                         shape = CircleShape,
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(16.dp)
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(3.dp))
+                        Icon(Icons.Default.Check, contentDescription = "Image", modifier = Modifier.padding(3.dp))
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.fillMaxHeight(8.dp))
             Text(mode.displayName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             if (mode == MessageThemeMode.DARK) {
                 Text("Default", color = preview.textSecondary, fontSize = 11.sp)
@@ -6132,6 +6119,18 @@ private fun RingAvatar(
     online: Boolean? = null,
     emphasizeRing: Boolean = true
 ) {
+    val pulseScale = if (online == true) {
+        val infiniteTransition = rememberInfiniteTransition(label = "onlinePulse")
+        infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.18f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "onlinePulseScale"
+        ).value
+    } else 1f
     Box(modifier = modifier.size(size)) {
         Box(
             modifier = Modifier
@@ -6157,6 +6156,7 @@ private fun RingAvatar(
             Box(
                 modifier = Modifier
                     .size(size * .25f)
+                    .scale(pulseScale)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
                     .background(palette.online)

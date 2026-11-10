@@ -3,10 +3,13 @@ package com.example.ui.screens
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -16,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.components.PremiumReelEditor
+import com.blinkng.shared.ui.editor.rememberVideoEditorState
 
 /**
  * Reuses the real Media3 export pipeline already used by BLINK Reels for chat
@@ -28,55 +32,78 @@ internal fun BlinkChatVideoEditorDialog(
     onSend: (Uri) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var workingUri by remember(sourceUri) { mutableStateOf(sourceUri) }
-    var exporting by remember(sourceUri) { mutableStateOf(false) }
-    var hasUnappliedEdits by remember(workingUri) { mutableStateOf(false) }
+    val videoState = rememberVideoEditorState(sourceUri.toString())
+    // Use videoState.exporting for export status
+    var hasUnappliedEdits by remember(videoState.uri) { mutableStateOf(false) }
     Dialog(
-        onDismissRequest = { if (!exporting) onDismiss() },
+        onDismissRequest = { if (!videoState.exporting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Column(
-            Modifier.fillMaxSize().background(Color(0xFF08090D))
+            Modifier.fillMaxSize().background(Color(0xFF0B0B0D))
                 .statusBarsPadding().navigationBarsPadding()
         ) {
-            Row(Modifier.fillMaxWidth().height(55.dp)
-                .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onDismiss, enabled = !exporting) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
-                    Text("CANCEL", color = Color.White)
+            // WhatsApp-style top bar
+            Row(
+                Modifier.fillMaxWidth().height(56.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss, enabled = !videoState.exporting) {
+                    Icon(Icons.Default.Close, "Close", tint = Color.White)
                 }
-                Spacer(Modifier.weight(1f))
-                Text("BLINK VIDEO STUDIO", color = Color.White)
-                Spacer(Modifier.weight(1f))
+                Text(
+                    "Edit video",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { onSend(Uri.parse(videoState.uri)) },
+                    enabled = !videoState.exporting && !hasUnappliedEdits
+                ) {
+                    Icon(Icons.Default.Check, "Done", tint = Color(0xFF25D366))
+                }
             }
             Column(
                 Modifier.fillMaxWidth().weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
                 PremiumReelEditor(
-                    uri = workingUri.toString(),
+                    uri = videoState.uri,
                     // Storage is additionally scoped to the authenticated account.
                     draftScope = "chat_video_editor",
-                    onRemove = { if (!exporting) onDismiss() },
-                    onEdited = { edited -> workingUri = Uri.parse(edited) },
-                    onExporting = { exporting = it },
+                    onRemove = { if (!videoState.exporting) onDismiss() },
+                    onEdited = { edited -> videoState.uri = edited },
+                    onExporting = { videoState.exporting = it },
                     onPendingEdits = { hasUnappliedEdits = it }
                 )
             }
-            Row(Modifier.fillMaxWidth().padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically) {
+            // WhatsApp-style bottom action bar
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(Color(0xFF111113))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     if (hasUnappliedEdits) "Apply your edits before sending."
+                    else if (videoState.exporting) "Exporting…"
                     else "Review the video before sending.",
-                    color = Color.LightGray,
+                    color = Color(0xFFB0B0B0),
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f)
                 )
                 Button(
-                    enabled = !exporting && !hasUnappliedEdits,
-                    onClick = { onSend(workingUri) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C9DF3))
-                ) { Text("Send video") }
+                    enabled = !videoState.exporting && !hasUnappliedEdits,
+                    onClick = { onSend(Uri.parse(videoState.uri)) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF25D366),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp)
+                ) { Text("Send") }
             }
         }
     }
