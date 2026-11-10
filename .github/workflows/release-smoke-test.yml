@@ -155,8 +155,11 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
-        # Prevent partial KSP metadata restored from Gradle cache from breaking disposable release builds.
-        run: gradle clean :app:assembleRelease :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
+        # Clean stale KSP state, then build variants sequentially to avoid Room schema export races.
+        run: |
+          set -euo pipefail
+          gradle clean :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+          gradle :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify small website APK plus native on-demand Play split
         shell: bash
