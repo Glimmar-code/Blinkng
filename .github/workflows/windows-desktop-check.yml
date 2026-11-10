@@ -112,13 +112,53 @@ jobs:
           $zip = Join-Path $env:RUNNER_TEMP 'blink-godot-4.3-windows.zip'
           $extracted = Join-Path $env:RUNNER_TEMP 'blink-godot-4.3-windows'
           $uri = 'https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_win64.exe.zip'
-          Invoke-WebRequest -Uri $uri -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $extracted -Force
-          $engine = Get-ChildItem -Path $extracted -Filter 'Godot_v4.3-stable_win64.exe' -Recurse | Select-Object -First 1
-          if (-not $engine -or $engine.Length -lt 1000000) { throw 'Native Godot engine missing' }
+          $downloaded = $false
+          for ($attempt = 1; $attempt -le 10; $attempt++) {
+            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+            try {
+              Invoke-WebRequest -Uri $uri -OutFile $zip -TimeoutSec 900
+              if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 1000000) {
+                throw 'Godot Windows archive is missing or unexpectedly small'
+              }
+              Expand-Archive -Path $zip -DestinationPath $extracted -Force
+              $engine = Get-ChildItem -Path $extracted -Filter 'Godot_v4.3-stable_win64.exe' -Recurse | Select-Object -First 1
+              if (-not $engine -or $engine.Length -lt 1000000) { throw 'Native Godot engine missing after extraction' }
+              $downloaded = $true
+              break
+            } catch {
+              if ($attempt -eq 10) { throw }
+              $delay = [Math]::Min(60, $attempt * 5)
+              Write-Warning "Godot download/extract attempt $attempt failed: $($_.Exception.Message). Retrying in $delay seconds."
+              Start-Sleep -Seconds $delay
+              Remove-Item $extracted -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          if (-not $downloaded) { throw 'Godot Windows runtime could not be downloaded after 10 attempts' }
           $destination = 'desktopApp/build/nativeResources/windows/blink-life'
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
           Copy-Item -Path $engine.FullName -Destination (Join-Path $destination 'BlinkLife.exe')
+
+      - name: Download WiX toolset with transient CDN retry
+        if: steps.reuse.outputs.reuse != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'blink-wix-download.log'
+          for ($attempt = 1; $attempt -le 8; $attempt++) {
+            Remove-Item $log -Force -ErrorAction SilentlyContinue
+            & gradle -p desktopApp downloadWix --stacktrace --no-daemon *> $log
+            $exitCode = $LASTEXITCODE
+            Get-Content $log | Write-Host
+            if ($exitCode -eq 0) { break }
+            $output = Get-Content $log -Raw
+            if ($output -notmatch '(?i)(HTTP status code: 50[234]|HTTP status code: 429|Gateway Time-?out|502 Bad Gateway|503 Service Unavailable)') {
+              throw "WiX download task failed for a non-transient reason (exit $exitCode)."
+            }
+            if ($attempt -eq 8) { throw 'WiX download still failed after 8 transient-error retries.' }
+            $delay = [Math]::Min(60, $attempt * 5)
+            Write-Warning "WiX CDN returned a transient gateway/rate-limit error. Retry $attempt/8 in $delay seconds."
+            Start-Sleep -Seconds $delay
+          }
 
       - name: Compile and test desktop app
         if: steps.reuse.outputs.reuse != 'true'
