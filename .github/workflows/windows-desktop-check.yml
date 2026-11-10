@@ -117,13 +117,22 @@ jobs:
             try {
               if (Test-Path $zip) { Remove-Item $zip -Force }
               Invoke-WebRequest -Uri $uri -OutFile $zip -TimeoutSec 900
-              if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 1000000) {
-                throw 'Downloaded Godot archive is missing or unexpectedly small'
-              }
-              Add-Type -AssemblyName System.IO.Compression
-              $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
-              try {
-                if (-not ($archive.Entries | Where-Object { $_.FullName -match '(^|/)Godot_v4.3-stable_win64.exe          if (-not $engine -or $engine.Length -lt 1000000) { throw 'Native Godot engine missing' }
+              if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 1000000) { throw 'Godot archive is missing or unexpectedly small' }
+              & tar.exe -tf $zip *> $null
+              if ($LASTEXITCODE -ne 0) { throw 'Godot archive failed ZIP integrity validation' }
+              $downloaded = $true
+              break
+            } catch {
+              $detail = $_.Exception.Message
+              if ($attempt -eq 8) { throw ('Godot 4.3 Windows download failed after 8 attempts: ' + $detail) }
+              Write-Warning ('Godot download attempt ' + $attempt + '/8 failed: ' + $detail + '. Retrying.')
+              Start-Sleep -Seconds ([Math]::Min(30, 3 * $attempt))
+            }
+          }
+          if (-not $downloaded) { throw 'Godot 4.3 Windows archive could not be downloaded' }
+          Expand-Archive -Path $zip -DestinationPath $extracted -Force
+          $engine = Get-ChildItem -Path $extracted -Filter 'Godot_v4.3-stable_win64.exe' -Recurse | Select-Object -First 1
+          if (-not $engine -or $engine.Length -lt 1000000) { throw 'Native Godot engine missing' }
           $destination = 'desktopApp/build/nativeResources/windows/blink-life'
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
           Copy-Item -Path $engine.FullName -Destination (Join-Path $destination 'BlinkLife.exe')
