@@ -108,6 +108,28 @@ jobs:
         if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/setup_godot_43_windows.ps1
+      - name: Download WiX toolset with transient CDN retry
+        if: steps.reuse.outputs.reuse != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'blink-wix-download.log'
+          for ($attempt = 1; $attempt -le 8; $attempt++) {
+            Remove-Item $log -Force -ErrorAction SilentlyContinue
+            & gradle -p desktopApp downloadWix --stacktrace --no-daemon *> $log
+            $exitCode = $LASTEXITCODE
+            Get-Content $log | Write-Host
+            if ($exitCode -eq 0) { break }
+            $output = Get-Content $log -Raw
+            if ($output -notmatch '(?i)(HTTP status code: 50[234]|HTTP status code: 429|Gateway Time-?out|502 Bad Gateway|503 Service Unavailable)') {
+              throw "WiX download task failed for a non-transient reason (exit $exitCode)."
+            }
+            if ($attempt -eq 8) { throw 'WiX download still failed after 8 transient-error retries.' }
+            $delay = [Math]::Min(60, $attempt * 5)
+            Write-Warning "WiX CDN returned a transient gateway/rate-limit error. Retry $attempt/8 in $delay seconds."
+            Start-Sleep -Seconds $delay
+          }
+
       - name: Compile and test desktop app
         if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
