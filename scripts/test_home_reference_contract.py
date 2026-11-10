@@ -152,7 +152,9 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('isBottomNavigationVisible: Boolean = true', HOME)
         self.assertIn('bottom = bottomRailClearance', HOME)
         self.assertIn('bottom = createFabClearance', HOME)
-        self.assertIn('if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset', HOME)
+        self.assertIn('val bottomRailHeight = maxOf(64.dp, (38f + 14f * density.fontScale).dp)', HOME)
+        self.assertIn('if (isBottomNavigationVisible) bottomRailHeight + bottomNavigationInset else bottomNavigationInset', HOME)
+        self.assertIn('targetValue = if (isBottomNavigationVisible) 64.dp else 24.dp', HOME)
         self.assertNotIn('.padding(bottom = 64.dp + bottomNavigationInset)', HOME)
         self.assertNotIn('.padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset)', HOME)
 
