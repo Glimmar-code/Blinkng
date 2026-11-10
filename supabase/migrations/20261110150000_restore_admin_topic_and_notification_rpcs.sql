@@ -11,7 +11,7 @@ create table if not exists public.blink_contest_topics (
   created_at timestamptz not null default now()
 );
 alter table public.blink_contest_topics enable row level security;
-revoke all on public.blink_contest_topics from public, anon, authenticated;
+revoke all on public.blink_contest_topics from public, anon, authenticated, service_role;
 grant select, insert, update on public.blink_contest_topics to service_role;
 
 insert into public.blink_contest_topics(slug,name,category,description,sort_order) values
@@ -53,6 +53,16 @@ create table if not exists public.blink_contest_history_participants (
   captured_at timestamptz not null default now(),
   unique(contest_id,entry_id)
 );
+
+-- These supporting tables are accessed only through the SECURITY DEFINER RPCs
+-- above/below; keep direct Data API access closed to every client role.
+alter table public.blink_contest_topic_follows enable row level security;
+revoke all on public.blink_contest_topic_follows from anon, authenticated, service_role;
+grant all on public.blink_contest_topic_follows to service_role;
+
+alter table public.blink_contest_history_participants enable row level security;
+revoke all on public.blink_contest_history_participants from anon, authenticated, service_role;
+grant all on public.blink_contest_history_participants to service_role;
 
 create or replace function public.list_blink_contest_topics()
 returns jsonb language sql stable security definer set search_path='' as $$
