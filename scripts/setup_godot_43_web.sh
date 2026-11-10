@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Install a matching editor and HTML5 export templates for BLINK LIFE.
-# Production releases must use the exact same Godot version as CI.
-# GitHub release assets occasionally return transient 5xx/504 responses;
-# retry those failures fully and validate each archive before installing it.
+# Install the exact Godot editor and HTML5 export templates used by BLINK CI.
+# GitHub's release CDN can intermittently return 429/5xx (especially 504).
+# Retry all transfer failures with bounded backoff and validate both archives.
 set -euo pipefail
 
 GODOT_VERSION=4.3-stable
@@ -15,12 +14,10 @@ download_asset() {
   local url="$1"
   local destination="$2"
 
-  # --retry-all-errors is intentional: GitHub's asset CDN can return 5xx
-  # responses, including 504, which must not abort a production release on
-  # the first transient outage.
+  rm -f "$destination"
   curl --fail --location --silent --show-error \
-    --connect-timeout 30 --max-time 900 \
-    --retry 8 --retry-all-errors --retry-delay 3 --retry-max-time 600 \
+    --connect-timeout 30 --max-time 1800 \
+    --retry 12 --retry-all-errors --retry-delay 5 --retry-max-time 1200 \
     "$url" --output "$destination"
 
   test -s "$destination"
