@@ -1198,6 +1198,25 @@
     state.qualifiedTimers.set(postId,timer);
   }
 
+  function scheduleQualifiedMarketView(itemId,element){
+    const key=`market:${itemId}`;
+    if(!itemId||element?.dataset.viewRecorded==='1'||state.qualifiedTimers.has(key)||document.visibilityState!=='visible')return;
+    const timer=setTimeout(async()=>{
+      let recorded=false;
+      try{
+        const count=await rpc('record_marketplace_view',{p_item_id:itemId,p_event_id:crypto.randomUUID()});
+        recorded=true;
+        const countEl=element?.querySelector('[data-market-count]');
+        if(countEl&&Number.isFinite(Number(count)))countEl.textContent=`${fmt(count)} views`;
+      }catch{}
+      finally{
+        state.qualifiedTimers.delete(key);
+        if(recorded&&element)element.dataset.viewRecorded='1';
+      }
+    },60000);
+    state.qualifiedTimers.set(key,timer);
+  }
+
   function cancelQualifiedView(postId){
     const timer=state.qualifiedTimers.get(postId);
     if(timer)clearTimeout(timer);
@@ -1209,12 +1228,16 @@
     if(!state.viewObserver){
       state.viewObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{
         const el=entry.target,postId=el.dataset.postId;
-        if(!postId)return;
-        if(entry.isIntersecting&&entry.intersectionRatio>=.6)scheduleQualifiedView(postId,el);
-        else cancelQualifiedView(postId);
+        const marketId=el.dataset.marketId;
+        if(!postId&&!marketId)return;
+        const id=postId||`market:${marketId}`;
+        if(entry.isIntersecting&&entry.intersectionRatio>=.6){
+          if(postId)scheduleQualifiedView(postId,el);
+          else scheduleQualifiedMarketView(marketId,el);
+        }else cancelQualifiedView(id);
       }),{threshold:[0,.6,1]});
     }
-    document.querySelectorAll('[data-post-id]').forEach(el=>{
+    document.querySelectorAll('[data-post-id],[data-market-id]').forEach(el=>{
       if(el.dataset.viewTracked==='1'||el.dataset.viewRecorded==='1')return;
       el.dataset.viewTracked='1';
       state.viewObserver.observe(el);
@@ -1761,12 +1784,13 @@
         const image=safeUrl((i.image_urls||[])[0]||i.image_url);
         const seller=String(i.seller_username||'').trim().replace(/^@/,'');
         const action=seller?`<button type="button" class="btn primary" data-message-seller="${esc(seller)}">Message seller</button>`:'<button type="button" class="btn" disabled>Seller unavailable</button>';
-        return `<article class="card market-card">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p>${richLinkCard(i.description||'')}${action}</article>`;
+        return `<article class="card market-card" data-market-id="${esc(i.id||'')}" data-view-tracked="0">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p><p class="muted small" data-market-count>${fmt(i.views_count||i.viewsCount||0)} views</p>${richLinkCard(i.description||'')}${action}</article>`;
       }).join('');
       ROOT.innerHTML=shell(`<section class="market-hero card"><div><p class="eyebrow">BLINK / MARKET</p><h1>Find what your campus is looking for.</h1><p>Browse listings from people in your community, compare prices, and message sellers directly on BLINK.</p></div><div class="market-hero-stat"><strong>${items.length}</strong><span>fresh listings</span></div></section><form id="market-search" class="market-search"><input class="field" name="q" maxlength="100" value="${esc(q)}" placeholder="Search items, sellers or campus" autocomplete="off"><button class="btn primary">Search market</button></form><div class="market-grid">${cards||'<div class="card empty"><h2>No items found</h2><p>Try a wider search or check back soon for new campus finds.</p></div>'}</div>`,'Marketplace');
       bindCommon();
       document.getElementById('market-search').onsubmit=e=>{e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);renderMarket();};
       document.querySelectorAll('[data-message-seller]').forEach(x=>x.onclick=()=>navigate(`/messages/new?user=${encodeURIComponent(x.dataset.messageSeller)}`));
+      bindQualifiedViews();
     }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}
   }
 

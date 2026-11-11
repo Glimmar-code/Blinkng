@@ -188,3 +188,41 @@ internal fun Modifier.trackDesktopContentExposure(
         }
     }
 }
+
+@Composable
+internal fun Modifier.trackDesktopMarketExposure(
+    itemId: String,
+    onQualified: () -> Unit,
+): Modifier {
+    val window = LocalWindowInfo.current
+    val gate = remember(itemId) { DesktopVisibilityGate() }
+    val scope = rememberCoroutineScope()
+    var currentlyVisible by remember(itemId) { mutableStateOf(false) }
+    var pendingExposure by remember(itemId) { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(itemId) {
+        onDispose { pendingExposure?.cancel() }
+    }
+
+    return this.onGloballyPositioned { coordinates ->
+        val size = window.containerSize
+        val bounds = coordinates.boundsInWindow()
+        val visibleWidth = (minOf(bounds.right, size.width.toFloat()) - maxOf(bounds.left, 0f)).coerceAtLeast(0f)
+        val visibleHeight = (minOf(bounds.bottom, size.height.toFloat()) - maxOf(bounds.top, 0f)).coerceAtLeast(0f)
+        val qualified = coordinates.isAttached && size.width > 0 && size.height > 0 &&
+            visibleWidth >= bounds.width * 0.5f && visibleHeight >= bounds.height * 0.5f
+        if (!qualified) {
+            currentlyVisible = false
+            pendingExposure?.cancel()
+            pendingExposure = null
+            gate.update(false)
+        } else if (!currentlyVisible) {
+            currentlyVisible = true
+            pendingExposure = scope.launch {
+                delay(DESKTOP_CONTENT_EXPOSURE_DWELL_MS)
+                if (currentlyVisible && gate.update(true)) onQualified()
+                pendingExposure = null
+            }
+        }
+    }
+}
