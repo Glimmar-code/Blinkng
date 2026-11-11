@@ -1694,7 +1694,11 @@ fun MarketplaceScreen(state: DesktopAppState) {
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                ScreenHeader("Marketplace", "Real campus listings")
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ScreenHeader("Marketplace", "Real campus listings")
+                    Text("Find what your campus is looking for.", fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    Text("Browse sellers, compare prices, and message directly on BLINK.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Button(onClick = {
                     if (sellerReady) showCreate = !showCreate else showSellerEnrollment = !showSellerEnrollment
                 }) { Text(if (showCreate || showSellerEnrollment) "Close" else "Sell item") }
@@ -2128,7 +2132,11 @@ fun MarketplaceScreen(state: DesktopAppState) {
             item { Text("No Market listings match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         items(itemsList, key = { it.id }) { market ->
-            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = if (market.isFeatured) 3.dp else 1.dp) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                tonalElevation = if (market.isFeatured) 3.dp else 1.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(market.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)

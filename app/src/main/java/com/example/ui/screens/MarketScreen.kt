@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -181,7 +182,7 @@ fun MarketScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 8.dp)
+                    .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 10.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -192,20 +193,26 @@ fun MarketScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Storefront,
-                            contentDescription = null,
-                            modifier = Modifier.size(27.dp)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        ) {
+                            Icon(
+                                Icons.Default.Storefront,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(9.dp).size(24.dp)
+                            )
+                        }
                         Column {
                             Text(
-                                "BLINK MARKET",
+                                "Market / campus finds",
                                 fontSize = 21.sp,
                                 fontWeight = FontWeight.Black,
-                                letterSpacing = 0.6.sp
+                                letterSpacing = (-0.3).sp
                             )
                             Text(
-                                "Campus listings from BLINK users",
+                                "Buy from people you already trust",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -216,6 +223,20 @@ fun MarketScreen(
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Market")
                     }
                 }
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    "Find what your campus is looking for.",
+                    fontSize = 26.sp,
+                    lineHeight = 30.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "Browse sellers, compare prices, and message directly on BLINK.",
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
 
@@ -883,6 +904,29 @@ fun ProductCard(
                         username = item.sellerUsername,
                         knownVip = if (item.sellerIsVip) true else null,
                         modifier = Modifier.padding(start = 3.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Visibility,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        "${item.viewsCount} views",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("•", color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        if (item.isNegotiable) "Open to offers" else "Ready to buy",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
