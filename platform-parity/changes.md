@@ -1,3 +1,9 @@
+## 2026-11-07 — BLINK Contest topic loading and publishing repair (PR #675)
+
+- **PARITY-EXCEPTION: android-contest-topic-error-recovery-20261107** — Android admin topic selection now gives an explicit required-topic state and an inline retry action when the directory RPC cannot load. Creating a custom topic continues to select its returned topic ID automatically. The underlying Contest RPC/database contract is shared; no Windows-only backend behavior is introduced.
+- **Windows equivalent:** Windows uses the shared authenticated Contest RPCs and its independent desktop admin presentation; this Android-only message/retry affordance does not remove desktop contest creation or publishing capabilities.
+- **Verification:** The isolated local Supabase integration suite now applies the topic/history migration and exercises the seeded directory, custom topic creation, public listing, follow/unfollow, topic detail, required-topic rejection, campus-university validation and authenticated publishing. This is disposable CI only; it never connects to the hosted production database.
+
 ## 2026-11-06 — Android realtime lifecycle and credential hardening (PR #663)
 
 - **PARITY-EXCEPTION: android-realtime-and-secure-storage-adapters-20261106** — Android keeps messages, conversations, presence, notifications, activities, balances and incoming calls live; feed-post events are joined only while the Home feed is active, and ConnectHub-specific tables are joined only while Connect is active. The subscription set is replayed safely after reconnects. Android's identifier-only remembered-login migration uses Android Keystore/SharedPreferences; its private bug-report screenshot reader accepts `jpg`, `jpeg`, `png`, `webp`, `heic` and `heif` without changing storage authorization. The Android-only config fallback warning and conversation cursor pagination are client-adapter changes; the pinned `blink-web` frontend response is shared by both clients.

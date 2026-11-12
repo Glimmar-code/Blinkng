@@ -136,6 +136,9 @@ jobs:
           chmod 600 "$KEYSTORE_PATH"
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
+      - name: Clean release outputs before packaging
+        shell: bash
+        run: gradle clean --no-build-cache --no-daemon
       - name: Install Godot 4.3 Web exporter
         run: bash scripts/setup_godot_43_web.sh
 
@@ -155,13 +158,11 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
+        # Clean stale KSP state, then build variants sequentially to avoid Room schema export races.
         run: |
           set -euo pipefail
-          # Room KSP exports one schema directory. Building both variants in one
-          # parallel Gradle graph can race on the same JSON schema file and make
-          # the second KSP task parse an empty/truncated file.
-          gradle :app:assembleRelease -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
-          gradle :app:bundlePlayStoreRelease -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
+          gradle :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+          gradle :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify small website APK plus native on-demand Play split
         shell: bash

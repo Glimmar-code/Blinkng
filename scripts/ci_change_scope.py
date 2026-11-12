@@ -45,6 +45,7 @@ WINDOWS_FILES = BUILD_INPUTS | {
     "scripts/test_ci_verified_reuse.py",
     "scripts/check_windows_parity.py",
     "scripts/check_premium_dark_tokens.py",
+    "scripts/setup_godot_43_windows.ps1",
     "platform-parity/changes.md",
 }
 BACKEND_FILES = {
