@@ -136,6 +136,9 @@ jobs:
           chmod 600 "$KEYSTORE_PATH"
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
+      - name: Clean release outputs before packaging
+        shell: bash
+        run: gradle clean --no-build-cache --no-daemon
       - name: Install Godot 4.3 Web exporter
         run: bash scripts/setup_godot_43_web.sh
 
@@ -160,7 +163,7 @@ jobs:
           set -euo pipefail
           # Clean stale KSP state, then build variants sequentially. Room KSP
           # exports one schema directory; a parallel graph can race on its JSON.
-          gradle clean :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+          gradle :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
           gradle :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify small website APK plus native on-demand Play split
