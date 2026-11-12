@@ -257,7 +257,7 @@
     }else if(state.viewObserver){
       state.viewObserver.disconnect();state.viewObserver=null;
       document.querySelectorAll('[data-view-tracked]').forEach(el=>{delete el.dataset.viewTracked;});
-      bindQualifiedViews();
+      if(typeof bindQualifiedViews==='function')bindQualifiedViews();
     }
   });
 
@@ -1198,52 +1198,8 @@
     state.qualifiedTimers.set(postId,timer);
   }
 
-  function scheduleQualifiedMarketView(itemId,element){
-    const key=`market:${itemId}`;
-    if(!itemId||element?.dataset.viewRecorded==='1'||state.qualifiedTimers.has(key)||document.visibilityState!=='visible')return;
-    const timer=setTimeout(async()=>{
-      let recorded=false;
-      try{
-        const count=await rpc('record_marketplace_view',{p_item_id:itemId,p_event_id:crypto.randomUUID()});
-        recorded=true;
-        const countEl=element?.querySelector('[data-market-count]');
-        if(countEl&&Number.isFinite(Number(count)))countEl.textContent=`${fmt(count)} views`;
-      }catch{}
-      finally{
-        state.qualifiedTimers.delete(key);
-        if(recorded&&element)element.dataset.viewRecorded='1';
-      }
-    },60000);
-    state.qualifiedTimers.set(key,timer);
-  }
-
-  function cancelQualifiedView(postId){
-    const timer=state.qualifiedTimers.get(postId);
-    if(timer)clearTimeout(timer);
-    state.qualifiedTimers.delete(postId);
-  }
-
-  function bindQualifiedViews(){
-    if(!('IntersectionObserver'in window))return;
-    if(!state.viewObserver){
-      state.viewObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{
-        const el=entry.target,postId=el.dataset.postId;
-        const marketId=el.dataset.marketId;
-        if(!postId&&!marketId)return;
-        const id=postId||`market:${marketId}`;
-        if(entry.isIntersecting&&entry.intersectionRatio>=.6){
-          if(postId)scheduleQualifiedView(postId,el);
-          else scheduleQualifiedMarketView(marketId,el);
-        }else cancelQualifiedView(id);
-      }),{threshold:[0,.6,1]});
-    }
-    document.querySelectorAll('[data-post-id],[data-market-id]').forEach(el=>{
-      if(el.dataset.viewTracked==='1'||el.dataset.viewRecorded==='1')return;
-      el.dataset.viewTracked='1';
-      state.viewObserver.observe(el);
-    });
-  }
-
+  function scheduleQualifiedMarketView(i,e){const k=`market:${i}`;if(!i||e?.dataset.viewRecorded==='1'||state.qualifiedTimers.has(k)||document.visibilityState!=='visible')return;const t=setTimeout(()=>rpc('record_marketplace_view',{p_item_id:i,p_event_id:crypto.randomUUID()}).then(()=>e.dataset.viewRecorded='1').catch(()=>{}).finally(()=>state.qualifiedTimers.delete(k)),60000);state.qualifiedTimers.set(k,t)}
+  function bindQualifiedViews(){if(!('IntersectionObserver'in window))return;if(!state.viewObserver)state.viewObserver=new IntersectionObserver(es=>es.forEach(x=>{const e=x.target,p=e.dataset.postId,m=e.dataset.marketId,k=p||`market:${m}`;if(!k)return;if(x.isIntersecting&&x.intersectionRatio>=.6)(p?scheduleQualifiedView:scheduleQualifiedMarketView)(p||m,e);else cancelQualifiedView(k)}),{threshold:[0,.6,1]});document.querySelectorAll('[data-post-id],[data-market-id]').forEach(e=>{if(e.dataset.viewTracked==='1'||e.dataset.viewRecorded==='1')return;e.dataset.viewTracked='1';state.viewObserver.observe(e)})}
   async function loadStories(){ if(!isAuthed())return []; try{const rows=await table('stories','active=eq.true&select=id,user_id,media_url,media_type,caption,text,image_url,video_url,created_at,likes_count,views_count&order=created_at.desc&limit=40'); const profiles=await fetchProfiles(rows.map(x=>x.user_id)); return rows.map(s=>({...s,author:profiles.get(s.user_id)||{}}));}catch{return [];} }
   function storyStrip(stories){return `<div class="stories"><button class="story-ring" data-create-story><div class="avatar-sm avatar-fallback" style="width:58px;height:58px">＋</div><strong>Your story</strong></button>${stories.map(s=>`<button class="story-ring" data-story="${esc(s.id)}">${avatar(s.author.avatar_url,s.author.full_name,'avatar-sm')}<strong>${esc(s.author.username||'story')}</strong></button>`).join('')}</div>`;}
   function bindStories(stories){document.querySelector('[data-create-story]')?.addEventListener('click',()=>requireAuth()&&createStory());document.querySelectorAll('[data-story]').forEach(x=>x.onclick=()=>openStory(stories.find(s=>s.id===x.dataset.story)));}
@@ -1784,13 +1740,13 @@
         const image=safeUrl((i.image_urls||[])[0]||i.image_url);
         const seller=String(i.seller_username||'').trim().replace(/^@/,'');
         const action=seller?`<button type="button" class="btn primary" data-message-seller="${esc(seller)}">Message seller</button>`:'<button type="button" class="btn" disabled>Seller unavailable</button>';
-        return `<article class="card market-card" data-market-id="${esc(i.id||'')}" data-view-tracked="0">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p><p class="muted small" data-market-count>${fmt(i.views_count||i.viewsCount||0)} views</p>${richLinkCard(i.description||'')}${action}</article>`;
+        return `<article class="card market-card" data-market-id="${esc(i.id||'')}">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p><p class="muted small" data-market-count>${fmt(i.views_count||i.viewsCount||0)} views</p>${richLinkCard(i.description||'')}${action}</article>`;
       }).join('');
-      ROOT.innerHTML=shell(`<section class="market-hero card"><div><p class="eyebrow">BLINK / MARKET</p><h1>Find what your campus is looking for.</h1><p>Browse listings from people in your community, compare prices, and message sellers directly on BLINK.</p></div><div class="market-hero-stat"><strong>${items.length}</strong><span>fresh listings</span></div></section><form id="market-search" class="market-search"><input class="field" name="q" maxlength="100" value="${esc(q)}" placeholder="Search items, sellers or campus" autocomplete="off"><button class="btn primary">Search market</button></form><div class="market-grid">${cards||'<div class="card empty"><h2>No items found</h2><p>Try a wider search or check back soon for new campus finds.</p></div>'}</div>`,'Marketplace');
+      ROOT.innerHTML=shell(`<form id="market-search" style="display:flex;gap:8px;margin-bottom:12px"><input class="field" name="q" maxlength="100" value="${esc(q)}" placeholder="Search marketplace" autocomplete="off"><button class="btn">Search</button></form><div class="market-grid">${cards||'<div class="card empty"><h2>No items found</h2></div>'}</div>`,'Marketplace');
       bindCommon();
       document.getElementById('market-search').onsubmit=e=>{e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);renderMarket();};
       document.querySelectorAll('[data-message-seller]').forEach(x=>x.onclick=()=>navigate(`/messages/new?user=${encodeURIComponent(x.dataset.messageSeller)}`));
-      bindQualifiedViews();
+      if(typeof bindQualifiedViews==='function')bindQualifiedViews();
     }catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}
   }
 
