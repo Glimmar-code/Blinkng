@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.components.PremiumReelEditor
-import com.blinkng.shared.ui.editor.rememberVideoEditorState
 
 /**
  * Reuses the real Media3 export pipeline already used by BLINK Reels for chat
@@ -32,11 +31,12 @@ internal fun BlinkChatVideoEditorDialog(
     onSend: (Uri) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val videoState = rememberVideoEditorState(sourceUri.toString())
-    // Use videoState.exporting for export status
-    var hasUnappliedEdits by remember(videoState.uri) { mutableStateOf(false) }
+    var editedUri by remember(sourceUri) { mutableStateOf(sourceUri.toString()) }
+    var exporting by remember { mutableStateOf(false) }
+    // Use exporting for export status
+    var hasUnappliedEdits by remember(editedUri) { mutableStateOf(false) }
     Dialog(
-        onDismissRequest = { if (!videoState.exporting) onDismiss() },
+        onDismissRequest = { if (!exporting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Column(
@@ -49,7 +49,7 @@ internal fun BlinkChatVideoEditorDialog(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onDismiss, enabled = !videoState.exporting) {
+                IconButton(onClick = onDismiss, enabled = !exporting) {
                     Icon(Icons.Default.Close, "Close", tint = Color.White)
                 }
                 Text(
@@ -59,8 +59,8 @@ internal fun BlinkChatVideoEditorDialog(
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(
-                    onClick = { onSend(Uri.parse(videoState.uri)) },
-                    enabled = !videoState.exporting && !hasUnappliedEdits
+                    onClick = { onSend(Uri.parse(editedUri)) },
+                    enabled = !exporting && !hasUnappliedEdits
                 ) {
                     Icon(Icons.Default.Check, "Done", tint = Color(0xFF25D366))
                 }
@@ -70,12 +70,12 @@ internal fun BlinkChatVideoEditorDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 PremiumReelEditor(
-                    uri = videoState.uri,
+                    uri = editedUri,
                     // Storage is additionally scoped to the authenticated account.
                     draftScope = "chat_video_editor",
-                    onRemove = { if (!videoState.exporting) onDismiss() },
-                    onEdited = { edited -> videoState.uri = edited },
-                    onExporting = { videoState.exporting = it },
+                    onRemove = { if (!exporting) onDismiss() },
+                    onEdited = { edited -> editedUri = edited },
+                    onExporting = { exporting = it },
                     onPendingEdits = { hasUnappliedEdits = it }
                 )
             }
@@ -89,15 +89,15 @@ internal fun BlinkChatVideoEditorDialog(
             ) {
                 Text(
                     if (hasUnappliedEdits) "Apply your edits before sending."
-                    else if (videoState.exporting) "Exporting…"
+                    else if (exporting) "Exporting…"
                     else "Review the video before sending.",
                     color = Color(0xFFB0B0B0),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f)
                 )
                 Button(
-                    enabled = !videoState.exporting && !hasUnappliedEdits,
-                    onClick = { onSend(Uri.parse(videoState.uri)) },
+                    enabled = !exporting && !hasUnappliedEdits,
+                    onClick = { onSend(Uri.parse(editedUri)) },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF25D366),
                         contentColor = Color.White
