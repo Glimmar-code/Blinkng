@@ -21,7 +21,7 @@ permissions:
 jobs:
   verify-public-site:
     if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
       - name: Checkout precisely deployed main commit
@@ -50,6 +50,6 @@ jobs:
       - name: Install Playwright Chrome for a real public-only browser measurement
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Verify anonymous page-view request from real mobile Chrome
         run: node scripts/verify_live_browser_analytics.mjs
