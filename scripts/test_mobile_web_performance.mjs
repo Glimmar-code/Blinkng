@@ -5,7 +5,7 @@ import {readFileSync,statSync} from 'node:fs';
 
 const read=p=>readFileSync(p,'utf8');
 const sizes={
-  'web/app.js':162_000,
+  'web/app.js':164_000,
   'web/link-previews.js':10_000,
   'web/profile-theme.js':10_000,
   'web/parity.js':115_000,

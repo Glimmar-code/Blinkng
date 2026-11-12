@@ -31,7 +31,7 @@ jobs:
       - name: Install isolated Playwright browser runner
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Start BLINK website locally (no production credentials)
         shell: bash
         run: |
