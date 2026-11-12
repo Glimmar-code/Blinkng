@@ -3135,6 +3135,18 @@ class DesktopSupabaseClient(
         ))
     }
 
+    suspend fun recordMarketplaceView(itemId: String): Long = withContext(Dispatchers.IO) {
+        require(itemId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "Choose a valid Market listing." }
+        val response = postObject(
+            "/rest/v1/rpc/record_marketplace_view",
+            JSONObject().put("p_item_id", itemId).put("p_event_id", UUID.randomUUID().toString()),
+        )
+        when (response) {
+            is JSONObject -> response.optString("value").trim().trim('"').toLongOrNull()
+            else -> null
+        } ?: throw IllegalStateException("Marketplace view was not recorded.")
+    }
+
     suspend fun registerVerifiedMarketSeller(
         storeName: String,
         phone: String,
