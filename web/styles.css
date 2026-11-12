@@ -141,3 +141,13 @@ html.save-data .app-shell .route-content,html.save-data .app-shell .btn,html.sav
 
 /* Keep failed feed media visibly distinct without hiding its accessible alt text. */
 .post-media img.media-error{min-height:120px;background:var(--surface-soft,#222);}
+
+/* Marketplace editorial browse surface */
+.market-hero{display:flex;align-items:end;justify-content:space-between;gap:22px;padding:28px 24px;margin-bottom:12px;background:radial-gradient(circle at 92% 8%,rgba(139,92,246,.24),transparent 34%),linear-gradient(135deg,rgba(29,23,48,.98),rgba(17,16,25,.98))}
+.market-hero h1{max-width:620px;margin:0;font-size:clamp(28px,5vw,48px);line-height:1.03;letter-spacing:-1.8px}
+.market-hero p:not(.eyebrow){max-width:620px;margin:12px 0 0;color:#cbc4d6;line-height:1.6}
+.market-hero-stat{min-width:120px;padding:14px;border:1px solid rgba(196,181,253,.24);border-radius:16px;background:rgba(8,7,13,.28);text-align:center}
+.market-hero-stat strong{display:block;font-size:27px}.market-hero-stat span{display:block;color:var(--muted);font-size:11px}
+.market-search{display:flex;gap:8px;margin-bottom:14px}.market-search .field{flex:1}
+.market-card{padding:14px;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.market-card:hover{transform:translateY(-2px);border-color:rgba(196,181,253,.55);box-shadow:0 20px 52px rgba(0,0,0,.34)}.market-card h3{margin:12px 0 4px}.market-card .price{margin-bottom:5px}
+@media(max-width:600px){.market-hero{align-items:flex-start;flex-direction:column;padding:22px 18px}.market-hero-stat{width:100%;text-align:left}.market-search{display:grid;grid-template-columns:1fr}.market-search .btn{width:100%}}
