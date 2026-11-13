@@ -24,6 +24,21 @@ function safeCustomerError(error:unknown) {
  console.error("paystack-market-operation:",s.slice(0,150));
  return json({error:"REQUEST_COULD_NOT_BE_COMPLETED"},503);
 }
+function customerRpcError(error:unknown, operation:string) {
+ const message=error && typeof error==="object" && "message" in error &&
+   typeof error.message==="string" ? error.message.trim() : "";
+ const statuses:Record<string,number>={
+   AUTH_REQUIRED:401,
+   INVALID_REFUND_REASON:400,
+   REFUND_NOT_ELIGIBLE:409,
+   MARKET_PURCHASE_NOT_FOUND:404,
+   MARKET_DELIVERY_NOT_CONFIRMABLE:409,
+   UNRESOLVED_BUYER_DISPUTE:409,
+ };
+ if(statuses[message])return json({error:message},statuses[message]);
+ console.error(`paystack-market-operation:${operation}_rpc_failed`);
+ return json({error:"REQUEST_COULD_NOT_BE_COMPLETED"},503);
+}
 async function checkMarketPayment(id:string) {
  const svc=serviceClient();
  const {data,error}=await svc.from("blink_paystack_payments")
@@ -49,7 +64,7 @@ Deno.serve(async(req:Request)=>{
      const {data,error}=await userRpc(req).rpc("request_blink_paystack_refund",{
         p_reference:body.reference,p_reason:body.reason.trim(),
      });
-     if(error)return json({error:error.message},400);
+     if(error)return customerRpcError(error,"refund_request");
      return json(data);
    }
    if(action==="confirm_delivery") {
@@ -59,7 +74,7 @@ Deno.serve(async(req:Request)=>{
      const {data,error}=await userRpc(req).rpc("confirm_blink_paystack_market_delivery",{
        p_reference:body.reference,
      });
-     if(error)return json({error:error.message},400);
+     if(error)return customerRpcError(error,"delivery_confirmation");
      return json(data);
    }
 

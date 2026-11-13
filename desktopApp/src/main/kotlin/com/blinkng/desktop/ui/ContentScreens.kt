@@ -4414,7 +4414,7 @@ fun GamesScreen(state: DesktopAppState) {
             Text("Native 3D runtime unavailable in this installation. BLINK games are still accessible.",
                 modifier = Modifier.padding(horizontal = 16.dp))
         }
-        Box(Modifier.weight(1f)) { DesktopGeneralStudyGame() }
+        Box(Modifier.weight(1f)) { DesktopGeneralStudyGame(state.client) }
     }
 }
 

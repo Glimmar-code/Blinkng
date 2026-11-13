@@ -7,6 +7,7 @@ const WIDTH = 16;
 const HEIGHT = 8;
 const DIMENSIONS = WIDTH * HEIGHT * 4;
 const MODEL = "blink-perceptual-rgb-luma-v1";
+const MAX_JOBS = 8;
 
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -26,10 +27,15 @@ function config() {
 
 async function verifyUser(jwt: string, url: string, anon: string) {
   if (!jwt) return false;
-  const result = await fetch(`${url}/auth/v1/user`, {
-    headers: { apikey: anon, Authorization: `Bearer ${jwt}` },
-  });
-  return result.ok;
+  try {
+    const result = await fetch(`${url}/auth/v1/user`, {
+      headers: { apikey: anon, Authorization: `Bearer ${jwt}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return result.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function adminFetch(path: string, init: RequestInit = {}) {
@@ -42,13 +48,15 @@ async function adminFetch(path: string, init: RequestInit = {}) {
       Accept: "application/json",
       ...(init.headers || {}),
     },
+    signal: init.signal ?? AbortSignal.timeout(20_000),
   });
 }
 
 function safeHttps(value: string): URL | null {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" ? url : null;
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    return url;
   } catch {
     return null;
   }
@@ -61,17 +69,46 @@ function normalize(values: number[]) {
   return values.map((value) => value / norm);
 }
 
+async function readBounded(response: Response, maxBytes: number) {
+  if (!response.body) throw new Error("Media response was empty.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error("Image exceeds the indexing size limit.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 async function descriptorFor(urlText: string) {
   const url = safeHttps(urlText);
   if (!url) throw new Error("Only HTTPS media can be indexed.");
-  const media = await fetch(url, { redirect: "follow" });
+  const media = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(90_000) });
   if (!media.ok) throw new Error(`Media download failed with HTTP ${media.status}.`);
+  if (!safeHttps(media.url)) throw new Error("Media redirect did not remain HTTPS.");
   const contentType = (media.headers.get("content-type") || "").toLowerCase();
   if (!contentType.startsWith("image/")) throw new Error("Indexed media is not an image.");
   const length = Number(media.headers.get("content-length") || "0");
   if (Number.isFinite(length) && length > MAX_IMAGE_BYTES) throw new Error("Image exceeds the indexing size limit.");
-  const bytes = new Uint8Array(await media.arrayBuffer());
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) throw new Error("Image size is invalid.");
+  const bytes = await readBounded(media, MAX_IMAGE_BYTES);
+  if (bytes.byteLength === 0) throw new Error("Image size is invalid.");
 
   const decoded = await Image.decode(bytes);
   decoded.resize(WIDTH, HEIGHT);
@@ -88,13 +125,43 @@ async function descriptorFor(urlText: string) {
   return normalize(values);
 }
 
-async function updateJob(id: string, changes: Record<string, unknown>) {
-  const result = await adminFetch(`/rest/v1/search_media_index_jobs?id=eq.${encodeURIComponent(id)}`, {
+function jobFilter(id: string, lease: string) {
+  return `id=eq.${encodeURIComponent(id)}&status=eq.running&locked_at=eq.${encodeURIComponent(lease)}`;
+}
+
+async function claimJob(candidate: any) {
+  const id = String(candidate?.id || "");
+  if (!id) return null;
+  const lease = new Date().toISOString();
+  const now = lease;
+  const result = await adminFetch(
+    `/rest/v1/search_media_index_jobs?id=eq.${encodeURIComponent(id)}&status=eq.pending&next_attempt_at=lte.${encodeURIComponent(now)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({
+        status: "running",
+        attempts: Number(candidate.attempts || 0) + 1,
+        locked_at: lease,
+        last_error: null,
+        updated_at: lease,
+      }),
+    },
+  );
+  if (!result.ok) throw new Error(`Could not claim media index job (${result.status}).`);
+  const rows = await result.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? { ...rows[0], lease } : null;
+}
+
+async function updateJob(id: string, lease: string, changes: Record<string, unknown>) {
+  const result = await adminFetch(`/rest/v1/search_media_index_jobs?${jobFilter(id, lease)}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify({ ...changes, updated_at: new Date().toISOString() }),
   });
   if (!result.ok) throw new Error(`Could not update media index job (${result.status}).`);
+  const rows = await result.json().catch(() => []);
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function storeEmbedding(job: any, embedding: number[]) {
@@ -118,26 +185,37 @@ async function storeEmbedding(job: any, embedding: number[]) {
 
 async function processJob(job: any) {
   const id = String(job.id || "");
-  if (!id) return { ok: false, error: "Invalid job id" };
-  const attempts = Number(job.attempts || 0) + 1;
-  await updateJob(id, { status: "running", attempts, locked_at: new Date().toISOString(), last_error: null });
+  const attempts = Number(job.attempts || 0);
+  const lease = String(job.lease || "");
+  if (!id || !lease) return { ok: false, error: "Invalid claimed media job" };
   try {
     const embedding = await descriptorFor(String(job.image_url || ""));
     await storeEmbedding(job, embedding);
-    await updateJob(id, { status: "done", locked_at: null, completed_at: new Date().toISOString(), last_error: null });
-    return { ok: true, id };
+    const persisted = await updateJob(id, lease, {
+      status: "done",
+      locked_at: null,
+      completed_at: new Date().toISOString(),
+      last_error: null,
+    });
+    return persisted ? { ok: true, id } : { ok: false, id, skipped: "lease_lost" };
   } catch (error) {
     const message = String(error instanceof Error ? error.message : error).slice(0, 700);
     const terminal = attempts >= 5;
     const retryAt = new Date(Date.now() + Math.min(60, 2 ** attempts) * 60_000).toISOString();
-    await updateJob(id, {
+    const persisted = await updateJob(id, lease, {
       status: terminal ? "failed" : "pending",
       locked_at: null,
       next_attempt_at: retryAt,
       last_error: message,
-    }).catch(() => undefined);
-    return { ok: false, id, error: message };
+    }).catch(() => false);
+    return { ok: false, id, error: message, state_persisted: persisted };
   }
+}
+
+function requestedLimit(body: any) {
+  const value = Number(body?.limit ?? 4);
+  if (!Number.isFinite(value)) return 4;
+  return Math.max(1, Math.min(Math.floor(value), MAX_JOBS));
 }
 
 Deno.serve(async (req) => {
@@ -148,14 +226,17 @@ Deno.serve(async (req) => {
     const jwt = bearer(req);
     if (!(await verifyUser(jwt, url, anon))) return response({ error: "A signed-in Blink account is required." }, 401);
     const body = await req.json().catch(() => ({}));
-    const limit = Math.max(1, Math.min(Number(body?.limit || 4), 8));
+    const limit = requestedLimit(body);
     const now = new Date().toISOString();
     const query = `/rest/v1/search_media_index_jobs?select=id,entity_type,entity_id,image_url,attempts&status=eq.pending&next_attempt_at=lte.${encodeURIComponent(now)}&order=created_at.asc&limit=${limit}`;
     const jobsResponse = await adminFetch(query);
     if (!jobsResponse.ok) return response({ error: "Could not load media indexing jobs." }, 503);
     const jobs = await jobsResponse.json().catch(() => []);
     const results = [];
-    for (const job of Array.isArray(jobs) ? jobs : []) results.push(await processJob(job));
+    for (const candidate of Array.isArray(jobs) ? jobs : []) {
+      const claimed = await claimJob(candidate);
+      if (claimed) results.push(await processJob(claimed));
+    }
     return response({ processed: results.length, succeeded: results.filter((item) => item.ok).length, results });
   } catch (error) {
     console.error("search-media-indexer", error);

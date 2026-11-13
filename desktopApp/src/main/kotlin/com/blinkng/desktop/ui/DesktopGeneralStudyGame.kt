@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -48,6 +49,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,7 +60,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.shared.GeneralStudyBank
 import com.blinkng.shared.GeneralStudyDifficulty
-import com.blinkng.shared.GeneralStudyQuestion
+import com.blinkng.desktop.data.DesktopGameAnswer
+import com.blinkng.desktop.data.DesktopGameHistory
+import com.blinkng.desktop.data.DesktopGameLeader
+import com.blinkng.desktop.data.DesktopGameQuestion
+import com.blinkng.desktop.data.DesktopGameRepository
+import com.blinkng.desktop.data.DesktopGameRound
+import com.blinkng.desktop.data.DesktopSupabaseClient
+import kotlinx.coroutines.launch
 
 private enum class DesktopGeneralStudyPane {
     CATALOG,
@@ -68,7 +77,7 @@ private enum class DesktopGeneralStudyPane {
 }
 
 @Composable
-fun DesktopGeneralStudyGame() {
+fun DesktopGeneralStudyGame(client: DesktopSupabaseClient) {
     var paneName by rememberSaveable { mutableStateOf(DesktopGeneralStudyPane.CATALOG.name) }
     val pane = remember(paneName) { DesktopGeneralStudyPane.valueOf(paneName) }
     var difficultyName by rememberSaveable { mutableStateOf(GeneralStudyDifficulty.EASY.name) }
@@ -76,49 +85,119 @@ fun DesktopGeneralStudyGame() {
     var selectedCategory by rememberSaveable { mutableStateOf("") }
     var seed by rememberSaveable { mutableLongStateOf(0L) }
     var questionIndex by rememberSaveable { mutableIntStateOf(0) }
-    var score by rememberSaveable { mutableIntStateOf(0) }
     var selectedOption by rememberSaveable { mutableIntStateOf(-1) }
     var answered by rememberSaveable { mutableStateOf(false) }
     var confirmExit by rememberSaveable { mutableStateOf(false) }
+    var round by remember { mutableStateOf<DesktopGameRound?>(null) }
+    var answeredQuestionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var answerResult by remember { mutableStateOf<DesktopGameAnswer?>(null) }
+    var roundLoading by remember { mutableStateOf(false) }
+    var answerLoading by remember { mutableStateOf(false) }
+    var gameError by remember { mutableStateOf<String?>(null) }
+    var questionStartedAt by remember { mutableLongStateOf(0L) }
+    var history by remember { mutableStateOf<List<DesktopGameHistory>>(emptyList()) }
+    var leaders by remember { mutableStateOf<List<DesktopGameLeader>>(emptyList()) }
+    var statsLoading by remember { mutableStateOf(false) }
+    var statsError by remember { mutableStateOf<String?>(null) }
+    val repository = remember(client) { DesktopGameRepository(client) }
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     LaunchedEffect(pane, questionIndex) { listState.scrollToItem(0) }
 
-    val questions = remember(difficulty, seed, selectedCategory) {
-        if (seed == 0L) emptyList()
-        else GeneralStudyBank.round(
-            difficulty = difficulty,
-            seed = seed,
-            count = GeneralStudyBank.DEFAULT_ROUND_SIZE,
-            category = selectedCategory.takeIf { it.isNotBlank() },
-        )
-    }
+    val questions = round?.questions.orEmpty()
     val question = questions.getOrNull(questionIndex)
+    val score = answerResult?.correctCount ?: round?.correctCount ?: 0
+
+    fun loadGameStats() {
+        if (statsLoading) return
+        statsLoading = true
+        statsError = null
+        scope.launch {
+            val historyResult = repository.fetchHistory()
+            val leaderboardResult = repository.fetchLeaderboard()
+            historyResult.onSuccess { history = it }
+            leaderboardResult.onSuccess { leaders = it }
+            statsError = historyResult.exceptionOrNull()?.message
+                ?: leaderboardResult.exceptionOrNull()?.message
+            statsLoading = false
+        }
+    }
+    LaunchedEffect(pane) {
+        if (pane == DesktopGeneralStudyPane.CATALOG) loadGameStats()
+    }
 
     fun startRound() {
-        seed = System.nanoTime().takeIf { it != 0L } ?: 1L
         confirmExit = false
         questionIndex = 0
-        score = 0
         selectedOption = -1
         answered = false
-        paneName = DesktopGeneralStudyPane.PLAY.name
+        round = null
+        answerResult = null
+        gameError = null
+        roundLoading = true
+        scope.launch {
+            repository.startRound("general_study", GeneralStudyBank.DEFAULT_ROUND_SIZE)
+                .onSuccess { started ->
+                    if (started.questions.isEmpty() || started.id.isBlank()) {
+                        gameError = "The game service returned an empty round. Please try again."
+                    } else {
+                        round = started
+                        answeredQuestionIds = started.answeredQuestionIds
+                        val nextQuestion = started.questions.indexOfFirst { it.id !in answeredQuestionIds }
+                        if (nextQuestion < 0) {
+                            questionIndex = started.questions.lastIndex
+                            paneName = DesktopGeneralStudyPane.RESULT.name
+                            loadGameStats()
+                        } else {
+                            questionIndex = nextQuestion
+                            questionStartedAt = System.currentTimeMillis()
+                            paneName = DesktopGeneralStudyPane.PLAY.name
+                        }
+                    }
+                }
+                .onFailure { gameError = it.message ?: "Could not load a General Study round." }
+            roundLoading = false
+        }
     }
 
     fun submitAnswer(index: Int) {
-        if (answered || question == null) return
+        val activeRound = round ?: return
+        val activeQuestion = question ?: return
+        if (answered || answerLoading || index !in activeQuestion.options.indices) return
         selectedOption = index
-        answered = true
-        if (index == question.correctIndex) score += 1
+        answerLoading = true
+        gameError = null
+        scope.launch {
+            repository.submitAnswer(
+                roundId = activeRound.id,
+                questionId = activeQuestion.id,
+                selectedIndex = index,
+                responseMs = (System.currentTimeMillis() - questionStartedAt).toInt(),
+            ).onSuccess { result ->
+                answerResult = result
+                answered = true
+                answeredQuestionIds = answeredQuestionIds + activeQuestion.id
+                round = activeRound.copy(score = result.roundScore, correctCount = result.correctCount)
+            }.onFailure { gameError = it.message ?: "Your answer could not be submitted. Please retry." }
+            answerLoading = false
+        }
     }
 
     fun nextQuestion() {
-        if (!answered) return
-        if (questionIndex >= questions.lastIndex) {
+        if (!answered || answerLoading) return
+        val nextQuestion = questions.indices.firstOrNull {
+            it > questionIndex && questions[it].id !in answeredQuestionIds
+        }
+        if (nextQuestion == null || answerResult?.completed == true) {
             paneName = DesktopGeneralStudyPane.RESULT.name
+            loadGameStats()
         } else {
-            questionIndex += 1
+            questionIndex = nextQuestion
             selectedOption = -1
             answered = false
+            answerResult = null
+            gameError = null
+            questionStartedAt = System.currentTimeMillis()
         }
     }
 
@@ -137,6 +216,11 @@ fun DesktopGeneralStudyGame() {
                 when (current) {
                     DesktopGeneralStudyPane.CATALOG -> DesktopGameCatalog(
                         onOpenGeneralStudy = { paneName = DesktopGeneralStudyPane.SETUP.name },
+                        history = history,
+                        leaders = leaders,
+                        statsLoading = statsLoading,
+                        statsError = statsError,
+                        onRefresh = ::loadGameStats,
                     )
 
                     DesktopGeneralStudyPane.SETUP -> DesktopGeneralStudySetup(
@@ -146,6 +230,8 @@ fun DesktopGeneralStudyGame() {
                         onDifficulty = { difficultyName = it.name },
                         onBack = { paneName = DesktopGeneralStudyPane.CATALOG.name },
                         onStart = ::startRound,
+                        loading = roundLoading,
+                        error = gameError,
                     )
 
                     DesktopGeneralStudyPane.PLAY -> DesktopGeneralStudyRound(
@@ -154,24 +240,28 @@ fun DesktopGeneralStudyGame() {
                         questionNumber = questionIndex + 1,
                         totalQuestions = questions.size,
                         score = score,
+                        serverScore = round?.score ?: 0,
                         selectedOption = selectedOption,
                         answered = answered,
+                        answerResult = answerResult,
+                        submitting = answerLoading,
+                        error = gameError,
                         onClose = { confirmExit = true },
                         onAnswer = ::submitAnswer,
+                        onRetryAnswer = { if (selectedOption >= 0) submitAnswer(selectedOption) },
                         onNext = ::nextQuestion,
                     )
 
                     DesktopGeneralStudyPane.RESULT -> DesktopGeneralStudyResult(
                         difficulty = difficulty,
                         score = score,
+                        serverScore = round?.score ?: 0,
                         total = questions.size,
                         onPlayAgain = ::startRound,
                         onChangeDifficulty = {
-                            seed = 0L
                             paneName = DesktopGeneralStudyPane.SETUP.name
                         },
                         onGames = {
-                            seed = 0L
                             paneName = DesktopGeneralStudyPane.CATALOG.name
                         },
                     )
@@ -187,7 +277,7 @@ fun DesktopGeneralStudyGame() {
             confirmButton = {
                 TextButton(onClick = {
                     confirmExit = false
-                    seed = 0L
+                    round = null
                     paneName = DesktopGeneralStudyPane.SETUP.name
                 }) { Text("Leave round") }
             },
@@ -199,7 +289,14 @@ fun DesktopGeneralStudyGame() {
 }
 
 @Composable
-private fun DesktopGameCatalog(onOpenGeneralStudy: () -> Unit) {
+private fun DesktopGameCatalog(
+    onOpenGeneralStudy: () -> Unit,
+    history: List<DesktopGameHistory>,
+    leaders: List<DesktopGameLeader>,
+    statsLoading: Boolean,
+    statsError: String?,
+    onRefresh: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenHeader(
             "Games",
@@ -306,6 +403,35 @@ private fun DesktopGameCatalog(onOpenGeneralStudy: () -> Unit) {
                 }
             }
         }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Game leaderboard", fontSize = 17.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !statsLoading) { Text("Refresh") }
+        }
+        when {
+            statsLoading && leaders.isEmpty() && history.isEmpty() -> CircularProgressIndicator(Modifier.size(22.dp))
+            statsError != null && leaders.isEmpty() && history.isEmpty() -> Text(
+                statsError, color = MaterialTheme.colorScheme.error, fontSize = 11.sp,
+            )
+            leaders.isEmpty() -> Text("No leaderboard entries yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> leaders.take(5).forEach { entry ->
+                Text(
+                    "${entry.rank}. ${entry.name.ifBlank { "Player" }} · ${entry.score} points${if (entry.isMe) " · You" else ""}",
+                    fontSize = 12.sp,
+                )
+            }
+        }
+        Text("Recent rounds", fontSize = 16.sp, fontWeight = FontWeight.Black)
+        if (history.isEmpty()) {
+            Text("Completed rounds will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            history.take(5).forEach { item ->
+                Text("${item.correctCount}/${item.questionCount} correct · ${item.score} points", fontSize = 12.sp)
+            }
+        }
+        if (statsError != null && (leaders.isNotEmpty() || history.isNotEmpty())) {
+            Text("Some game data may be incomplete: $statsError", color = MaterialTheme.colorScheme.error, fontSize = 10.sp)
+        }
     }
 }
 
@@ -317,6 +443,8 @@ private fun DesktopGeneralStudySetup(
     onDifficulty: (GeneralStudyDifficulty) -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
+    loading: Boolean,
+    error: String?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -327,7 +455,7 @@ private fun DesktopGeneralStudySetup(
             Column {
                 Text("General Study", fontSize = 23.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "Choose a difficulty bank. Each bank contains 5,000 questions.",
+                    "Questions and scoring are supplied by the game service.",
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -406,9 +534,7 @@ private fun DesktopGeneralStudySetup(
             Column(Modifier.padding(18.dp)) {
                 Text("Round format", fontWeight = FontWeight.Black, fontSize = 13.sp)
                 Text(
-                    "10 questions per round from " +
-                        (if (selectedCategory.isBlank()) "mixed study areas" else selectedCategory) +
-                        ". Instant feedback works offline.",
+                    "10 questions per round • the current game API does not send the difficulty or study-area selections; the server chooses the questions.",
                     fontSize = 11.sp,
                     lineHeight = 17.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -417,13 +543,16 @@ private fun DesktopGeneralStudySetup(
             }
         }
 
+        if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
         Button(
             onClick = onStart,
+            enabled = !loading,
             shape = RoundedCornerShape(100.dp),
         ) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+            if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Icon(Icons.Rounded.PlayArrow, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            Text("Start " + difficulty.label + " Round", fontWeight = FontWeight.Bold)
+            Text(if (loading) "Loading round…" else "Start General Study", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -431,14 +560,19 @@ private fun DesktopGeneralStudySetup(
 @Composable
 private fun DesktopGeneralStudyRound(
     difficulty: GeneralStudyDifficulty,
-    question: GeneralStudyQuestion?,
+    question: DesktopGameQuestion?,
     questionNumber: Int,
     totalQuestions: Int,
     score: Int,
+    serverScore: Int,
     selectedOption: Int,
     answered: Boolean,
+    answerResult: DesktopGameAnswer?,
+    submitting: Boolean,
+    error: String?,
     onClose: () -> Unit,
     onAnswer: (Int) -> Unit,
+    onRetryAnswer: () -> Unit,
     onNext: () -> Unit,
 ) {
     if (question == null) {
@@ -448,13 +582,13 @@ private fun DesktopGeneralStudyRound(
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) {
+            IconButton(onClick = onClose, enabled = !submitting) {
                 Icon(Icons.Rounded.Close, contentDescription = "Close round")
             }
             Spacer(Modifier.width(4.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "General Study · " + difficulty.label,
+                    "General Study",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                 )
@@ -469,7 +603,7 @@ private fun DesktopGeneralStudyRound(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = .10f),
             ) {
                 Text(
-                    "Score " + score + "/" + totalQuestions,
+                    "$serverScore points · $score/$totalQuestions correct",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -504,8 +638,8 @@ private fun DesktopGeneralStudyRound(
                 )
 
                 question.options.forEachIndexed { index, option ->
-                    val correct = answered && index == question.correctIndex
-                    val wrong = answered && index == selectedOption && index != question.correctIndex
+                    val correct = answered && index == answerResult?.correctIndex
+                    val wrong = answered && index == selectedOption && answerResult?.correct == false
                     val border = when {
                         correct -> Color(0xFF2EAD67)
                         wrong -> MaterialTheme.colorScheme.error
@@ -520,7 +654,7 @@ private fun DesktopGeneralStudyRound(
                     }
 
                     Surface(
-                        modifier = Modifier.fillMaxWidth().clickable(enabled = !answered) {
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !answered && !submitting) {
                             onAnswer(index)
                         },
                         shape = RoundedCornerShape(15.dp),
@@ -559,19 +693,34 @@ private fun DesktopGeneralStudyRound(
                     }
                 }
 
-                if (answered) {
+                if (submitting) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Submitting answer…", fontSize = 11.sp)
+                    }
+                }
+                if (error != null) {
+                    Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    if (!answered && !submitting && selectedOption >= 0) {
+                        TextButton(onClick = onRetryAnswer) { Text("Retry submission") }
+                    }
+                }
+                if (answered && answerResult != null) {
                     Surface(
                         shape = RoundedCornerShape(15.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                     ) {
                         Column(Modifier.padding(14.dp)) {
                             Text(
-                                if (selectedOption == question.correctIndex) "Correct" else "Correct answer",
+                                if (answerResult.correct) "Correct" else "Correct answer",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 11.5.sp,
                             )
                             Text(
-                                question.answer,
+                                answerResult.explanation.ifBlank {
+                                    question.options.getOrNull(answerResult.correctIndex).orEmpty()
+                                },
                                 modifier = Modifier.padding(top = 3.dp),
                                 fontSize = 12.5.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -598,6 +747,7 @@ private fun DesktopGeneralStudyRound(
 private fun DesktopGeneralStudyResult(
     difficulty: GeneralStudyDifficulty,
     score: Int,
+    serverScore: Int,
     total: Int,
     onPlayAgain: () -> Unit,
     onChangeDifficulty: () -> Unit,
@@ -624,7 +774,7 @@ private fun DesktopGeneralStudyResult(
             }
             Text("Round complete", fontSize = 25.sp, fontWeight = FontWeight.Black)
             Text(
-                difficulty.label + " · " + score + "/" + total + " correct · " + percent + "%",
+                "General Study · $score/$total correct · $serverScore points · $percent%",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

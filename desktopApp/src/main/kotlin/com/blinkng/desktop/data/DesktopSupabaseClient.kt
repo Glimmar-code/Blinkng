@@ -3910,6 +3910,23 @@ class DesktopSupabaseClient(
         sessionStore.clear()
     }
 
+    suspend fun gameRpc(name: String, body: JSONObject): String = withContext(Dispatchers.IO) {
+        require(name in setOf(
+            "start_game_round",
+            "submit_game_answer",
+            "get_game_dashboard",
+            "get_game_history",
+            "get_game_leaderboard",
+            "toggle_saved_game_question",
+            "report_game_question",
+        )) { "Unsupported game request." }
+        val request = authenticatedRequest("/rest/v1/rpc/$name")
+            .header("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .build()
+        execute(request)
+    }
+
     private fun requireSession(): DesktopSession = session ?: throw IllegalStateException("Sign in to continue.")
 
     private fun ensureFreshSession() {

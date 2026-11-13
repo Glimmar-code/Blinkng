@@ -1,0 +1,16 @@
+# Testlab backend audit: migration and performance reconciliation
+
+**Scope:** repository migration history and the audit’s migration/performance findings only. No live Supabase project was queried or changed.
+
+## Evidence and outcome
+
+- The supplied audit reports **248 repository migrations**, **282 live ledger records**, and **175 repository version IDs absent from the ledger**. The checked-out, tracked `supabase/migrations` directory contains 248 SQL files, consistent with the audit’s repository count. Its version prefixes are not one-to-one: three timestamp prefixes each occur twice (`20261026121500`, `20261027224500`, `20261031120000`). The working tree contains four additional untracked migrations from concurrent work; they are not treated as part of the tracked baseline or as evidence of deployment.
+- The audit explicitly says some ledger-absent files’ features already exist through consolidated or differently named migrations. Therefore, the 175 differences are **reconciliation candidates, not proof of missing schema or unapplied migrations**. No migration files were rewritten, renamed, deleted, replayed, or inferred safe to apply.
+- The audit reports **74 unindexed foreign keys**, **95 RLS initialization/performance warnings**, **24 multiple-permissive-policy warnings**, and **103 unused indexes**, but does not provide the affected object names, definitions, or advisor output. Existing repository migrations include targeted auth-initplan policy optimizations (`20261007115500_optimize_flagged_rls_auth_initplans.sql`), an FK index (`20261026052715_index_blink_community_owner_foreign_key_20261026.sql`), and an exact-duplicate-index cleanup (`20261006234440_remove_exact_duplicate_indexes.sql`). Their presence in source does not establish that they ran on Testlab or cleared any current finding.
+- **No additive index or policy change was justified by the available evidence.** Adding indexes without the exact FK columns and current index/constraint inventory risks duplication and write overhead. Changing policies without their definitions and role/command semantics risks access changes, especially for multiple-permissive-policy findings. “Unused” alone is not a safe basis for dropping indexes; no index was dropped.
+
+## Required Testlab database reconciliation
+
+Before migration deployment or performance remediation, obtain the Testlab migration ledger and compare it with the repository by version **and migration contents/schema effects**, accounting for consolidated migrations and the three duplicate timestamp prefixes. Inspect the actual catalog and advisor detail for each FK, RLS policy, and index: constraints and covering indexes, policy expressions/roles/commands, duplicate permissive behavior, and index usage over an appropriate observation period. Resolve the timestamp collisions through an approved history/ledger reconciliation; do not rename or rewrite historical files based on filename comparison alone.
+
+**Changes made:** this note only. No migration or database changes. No tests, builds, linters, or runtime checks were run (per instruction).

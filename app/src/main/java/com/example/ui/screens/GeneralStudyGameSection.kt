@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -57,6 +58,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,7 +75,13 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.blinkng.shared.GeneralStudyBank
 import com.blinkng.shared.GeneralStudyDifficulty
-import com.blinkng.shared.GeneralStudyQuestion
+import com.example.data.models.GameHistoryItem
+import com.example.data.models.GameLeaderboardEntry
+import com.example.data.models.ServerGameAnswerResult
+import com.example.data.models.ServerGameQuestion
+import com.example.data.models.ServerGameRound
+import com.example.data.repository.GameRepository
+import kotlinx.coroutines.launch
 import com.example.R
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
@@ -107,47 +115,119 @@ fun GeneralStudyGameSection(
     var selectedCategory by rememberSaveable { mutableStateOf("") }
     var seed by rememberSaveable { mutableLongStateOf(0L) }
     var questionIndex by rememberSaveable { mutableIntStateOf(0) }
-    var score by rememberSaveable { mutableIntStateOf(0) }
     var selectedOption by rememberSaveable { mutableIntStateOf(-1) }
     var answered by rememberSaveable { mutableStateOf(false) }
     var confirmExit by rememberSaveable { mutableStateOf(false) }
+    var round by remember { mutableStateOf<ServerGameRound?>(null) }
+    var answeredQuestionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var answerResult by remember { mutableStateOf<ServerGameAnswerResult?>(null) }
+    var roundLoading by remember { mutableStateOf(false) }
+    var answerLoading by remember { mutableStateOf(false) }
+    var gameError by remember { mutableStateOf<String?>(null) }
+    var questionStartedAt by remember { mutableLongStateOf(0L) }
+    var history by remember { mutableStateOf<List<GameHistoryItem>>(emptyList()) }
+    var leaders by remember { mutableStateOf<List<GameLeaderboardEntry>>(emptyList()) }
+    var statsLoading by remember { mutableStateOf(false) }
+    var statsError by remember { mutableStateOf<String?>(null) }
+    val repository = remember { GameRepository() }
+    val scope = rememberCoroutineScope()
     val gameListState = rememberLazyListState()
     LaunchedEffect(pane, questionIndex) { gameListState.scrollToItem(0) }
 
-    val questions = remember(difficulty, seed, selectedCategory) {
-        if (seed == 0L) emptyList()
-        else GeneralStudyBank.round(
-            difficulty, seed, GeneralStudyBank.DEFAULT_ROUND_SIZE,
-            category = selectedCategory.takeIf { it.isNotBlank() },
-        )
-    }
+    val questions = round?.questions.orEmpty()
     val question = questions.getOrNull(questionIndex)
+    val score = answerResult?.correctCount ?: round?.correctCount ?: 0
+
+    fun loadGameStats() {
+        if (statsLoading) return
+        statsLoading = true
+        statsError = null
+        scope.launch {
+            val historyResult = repository.fetchHistory()
+            val leaderboardResult = repository.fetchLeaderboard()
+            historyResult.onSuccess { history = it }
+            leaderboardResult.onSuccess { leaders = it }
+            statsError = historyResult.exceptionOrNull()?.message
+                ?: leaderboardResult.exceptionOrNull()?.message
+            statsLoading = false
+        }
+    }
+    LaunchedEffect(pane) {
+        if (pane == GeneralStudyPane.CATALOG) loadGameStats()
+    }
 
     fun startRound() {
-        seed = System.nanoTime().takeIf { it != 0L } ?: 1L
         confirmExit = false
         questionIndex = 0
-        score = 0
         selectedOption = -1
         answered = false
-        paneName = GeneralStudyPane.PLAY.name
+        round = null
+        answerResult = null
+        gameError = null
+        roundLoading = true
+        scope.launch {
+            repository.startRound(gameType = "general_study", questionCount = GeneralStudyBank.DEFAULT_ROUND_SIZE)
+                .onSuccess { started ->
+                    if (started.questions.isEmpty() || started.id.isBlank()) {
+                        gameError = "The game service returned an empty round. Please try again."
+                    } else {
+                        round = started
+                        answeredQuestionIds = started.answeredQuestionIds
+                        val nextQuestion = started.questions.indexOfFirst { it.id !in answeredQuestionIds }
+                        if (nextQuestion < 0) {
+                            questionIndex = started.questions.lastIndex
+                            paneName = GeneralStudyPane.RESULT.name
+                            loadGameStats()
+                        } else {
+                            questionIndex = nextQuestion
+                            questionStartedAt = System.currentTimeMillis()
+                            paneName = GeneralStudyPane.PLAY.name
+                        }
+                    }
+                }
+                .onFailure { gameError = it.message ?: "Could not load a General Study round." }
+            roundLoading = false
+        }
     }
 
     fun answer(index: Int) {
-        if (answered || question == null) return
+        val activeRound = round ?: return
+        val activeQuestion = question ?: return
+        if (answered || answerLoading || index !in activeQuestion.options.indices) return
         selectedOption = index
-        answered = true
-        if (index == question.correctIndex) score += 1
+        answerLoading = true
+        gameError = null
+        scope.launch {
+            repository.submitAnswer(
+                roundId = activeRound.id,
+                questionId = activeQuestion.id,
+                selectedIndex = index,
+                responseMs = (System.currentTimeMillis() - questionStartedAt).toInt(),
+            ).onSuccess { result ->
+                answerResult = result
+                answered = true
+                answeredQuestionIds = answeredQuestionIds + activeQuestion.id
+                round = activeRound.copy(score = result.roundScore, correctCount = result.correctCount)
+            }.onFailure { gameError = it.message ?: "Your answer could not be submitted. Please retry." }
+            answerLoading = false
+        }
     }
 
     fun next() {
-        if (!answered) return
-        if (questionIndex >= questions.lastIndex) {
+        if (!answered || answerLoading) return
+        val nextQuestion = questions.indices.firstOrNull {
+            it > questionIndex && questions[it].id !in answeredQuestionIds
+        }
+        if (nextQuestion == null || answerResult?.completed == true) {
             paneName = GeneralStudyPane.RESULT.name
+            loadGameStats()
         } else {
-            questionIndex += 1
+            questionIndex = nextQuestion
             selectedOption = -1
             answered = false
+            answerResult = null
+            gameError = null
+            questionStartedAt = System.currentTimeMillis()
         }
     }
 
@@ -191,6 +271,11 @@ fun GeneralStudyGameSection(
                 when (current) {
                     GeneralStudyPane.CATALOG -> CatalogPane(
                         onOpenGeneralStudy = { paneName = GeneralStudyPane.SETUP.name },
+                        history = history,
+                        leaders = leaders,
+                        statsLoading = statsLoading,
+                        statsError = statsError,
+                        onRefresh = ::loadGameStats,
                     )
                     GeneralStudyPane.SETUP -> SetupPane(
                         difficulty = difficulty,
@@ -199,6 +284,8 @@ fun GeneralStudyGameSection(
                         onDifficulty = { difficultyName = it.name },
                         onBack = { paneName = GeneralStudyPane.CATALOG.name },
                         onStart = ::startRound,
+                        loading = roundLoading,
+                        error = gameError,
                     )
                     GeneralStudyPane.PLAY -> PlayPane(
                         difficulty = difficulty,
@@ -206,15 +293,21 @@ fun GeneralStudyGameSection(
                         questionNumber = questionIndex + 1,
                         totalQuestions = questions.size,
                         score = score,
+                        serverScore = round?.score ?: 0,
                         selectedOption = selectedOption,
                         answered = answered,
+                        answerResult = answerResult,
+                        submitting = answerLoading,
+                        error = gameError,
                         onBack = { confirmExit = true },
                         onAnswer = ::answer,
+                        onRetryAnswer = { if (selectedOption >= 0) answer(selectedOption) },
                         onNext = ::next,
                     )
                     GeneralStudyPane.RESULT -> ResultPane(
                         difficulty = difficulty,
                         score = score,
+                        serverScore = round?.score ?: 0,
                         total = questions.size,
                         onPlayAgain = ::startRound,
                         onChangeDifficulty = {
@@ -222,7 +315,6 @@ fun GeneralStudyGameSection(
                             paneName = GeneralStudyPane.SETUP.name
                         },
                         onGames = {
-                            seed = 0L
                             paneName = GeneralStudyPane.CATALOG.name
                         },
                     )
@@ -238,7 +330,7 @@ fun GeneralStudyGameSection(
             confirmButton = {
                 TextButton(onClick = {
                     confirmExit = false
-                    seed = 0L
+                    round = null
                     paneName = GeneralStudyPane.SETUP.name
                 }) { Text("Leave round") }
             },
@@ -250,7 +342,14 @@ fun GeneralStudyGameSection(
 }
 
 @Composable
-private fun CatalogPane(onOpenGeneralStudy: () -> Unit) {
+private fun CatalogPane(
+    onOpenGeneralStudy: () -> Unit,
+    history: List<GameHistoryItem>,
+    leaders: List<GameLeaderboardEntry>,
+    statsLoading: Boolean,
+    statsError: String?,
+    onRefresh: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text("Games", fontSize = 26.sp, fontWeight = FontWeight.Black)
         Text(
@@ -361,6 +460,42 @@ private fun CatalogPane(onOpenGeneralStudy: () -> Unit) {
                 }
             }
         }
+
+        Spacer(Modifier.height(18.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Game leaderboard", fontSize = 16.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+            TextButton(onClick = onRefresh, enabled = !statsLoading) { Text("Refresh") }
+        }
+        when {
+            statsLoading && leaders.isEmpty() && history.isEmpty() -> CircularProgressIndicator(Modifier.size(22.dp))
+            statsError != null && leaders.isEmpty() && history.isEmpty() -> Text(
+                statsError, color = MaterialTheme.colorScheme.error, fontSize = 11.sp,
+            )
+            leaders.isEmpty() -> Text("No leaderboard entries yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            else -> leaders.take(5).forEach { entry ->
+                Text(
+                    "${entry.rank}. ${entry.name.ifBlank { "Player" }} · ${entry.score} points${if (entry.isMe) " · You" else ""}",
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(vertical = 3.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("Recent rounds", fontSize = 15.sp, fontWeight = FontWeight.Black)
+        if (history.isEmpty()) {
+            Text("Completed rounds will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        } else {
+            history.take(5).forEach { item ->
+                Text(
+                    "${item.correctCount}/${item.questionCount} correct · ${item.score} points",
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(vertical = 3.dp),
+                )
+            }
+        }
+        if (statsError != null && (leaders.isNotEmpty() || history.isNotEmpty())) {
+            Text("Some game data may be incomplete: $statsError", color = MaterialTheme.colorScheme.error, fontSize = 10.sp)
+        }
     }
 }
 
@@ -388,6 +523,8 @@ private fun SetupPane(
     onDifficulty: (GeneralStudyDifficulty) -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
+    loading: Boolean,
+    error: String?,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -397,7 +534,7 @@ private fun SetupPane(
             Column {
                 Text("General Study", fontSize = 22.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "Choose one of the four separated difficulty banks.",
+                    "Questions and scoring are supplied by the game service.",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -482,9 +619,7 @@ private fun SetupPane(
             Column(Modifier.padding(15.dp)) {
                 Text("Round format", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "10 questions per round • " +
-                        (if (selectedCategory.isBlank()) "mixed study areas" else selectedCategory) +
-                        " • instant feedback • works offline.",
+                    "10 questions per round • the current game API does not send the difficulty or study-area selections; the server chooses the questions.",
                     fontSize = 10.5.sp,
                     lineHeight = 16.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -493,15 +628,18 @@ private fun SetupPane(
             }
         }
         Spacer(Modifier.height(16.dp))
+        if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
         Button(
             onClick = onStart,
+            enabled = !loading,
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(100.dp),
             colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
         ) {
-            Icon(Icons.Default.PlayArrow, contentDescription = null)
+            if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Icon(Icons.Default.PlayArrow, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            Text("Start " + difficulty.label + " Round", fontWeight = FontWeight.Bold)
+            Text(if (loading) "Loading round…" else "Start General Study", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -509,14 +647,19 @@ private fun SetupPane(
 @Composable
 private fun PlayPane(
     difficulty: GeneralStudyDifficulty,
-    question: GeneralStudyQuestion?,
+    question: ServerGameQuestion?,
     questionNumber: Int,
     totalQuestions: Int,
     score: Int,
+    serverScore: Int,
     selectedOption: Int,
     answered: Boolean,
+    answerResult: ServerGameAnswerResult?,
+    submitting: Boolean,
+    error: String?,
     onBack: () -> Unit,
     onAnswer: (Int) -> Unit,
+    onRetryAnswer: () -> Unit,
     onNext: () -> Unit,
 ) {
     if (question == null) {
@@ -528,11 +671,11 @@ private fun PlayPane(
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, enabled = !submitting) {
                 Icon(Icons.Default.Close, contentDescription = "Close round")
             }
             Column(Modifier.weight(1f)) {
-                Text("General Study · " + difficulty.label, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Text("General Study", fontWeight = FontWeight.Black, fontSize = 14.sp)
                 Text(
                     question.category,
                     fontSize = 10.5.sp,
@@ -541,7 +684,7 @@ private fun PlayPane(
             }
             Surface(shape = RoundedCornerShape(100.dp), color = BlinkPurple.copy(alpha = .10f)) {
                 Text(
-                    score.toString() + "/" + totalQuestions,
+                    "$serverScore pts · $score/$totalQuestions",
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Black,
@@ -579,8 +722,9 @@ private fun PlayPane(
                 Spacer(Modifier.height(16.dp))
 
                 question.options.forEachIndexed { index, option ->
-                    val isCorrect = answered && index == question.correctIndex
-                    val isWrong = answered && index == selectedOption && index != question.correctIndex
+                    val correctIndex = answerResult?.correctIndex ?: -1
+                    val isCorrect = answered && index == correctIndex
+                    val isWrong = answered && index == selectedOption && answerResult?.correct == false
                     val border = when {
                         isCorrect -> Color(0xFF2EAD67)
                         isWrong -> MaterialTheme.colorScheme.error
@@ -595,7 +739,7 @@ private fun PlayPane(
                     }
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
-                            .clickable(enabled = !answered) { onAnswer(index) },
+                            .clickable(enabled = !answered && !submitting) { onAnswer(index) },
                         shape = RoundedCornerShape(16.dp),
                         color = background,
                         border = BorderStroke(1.dp, border),
@@ -638,11 +782,24 @@ private fun PlayPane(
                     }
                 }
 
-                if (answered) {
+                if (submitting) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Submitting answer…", fontSize = 11.sp)
+                    }
+                }
+                if (error != null) {
+                    Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    if (!answered && !submitting && selectedOption >= 0) {
+                        TextButton(onClick = onRetryAnswer) { Text("Retry submission") }
+                    }
+                }
+                if (answered && answerResult != null) {
                     Spacer(Modifier.height(10.dp))
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (selectedOption == question.correctIndex) {
+                        color = if (answerResult.correct) {
                             Color(0xFF2EAD67).copy(alpha = .09f)
                         } else {
                             MaterialTheme.colorScheme.surfaceVariant
@@ -650,12 +807,14 @@ private fun PlayPane(
                     ) {
                         Column(Modifier.padding(13.dp)) {
                             Text(
-                                if (selectedOption == question.correctIndex) "Correct" else "Correct answer",
+                                if (answerResult.correct) "Correct" else "Correct answer",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 11.5.sp,
                             )
                             Text(
-                                question.answer,
+                                answerResult.explanation.ifBlank {
+                                    question.options.getOrNull(answerResult.correctIndex).orEmpty()
+                                },
                                 modifier = Modifier.padding(top = 3.dp),
                                 fontSize = 12.5.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -686,6 +845,7 @@ private fun PlayPane(
 private fun ResultPane(
     difficulty: GeneralStudyDifficulty,
     score: Int,
+    serverScore: Int,
     total: Int,
     onPlayAgain: () -> Unit,
     onChangeDifficulty: () -> Unit,
@@ -707,7 +867,7 @@ private fun ResultPane(
         Spacer(Modifier.height(12.dp))
         Text("Round complete", fontSize = 24.sp, fontWeight = FontWeight.Black)
         Text(
-            difficulty.label + " · " + score + "/" + total + " correct · " + percent + "%",
+            "General Study · $score/$total correct · $serverScore points · $percent%",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
