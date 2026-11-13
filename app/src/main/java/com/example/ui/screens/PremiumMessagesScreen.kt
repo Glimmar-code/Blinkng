@@ -994,7 +994,7 @@ private fun MessageInboxTabChip(
         shape = RoundedCornerShape(100.dp),
         border = BorderStroke(1.dp, if (selected) palette.textPrimary else palette.border),
         modifier = Modifier
-            .defaultMinSize(minHeight = 48.dp)
+            .heightIn(min = 48.dp)
             .clickable(onClick = onClick)
     ) {
         Row(
