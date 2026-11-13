@@ -7,6 +7,8 @@
 - **PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android** — Android's compact
   horizontal inbox rail needs an explicit 48dp mobile target, while Windows uses the
   desktop Material filter-chip implementation and retains its desktop interaction model.
+- **CI evidence:** This remains the documented `PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android`
+  for the Android-only touch-target correction; no Windows capability is removed.
 
 ## 2026-11-07 — BLINK Contest topic loading and publishing repair (PR #675)
 

@@ -151,6 +151,7 @@ class CallActivity : ComponentActivity() {
     private var pollJob: Job? = null
     private var durationJob: Job? = null
     private var reconnectJob: Job? = null
+    private val ringbackTone = CallRingbackTone()
     private var lastFetchedSignalId = 0L
     private val processedSignalIds = mutableSetOf<Long>()
     private val pendingSignals = mutableListOf<CallSignal>()
@@ -287,6 +288,7 @@ class CallActivity : ComponentActivity() {
         pollJob?.cancel()
         durationJob?.cancel()
         reconnectJob?.cancel()
+        ringbackTone.stop()
         realtime?.close()
         call?.id?.let { BlinkTelecomManager.clearMediaLifecycle(it) }
         rtcClient?.release()
@@ -362,6 +364,9 @@ class CallActivity : ComponentActivity() {
             loaded.status == CallStatus.CONNECTED -> "Connected"
             loaded.status == CallStatus.CONNECTING -> "Connecting…"
             else -> "Calling…"
+        }
+        if (isCaller && loaded.status in setOf(CallStatus.RINGING, CallStatus.CONNECTING)) {
+            ringbackTone.start(lifecycleScope)
         }
         speakerOn = callType == CallType.VIDEO
         cameraOn = callType == CallType.VIDEO
@@ -607,6 +612,7 @@ class CallActivity : ComponentActivity() {
                 if (!isCaller && !mediaStarted) requestMediaPermissions(incomingAnswer = true)
             }
             CallStatus.CONNECTED -> {
+                ringbackTone.stop()
                 incomingRinging = false
                 statusText = "Connected"
                 if (!mediaStarted) requestMediaPermissions(incomingAnswer = !isCaller)
@@ -660,6 +666,7 @@ class CallActivity : ComponentActivity() {
             runOnUiThread {
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
+                        ringbackTone.stop()
                         rtcClient?.setLowBandwidthMode(false)
                         if (connectedElapsedRealtimeMs == 0L) {
                             connectedElapsedRealtimeMs = SystemClock.elapsedRealtime()
@@ -805,6 +812,7 @@ class CallActivity : ComponentActivity() {
         delayMillis: Long = 650L,
         disconnectCause: Int = android.telecom.DisconnectCause.LOCAL
     ) {
+        ringbackTone.stop()
         reportQualityIfNeeded(status)
         statusText = terminalLabel(status)
         incomingRinging = false
