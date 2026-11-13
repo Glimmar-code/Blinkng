@@ -1,3 +1,13 @@
+## 2026-11-13 — Messaging inbox chip accessibility
+
+- **Android:** Inbox filter chips now use 12sp labels and a 48dp minimum touch target.
+- **Windows:** The desktop inbox already uses Material `FilterChip`, whose platform
+  implementation owns the desktop-sized touch target and label typography; no Windows
+  source change is required for this Android-specific Compose sizing correction.
+- **PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android** — Android's compact
+  horizontal inbox rail needs an explicit 48dp mobile target, while Windows uses the
+  desktop Material filter-chip implementation and retains its desktop interaction model.
+
 ## 2026-11-07 — BLINK Contest topic loading and publishing repair (PR #675)
 
 - **PARITY-EXCEPTION: android-contest-topic-error-recovery-20261107** — Android admin topic selection now gives an explicit required-topic state and an inline retry action when the directory RPC cannot load. Creating a custom topic continues to select its returned topic ID automatically. The underlying Contest RPC/database contract is shared; no Windows-only backend behavior is introduced.

@@ -993,14 +993,16 @@ private fun MessageInboxTabChip(
         contentColor = if (selected) palette.backgroundMiddle else palette.textPrimary,
         shape = RoundedCornerShape(100.dp),
         border = BorderStroke(1.dp, if (selected) palette.textPrimary else palette.border),
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             if (count != null) {
                 Badge(
                     containerColor = if (selected) palette.backgroundMiddle else palette.accent,
