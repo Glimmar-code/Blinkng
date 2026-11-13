@@ -887,7 +887,6 @@ private fun PremiumMessagesHome(
         onAddStoryClick = onAddStoryClick,
         onGameClick = onGameClick,
         onNotificationsClick = onNotificationsClick,
-        onCallHistory = onCallHistory,
         hasUnreadNotifications = hasUnreadNotifications,
         onComposeMessage = onComposeMessage,
         onOpenSettings = onOpenAppearance,
