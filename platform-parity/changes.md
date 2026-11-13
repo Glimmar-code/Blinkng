@@ -1,5 +1,11 @@
 ## 2026-11-13 — Messaging inbox chip accessibility
 
+- **PARITY-EXCEPTION: android-background-call-and-call-history-20261113** — Android
+  keeps an active Telecom/WebRTC call alive when its UI is backgrounded or removed from
+  Recents, and adds a Calls chip that opens the existing authenticated call-history screen.
+  Windows retains its desktop call surface and existing call-history entry points; no
+  Windows capability or backend contract is removed by this Android lifecycle/navigation fix.
+
 - **Android:** Inbox filter chips now use 12sp labels and a 48dp minimum touch target.
 - **Windows:** The desktop inbox already uses Material `FilterChip`, whose platform
   implementation owns the desktop-sized touch target and label typography; no Windows
