@@ -36,6 +36,17 @@ class BlinkContestDraftValidatorTest {
             check(times = dates.toMutableList().apply { set(3, "2026-11-02T09:00:00+01:00") }))
     }
 
+    @Test fun acceptsBackToBackParticipationAndVotingWindows() {
+        val backToBack = listOf(
+            "2026-11-01T09:00:00+01:00",
+            "2026-11-04T09:00:00+01:00",
+            "2026-11-04T09:00:00+01:00",
+            "2026-11-07T09:00:00+01:00",
+            "2026-11-07T09:00:00+01:00"
+        )
+        assertNull(check(times = backToBack))
+    }
+
     @Test fun rejectsInvalidPrizeAndParticipantSettings() {
         assertEquals("Enter a contest title (4–100 characters).", check(title = "A"))
         assertEquals("Enter three valid, non-negative prize amounts.",

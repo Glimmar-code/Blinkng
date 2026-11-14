@@ -1694,7 +1694,11 @@ fun MarketplaceScreen(state: DesktopAppState) {
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                ScreenHeader("Marketplace", "Real campus listings")
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ScreenHeader("Marketplace", "Real campus listings")
+                    Text("Find what your campus is looking for.", fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    Text("Browse sellers, compare prices, and message directly on BLINK.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Button(onClick = {
                     if (sellerReady) showCreate = !showCreate else showSellerEnrollment = !showSellerEnrollment
                 }) { Text(if (showCreate || showSellerEnrollment) "Close" else "Sell item") }
@@ -1981,7 +1985,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Become a BLINK Seller — Free", fontWeight = FontWeight.Bold)
-                        Text("Seller approval is separate from blue/gold verification. Registration is free. Existing applicants must wait for approval before publishing.")
+                        Text("Seller approval is separate from blue/gold verification. Registration is free. Unverified sellers are limited to 3 products per day; existing applicants must wait for approval before publishing.")
                         OutlinedTextField(sellerStore, { sellerStore = it.take(80) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business / Store name") })
                         OutlinedTextField(sellerUniversity, { sellerUniversity = it.take(140) }, modifier = Modifier.fillMaxWidth(), label = { Text("University") })
                         OutlinedTextField(sellerState, { sellerState = it.take(100) }, modifier = Modifier.fillMaxWidth(), label = { Text("State") })
@@ -2128,7 +2132,21 @@ fun MarketplaceScreen(state: DesktopAppState) {
             item { Text("No Market listings match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         items(itemsList, key = { it.id }) { market ->
-            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = if (market.isFeatured) 3.dp else 1.dp) {
+            Surface(
+                modifier = Modifier.trackDesktopMarketExposure(market.id) {
+                    scope.launch {
+                        runCatching { state.client.recordMarketplaceView(market.id) }
+                            .onSuccess { count ->
+                                itemsList = itemsList.map { current ->
+                                    if (current.id == market.id) current.copy(viewCount = count) else current
+                                }
+                            }
+                    }
+                },
+                shape = RoundedCornerShape(18.dp),
+                tonalElevation = if (market.isFeatured) 3.dp else 1.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(market.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
@@ -2137,6 +2155,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                     Text(market.description, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     VerifiedName(market.sellerName, market.sellerVerified)
                     Text("${market.university} • ${market.location} • ${market.condition}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${market.viewCount ?: 0L} views", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (market.isFeatured) Text("Featured", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     if (!market.isSold && market.sellerId != state.profile?.id && market.sellerId != null) {
                         OutlinedTextField(

@@ -149,11 +149,6 @@ jobs:
           bash scripts/build_blink_life_web_pack.sh
           GAME_SHA="$(sha256sum app/build/outputs/publish/blink-life-web.zip | awk '{print $1}')"
           echo "BLINK_LIFE_WEB_SHA256=$GAME_SHA" >> "$GITHUB_ENV"
-          # Room's generated schema directory is ignored and may contain a partial
-          # zero-byte bundle after an interrupted cached KSP run. Start this
-          # disposable release build from a deterministic schema workspace.
-          rm -rf app/schemas
-          mkdir -p app/schemas
 
       - name: Build release variant with disposable key
         env:
@@ -163,9 +158,11 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
-        # Release smoke builds must not reuse partial KSP state from a restored Gradle cache.
-        # Clean outputs and disable KSP incrementality/build-cache reuse to keep this disposable signing build deterministic.
-        run: gradle :app:assembleRelease :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache --max-workers=1 -x :app:uploadCrashlyticsMappingFileRelease -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
+        # Clean stale KSP state, then build variants sequentially to avoid Room schema export races.
+        run: |
+          set -euo pipefail
+          gradle :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+          gradle :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify small website APK plus native on-demand Play split
         shell: bash
