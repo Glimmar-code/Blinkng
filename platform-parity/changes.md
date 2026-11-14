@@ -1920,3 +1920,10 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - **PARITY-EXCEPTION: android-chat-editor-state-and-message-animation-20261112** — The Android changes repair local Compose state for the native chat video-editor dialog and restore the existing Android message-screen animation import. These are Android-only presentation and lifecycle details; they do not add or alter a shared feature, payload, permission, backend contract or user action.
 - **Windows equivalent:** Windows continues to use its existing native desktop media-editor state and message-screen layout/animation implementation. The equivalent editor and messaging actions remain available through the desktop implementation, but Android Compose state holders and animation APIs are not portable Windows code.
 - **Scope:** This exception covers only the Android compile repairs in `BlinkChatVideoEditorDialog.kt` and `PremiumMessagesScreen.kt`; Windows parity/build checks remain required and are not waived.
+
+
+## 2026-11-14 — Digital Paystack checkout compliance gate
+
+- **PARITY-EXCEPTION: android-play-billing-coin-pack-checkout-20261114** — Android coin-pack checkout is hard-disabled in `BlinkStoreActivity.kt` because coin packs are digital goods and no Google Play Billing integration with server-side purchase verification exists. The Supabase migration rejects digital coin and gift Paystack RPCs for every client; physical marketplace checkout remains separate.
+- **Windows equivalent:** The desktop Profile surface now presents coin purchases as unavailable rather than offering a Paystack action that the shared backend rejects. Windows is not subject to Google Play Billing, but the shared digital-goods purchase path stays closed on both clients until secure billing is available; physical marketplace checkout remains separate.
+- **Scope:** This is an Android distribution-policy restriction plus a shared backend fail-closed change, reflected in the desktop UI. When a compliant billing contract is implemented, update the shared entitlement and both client surfaces together.

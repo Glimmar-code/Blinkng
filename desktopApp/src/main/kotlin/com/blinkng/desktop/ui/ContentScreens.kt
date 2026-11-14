@@ -3955,7 +3955,6 @@ fun ProfileScreen(state: DesktopAppState) {
     var economyMessage by remember { mutableStateOf<String?>(null) }
     var economyBusy by remember { mutableStateOf(false) }
     var cashCheckoutBusy by remember { mutableStateOf(false) }
-    var showCoinPacks by remember { mutableStateOf(false) }
     var pendingPaystackOrderId by remember { mutableStateOf<String?>(null) }
     var missionBusyKey by remember { mutableStateOf<String?>(null) }
     var premiumCatalogIds by remember(profile?.username) { mutableStateOf<List<String>>(emptyList()) }
@@ -4242,30 +4241,10 @@ fun ProfileScreen(state: DesktopAppState) {
                             }
                         }
 
-                        OutlinedButton(
-                            onClick = { showCoinPacks = !showCoinPacks },
-                            enabled = !cashCheckoutBusy && policy.cashCheckoutEnabled,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(if (showCoinPacks) "Hide Blink Coin packs" else "Buy Blink Coins with Paystack") }
-
-                        AnimatedVisibility(visible = showCoinPacks && policy.cashCheckoutEnabled) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                policy.coinPacks.forEach { pack ->
-                                    OutlinedButton(
-                                        onClick = {
-                                            cashCheckoutBusy = true
-                                            economyMessage = null
-                                            scope.launch {
-                                                runCatching { state.client.initializePaystackCoinCheckout(pack.id) }
-                                                    .onSuccess { payload -> runCatching { openHostedPaystackCheckout(payload) }.onSuccess { showCoinPacks = false }.onFailure { economyMessage = it.message } }
-                                                    .onFailure { economyMessage = it.message }
-                                                cashCheckoutBusy = false
-                                            }
-                                        }, enabled = !cashCheckoutBusy, modifier = Modifier.fillMaxWidth()
-                                    ) { Text("₦${pack.priceNgn} → ${pack.coins} coins" + if (pack.bonusCoins > 0) " (+${pack.bonusCoins} bonus)" else "") }
-                                }
-                            }
-                        }
+                        Text(
+                            "Blink Coin purchases are temporarily unavailable while a secure billing flow is implemented.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
 
                         pendingPaystackOrderId?.let { orderId ->
                             OutlinedButton(
