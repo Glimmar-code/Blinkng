@@ -65,10 +65,8 @@ import androidx.lifecycle.lifecycleScope
 import coil.compose.AsyncImage
 import com.example.data.supabase.SupabaseService
 import com.example.ui.theme.BlinkTheme
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -151,6 +149,7 @@ class CallActivity : ComponentActivity() {
     private var pollJob: Job? = null
     private var durationJob: Job? = null
     private var reconnectJob: Job? = null
+    private val ringbackTone = CallRingbackTone()
     private var lastFetchedSignalId = 0L
     private val processedSignalIds = mutableSetOf<Long>()
     private val pendingSignals = mutableListOf<CallSignal>()
@@ -210,7 +209,10 @@ class CallActivity : ComponentActivity() {
         callStartedElapsedRealtimeMs = SystemClock.elapsedRealtime()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                Toast.makeText(this@CallActivity, "Use End call to leave the call.", Toast.LENGTH_SHORT).show()
+                // Background the call UI without ending the authoritative call. Telecom and
+                // BlinkCallForegroundService keep media, notification controls, and the
+                // return-to-call action alive while the user returns to other apps.
+                moveTaskToBack(true)
             }
         })
 
@@ -284,34 +286,22 @@ class CallActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        pollJob?.cancel()
-        durationJob?.cancel()
-        reconnectJob?.cancel()
-        realtime?.close()
-        call?.id?.let { BlinkTelecomManager.clearMediaLifecycle(it) }
-        rtcClient?.release()
-        rtcClient = null
-        mediaReady = false
+        val keepCallAlive = call?.let { !it.status.isTerminal && !ending.get() } == true
+        if (!keepCallAlive) {
+            pollJob?.cancel()
+            durationJob?.cancel()
+            reconnectJob?.cancel()
+            ringbackTone.stop()
+            realtime?.close()
+            call?.id?.let { BlinkTelecomManager.clearMediaLifecycle(it) }
+            rtcClient?.release()
+            rtcClient = null
+            mediaReady = false
+        }
 
-        val active = call
-        if (isFinishing && active != null && !active.status.isTerminal && !ending.get()) {
-            val context = applicationContext
-            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                val ended = repository.endCall(active.id, "ended").getOrNull()
-                if (ended != null) {
-                    repository.dispatchPush(active.id, ended.status.wireValue)
-                } else {
-                    CallEndRetryWorker.schedule(
-                        context, active.id, repository.currentUserId(),
-                        CallEndRecoveryPolicy.Action.END
-                    )
-                }
-                BlinkTelecomManager.disconnect(active.id, android.telecom.DisconnectCause.LOCAL)
-            }
-        }
-        if (active != null && BlinkCallForegroundService.activeCallId == active.id) {
-            stopService(Intent(this, BlinkCallForegroundService::class.java))
-        }
+        // Leaving the activity is not an end-call action. Android may destroy/recreate the
+        // activity when the task is backgrounded or removed from Recents; the foreground
+        // service and Telecom session remain authoritative until the user taps End call.
         super.onDestroy()
     }
 
@@ -362,6 +352,9 @@ class CallActivity : ComponentActivity() {
             loaded.status == CallStatus.CONNECTED -> "Connected"
             loaded.status == CallStatus.CONNECTING -> "Connecting…"
             else -> "Calling…"
+        }
+        if (isCaller && loaded.status in setOf(CallStatus.RINGING, CallStatus.CONNECTING)) {
+            ringbackTone.start(lifecycleScope)
         }
         speakerOn = callType == CallType.VIDEO
         cameraOn = callType == CallType.VIDEO
@@ -607,6 +600,7 @@ class CallActivity : ComponentActivity() {
                 if (!isCaller && !mediaStarted) requestMediaPermissions(incomingAnswer = true)
             }
             CallStatus.CONNECTED -> {
+                ringbackTone.stop()
                 incomingRinging = false
                 statusText = "Connected"
                 if (!mediaStarted) requestMediaPermissions(incomingAnswer = !isCaller)
@@ -660,6 +654,7 @@ class CallActivity : ComponentActivity() {
             runOnUiThread {
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
+                        ringbackTone.stop()
                         rtcClient?.setLowBandwidthMode(false)
                         if (connectedElapsedRealtimeMs == 0L) {
                             connectedElapsedRealtimeMs = SystemClock.elapsedRealtime()
@@ -805,6 +800,7 @@ class CallActivity : ComponentActivity() {
         delayMillis: Long = 650L,
         disconnectCause: Int = android.telecom.DisconnectCause.LOCAL
     ) {
+        ringbackTone.stop()
         reportQualityIfNeeded(status)
         statusText = terminalLabel(status)
         incomingRinging = false

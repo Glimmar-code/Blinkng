@@ -308,6 +308,7 @@ fun PremiumMessagesScreen(
     onCreateGroup: () -> Unit = {},
     onMyProfileClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
+    onCallHistory: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
@@ -407,6 +408,7 @@ fun PremiumMessagesScreen(
                             onMyProfileClick = onMyProfileClick,
                             onGameClick = onGameClick,
                             onNotificationsClick = onOpenActivity,
+                            onCallHistory = onCallHistory,
                             hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
                             isLoading = isLoading,
@@ -826,6 +828,7 @@ private fun PremiumMessagesHome(
     onComposeMessage: () -> Unit,
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    onCallHistory: () -> Unit,
     hasUnreadNotifications: Boolean,
     isConnected: Boolean,
     isLoading: Boolean,
@@ -902,6 +905,7 @@ private fun PremiumMessagesHome(
                 archivedCount = archivedCount,
                 palette = messagePalette(if (isDark) MessageThemeMode.DARK else MessageThemeMode.LIGHT),
                 onSelect = { inboxTab = it },
+                onCallHistory = onCallHistory,
                 onChannelsClick = {
                     channelContext.startActivity(
                         Intent(channelContext, com.example.ProfessionalCenterActivity::class.java)
@@ -921,12 +925,22 @@ private fun MessageInboxTabs(
     archivedCount: Int,
     palette: MessagePalette,
     onSelect: (MessageInboxTab) -> Unit,
+    onCallHistory: () -> Unit,
     onChannelsClick: () -> Unit
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        item {
+            MessageInboxTabChip(
+                label = "Calls",
+                selected = false,
+                count = null,
+                palette = palette,
+                onClick = onCallHistory
+            )
+        }
         item {
             MessageInboxTabChip(
                 label = "Channels",
@@ -997,14 +1011,16 @@ private fun MessageInboxTabChip(
         contentColor = if (selected) palette.backgroundMiddle else palette.textPrimary,
         shape = RoundedCornerShape(100.dp),
         border = BorderStroke(1.dp, if (selected) palette.textPrimary else palette.border),
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             if (count != null) {
                 Badge(
                     containerColor = if (selected) palette.backgroundMiddle else palette.accent,
