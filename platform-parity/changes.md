@@ -1900,3 +1900,10 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - **PARITY-EXCEPTION: android-chat-editor-state-and-message-animation-20261112** — The Android changes repair local Compose state for the native chat video-editor dialog and restore the existing Android message-screen animation import. These are Android-only presentation and lifecycle details; they do not add or alter a shared feature, payload, permission, backend contract or user action.
 - **Windows equivalent:** Windows continues to use its existing native desktop media-editor state and message-screen layout/animation implementation. The equivalent editor and messaging actions remain available through the desktop implementation, but Android Compose state holders and animation APIs are not portable Windows code.
 - **Scope:** This exception covers only the Android compile repairs in `BlinkChatVideoEditorDialog.kt` and `PremiumMessagesScreen.kt`; Windows parity/build checks remain required and are not waived.
+
+
+## 2026-11-14 — Digital Paystack checkout compliance gate
+
+Android coin-pack checkout is now hard-disabled in `BlinkStoreActivity.kt` because coin packs are digital goods and the Android app does not yet have Google Play Billing with server-side purchase verification. The Supabase migration also rejects digital coin and gift Paystack RPCs, while leaving the separate physical marketplace flag unchanged, so Windows receives the same server-side fail-closed behavior for digital goods. Physical marketplace checkout remains a separate path.
+
+This is an intentional platform-policy exception rather than a missing Windows feature: Android must use Google Play Billing for Play-distributed digital goods, while the eventual shared product contract should remain disabled on every surface until the approved billing implementation is complete. When Billing is implemented, update the shared entitlement contract and both client surfaces together.
