@@ -197,6 +197,8 @@ body.br-marketing-active #android-ui-parity-dock {
     justify-items: stretch;
     margin-top: 21px;
     gap: 6px;
+    width: calc(100% + 16px);
+    margin-inline: -8px;
   }
   .br-button-main {
     width: 100%;

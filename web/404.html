@@ -20,5 +20,12 @@
     <p>Try the BLINK Nigeria homepage or explore posts, reels, messaging, campus communities and BLINK Market.</p>
     <div class="actions"><a class="primary" href="/">Go to homepage</a><a href="/download/">Download app</a></div>
   </main>
+  <script>
+    // GitHub Pages uses this file for legacy SPA routes; keep OAuth/recovery fragments out of requests.
+    var base = location.hostname.endsWith('github.io')?'/Blinkng/':'/';
+    var route = location.pathname.replace(/^\/Blinkng(?=\/|$)/, '') + location.search;
+    location.replace(base + '?p=' + encodeURIComponent(route) + location.hash);
+  </script>
+  <noscript><a href="./">Open BLINK</a></noscript>
 </body>
 </html>
