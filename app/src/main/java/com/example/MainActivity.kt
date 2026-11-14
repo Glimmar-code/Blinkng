@@ -2151,6 +2151,12 @@ fun MainAppContent(
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
+                        onCallHistory = {
+                            context.startActivitySafely(
+                                Intent(context, com.example.call.CallHistoryActivity::class.java),
+                                "Could not open call history."
+                            )
+                        },
                         onUpdateChatPrivacy = { settings ->
                             viewModel.updateChatPrivacySettings(settings)
                         },
