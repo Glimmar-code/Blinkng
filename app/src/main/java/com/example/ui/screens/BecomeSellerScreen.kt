@@ -87,9 +87,9 @@ fun BecomeSellerScreen(
                     Text("• Add photos, stock, pricing and delivery or campus pickup options.")
                     Text("• Let buyers message you privately through BLINK.")
                     Text("• Approved sellers receive a separate Market seller badge.")
-                    Text("Posting limits", fontWeight = FontWeight.Bold, color = BlinkGold)
-                    Text("Unverified sellers can publish up to 3 products per day. Active BLINK verification unlocks the verified seller flow; seller approval is still required before publishing.")
-                    Text("Registration is free. The separate BLINK verification checkout is ₦800 for Blue verification when you choose to get verified.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Eligibility and approval", fontWeight = FontWeight.Bold, color = BlinkGold)
+                    Text("An active Blue or Gold verification badge is required to register as a Market seller. Seller registration is free, but every seller profile must pass a separate BLINK review before listings can be published.")
+                    Text("If your badge has expired, renew it before registering. Seller approval does not replace Blue/Gold verification, and verification alone does not automatically approve a seller profile.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
             confirmButton = {
