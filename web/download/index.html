@@ -73,9 +73,27 @@
       <section class="discover-section card discover-card" aria-labelledby="download-choice">
   <h2 id="download-choice">Get BLINK for Android</h2>
   <p>The download button always points to the latest published BLINK APK on the project's GitHub Releases. The file size and version may change as new releases are published.</p>
-  <p id="blink-release-info" role="status" aria-live="polite" class="discovery-status">Check the latest published BLINK version on GitHub Releases.</p>
-  <div class="discover-actions"><a class="btn primary" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk">Download latest Android APK</a><a class="btn" href="../">Use BLINK on the web</a></div>
+  <div class="release-facts" aria-label="Current BLINK Android release">
+    <p><strong>Version:</strong> 1.0.299100844</p>
+    <p><strong>File size:</strong> 58,569,651 bytes (55.85 MiB)</p>
+    <p><strong>Last updated:</strong> 13 November 2026</p>
+    <p><strong>SHA-256:</strong> <code>d056f8017470bdbb7d1d9783ced6dd4ee0109b8abe0c563e95b1343130c94cc6</code></p>
+  </div>
+  <p id="blink-release-info" role="status" aria-live="polite" class="discovery-status">The official APK is published from the BLINK Android repository.</p>
+  <div class="discover-actions"><a class="btn primary" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk">Download latest Android APK</a><button class="btn" type="button" data-play-soon>Google Play</button><a class="btn" href="../">Use BLINK on the web</a></div>
+  <p id="play-soon-message" class="discovery-status" role="status" aria-live="polite" hidden>Coming soon. BLINK is not on Google Play yet.</p>
   <p><small>Official release source: <a href="https://github.com/Glimmar-code/Blinkng/releases/latest">BLINK GitHub Releases</a>. Verify that any download comes from the official project, and follow your device's security guidance.</small></p>
+</section>
+<section class="discover-section card discover-card" aria-labelledby="qr-title">
+  <div class="qr-layout"><div><h2 id="qr-title">Open this download page on Android</h2><p>Scan this QR code on a desktop screen to open the official BLINK download page on your phone.</p></div><img src="./download-qr.svg" width="180" height="180" alt="QR code for the BLINK Android download page"></div>
+</section>
+<section class="discover-section card discover-card" aria-labelledby="install-title">
+  <h2 id="install-title">Install the APK on Android</h2>
+  <ol class="install-steps"><li>Download the APK from the button above.</li><li>Open the downloaded file. If Android asks, allow installs from this browser in <strong>Settings → Apps → Special app access → Install unknown apps</strong>.</li><li>Install BLINK, then turn that browser permission off again if you do not need it.</li><li>If Google Play Protect shows a warning, only continue after confirming that you downloaded this file from the official BLINK GitHub release, and review the warning before choosing whether to proceed.</li></ol>
+  <p class="checksum-note">For the authoritative SHA-256 value, download <a href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk.sha256">Blink-latest.apk.sha256</a> from the official release page.</p>
+</section>
+<section class="discover-section card discover-card" aria-labelledby="notify-title">
+  <h2 id="notify-title">Notify me about future releases</h2><p>Leave your email to be notified when the Google Play listing is available.</p><form class="notify-form" action="mailto:hello@blink.com.ng" method="post" enctype="text/plain"><label for="notify-email">Email address</label><div><input id="notify-email" name="email" type="email" required placeholder="you@example.com"><button class="btn primary" type="submit">Notify me</button></div></form>
 </section>
 <section class="discover-section">
   <h2>Getting started</h2>
@@ -93,6 +111,7 @@
       <a href="../about/">About</a><a href="../features/">Features</a><a href="../download/">Download</a><a href="../faq/">FAQ</a><a href="../privacy/">Privacy</a><a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a>
     </footer>
   </div>
+  <script>document.querySelector("[data-play-soon]")?.addEventListener("click",()=>{const e=document.getElementById("play-soon-message");if(e){e.hidden=false;e.textContent="Coming soon. BLINK is not on Google Play yet.";}});</script>
   <script src="../discovery.js" defer></script>
   <script src="../site-analytics.js" defer></script>
 </body>

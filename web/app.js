@@ -387,7 +387,7 @@
   async function updatePassword(password){ if(password.length<8)throw new Error('Use at least 8 characters.'); await api('/auth/v1/user',{method:'PUT',body:{password}}); }
 
   function renderLanding(){
-    setTitle('Blink');
+    setTitle('BLINK Nigeria | Social & Campus Community App');
     ROOT.innerHTML=`<main class="landing-page" aria-label="BLINK Nigeria">
       <a class="landing-skip" href="#landing-main">Skip to content</a>
       <header class="landing-header">
@@ -492,7 +492,7 @@
           <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">▣</span><h3>BLINK Market</h3><p>Find listings, explore products and connect with people selling nearby.</p></article>
           <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">◎</span><h3>BLINK Connect</h3><p>Meet new people and discover connections in your university community.</p></article>
           <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">✉</span><h3>BLINK Messages</h3><p>Stay in touch with friends and continue conversations in one place.</p></article>
-          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">◇</span><h3>BLINK LIFE</h3><p>Learn about BLINK's optional game experience for supported devices.</p></article>
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">✦</span><h3>Creators</h3><p>Discover Nigerian creators, follow public profiles and share the moments you want your community to see.</p></article>
         </div>
       </section>
 
@@ -526,6 +526,20 @@
         navigate(event.currentTarget.dataset.landingNav);
       });
     });
+    const smartDownload=(event)=>{
+      if(!/Android/i.test(navigator.userAgent)){
+        event.preventDefault();
+        toast('BLINK is for Android. Open this page on your phone.');
+        return;
+      }
+      event.preventDefault();
+      const pkg=C.androidPackage||'com.aistudio.blink.appvtwo';
+      location.href=`intent://open#Intent;scheme=blink;package=${pkg};S.browser_fallback_url=${encodeURIComponent(APK_URL)};end`;
+    };
+    ROOT.querySelectorAll(`a[href="${APK_URL}"]`).forEach(link=>link.addEventListener('click',smartDownload));
+    if(navigator.getInstalledRelatedApps){navigator.getInstalledRelatedApps().then(apps=>{
+      if(apps?.length)ROOT.querySelectorAll(`a[href="${APK_URL}"]`).forEach(link=>{link.textContent=link.textContent.replace(/Download (?:BLINK )?Android app/i,'Open app').replace(/Download app/i,'Open app');});
+    }).catch(()=>{});}
     const searchForm=ROOT.querySelector('#public-search');
     searchForm?.addEventListener('submit',async event=>{
       event.preventDefault();

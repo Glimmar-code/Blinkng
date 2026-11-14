@@ -5,6 +5,7 @@ export const INDEXNOW_KEY='c7a33ad1df24b04816761dc5dae7fbfa';
 export const INDEXNOW_KEY_LOCATION=SITE+'/'+INDEXNOW_KEY+'.txt';
 export const APPROVED_PUBLIC_PATHS=Object.freeze([
  '/','/about/','/features/','/download/','/faq/','/privacy/',
+ '/delete-account/',
  '/students/','/marketplace/','/safety/'
 ]);
 

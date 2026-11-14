@@ -1,0 +1,25 @@
+# Google Play policy evidence collected 2026-11-14
+
+- Developer Program Policy: https://support.google.com/googleplay/android-developer/answer/18265346?hl=en
+  - Real-money games/contests that accept money or in-app items to obtain real-world monetary/physical prizes are not allowed unless an applicable exception and requirements are met.
+  - User data and third-party SDK handling must be disclosed and policy compliant.
+- User Generated Content: https://support.google.com/googleplay/android-developer/answer/9876937?hl=en
+  - Require terms/user policy acceptance before users create/upload UGC; define/prohibit objectionable content; provide in-app reporting and blocking; moderate and act on reports; incidental sexual content must be hidden by default and minors excluded.
+- Account deletion: https://support.google.com/googleplay/android-developer/answer/10144311?hl=en
+  - Apps that create accounts must offer discoverable in-app deletion and an external web resource; deletion must remove associated data, with only clearly disclosed legitimate retention.
+- Google Play Billing: https://developer.android.com/google/play/billing
+  - Google Play Billing is for digital products/content; backend integration and secure server-side purchase verification are essential. Physical goods/services are outside Play Billing.
+- Families: https://support.google.com/googleplay/android-developer/answer/9893335?hl=en
+  - Target audience must be truthful. If children are included, social features require safety reminders/adult controls and stricter data/SDK/ads handling.
+- Data Safety: https://support.google.com/googleplay/android-developer/answer/10787469?hl=en
+  - All developers must accurately declare collection/sharing/security/deletion, including third-party SDKs; the developer is responsible for completeness.
+- Target API: https://support.google.com/googleplay/android-developer/answer/11926878?hl=en
+  - Starting Aug 31 2026, new apps and updates must target Android 16/API 36 or higher.
+- 16 KB pages: https://developer.android.com/guide/practices/page-sizes
+  - AGP 8.5.1+ and compatible native dependencies are the recommended path; verify bundles with bundletool and PAGE_ALIGNMENT_16K.
+- Reviewer access: https://support.google.com/googleplay/android-developer/answer/15748846?hl=en
+  - Provide reusable, location-independent English sign-in details and instructions for all restricted functionality.
+- Photo/video permissions: https://support.google.com/googleplay/android-developer/answer/14115180?hl=en
+  - READ_MEDIA_IMAGES/VIDEO should only be requested when system pickers are insufficient; Android Photo Picker is the privacy-oriented alternative.
+- Deceptive behavior: https://support.google.com/googleplay/android-developer/answer/9888077?hl=en
+  - Store listing and in-app claims must accurately reflect functionality; misleading claims and fake behavior are prohibited.
