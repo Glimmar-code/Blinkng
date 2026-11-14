@@ -7886,20 +7886,52 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Couldn't save your seller details.")
                 return@launch
             }
-            val registered = current.isSellerActive ||
-                supabaseService.registerVerifiedMarketSeller(
-                    cleanStore, phone, whatsapp, state, city, cleanUni
-                )
-            if (!registered) {
+            val registrationResult = if (current.isSellerActive) {
+                Result.success(true)
+            } else {
+                runCatching {
+                    supabaseService.registerVerifiedMarketSeller(
+                        cleanStore, phone, whatsapp, state, city, cleanUni
+                    )
+                }
+            }
+            val registered = registrationResult.getOrElse { failure ->
                 _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
-                showToast("Seller registration requires active verification and an available Market server.")
+                val serverMessage = failure.message.orEmpty()
+                showToast(
+                    when {
+                        serverMessage.contains("VERIFICATION_REQUIRED_OR_EXPIRED", ignoreCase = true) ->
+                            "An active Blue or Gold verification badge is required. Check that your badge has not expired."
+                        serverMessage.contains("SELLER_REQUIRES_REVIEW", ignoreCase = true) ->
+                            "Your seller account needs a review. Contact BLINK support for assistance."
+                        serverMessage.contains("INVALID_SELLER_DETAILS", ignoreCase = true) ->
+                            "Some seller details are invalid. Check your phone numbers, state, city and university."
+                        serverMessage.contains("AUTHENTICATION_REQUIRED", ignoreCase = true) ->
+                            "Your session has expired. Sign in again and retry."
+                        else -> serverMessage.ifBlank { "Seller registration failed. Please try again." }
+                    }
+                )
                 return@launch
             }
-            if (!supabaseService.completeMarketSellerProfile(
-                    sellerKind, businessDescription, productCategory, delivery, pickup
-                )) {
+            if (!registered) {
                 _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
-                showToast("Seller details could not be completed. Please review the form.")
+                showToast("Seller registration was not confirmed. Please try again.")
+                return@launch
+            }
+            val profileResult = runCatching {
+                supabaseService.completeMarketSellerProfile(
+                    sellerKind, businessDescription, productCategory, delivery, pickup
+                )
+            }
+            val profileCompleted = profileResult.getOrElse { failure ->
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast(failure.message?.takeIf(String::isNotBlank)
+                    ?: "Seller profile setup failed. Please try again.")
+                return@launch
+            }
+            if (!profileCompleted) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Your seller account was created, but the seller profile could not be saved. Retry to finish setup.")
                 return@launch
             }
             val fresh = runCatching { profileRepository.fetchById(current.id) }.getOrNull()
