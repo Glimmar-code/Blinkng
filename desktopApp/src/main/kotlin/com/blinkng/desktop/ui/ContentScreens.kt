@@ -1985,7 +1985,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Become a BLINK Seller — Free", fontWeight = FontWeight.Bold)
-                        Text("Seller approval is separate from blue/gold verification. Registration is free. Unverified sellers are limited to 3 products per day; existing applicants must wait for approval before publishing.")
+                        Text("Registration is free and requires an active Blue or Gold verification badge. Seller approval is a separate review; you can publish listings after your seller profile is approved.")
                         OutlinedTextField(sellerStore, { sellerStore = it.take(80) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business / Store name") })
                         OutlinedTextField(sellerUniversity, { sellerUniversity = it.take(140) }, modifier = Modifier.fillMaxWidth(), label = { Text("University") })
                         OutlinedTextField(sellerState, { sellerState = it.take(100) }, modifier = Modifier.fillMaxWidth(), label = { Text("State") })
@@ -2023,19 +2023,33 @@ fun MarketplaceScreen(state: DesktopAppState) {
                                 sellerSubmitting = true
                                 scope.launch {
                                     runCatching {
-                                        state.client.registerVerifiedMarketSeller(
+                                        val registered = state.client.registerVerifiedMarketSeller(
                                             sellerStore,sellerPhone,sellerWhatsapp,sellerState,sellerCity,sellerUniversity
-                                        ) && state.client.completeMarketSellerProfile(
+                                        )
+                                        check(registered) { "Seller registration was not confirmed. Please try again." }
+                                        val profileCompleted = state.client.completeMarketSellerProfile(
                                             sellerKind,sellerDescription,sellerCategory,sellerDelivery,sellerPickup
                                         )
-                                    }.onSuccess { approved ->
-                                        if (approved) {
-                                            sellerReady = true
-                                            showSellerEnrollment = false
-                                            showCreate = true
-                                            error = null
-                                        } else error = "Registration requires active verification."
-                                    }.onFailure { error = it.message ?: "Seller registration failed." }
+                                        check(profileCompleted) { "Your seller account was created, but the seller profile could not be saved. Retry registration to finish setup." }
+                                    }.onSuccess {
+                                        sellerReady = true
+                                        showSellerEnrollment = false
+                                        showCreate = true
+                                        error = null
+                                    }.onFailure { failure ->
+                                        val serverMessage = failure.message.orEmpty()
+                                        error = when {
+                                            serverMessage.contains("VERIFICATION_REQUIRED_OR_EXPIRED", ignoreCase = true) ->
+                                                "An active Blue or Gold verification badge is required to register as a BLINK seller. Check your verification status and expiry date."
+                                            serverMessage.contains("SELLER_REQUIRES_REVIEW", ignoreCase = true) ->
+                                                "Your seller account needs a review. Contact BLINK support for assistance."
+                                            serverMessage.contains("INVALID_SELLER_DETAILS", ignoreCase = true) ->
+                                                "Some seller details are invalid. Check your phone numbers, location and store information."
+                                            serverMessage.contains("AUTHENTICATION_REQUIRED", ignoreCase = true) ->
+                                                "Your session has expired. Sign in again and retry."
+                                            else -> serverMessage.ifBlank { "Seller registration failed. Please try again." }
+                                        }
+                                    }
                                     sellerSubmitting = false
                                 }
                             }

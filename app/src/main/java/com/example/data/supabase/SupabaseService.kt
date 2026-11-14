@@ -5463,29 +5463,28 @@ suspend fun uploadPostMedia(
         city: String,
         university: String
     ): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val body = JSONObject()
-                .put("p_store_name", storeName.trim())
-                .put("p_phone", phone.trim())
-                .put("p_whatsapp", whatsapp.trim())
-                .put("p_state", state.trim())
-                .put("p_city", city.trim())
-                .put("p_university", university.trim())
-            executeRequest(
-                newRequestBuilder("/rest/v1/rpc/register_verified_market_seller", true)
-                    .post(body.toString().toRequestBody(jsonMediaType))
-                    .build()
-            ).use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "Seller registration rejected: ${response.code}")
-                    return@use false
-                }
-                raw.trim().trim('"').equals("true", ignoreCase = true)
+        val body = JSONObject()
+            .put("p_store_name", storeName.trim())
+            .put("p_phone", phone.trim())
+            .put("p_whatsapp", whatsapp.trim())
+            .put("p_state", state.trim())
+            .put("p_city", city.trim())
+            .put("p_university", university.trim())
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/register_verified_market_seller", true)
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(
+                    parseSupabaseError(raw, "Seller registration failed (HTTP ${response.code}).")
+                )
             }
-        }.getOrElse {
-            Log.w(TAG, "Seller registration unavailable", it)
-            false
+            if (!raw.trim().trim('"').equals("true", ignoreCase = true)) {
+                throw IllegalStateException("The server did not confirm seller registration. Please try again.")
+            }
+            true
         }
     }
 
@@ -5497,21 +5496,28 @@ suspend fun uploadPostMedia(
         delivery: Boolean,
         pickup: Boolean
     ): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val payload = JSONObject()
-                .put("p_kind", kind)
-                .put("p_description", description)
-                .put("p_categories", JSONArray().put(category))
-                .put("p_delivery", delivery)
-                .put("p_pickup", pickup)
-                .put("p_logo_url", JSONObject.NULL)
-            executeRequest(
-                newRequestBuilder("/rest/v1/rpc/complete_market_seller_profile", true)
-                    .post(payload.toString().toRequestBody(jsonMediaType)).build()
-            ).use { response ->
-                response.isSuccessful && response.body?.string().orEmpty().trim().trim('"') == "true"
+        val payload = JSONObject()
+            .put("p_kind", kind)
+            .put("p_description", description)
+            .put("p_categories", JSONArray().put(category))
+            .put("p_delivery", delivery)
+            .put("p_pickup", pickup)
+            .put("p_logo_url", JSONObject.NULL)
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/complete_market_seller_profile", true)
+                .post(payload.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(
+                    parseSupabaseError(raw, "Seller profile setup failed (HTTP ${response.code}).")
+                )
             }
-        }.getOrDefault(false)
+            if (raw.trim().trim('"') != "true") {
+                throw IllegalStateException("The server did not confirm your seller profile. Please try again.")
+            }
+            true
+        }
     }
 
     suspend fun requestMarketModerationReview(itemId: String, reason: String): Boolean =
