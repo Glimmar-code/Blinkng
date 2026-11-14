@@ -79,16 +79,13 @@ internal fun MarketOffersPanel(
 
     LaunchedEffect(userId) { loadPage(reset = true) }
 
-    Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    MarketSurface(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(15.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Private Market Offers", fontSize = 18.sp, fontWeight = FontWeight.Black)
-            Text(
-                "Accepting an offer does not charge either party or guarantee a transaction.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            MarketSectionHeader("Private offers", "Negotiate safely inside BLINK")
+            MarketInfoBanner("Accepting an offer does not charge either party. Agree on payment and pickup in chat.")
             if (error.isNotBlank()) {
                 Text(error, color = MaterialTheme.colorScheme.error)
                 if (loadFailure) {
