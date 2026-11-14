@@ -1,3 +1,21 @@
+## 2026-11-13 — Messaging inbox chip accessibility
+
+- **PARITY-EXCEPTION: android-background-call-and-call-history-20261113** — Android
+  keeps an active Telecom/WebRTC call alive when its UI is backgrounded or removed from
+  Recents, and adds a Calls chip that opens the existing authenticated call-history screen.
+  Windows retains its desktop call surface and existing call-history entry points; no
+  Windows capability or backend contract is removed by this Android lifecycle/navigation fix.
+
+- **Android:** Inbox filter chips now use 12sp labels and a 48dp minimum touch target.
+- **Windows:** The desktop inbox already uses Material `FilterChip`, whose platform
+  implementation owns the desktop-sized touch target and label typography; no Windows
+  source change is required for this Android-specific Compose sizing correction.
+- **PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android** — Android's compact
+  horizontal inbox rail needs an explicit 48dp mobile target, while Windows uses the
+  desktop Material filter-chip implementation and retains its desktop interaction model.
+- **CI evidence:** This remains the documented `PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android`
+  for the Android-only touch-target correction; no Windows capability is removed.
+
 ## 2026-11-10 — Android cold-launch branding and cache-first hydration
 
 - **Android:** Show the shared BLINK intro on true cold launches for returning as well as signed-out users; only Activity recreation skips replay. After authentication, retain the local snapshot and quietly refresh only the currently visible surface instead of eagerly refetching every section. Cached feed content stays visible without a loading indicator; an empty feed still reports loading while its first page is fetched.
@@ -1897,6 +1915,8 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - **PARITY-EXCEPTION: android-play-store-distribution-and-backup-policy-20261107** — Android now builds a separate `playStoreRelease` variant that removes the restricted `REQUEST_INSTALL_PACKAGES` permission from the Play Store manifest while preserving the existing website APK's user-approved self-update path. Android cloud backup and device-transfer exclusions are explicit because the Android app already sets `allowBackup=false` and stores account/session/private-message state locally.
 - **Windows equivalent:** Windows desktop is not distributed through Google Play, does not install Android APKs, and does not participate in Android OS cloud-backup or device-transfer APIs. It retains its independent desktop installer and account-scoped Windows storage behavior; no shared feature, backend contract or desktop capability changes.
 - **Scope:** This is Android distribution/OS-policy configuration only. It does not change user-facing features, server data, payment behavior or Windows implementation.
+- **PARITY-EXCEPTION: pr-686-android-chat-editor-state-repair-20261114** — PR 686's merge-resolution update carries forward Android's Compose chat video-editor state/animation repair and message-screen import correction; it changes Android implementation details only, not chat actions, authorization or backend contracts.
+- **Windows equivalent:** Windows retains its existing native desktop media editor, message-screen layout and animation implementation; no Windows feature or behavior is removed.
 - **PARITY-EXCEPTION: android-chat-editor-state-and-message-animation-20261112** — The Android changes repair local Compose state for the native chat video-editor dialog and restore the existing Android message-screen animation import. These are Android-only presentation and lifecycle details; they do not add or alter a shared feature, payload, permission, backend contract or user action.
 - **Windows equivalent:** Windows continues to use its existing native desktop media-editor state and message-screen layout/animation implementation. The equivalent editor and messaging actions remain available through the desktop implementation, but Android Compose state holders and animation APIs are not portable Windows code.
 - **Scope:** This exception covers only the Android compile repairs in `BlinkChatVideoEditorDialog.kt` and `PremiumMessagesScreen.kt`; Windows parity/build checks remain required and are not waived.
