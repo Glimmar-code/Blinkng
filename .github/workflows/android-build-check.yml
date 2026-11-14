@@ -56,6 +56,9 @@ jobs:
       - name: Verify every Create Post APK action is wired and safe
         run: node scripts/test_android_create_post_actions.mjs
 
+      - name: Verify Play target, backup, installer, deletion and policy contracts
+        run: node scripts/test_play_compliance_contract.mjs
+
       - name: Compute actual checked-out Android input digest
         id: input_digest
         if: steps.scope.outputs.android == 'true'

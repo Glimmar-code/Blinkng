@@ -27,7 +27,7 @@ The existing implementation includes terms/community-rule acceptance, report and
 
 ## 5. Account deletion and associated data — **Fixed**
 
-In-app deletion already calls the server-side `delete_my_account` workflow. I added `web/delete-account/index.html`, linked it from the privacy policy, and added it to the sitemap. The page identifies BLINK, gives Android and web instructions, explains deletion versus limited legal/security retention, and avoids inventing an email address or credentials.
+In-app deletion already calls the server-side `delete_my_account` workflow. The authenticated web **Your data** route now exposes the same deletion RPC with exact-username confirmation and clears the browser session after success. `web/delete-account/index.html` is linked from the privacy policy and sitemap; it identifies BLINK, gives Android and web instructions, explains deletion versus limited legal/security retention, and avoids inventing an email address or credentials.
 
 Before submission, a **Needs me** follow-up is to verify that the production web route serves this file and that the deployed deletion workflow actually deletes or anonymizes all associated data, including storage objects and third-party records where applicable. [3]
 
