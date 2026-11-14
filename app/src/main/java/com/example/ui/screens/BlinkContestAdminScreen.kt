@@ -47,6 +47,16 @@ import androidx.compose.ui.graphics.Brush
 import coil.request.ImageRequest
 
 /**
+ * LazyColumn keys must be nonblank and unique across every item section in this screen.
+ * API payloads can contain missing/blank IDs; include the section and row index as a
+ * collision-safe fallback instead of passing the empty string to Compose.
+ */
+private fun contestLazyItemKey(section: String, index: Int, row: JSONObject): String {
+    val id = row.optString("id").trim().ifBlank { "missing" }
+    return "$section:$id:$index"
+}
+
+/**
  * Dashboard entry is capability-gated. Every mutation is independently checked
  * by private.require_blink_admin() in Supabase, never by a device-side role flag.
  */
@@ -250,12 +260,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             Box {
                 OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(topicRows.firstOrNull { it.optString("id") == topicId }?.optString("name")
-                        ?: "Select a topic (or leave unassigned)")
+                        ?: "Select a required contest topic")
                 }
                 DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
-                    DropdownMenuItem(text = { Text("No topic selected") }, onClick = {
-                        topicId = ""; topicMenu = false
-                    })
                     topicRows.forEach { topic ->
                         DropdownMenuItem(text = { Text(topic.optString("name")) }, onClick = {
                             topicId = topic.optString("id")
@@ -265,12 +272,15 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            Text("Choose one of the public topics users can browse. You can add new topics through the admin topic library.",
+            Text("Choose a public topic before saving a contest. To create a new topic, add it to the library below; it will be selected automatically.",
                 style = MaterialTheme.typography.bodySmall)
             if (topicsLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             topicLoadError?.let { error ->
-                Text("Topics unavailable: $error. Refresh the manager before creating a contest.",
+                Text("Topics unavailable: $error",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                TextButton(enabled = !topicsLoading, onClick = { revision++ }) {
+                    Text("Retry loading topics")
+                }
             }
             if (!topicsLoading && topicLoadError == null && topicRows.isEmpty()) {
                 Text("No contest topics are available yet. Add a topic to the library first.",
@@ -323,7 +333,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         }
         item {
             if (topicId.isBlank() && !topicsLoading && topicLoadError == null) {
-                Text("Select a contest topic before saving.", color = MaterialTheme.colorScheme.error,
+                Text("A contest topic is required. Select an existing topic or add your custom topic to the library above.",
+                    color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -446,7 +457,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             if (!contestsLoading && contests.isEmpty()) Text("No contests available. Create a draft above.")
             TextButton(enabled = !contestsLoading, onClick = { revision++ }) { Text("Refresh manager") }
         }
-        itemsIndexed(contests, key = { _, row -> row.optString("id") }) { index, contest ->
+        itemsIndexed(contests, key = { index, row -> contestLazyItemKey("contest", index, row) }) { index, contest ->
             ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
                 shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -582,7 +593,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 minLines = 2, modifier = Modifier.fillMaxWidth()
             )
         }
-        itemsIndexed(appeals, key = { _, row -> "appeal-" + row.optString("id") }) { index, appeal ->
+        itemsIndexed(appeals, key = { index, row -> contestLazyItemKey("appeal", index, row) }) { index, appeal ->
             ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
                 shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp),
@@ -693,7 +704,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 modifier=Modifier.fillMaxWidth())
         }
         itemsIndexed(insights?.optJSONArray("review_queue")?.contestObjects().orEmpty(),
-            key = { _, row -> row.optString("id") }) { index, vote ->
+            key = { index, row -> contestLazyItemKey("vote", index, row) }) { index, vote ->
             ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
                 shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp)) {
@@ -728,7 +739,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 modifier=Modifier.fillMaxWidth())
         }
         itemsIndexed(insights?.optJSONArray("prizes")?.contestObjects().orEmpty(),
-            key = { _, row -> row.optString("id") }) { index, prize ->
+            key = { index, row -> contestLazyItemKey("prize", index, row) }) { index, prize ->
             ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
                 shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp)) {
@@ -757,7 +768,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         itemsIndexed(entries.filter {
             applicantFilter == "All" ||
                 it.optString("status").equals(applicantFilter, ignoreCase = true)
-        }, key = { _, row -> row.optString("id") }) { index, entry ->
+        }, key = { index, row -> contestLazyItemKey("entry", index, row) }) { index, entry ->
             ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
                 shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

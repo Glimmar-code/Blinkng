@@ -158,11 +158,9 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
-        shell: bash
+        # Clean stale KSP state, then build variants sequentially to avoid Room schema export races.
         run: |
           set -euo pipefail
-          # Clean stale KSP state, then build variants sequentially. Room KSP
-          # exports one schema directory; a parallel graph can race on its JSON.
           gradle :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
           gradle :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 

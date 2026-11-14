@@ -214,7 +214,7 @@ returns jsonb language sql stable security definer set search_path='' as $$
     'description',t.description,'sort_order',t.sort_order,
     'followers',(select count(*) from public.blink_contest_topic_follows f where f.topic_id=t.id),
     'contests_total',(select count(*) from public.blink_contests c
-      where c.topic_id=t.id and c.status in ('published','paused','completed','cancelled')),
+      where c.topic_id=t.id and (c.status in ('published','paused','completed') or (c.status='cancelled' and c.has_been_published))),
     'completed_contests',(select count(*) from public.blink_contests c
       where c.topic_id=t.id and c.status='completed'),
     'ongoing_contests',(select count(*) from public.blink_contests c
@@ -235,7 +235,7 @@ returns jsonb language sql stable security definer set search_path='' as $$
       select count(v.id)::integer from public.blink_contests c
         join public.blink_contest_entries e on e.contest_id=c.id and e.status='approved'
         join public.blink_contest_votes v on v.entry_id=e.id and v.review_status='valid'
-        where c.topic_id=t.id and c.status<>'completed'
+        where c.topic_id=t.id and (c.status in ('published','paused') or (c.status='cancelled' and c.has_been_published))
       group by c.id) x),
     'prizes_awarded',(select coalesce(sum(h.prize_ngn),0) from public.blink_contests c
       join public.blink_contest_history_participants h on h.contest_id=c.id
@@ -266,7 +266,7 @@ begin
     when c.status='published' and now()<c.voting_closes_at then 1
     when c.status='completed' then 2 else 3 end,c.registration_opens_at),'[]'::jsonb)
   into v_contests from public.blink_contests c
-  where c.topic_id=t.id and c.status in ('published','paused','completed','cancelled');
+  where c.topic_id=t.id and (c.status in ('published','paused','completed') or (c.status='cancelled' and c.has_been_published));
 
   select coalesce(jsonb_agg(jsonb_build_object(
     'user_id',z.user_id,'username',z.username,'avatar_url',z.avatar_url,
@@ -288,14 +288,14 @@ begin
     from public.blink_contest_entries e
     join public.blink_contests c on c.id=e.contest_id
     left join public.profiles p on p.id=e.user_id
-    where c.topic_id=t.id and c.status<>'completed' and e.status='approved'
+    where c.topic_id=t.id and (c.status in ('published','paused') or (c.status='cancelled' and c.has_been_published)) and e.status='approved'
   ) z;
 
   return jsonb_build_object('topic',jsonb_build_object(
     'id',t.id,'slug',t.slug,'name',t.name,'category',t.category,'description',t.description,
     'following',exists(select 1 from public.blink_contest_topic_follows f where f.topic_id=t.id and f.user_id=auth.uid())),
     'contests',v_contests,'participants',v_people,
-    'total_contests',(select count(*) from public.blink_contests where topic_id=t.id and status in ('published','paused','completed','cancelled')),
+    'total_contests',(select count(*) from public.blink_contests where topic_id=t.id and (status in ('published','paused','completed') or (status='cancelled' and has_been_published))),
     'completed_contests',(select count(*) from public.blink_contests where topic_id=t.id and status='completed'),
     'total_participants',(select count(distinct person_id) from (
       select h.user_id person_id from public.blink_contest_history_participants h
@@ -303,7 +303,7 @@ begin
       union
       select e.user_id from public.blink_contest_entries e
         join public.blink_contests c on c.id=e.contest_id
-        where c.topic_id=t.id and c.status<>'completed' and e.status='approved'
+        where c.topic_id=t.id and (c.status in ('published','paused') or (c.status='cancelled' and c.has_been_published)) and e.status='approved'
     ) unique_people),
     'total_votes',coalesce((select sum((x->>'votes')::integer) from jsonb_array_elements(v_people) x),0),
     'prizes_awarded',(select coalesce(sum(prize_ngn),0) from public.blink_contest_history_participants h
@@ -507,7 +507,8 @@ returns jsonb language sql stable security definer set search_path='' as $$
     'contestants',(select count(*) from public.blink_contest_entries e
       where e.contest_id=c.id and e.status in ('approved','pending'))
   ) order by c.voting_opens_at desc),'[]'::jsonb)
-  from public.blink_contests c where c.status in ('published','paused','completed');
+  from public.blink_contests c where c.status in ('published','paused','completed')
+    or (c.status='cancelled' and c.has_been_published);
 $$;
 
 revoke all on function public.list_blink_contest_topics(),public.get_blink_contest_topic(uuid),public.get_blink_contest_participant_profile(uuid),

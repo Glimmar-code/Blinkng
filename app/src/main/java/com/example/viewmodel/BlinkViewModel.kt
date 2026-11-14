@@ -349,6 +349,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var syncJob: Job? = null
+    private val startupPreparedUserIds = mutableSetOf<String>()
     // An inbox visit must never refetch the entire feed, Market and Connect payload.
     private var inboxEntryJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
@@ -745,9 +746,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         saveLocalProfile(profile)
                         loadDraftsFromPrefs()
                         refreshMyProfileFromSupabase(showErrorToast = false)
-                        fetchSupabaseData()
+                        prepareAuthenticatedStartup()
                     }
                     is AuthState.Unauthenticated -> {
+                        startupPreparedUserIds.clear()
                         val recoverable = !AccountSessionStore.isSignInRequired(appContext) &&
                             (!SupabaseService.refreshToken().isNullOrBlank() || AccountSessionStore.list(appContext).isNotEmpty())
                         if (
@@ -761,6 +763,43 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                     else -> Unit
                 }
             }
+        }
+    }
+
+    /**
+     * A restored session should not trigger a cold full-app sync. The durable
+     * snapshot remains the immediate UI; only the currently visible surface is
+     * quietly revalidated, while other sections refresh when the user opens them.
+     */
+    private fun prepareAuthenticatedStartup() {
+        val state = _uiState.value
+        val profile = state.myProfile
+        if ((state.destination != AppDestination.MAIN &&
+                state.destination != AppDestination.PROFILE_SETUP) ||
+            !state.isOnline || profile.id.isBlank() || profile.username.isBlank()
+        ) return
+
+        if (!startupPreparedUserIds.add(profile.id)) {
+            refreshIfStale()
+            return
+        }
+        viewModelScope.launch {
+            runCatching { chatRepository.ackPendingDeliveries() }
+                .onFailure { Log.w(TAG, "Startup delivery acknowledgement failed", it) }
+            val latest = _uiState.value
+            if (latest.myProfile.id != profile.id) return@launch
+            runCatching { supabaseService.setMyPresence(true) }
+                .onFailure { Log.w(TAG, "Startup presence update failed", it) }
+            realtimeManager.connect(profile.username, profile.id)
+            AccountSessionStore.recordCurrentSession(
+                appContext,
+                profile.id,
+                profile.username,
+                profile.fullName,
+                profile.email.value,
+                profile.avatarUrl
+            )
+            refreshIfStale()
         }
     }
 
@@ -819,7 +858,7 @@ private suspend fun restoreSupabaseSession() {
                         saveLocalProfile(profile)
                         persistProfile(profile)
                         authRepository.markAuthenticated(profile)
-                        fetchSupabaseData()
+                        prepareAuthenticatedStartup()
                         return
                     }
                 }
@@ -829,7 +868,7 @@ private suspend fun restoreSupabaseSession() {
                     restoreLocalSession()
                     authRepository.markAuthenticated(_uiState.value.myProfile)
                     _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
-                    fetchSupabaseData()
+                    prepareAuthenticatedStartup()
                     return
                 }
             }
@@ -838,7 +877,7 @@ private suspend fun restoreSupabaseSession() {
                 (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())) {
                 restoreLocalSession()
                 _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
-                fetchSupabaseData()
+                prepareAuthenticatedStartup()
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
@@ -1195,6 +1234,7 @@ private suspend fun restoreSupabaseSession() {
             networkMonitor.isOnline.collectLatest { online ->
                 val connectionRestored = previousStatus == false && online
                 previousStatus = online
+                if (!online) startupPreparedUserIds.clear()
                 _uiState.value = _uiState.value.copy(
                     isOnline = online,
                     isLiveSupabaseConnected = if (online) {
@@ -1211,7 +1251,7 @@ private suspend fun restoreSupabaseSession() {
 
                 if (connectionRestored && _uiState.value.destination == AppDestination.MAIN) {
                     drainMessageOutbox()
-                    fetchSupabaseData()
+                    prepareAuthenticatedStartup()
                 }
             }
         }
@@ -1880,7 +1920,12 @@ private suspend fun restoreSupabaseSession() {
 
     private fun refreshVisibleFeedQuietly(isReel: Boolean) {
         if (visibleFeedRefreshJob?.isActive == true) return
-        val accountId = _uiState.value.myProfile.id
+        val before = _uiState.value
+        val accountId = before.myProfile.id
+        val hasCachedVisibleFeed = if (isReel) before.reels.isNotEmpty() else before.posts.isNotEmpty()
+        if (!hasCachedVisibleFeed) {
+            _uiState.value = before.copy(isFeedLoading = true)
+        }
         visibleFeedRefreshJob = viewModelScope.launch {
             try {
                 syncMutex.withLock {
@@ -1898,7 +1943,17 @@ private suspend fun restoreSupabaseSession() {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Quiet visible Feed refresh failed", error)
-                // Existing cached content remains untouched.
+                // Existing cached content remains untouched. An empty cache must
+                // expose a retry state instead of silently becoming a blank feed.
+                if (!hasCachedVisibleFeed && _uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(
+                        feedErrorMessage = "Posts couldn't load right now. Pull to retry."
+                    )
+                }
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isFeedLoading = false)
+                }
             }
         }
     }
@@ -2988,7 +3043,7 @@ private suspend fun restoreSupabaseSession() {
                 )
                 saveLocalProfile(profile)
                 loadDraftsFromPrefs()
-                fetchSupabaseData()
+                prepareAuthenticatedStartup()
                 showToast(
                     if (profile.onboardingCompleted) "✨ Signed in as @${profile.username}"
                     else "Complete your BLINK profile to continue."
@@ -3012,7 +3067,7 @@ private suspend fun restoreSupabaseSession() {
                     )
                     saveLocalProfile(profile)
                     refreshMyProfileFromSupabase(false)
-                    fetchSupabaseData()
+                    prepareAuthenticatedStartup()
                     showToast(
                         if (profile.onboardingCompleted) "✨ Welcome back, @${_uiState.value.myProfile.username}"
                         else "Choose your BLINK username to continue."
@@ -8115,6 +8170,7 @@ private suspend fun restoreSupabaseSession() {
         cancelledImageUploads.clear()
         java.io.File(appContext.filesDir, "blink-chat-image-outbox")
             .listFiles()?.forEach { runCatching { it.delete() } }
+        startupPreparedUserIds.clear()
         realtimeManager.disconnect()
         viewModelScope.launch {
             runCatching { supabaseService.setMyPresence(false) }
