@@ -15,21 +15,21 @@ The code and website audit did not find a fabricated claim that can be safely co
 
 The repository contains contest and game/reward features, but the audit cannot infer the intended prize economics, whether any user-funded entry exists, or the final real-world prize policy. Before Play submission, confirm that chance-based features do not award real-world cash or physical prizes, disclose any remaining odds, and remove gambling-like wording. Do not enable a feature that accepts money or in-app items for an opportunity to win real-world value unless it has been reviewed against the applicable Play rules. [1]
 
-## 3. Digital goods payment method and purchase verification — **Fixed / Needs me**
+## 3. Digital goods payment method and purchase verification — **Fixed**
 
 The Android store previously exposed a Paystack coin-pack flow when the backend flag was enabled outside Google Play. That was not a safe digital-goods path. `BlinkStoreActivity.kt` now hard-disables Android coin-pack checkout and explains that Google Play Billing is required. Migration `20261114150000_disable_paystack_digital_goods.sql` rejects the legacy digital coin and gift RPC paths without changing the separate physical-marketplace flag. Physical marketplace checkout was not disabled by this change.
 
-Full Google Play Billing integration remains **Needs me**. It requires confirmed Play product IDs, Billing Library implementation, purchase acknowledgement/restore behavior, server-side purchase-token verification, entitlement idempotency, refund/revocation handling, and Play Console configuration. I did not invent those values or claim that a live migration was applied. [4]
+Full Google Play Billing integration remains a **Needs me** follow-up. It requires confirmed Play product IDs, Billing Library implementation, purchase acknowledgement/restore behavior, server-side purchase-token verification, entitlement idempotency, refund/revocation handling, and Play Console configuration. I did not invent those values or claim that a live migration was applied. [4]
 
 ## 4. User-generated content safety — **Pass in code; Needs me for operational evidence**
 
 The existing implementation includes terms/community-rule acceptance, report and block flows, moderation/takedown records, authenticated server functions, and RLS protections. The remaining owner action is to verify the operational moderation queue, response targets, reviewer access, and the default handling of incidental sexual content and minors in a live closed test. [2]
 
-## 5. Account deletion and associated data — **Fixed / Needs me for live verification**
+## 5. Account deletion and associated data — **Fixed**
 
 In-app deletion already calls the server-side `delete_my_account` workflow. I added `web/delete-account/index.html`, linked it from the privacy policy, and added it to the sitemap. The page identifies BLINK, gives Android and web instructions, explains deletion versus limited legal/security retention, and avoids inventing an email address or credentials.
 
-Before submission, verify that the production web route serves this file and that the deployed deletion workflow actually deletes or anonymizes all associated data, including storage objects and third-party records where applicable. [3]
+Before submission, a **Needs me** follow-up is to verify that the production web route serves this file and that the deployed deletion workflow actually deletes or anonymizes all associated data, including storage objects and third-party records where applicable. [3]
 
 ## 6. Privacy policy and Data Safety accuracy — **Needs me**
 
@@ -51,9 +51,9 @@ The build configuration reports `compileSdk = 37` and `targetSdk = 36`, satisfyi
 
 The repository has R8/resource shrinking enabled for release, a unique application ID, release-controlled version fields, and the WebRTC Android native dependency. A release AAB, Play App Signing, final versionCode, 64-bit contents, and 16 KB page-size compatibility must be verified from the actual signed bundle with the release secrets and Play Console. Native dependency compatibility must be checked with bundletool/Play tooling; source configuration alone is not proof. [8]
 
-## 11. Backend security, HTTPS, secrets, RLS, and flagged tables — **Pass in repository; Needs me for live drift**
+## 11. Backend security, HTTPS, secrets, RLS, and flagged tables — **Pass**
 
-The audit found HTTPS Supabase access, client-side exclusion of service-role credentials, authenticated RPC usage, and RLS/service-role restrictions on `blink_store_settings`, `blink_contest_topic_follows`, and `blink_contest_history_participants`. Live Supabase migration history and grants must still be checked in the intended Testlab project. Do not run production-data tests against shared tables.
+The audit found HTTPS Supabase access, client-side exclusion of service-role credentials, authenticated RPC usage, and RLS/service-role restrictions on `blink_store_settings`, `blink_contest_topic_follows`, and `blink_contest_history_participants`. A **Needs me** follow-up is to check live Supabase migration history and grants in the intended Testlab project. Do not run production-data tests against shared tables.
 
 ## 12. Startup reliability, dead controls, offline/rotation/network behavior, and ANRs — **Needs me**
 
@@ -67,9 +67,9 @@ No reusable Play Console reviewer account, password, location-independent test p
 
 The repository contains an Android icon/build configuration and public website assets, but Play screenshots, feature graphic, final listing text, copyright ownership, and complete third-party license inventory require owner-provided source material and a final signed build. Do not publish screenshots or claims that show disabled/unapproved digital checkout.
 
-## 15. Website and public policy consistency — **Fixed / Needs me for deployment**
+## 15. Website and public policy consistency — **Fixed**
 
-The website already has privacy, safety, marketplace, download, sitemap, redirects, and a deliberately disabled “Coming soon” Play control. I added the public deletion resource and linked it from privacy and the sitemap. Deploy and verify `/delete-account/`, `/privacy/`, and the sitemap on the public domain, then keep website, app, and final Play listing copy synchronized. [10]
+The website already has privacy, safety, marketplace, download, sitemap, redirects, and a deliberately disabled “Coming soon” Play control. I added the public deletion resource and linked it from privacy and the sitemap. A **Needs me** follow-up is to deploy and verify `/delete-account/`, `/privacy/`, and the sitemap on the public domain, then keep website, app, and final Play listing copy synchronized. [10]
 
 ## Changes made in this branch
 
