@@ -80,7 +80,8 @@
     <p><strong>SHA-256:</strong> <code>d056f8017470bdbb7d1d9783ced6dd4ee0109b8abe0c563e95b1343130c94cc6</code></p>
   </div>
   <p id="blink-release-info" role="status" aria-live="polite" class="discovery-status">The official APK is published from the BLINK Android repository.</p>
-  <div class="discover-actions"><a class="btn primary" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk">Download latest Android APK</a><a class="btn" href="../">Use BLINK on the web</a></div>
+  <div class="discover-actions"><a class="btn primary" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk">Download latest Android APK</a><button class="btn" type="button" data-play-soon>Google Play</button><a class="btn" href="../">Use BLINK on the web</a></div>
+  <p id="play-soon-message" class="discovery-status" role="status" aria-live="polite" hidden>Coming soon. BLINK is not on Google Play yet.</p>
   <p><small>Official release source: <a href="https://github.com/Glimmar-code/Blinkng/releases/latest">BLINK GitHub Releases</a>. Verify that any download comes from the official project, and follow your device's security guidance.</small></p>
 </section>
 <section class="discover-section card discover-card" aria-labelledby="qr-title">
@@ -110,6 +111,7 @@
       <a href="../about/">About</a><a href="../features/">Features</a><a href="../download/">Download</a><a href="../faq/">FAQ</a><a href="../privacy/">Privacy</a><a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a>
     </footer>
   </div>
+  <script>document.querySelector("[data-play-soon]")?.addEventListener("click",()=>{const e=document.getElementById("play-soon-message");if(e){e.hidden=false;e.textContent="Coming soon. BLINK is not on Google Play yet.";}});</script>
   <script src="../discovery.js" defer></script>
   <script src="../site-analytics.js" defer></script>
 </body>
