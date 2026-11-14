@@ -528,7 +528,26 @@
   }
 
   async function renderDataSettings() {
-    if (!authGuard()) return; shell('Your data',`<section class="parity-panel"><h3>Export Blink account data</h3><p class="muted">Uses the same <code>export_my_account_data</code> server RPC as Android.</p><button class="parity-btn primary" data-export>Export my data</button></section><section class="parity-panel"><h3>Local browser data</h3><p class="muted">Clear your own drafts and this browser's BLINK preferences. Other accounts' drafts remain untouched.</p><button class="parity-btn danger" data-clear-local>Clear local web data</button></section>`); document.querySelector('[data-export]').onclick=async()=>{try{const data=await rpc('export_my_account_data',{});const blob=new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`blink-account-export-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Export ready.','success');}catch(e){toast(e.message,'error');}}; document.querySelector('[data-clear-local]').onclick=()=>{for(const key of [...ownedDraftKeys(uid()),PREF_KEY])storageRemove(key);toast('Your drafts and browser preferences cleared.','success');applyPrefs();};
+    if (!authGuard()) return;
+    const profile=await getProfile().catch(()=>null);
+    const username=String(profile?.username||'').trim();
+    shell('Your data',`<section class="parity-panel"><h3>Export Blink account data</h3><p class="muted">Uses the same <code>export_my_account_data</code> server RPC as Android.</p><button class="parity-btn primary" data-export>Export my data</button></section><section class="parity-panel"><h3>Delete your account</h3><p class="muted">Permanently delete your BLINK account and associated data. Some limited security, fraud-prevention, transaction or legal records may be retained where required.</p><button class="parity-btn danger" data-delete-account ${username?'':'disabled'}>Delete account</button></section><section class="parity-panel"><h3>Local browser data</h3><p class="muted">Clear your own drafts and this browser's BLINK preferences. Other accounts' drafts remain untouched.</p><button class="parity-btn danger" data-clear-local>Clear local web data</button></section>`);
+    document.querySelector('[data-export]').onclick=async()=>{try{const data=await rpc('export_my_account_data',{});const blob=new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`blink-account-export-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Export ready.','success');}catch(e){toast(e.message,'error');}};
+    document.querySelector('[data-delete-account]')?.addEventListener('click',()=>{
+      if(!username){toast('Your account username could not be loaded.','error');return;}
+      openMiniModal('Delete your BLINK account',`<p class="muted">This is permanent and cannot be undone. Type <strong>@${esc(username)}</strong> to confirm.</p><input class="parity-field" id="delete-account-confirmation" aria-label="Username confirmation" autocomplete="off" placeholder="Username"><div class="row-actions"><button class="parity-btn" data-close-parity-modal>Cancel</button><button class="parity-btn danger" data-confirm-delete-account disabled>Delete forever</button></div>`);
+      const input=document.getElementById('delete-account-confirmation');
+      const confirm=document.querySelector('[data-confirm-delete-account]');
+      input?.addEventListener('input',()=>{confirm.disabled=input.value.trim().replace(/^@/,'').toLowerCase()!==username.toLowerCase();});
+      confirm?.addEventListener('click',async()=>{
+        confirm.disabled=true;
+        try {
+          await rpc('delete_my_account',{p_confirmation:input.value.trim().replace(/^@/,'')});
+          saveSession(null); closeMiniModal(); toast('Account deleted.','success'); go('/login');
+        } catch(error) { confirm.disabled=false; toast(error.message||'Account deletion failed.','error'); }
+      });
+    });
+    document.querySelector('[data-clear-local]').onclick=()=>{for(const key of [...ownedDraftKeys(uid()),PREF_KEY])storageRemove(key);toast('Your drafts and browser preferences cleared.','success');applyPrefs();};
   }
 
   async function renderAccounts() {
