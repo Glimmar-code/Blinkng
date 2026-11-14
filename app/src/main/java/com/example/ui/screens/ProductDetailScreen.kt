@@ -159,7 +159,7 @@ fun ProductDetailScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(320.dp)
+                        .height(360.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     val currentImage = item.images.getOrNull(selectedImageIndex)
@@ -327,7 +327,7 @@ fun ProductDetailScreen(
                     if (!available) {
                         Surface(
                             color = Color.Black.copy(alpha = 0.72f),
-                            shape = RoundedCornerShape(100.dp),
+                            shape = RoundedCornerShape(MarketTokens.PillRadius),
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .padding(16.dp)
@@ -403,7 +403,7 @@ fun ProductDetailScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 color = BlinkPink.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(100.dp)
+                                shape = RoundedCornerShape(MarketTokens.PillRadius)
                             ) {
                                 Text(
                                     "NEGOTIABLE",
@@ -427,17 +427,17 @@ fun ProductDetailScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         item {
-                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Surface(shape = RoundedCornerShape(MarketTokens.ButtonRadius), color = MaterialTheme.colorScheme.surfaceVariant) {
                                 Text(item.condition, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
                             }
                         }
                         item {
-                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Surface(shape = RoundedCornerShape(MarketTokens.ButtonRadius), color = MaterialTheme.colorScheme.surfaceVariant) {
                                 Text(item.category, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
                             }
                         }
                         item {
-                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Surface(shape = RoundedCornerShape(MarketTokens.ButtonRadius), color = MaterialTheme.colorScheme.surfaceVariant) {
                                 Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Inventory2, null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(5.dp))
@@ -519,7 +519,7 @@ fun ProductDetailScreen(
                     Spacer(modifier = Modifier.height(22.dp))
                     val sellerInteraction = remember { MutableInteractionSource() }
                     Card(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -676,7 +676,7 @@ fun ProductDetailScreen(
                     OutlinedButton(
                         onClick = { onDirectMessage(item.sellerUsername, item.sellerName, item.sellerAvatar) },
                         enabled = item.sellerUsername.isNotBlank(),
-                        shape = RoundedCornerShape(100.dp),
+                        shape = RoundedCornerShape(MarketTokens.PillRadius),
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
@@ -698,7 +698,7 @@ fun ProductDetailScreen(
                             )
                         },
                         enabled = whatsappNumber.isNotBlank(),
-                        shape = RoundedCornerShape(100.dp),
+                        shape = RoundedCornerShape(MarketTokens.PillRadius),
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier.weight(1.2f)
                     ) {
@@ -711,7 +711,7 @@ fun ProductDetailScreen(
                         onClick = { showOrderDialog = true },
                         enabled = available && !isSubmittingOrder,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
-                        shape = RoundedCornerShape(100.dp),
+                        shape = RoundedCornerShape(MarketTokens.PillRadius),
                         contentPadding = PaddingValues(horizontal = 14.dp),
                         modifier = Modifier.weight(1.35f)
                     ) {
@@ -724,7 +724,7 @@ fun ProductDetailScreen(
                       onClick = { onPaystackBuy(item) },
                       enabled = available && paystackCheckoutAvailable && !isSubmittingOrder,
                       modifier = Modifier.fillMaxWidth(),
-                      shape = RoundedCornerShape(100.dp),
+                      shape = RoundedCornerShape(MarketTokens.PillRadius),
                   ) {
                       Text(if (paystackCheckoutAvailable) "Pay with Paystack · 1 item"
                            else "Secure Paystack checkout coming soon")
@@ -832,7 +832,7 @@ fun ProductDetailScreen(
                     }
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {

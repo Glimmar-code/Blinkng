@@ -55,17 +55,13 @@ internal fun MarketOrdersPanel(userId: String, modifier: Modifier = Modifier) {
     }
     if (userId.isBlank()) return
 
-    Card(modifier = modifier.fillMaxWidth().blinkSmoothSize(), shape = RoundedCornerShape(18.dp)) {
+    MarketSurface(modifier = modifier.fillMaxWidth().blinkSmoothSize()) {
         Column(
             modifier = Modifier.padding(15.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("My Market Orders & Buyer Protection", fontWeight = FontWeight.Black, fontSize = 18.sp)
-            Text(
-                "BLINK does not collect payment here or offer escrow. Keep transaction details in your in-app messages and report disputes.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            MarketSectionHeader("My Orders", "Buyer protection and transaction history")
+            MarketInfoBanner("Keep payment and pickup details in your BLINK chat. Report problems here when needed.")
             if (loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text("Loading your orders…", style = MaterialTheme.typography.bodySmall)
