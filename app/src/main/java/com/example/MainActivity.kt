@@ -82,6 +82,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+internal fun shouldSkipStartupIntro(savedInstanceState: Bundle?): Boolean =
+    savedInstanceState != null
+
     /** One authoritative action binding for every chat entry point. */
 private fun messageInteractionActions(viewModel: BlinkViewModel): ChatInteractionActions = ChatInteractionActions(
             onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
@@ -697,18 +700,9 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val reduceAppMotion = rememberBlinkReduceMotion()
-            // Do not replay the full launch animation when Android recreates the task
-            // after the user briefly switches apps. That feels like a logout/restart even
-            // though the authenticated session and navigation state are still recoverable.
-            // New/signed-out launches retain the branded intro.
-            val hasRecoverableAccount = remember {
-                !AccountSessionStore.isSignInRequired(this@MainActivity) &&
-                    getSharedPreferences("blink_user_session", MODE_PRIVATE)
-                        .getString("username", "")
-                        .orEmpty()
-                        .isNotBlank()
-            }
-            val skipStartupIntro = savedInstanceState != null || hasRecoverableAccount
+            // Skip only a configuration/task recreation. A warm, authenticated user
+            // still deserves the branded animation on a genuine cold app launch.
+            val skipStartupIntro = shouldSkipStartupIntro(savedInstanceState)
             var showStartupIntro by remember { mutableStateOf(!skipStartupIntro) }
             var introAnimationFinished by remember { mutableStateOf(skipStartupIntro) }
             // Never reveal the legacy black SPLASH placeholder after the wordmark.

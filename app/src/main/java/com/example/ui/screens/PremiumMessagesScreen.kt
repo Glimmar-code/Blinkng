@@ -39,9 +39,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeIn
@@ -1165,7 +1169,7 @@ private fun SearchMatchesField(
         leadingIcon = {
             Icon(
                 Icons.Default.Search,
-                contentDescription = null,
+                contentDescription = "Image",
                 tint = palette.textSecondary,
                 modifier = Modifier.size(19.dp)
             )
@@ -1435,7 +1439,7 @@ private fun ConversationList(
                 ) {
                     Icon(
                         Icons.Default.EmojiEmotions,
-                        contentDescription = null,
+                        contentDescription = "Image",
                         tint = palette.accent,
                         modifier = Modifier.padding(16.dp).size(26.dp)
                     )
@@ -2160,7 +2164,7 @@ private fun PremiumChatDetail(
                     ) {
                         Icon(
                             Icons.Default.PushPin,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.accent,
                             modifier = Modifier.size(19.dp)
                         )
@@ -2174,7 +2178,7 @@ private fun PremiumChatDetail(
                         )
                         Icon(
                             Icons.Default.ChevronRight,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.textSecondary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -2280,7 +2284,7 @@ private fun PremiumChatDetail(
                     onValueChange = { searchQuery = it },
                     placeholder = { Text("Search this chat", color = palette.textMuted) },
                     singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.textSecondary) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Image", tint = palette.textSecondary) },
                     trailingIcon = {
                         IconButton(onClick = { searchVisible = false; searchQuery = "" }) {
                             Icon(Icons.Default.Close, contentDescription = "Close search", tint = palette.textSecondary)
@@ -2412,12 +2416,7 @@ private fun PremiumChatDetail(
                             }
                             if (!message.imageAlbumId.isNullOrBlank() &&
                                 videoAlbumGroups[message.imageAlbumId].orEmpty().size > 1) {
-                                BlinkChatVideoAlbumBubble(
-                                    messages = videoAlbumGroups[message.imageAlbumId].orEmpty(),
-                                    palette = palette,
-                                    onRetry = { onRetry(it) },
-                                    onCancelAttachment = { onCancelAttachment(it) },
-                                )
+                                BlinkChatVideoAlbumBubble(videoAlbumGroups[message.imageAlbumId].orEmpty(), palette)
                             } else if (!message.imageAlbumId.isNullOrBlank() &&
                                 albumGroups[message.imageAlbumId].orEmpty().size > 1) {
                                 BlinkChatPhotoAlbumBubble(
@@ -2425,9 +2424,7 @@ private fun PremiumChatDetail(
                                     palette = palette,
                                     onOpen = { viewedImageMessage = it },
                                     onReply = { replyingTo = message; editingMessage = null },
-                                    onActions = { selectedMessage = message },
-                                    onRetry = { onRetry(it) },
-                                    onCancelAttachment = { onCancelAttachment(it) },
+                                    onActions = { selectedMessage = message }
                                 )
                             } else MessageBubble(
                             message = message,
@@ -2523,7 +2520,7 @@ private fun PremiumChatDetail(
                     ) {
                         Icon(
                             if (editingMessage != null) Icons.Default.Edit else Icons.Default.Reply,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.accent,
                             modifier = Modifier.size(18.dp)
                         )
@@ -3535,7 +3532,7 @@ private fun ChatContactProfileOverlay(
         if (conversation.partnerAvatar.isNotBlank()) {
             AsyncImage(
                 model = conversation.partnerAvatar,
-                contentDescription = null,
+                contentDescription = "Image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
@@ -3847,7 +3844,7 @@ private fun MessageBubble(
         if (displayOffset > 10f) {
             Icon(
                 Icons.Default.Reply,
-                contentDescription = null,
+                contentDescription = "Image",
                 tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
                 modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
             )
@@ -4429,21 +4426,13 @@ private fun MessageContent(
                         modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val documentType = BlinkChatDocumentPresentation.typeLabel(
-                            documentName, message.attachmentMimeType
-                        )
-                        val documentTypeColor = Color(
-                            BlinkChatDocumentPresentation.typeColorArgb(
-                                documentName, message.attachmentMimeType
-                            ).toInt()
-                        )
                         Surface(
                             shape = RoundedCornerShape(5.dp),
-                            color = documentTypeColor,
+                            color = if (pdf) Color(0xFFEB404D) else palette.accent,
                             modifier = Modifier.size(width = 36.dp, height = 44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(documentType, color = Color.White,
+                                Text(if (pdf) "PDF" else "FILE", color = Color.White,
                                     fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -4457,7 +4446,7 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(if (pdf) "PDF · Tap to view" else "$documentType · Tap to open",
+                            Text(if (pdf) "PDF · Tap to view" else "Document · Tap to open",
                                 color = contentColor.copy(alpha = .60f), fontSize = 10.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -4868,7 +4857,7 @@ internal fun MessageComposer(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Outlined.Mic,
-                            contentDescription = null,
+                            contentDescription = "Image",
                             tint = palette.textPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
@@ -5421,7 +5410,7 @@ private fun AttachmentOption(
             Surface(shape = CircleShape, color = palette.accent.copy(alpha = .16f)) {
                 Icon(
                     icon,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(22.dp)
                 )
@@ -5472,7 +5461,7 @@ private fun PremiumCallScreen(
                 model = call.conversation.partnerAvatar,
                 error = painterResource(R.drawable.ic_default_profile),
                 fallback = painterResource(R.drawable.ic_default_profile),
-                contentDescription = null,
+                contentDescription = "Image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
@@ -5958,7 +5947,7 @@ private fun MessageAppearanceSheet(
             Surface(shape = CircleShape, color = palette.accent.copy(alpha = .18f)) {
                 Icon(
                     Icons.Default.Palette,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(22.dp)
                 )
@@ -5999,7 +5988,7 @@ private fun MessageAppearanceSheet(
             Surface(shape = CircleShape, color = palette.glassElevated) {
                 Icon(
                     Icons.Default.Menu,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(21.dp)
                 )
@@ -6024,7 +6013,7 @@ private fun MessageAppearanceSheet(
             Surface(shape = CircleShape, color = palette.glassElevated) {
                 Icon(
                     Icons.Default.Notifications,
-                    contentDescription = null,
+                    contentDescription = "Image",
                     tint = palette.accent,
                     modifier = Modifier.padding(10.dp).size(21.dp)
                 )
@@ -6098,7 +6087,7 @@ private fun ThemePreviewCard(
                         shape = CircleShape,
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(16.dp)
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(3.dp))
+                        Icon(Icons.Default.Check, contentDescription = "Image", modifier = Modifier.padding(3.dp))
                     }
                 }
             }
@@ -6148,6 +6137,18 @@ private fun RingAvatar(
     online: Boolean? = null,
     emphasizeRing: Boolean = true
 ) {
+    val pulseScale = if (online == true) {
+        val infiniteTransition = rememberInfiniteTransition(label = "onlinePulse")
+        infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.18f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "onlinePulseScale"
+        ).value
+    } else 1f
     Box(modifier = modifier.size(size)) {
         Box(
             modifier = Modifier
@@ -6173,6 +6174,7 @@ private fun RingAvatar(
             Box(
                 modifier = Modifier
                     .size(size * .25f)
+                    .scale(pulseScale)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
                     .background(palette.online)
