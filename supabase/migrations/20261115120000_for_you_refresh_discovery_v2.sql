@@ -333,19 +333,34 @@ global_exposure as (
     and e.target_key ~* '^[0-9a-f-]{36}$'
   group by e.target_key::uuid
 ),
-candidate_source as (
+raw_candidates as (
   select
     fp.id,
     fp.user_id,
-    fp.created_at,
+    greatest(fp.created_at,coalesce(rr.created_at,fp.created_at)) as created_at,
     fp.is_reel,
     fp.audience,
-    fp.like_count,
-    fp.comment_count,
-    fp.share_count,
-    fp.repost_count,
-    fp.view_count,
-    fp.report_count,
+    greatest(
+      coalesce(fp.like_count,0)-(
+        select count(*)::integer from public.blink_drop_incentivized_interactions di
+         where di.target_id=fp.id and di.action='LIKE'
+      ),0
+    ) as likes,
+    greatest(
+      coalesce(fp.comment_count,0)-(
+        select count(*)::integer from public.blink_drop_incentivized_interactions di
+         where di.target_id=fp.id and di.action='COMMENT'
+      ),0
+    ) as comments,
+    greatest(coalesce(fp.share_count,0),0) as shares,
+    greatest(
+      coalesce(fp.repost_count,0)-(
+        select count(*)::integer from public.blink_drop_incentivized_interactions di
+         where di.target_id=fp.id and di.action='REPOST'
+      ),0
+    ) as reposts,
+    greatest(coalesce(fp.view_count,0),0) as views,
+    greatest(coalesce(fp.report_count,0),0) as report_count,
     fp.is_original,
     fp.category,
     fp.faculty,
@@ -356,38 +371,50 @@ candidate_source as (
     fp.caption,
     fp.image_url,
     fp.video_url,
+    fp.images,
+    fp.link_url,
+    fp.creator_post_number,
     ap.university as author_university,
     ap.faculty as author_faculty,
     ap.department as author_department,
     ap.created_at as creator_created_at,
+    greatest(coalesce(ap.daily_streak,0),0) as creator_streak,
     ap.follower_count as creator_followers,
-    ap.is_verified as creator_verified,
     ap.verification_badge,
+    coalesce(vm.multiplier,1)::numeric as verification_multiplier,
+    coalesce(rm.completion_rate,0)::numeric as reel_completion_rate,
+    coalesce(rm.completion_samples,0)::numeric as reel_completion_samples,
+    coalesce(rm.completed_count,0)::numeric as reel_completed_count,
     coalesce(s.viewer_views,0)::numeric as viewer_views,
     s.last_viewed_at,
     coalesce(ex.impressions,0)::numeric as impressions,
-    coalesce(rm.completion_rate,0)::numeric as reel_completion_rate,
-    coalesce(rm.completion_samples,0)::numeric as reel_completion_samples,
     exists (
       select 1 from public.follows f
        where f.follower_id=cfg.viewer_id and f.following_id=fp.user_id
     ) as is_followed,
-    exists (
-      select 1 from public.user_interest_weights iw
-       where iw.user_id=cfg.viewer_id
-         and iw.surface in ('feed','reels')
-         and iw.weight > 0
-         and (
-           (iw.feature_type='author' and iw.feature_value=fp.user_id::text)
-           or (iw.feature_type='category' and iw.feature_value=lower(btrim(coalesce(fp.category,''))))
-           or (iw.feature_type='faculty' and iw.feature_value=lower(btrim(coalesce(fp.faculty,''))))
-           or (iw.feature_type='content_type' and iw.feature_value=lower(btrim(coalesce(fp.type,''))))
-           or (iw.feature_type='tag' and (
-             lower(iw.feature_value)=any(coalesce(fp.tags,'{}'::text[]))
-             or lower(iw.feature_value)=any(coalesce(fp.hashtags,'{}'::text[]))
-           ))
-         )
-    ) as matches_interest,
+    (rr.id is not null) as has_followed_repost,
+    rr.id as repost_id,
+    rr.user_id as reposted_by_id,
+    rr.username as reposted_by_username,
+    array(
+      select distinct lower(btrim(label_value))
+        from unnest(
+          coalesce(fp.tags,'{}'::text[])
+          || coalesce(fp.hashtags,'{}'::text[])
+          || array[coalesce(fp.category,'')]
+        ) label_value
+       where nullif(btrim(label_value),'') is not null
+    ) as labels,
+    coalesce(ic.positive_interests,'{}'::text[]) as positive_interests,
+    coalesce(ic.negative_interests,'{}'::text[]) as negative_interests,
+    coalesce(ic.positive_creators,'{}'::uuid[]) as positive_creators,
+    coalesce(ic.negative_creators,'{}'::uuid[]) as negative_creators,
+    coalesce(ic.creator_weights,'{}'::jsonb) as creator_weights,
+    case
+      when vg.location is not null and cg.location is not null
+        then extensions.st_distance(vg.location,cg.location)
+      else null
+    end as distance_meters,
     (
       nullif(lower(me.university),'') is not null
       and nullif(lower(me.university),'')=nullif(lower(ap.university),'')
@@ -400,7 +427,6 @@ candidate_source as (
       nullif(lower(me.department),'') is not null
       and nullif(lower(me.department),'')=nullif(lower(ap.department),'')
     ) as same_department,
-    (ap.created_at >= cfg.rank_as_of-interval '30 days' or coalesce(fp.creator_post_number,11)<=10) as new_creator,
     cfg.rank_as_of,
     cfg.seed,
     cfg.surface,
@@ -409,9 +435,44 @@ candidate_source as (
   join public.profiles ap on ap.id=fp.user_id
   cross join cfg
   cross join me
+  left join private_ranking.discovery_user_geo vg on vg.user_id=cfg.viewer_id
+  left join private_ranking.discovery_user_geo cg on cg.user_id=fp.user_id
+  left join private_ranking.discovery_interest_cache ic on ic.user_id=cfg.viewer_id
+  left join private_ranking.discovery_verification_multipliers vm
+    on vm.tier = case upper(coalesce(ap.verification_badge,'NONE'))
+      when 'GOLD' then 'gold'::public.discovery_verification_tier_enum
+      when 'BLUE' then 'blue'::public.discovery_verification_tier_enum
+      else 'standard'::public.discovery_verification_tier_enum
+    end
   left join seen s on s.post_id=fp.id
   left join global_exposure ex on ex.post_id=fp.id
   left join private_ranking.discovery_reel_metrics rm on rm.post_id=fp.id
+  left join lateral (
+    select r.id,r.user_id,rp.username,r.created_at
+      from public.post_reposts r
+      join public.profiles rp on rp.id=r.user_id
+     where r.post_id=fp.id
+       and r.user_id<>cfg.viewer_id
+       and not exists (
+         select 1 from public.blink_drop_incentivized_interactions di
+          where di.target_id=fp.id and di.action='REPOST' and di.user_id=r.user_id
+       )
+       and exists (
+         select 1 from public.follows f
+          where f.follower_id=cfg.viewer_id and f.following_id=r.user_id
+       )
+       and not exists (
+         select 1 from public.blocks b
+          where (b.blocker_id=cfg.viewer_id and b.blocked_id=r.user_id)
+             or (b.blocker_id=r.user_id and b.blocked_id=cfg.viewer_id)
+       )
+       and not exists (
+         select 1 from public.muted_users mu
+          where mu.user_id=cfg.viewer_id and mu.muted_id=r.user_id
+       )
+     order by r.created_at desc
+     limit 1
+  ) rr on true
   where cfg.viewer_id is not null
     and fp.is_active=true
     and coalesce(fp.is_flagged,false)=false
@@ -420,11 +481,11 @@ candidate_source as (
     and (
       cfg.surface='all'
       or (cfg.surface='reels' and coalesce(fp.is_reel,false))
-      or (cfg.surface='posts' and not coalesce(fp.is_reel,false) and nullif(fp.video_url,'') is null)
+      or (cfg.surface='posts' and not coalesce(fp.is_reel,false))
       or (cfg.surface='following' and not coalesce(fp.is_reel,false) and exists (
         select 1 from public.follows f where f.follower_id=cfg.viewer_id and f.following_id=fp.user_id
       ))
-      or (cfg.surface='feed' and not coalesce(fp.is_reel,false) and nullif(fp.video_url,'') is null)
+      or (cfg.surface='feed' and not coalesce(fp.is_reel,false))
     )
     and (
       fp.user_id=cfg.viewer_id
@@ -439,8 +500,8 @@ candidate_source as (
     )
     and (
       fp.user_id=cfg.viewer_id
-      or not exists (select 1 from public.user_settings s
-        where s.user_id=fp.user_id and s.private_account=true)
+      or not exists (select 1 from public.user_settings us
+        where us.user_id=fp.user_id and us.private_account=true)
       or exists (select 1 from public.follows f
         where f.follower_id=cfg.viewer_id and f.following_id=fp.user_id)
     )
@@ -450,8 +511,8 @@ candidate_source as (
           or (b.blocker_id=fp.user_id and b.blocked_id=cfg.viewer_id)
     )
     and not exists (
-      select 1 from public.muted_users m
-       where m.user_id=cfg.viewer_id and m.muted_id=fp.user_id
+      select 1 from public.muted_users mu
+       where mu.user_id=cfg.viewer_id and mu.muted_id=fp.user_id
     )
     and not exists (
       select 1 from public.feed_preferences pref
@@ -459,35 +520,95 @@ candidate_source as (
          and lower(pref.preference::text) in ('hide','hidden','not_interested','not interested')
     )
 ),
+candidate_source as (
+  select
+    r.*,
+    ln((r.creator_streak+1)::numeric) as streak_component,
+    (
+      r.likes::numeric
+      + r.comments::numeric*3
+      + r.shares::numeric*5
+      + r.reposts::numeric*5
+      + r.views::numeric*0.1
+    ) as virality_component,
+    case
+      when r.distance_meters is null then 0::numeric
+      else (1.0/greatest(r.distance_meters,25.0))::numeric
+    end as proximity_component,
+    least(32::numeric,greatest(-20::numeric,
+      cardinality(array(
+        select label_value from unnest(r.labels) label_value
+        intersect
+        select interest_value from unnest(r.positive_interests) interest_value
+      ))::numeric*1.5
+      - cardinality(array(
+        select label_value from unnest(r.labels) label_value
+        intersect
+        select interest_value from unnest(r.negative_interests) interest_value
+      ))::numeric*6
+      + coalesce((r.creator_weights->>r.user_id::text)::numeric,0)
+      + case when r.user_id=any(r.positive_creators) then 6::numeric else 0::numeric end
+      - case when r.user_id=any(r.negative_creators) then 12::numeric else 0::numeric end
+      + case when r.has_followed_repost then 12::numeric else 0::numeric end
+    )) as affinity_component,
+    greatest(0::numeric,extract(epoch from (r.rank_as_of-r.created_at))::numeric/3600::numeric) as age_hours,
+    case when r.creator_post_number<=5 then 2::numeric else 1::numeric end as cold_start_multiplier,
+    case
+      when r.creator_created_at>=r.rank_as_of-interval '30 days'
+        or r.creator_post_number<=10 then 'new'
+      else 'established'
+    end as creator_tier,
+    (
+      r.creator_created_at>=r.rank_as_of-interval '30 days'
+      or r.creator_post_number<=10
+    ) as new_creator
+  from raw_candidates r
+),
 scored as (
   select
     c.*,
-    (
-      greatest(0,30.0*exp(-greatest(0,extract(epoch from (c.rank_as_of-c.created_at))/3600.0)/96.0))
-      + least(25.0,4.0*ln(1.0+greatest(0,c.like_count)+2.0*greatest(0,c.comment_count)
-          +3.0*greatest(0,c.share_count)+3.0*greatest(0,c.repost_count)
-          +0.1*greatest(0,c.view_count)))
-      + case when c.is_followed then 18.0 else 0.0 end
-      + case when c.matches_interest then 12.0 else 0.0 end
-      + least(12.0,(case when c.same_university then 8.0 else 0.0 end)
-          +(case when c.same_faculty then 3.0 else 0.0 end)
-          +(case when c.same_department then 1.0 else 0.0 end))
-      + (case when c.is_original then 2.0 else 0.0 end)
-      + (case when c.creator_verified then 2.0 else 0.0 end)
-      + (case when c.creator_followers<100 then 2.0 else 0.0 end)
-      + least(6.0,greatest(0.0,private_ranking.active_blink_boost_factor(c.id,c.rank_as_of)-1.0)*6.0)
-      - least(15.0,greatest(0,c.report_count)::numeric*2.0)
-      + least(8.0,greatest(0,c.reel_completion_rate)*8.0)
-    )::numeric as quality_score,
+    (c.affinity_component>0) as matches_interest,
+    least(4::numeric,
+      (case when c.same_university then 2::numeric else 0::numeric end)
+      +(case when c.same_faculty then 1.5::numeric else 0::numeric end)
+      +(case when c.same_department then 0.5::numeric else 0::numeric end)
+    ) as campus_bonus,
+    case when c.reel_completion_samples>=5
+      then least(4::numeric,greatest(0::numeric,c.reel_completion_rate)*4::numeric)
+      else 0::numeric
+    end as reel_completion_bonus,
+    coalesce(
+      (
+        (
+          2.0*c.streak_component
+          +1.0*c.virality_component
+          +250.0*c.proximity_component
+          +4.0*c.affinity_component
+        )/power(c.age_hours+2::numeric,1.5)
+      )*c.verification_multiplier*c.cold_start_multiplier
+        *private_ranking.active_blink_boost_factor(c.id,c.rank_as_of)
+        +coalesce(private_ranking.viewer_personalization_bonus(c.viewer_id,c.id,c.user_id,c.rank_as_of),0)
+    ,0)
+    + least(4::numeric,
+        (case when c.same_university then 2::numeric else 0::numeric end)
+        +(case when c.same_faculty then 1.5::numeric else 0::numeric end)
+        +(case when c.same_department then 0.5::numeric else 0::numeric end)
+      )
+    + case when c.reel_completion_samples>=5
+        then least(4::numeric,greatest(0::numeric,c.reel_completion_rate)*4::numeric)
+        else 0::numeric
+      end
+    - least(15::numeric,greatest(0,c.report_count)::numeric*2::numeric)
+      as quality_score,
     case
       when c.viewer_views>0 then 5
       when c.impressions>=20 and (
-        (greatest(0,c.like_count)+greatest(0,c.comment_count)+greatest(0,c.share_count)
-          +greatest(0,c.repost_count)
-          +greatest(0,c.reel_completion_rate*c.reel_completion_samples))
-        / greatest(1,c.view_count)
+        (c.likes+c.comments+c.shares+c.reposts+c.reel_completed_count)::numeric
+        / greatest(1,c.views)::numeric
       ) < 0.05 then 4
-      when c.is_followed or c.matches_interest then 1
+      when exists (select 1 from public.follows f
+        where f.follower_id=c.viewer_id and f.following_id=c.user_id)
+        or c.affinity_component>0 then 1
       when c.created_at>=c.rank_as_of-interval '48 hours'
         and (c.same_university or c.same_faculty or c.same_department) then 2
       when c.created_at>=c.rank_as_of-interval '7 days' then 3
@@ -496,13 +617,13 @@ scored as (
     (
       c.viewer_views=0
       and c.impressions<20
-      and (c.new_creator or greatest(0,c.view_count)<50)
+      and (c.new_creator or c.views<50)
     ) as is_exploration,
     case
       when c.viewer_views>0 then
         least(120.0,
           c.viewer_views*1.5
-          + 40.0*exp(-greatest(0,extract(epoch from(c.rank_as_of-coalesce(c.last_viewed_at,c.rank_as_of)))/86400.0)/2.0)
+          +40.0*exp(-greatest(0,extract(epoch from(c.rank_as_of-coalesce(c.last_viewed_at,c.rank_as_of)))/86400.0)/2.0)
         )
       else 0.0
     end::numeric as seen_penalty,
