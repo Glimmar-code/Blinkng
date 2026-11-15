@@ -70,8 +70,8 @@ create index if not exists reel_engagement_sessions_viewer_post_recent_idx
 
 update private_ranking.discovery_reel_metrics
    set watch_samples = completion_samples,
-       completed_count = round(completion_rate * completion_samples)::bigint,
-       watch_percentage_sum = completion_rate * completion_samples
+       completed_count = greatest(0::numeric,round(coalesce(completion_rate,0) * completion_samples))::bigint,
+       watch_percentage_sum = greatest(0::numeric,coalesce(completion_rate,0) * completion_samples)
  where watch_samples = 0 and completion_samples > 0;
 
 alter table private_ranking.reel_engagement_sessions enable row level security;
