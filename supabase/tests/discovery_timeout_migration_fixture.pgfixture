@@ -15,6 +15,12 @@ begin
 exception when duplicate_object then null;
 end;
 $roles$;
+do $roles$
+begin
+  create role service_role nologin;
+exception when duplicate_object then null;
+end;
+$roles$;
 
 create table public.blocks (
   blocker_id uuid not null,
@@ -47,8 +53,73 @@ create table public.category_parent (slug text primary key);
 create type public.notification_type_enum as enum ('system');
 create table public.profiles (
   id uuid primary key,
-  blink_vip_until timestamptz
+  blink_vip_until timestamptz,
+  points bigint not null default 0,
+  updated_at timestamptz not null default now()
 );
+create table public.point_transactions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id),
+  action_type text not null,
+  points_delta integer not null,
+  reference_id uuid,
+  created_at timestamptz not null default now()
+);
+create unique index point_transactions_reference_unique
+  on public.point_transactions(user_id,action_type,reference_id)
+  where reference_id is not null;
+
+create table public.messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id),
+  content text not null default ''
+);
+create index messages_sender_idx on public.messages(sender_id);
+
+create function public.award_points(p_user_id uuid, p_action_type text, p_reference_id uuid default null)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_tx_id uuid;
+  v_points bigint;
+begin
+  insert into public.point_transactions(user_id,action_type,points_delta,reference_id)
+  values(p_user_id,p_action_type,5,p_reference_id)
+  on conflict (user_id,action_type,reference_id)
+  where reference_id is not null
+  do nothing
+  returning id into v_tx_id;
+
+  if v_tx_id is null then
+    select points into v_points from public.profiles where id=p_user_id;
+    return coalesce(v_points,0)::integer;
+  end if;
+
+  update public.profiles
+  set points=coalesce(points,0)+5, updated_at=now()
+  where id=p_user_id
+  returning points into v_points;
+  return coalesce(v_points,0)::integer;
+end;
+$function$;
+
+create function public.award_message_points()
+returns trigger
+language plpgsql
+security definer
+as $function$
+begin
+  perform public.award_points(new.sender_id,'message_user',null);
+  return new;
+end;
+$function$;
+create trigger trg_points_message
+after insert on public.messages
+for each row execute function public.award_message_points();
+
 create table public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
