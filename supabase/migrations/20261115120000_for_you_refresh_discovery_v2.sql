@@ -683,7 +683,7 @@ ordered as (
     count(*) filter (where i.is_exploration) over () as exploration_count
   from interleaved i
 ),
-ranked as (
+feed_ordered as (
   select
     o.*,
     case
@@ -692,21 +692,34 @@ ranked as (
       else
         case when o.exploration_count=0 then o.global_group_rank
              else o.global_group_rank+((o.global_group_rank-1)/4) end
-    end::bigint as feed_order,
-    (
-      1000000000000000::numeric - (
-        case
-          when o.is_exploration then
-            case when o.normal_count=0 then o.global_group_rank else o.global_group_rank*5 end
-          else
-            case when o.exploration_count=0 then o.global_group_rank
-                 else o.global_group_rank+((o.global_group_rank-1)/4) end
-        end
-      )::numeric*1000000
-      + least(999999.0,greatest(-999999.0,o.quality_score))
-      + o.request_jitter
-    )::numeric as final_score
+    end::bigint as feed_order
   from ordered o
+),
+creator_ranked as (
+  select
+    f.*,
+    row_number() over (
+      partition by f.user_id
+      order by f.candidate_tier asc,f.feed_order asc,
+        f.tier_sort_score desc,f.request_jitter desc,f.created_at desc,f.id desc
+    ) as creator_rank
+  from feed_ordered f
+),
+creator_batched as (
+  select cr.*,((cr.creator_rank-1)/2)::bigint as creator_page_batch
+  from creator_ranked cr
+),
+ranked as (
+  select
+    cb.*,
+    (
+      1000000000000000000000000::numeric
+      - cb.creator_page_batch::numeric*1000000000000000000::numeric
+      - cb.feed_order::numeric*1000000000::numeric
+      + least(999999.0,greatest(-999999.0,cb.quality_score))
+      + cb.request_jitter
+    )::numeric as final_score
+  from creator_batched cb
 ),
 after_cursor as (
   select r.*
@@ -719,13 +732,8 @@ after_cursor as (
       or (r.final_score=p_cursor_score and r.id<p_cursor_post_id)
     )
 ),
-creator_limited as (
-  select
-    a.*,
-    row_number() over (
-      partition by a.user_id
-      order by a.final_score desc,a.id desc
-    ) as creator_page_position
+current_batch as (
+  select min(a.creator_page_batch) as creator_page_batch
   from after_cursor a
 ),
 page as (
@@ -736,6 +744,8 @@ page as (
     cl.final_score,
     cl.candidate_tier,
     cl.is_exploration,
+    cl.creator_page_batch,
+    cl.feed_order,
     cl.same_university,
     cl.matches_interest,
     cl.impressions,
@@ -767,10 +777,11 @@ page as (
          where mine.post_id=cl.id and mine.user_id=cfg.viewer_id
       )
     ) as item
-  from creator_limited cl
+  from after_cursor cl
   join public.feed_posts fp on fp.id=cl.id
   cross join cfg
-  where cl.creator_page_position<=2
+  cross join current_batch cb
+  where cl.creator_page_batch=cb.creator_page_batch
   order by cl.final_score desc,cl.id desc
   limit (select page_limit from cfg)
 ),
@@ -794,6 +805,8 @@ select
   jsonb_build_object(
     'model','weighted_decay_v1',
     'candidate_tier',p.candidate_tier,
+    'creator_page_batch',p.creator_page_batch,
+    'feed_order',p.feed_order,
     'exploration',p.is_exploration,
     'impressions',p.impressions,
     'engagement_rate',p.engagement_rate,
