@@ -29,6 +29,16 @@ create index if not exists recommendation_events_post_impression_idx
 create index if not exists recommendation_events_user_surface_recent_idx
   on public.recommendation_events (user_id, surface, created_at desc);
 
+create index if not exists recommendation_events_global_post_impression_recent_idx
+  on public.recommendation_events (created_at desc, target_key)
+  where target_type = 'post' and event_type = 'impression';
+
+create index if not exists blink_drop_incentivized_target_action_user_idx
+  on public.blink_drop_incentivized_interactions (target_id, action, user_id);
+
+create index if not exists post_reposts_post_recent_idx
+  on public.post_reposts (post_id, created_at desc);
+
 create index if not exists recommendation_events_viewer_post_impression_idx
   on public.recommendation_events (user_id, target_key, created_at desc)
   where target_type = 'post' and event_type = 'impression';
