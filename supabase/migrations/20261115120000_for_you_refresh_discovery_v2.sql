@@ -63,8 +63,26 @@ update private_ranking.discovery_reel_metrics
 alter table private_ranking.reel_engagement_sessions enable row level security;
 revoke all on private_ranking.reel_engagement_sessions from public, anon, authenticated;
 
+-- Preserve legacy aggregate views that predate per-viewer event rows. The
+-- baseline is the old counter minus already-recorded weighted view rows.
+create table if not exists private_ranking.feed_view_count_baselines (
+  post_id uuid primary key references public.feed_posts(id) on delete cascade,
+  baseline_view_count bigint not null default 0 check (baseline_view_count >= 0),
+  captured_at timestamptz not null default now()
+);
+alter table private_ranking.feed_view_count_baselines enable row level security;
+revoke all on private_ranking.feed_view_count_baselines from public,anon,authenticated;
+
+insert into private_ranking.feed_view_count_baselines(post_id,baseline_view_count)
+select fp.id,
+       greatest(0::bigint,coalesce(fp.view_count,0)::bigint-coalesce(sum(pv.weighted_view_count),0)::bigint)
+  from public.feed_posts fp
+  left join public.post_views pv on pv.post_id=fp.id
+ group by fp.id,fp.view_count
+on conflict(post_id) do nothing;
+
 -- A view event is authoritative only once per accepted event UUID. Keep the
--- aggregate counter equal to the sum of the canonical per-viewer rows.
+-- aggregate counter equal to its legacy baseline plus canonical per-viewer rows.
 create or replace function private_ranking.sync_feed_post_view_count()
 returns trigger
 language plpgsql
@@ -74,14 +92,20 @@ as $$
 declare
   v_post_id uuid := coalesce(new.post_id, old.post_id);
   v_total bigint;
+  v_baseline bigint;
 begin
   select coalesce(sum(pv.weighted_view_count), 0)::bigint
     into v_total
     from public.post_views pv
    where pv.post_id = v_post_id;
+  select coalesce(b.baseline_view_count,0)
+    into v_baseline
+    from private_ranking.feed_view_count_baselines b
+   where b.post_id=v_post_id;
+  v_baseline := coalesce(v_baseline,0);
 
   update public.feed_posts
-     set view_count = least(2147483647::bigint, greatest(0::bigint, v_total))::integer,
+     set view_count = least(2147483647::bigint, greatest(0::bigint, v_total+v_baseline))::integer,
          updated_at = now()
    where id = v_post_id;
 
@@ -107,12 +131,15 @@ after insert or update or delete on public.post_views
 for each row execute function private_ranking.sync_feed_post_view_count();
 
 update public.feed_posts fp
-   set view_count = least(2147483647::bigint, greatest(0::bigint, totals.weighted_views))::integer
+   set view_count = least(2147483647::bigint,
+       greatest(0::bigint, coalesce(totals.weighted_views,0)+coalesce(baseline.baseline_view_count,0)))::integer
   from (
-    select pv.post_id, sum(pv.weighted_view_count)::bigint as weighted_views
-      from public.post_views pv
-     group by pv.post_id
+    select fp2.id as post_id, coalesce(sum(pv.weighted_view_count),0)::bigint as weighted_views
+      from public.feed_posts fp2
+      left join public.post_views pv on pv.post_id=fp2.id
+     group by fp2.id
   ) totals
+  left join private_ranking.feed_view_count_baselines baseline on baseline.post_id=totals.post_id
  where totals.post_id=fp.id;
 
 -- Preserve the existing anti-replay/cap checks in record_content_view. Only
@@ -128,10 +155,11 @@ declare
     returning view_count into v_view_count;
 $old$;
   v_after text := $new$
-    select least(2147483647::bigint, coalesce(sum(pv.weighted_view_count),0))::integer
-      into v_view_count
-      from public.post_views pv
-     where pv.post_id = p_post_id;
+    select least(2147483647::bigint,
+        coalesce((select sum(pv.weighted_view_count) from public.post_views pv where pv.post_id=p_post_id),0)
+        +coalesce((select baseline_view_count from private_ranking.feed_view_count_baselines b where b.post_id=p_post_id),0)
+      )::integer
+      into v_view_count;
     update public.feed_posts
        set view_count = least(2147483647::bigint, greatest(0::bigint, v_view_count::bigint))::integer,
            updated_at = now()
