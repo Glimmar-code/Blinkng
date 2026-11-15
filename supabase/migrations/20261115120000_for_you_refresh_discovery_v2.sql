@@ -692,7 +692,7 @@ ranked as (
              else o.global_group_rank+((o.global_group_rank-1)/4) end
     end::bigint as feed_order,
     (
-      -(
+      1000000000000000::numeric - (
         case
           when o.is_exploration then
             case when o.normal_count=0 then o.global_group_rank else o.global_group_rank*5 end
