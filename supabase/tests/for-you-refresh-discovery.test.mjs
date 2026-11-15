@@ -56,7 +56,9 @@ test("new feed RPC is score + post-id cursor based and offset-free", () => {
 });
 
 test("ranking tiers reserve exploration, test distribution, cap creators and mix formats", () => {
+  assert.match(migration, /viewer_exposure as \(/);
   assert.match(migration, /when c\.viewer_views>0 then 5/);
+  assert.doesNotMatch(migration, /s\.post_id\s+is\s+null/i);
   assert.match(migration, /c\.created_at>=c\.rank_as_of-interval '48 hours'/);
   assert.match(migration, /c\.created_at>=c\.rank_as_of-interval '7 days'/);
   assert.match(migration, /c\.impressions>=20/);
