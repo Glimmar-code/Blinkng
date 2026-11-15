@@ -553,14 +553,14 @@ candidate_source as (
     end as proximity_component,
     least(32::numeric,greatest(-20::numeric,
       cardinality(array(
-        select label_value from unnest(r.labels) label_value
+        select labels.label_value from unnest(r.labels) as labels(label_value)
         intersect
-        select interest_value from unnest(r.positive_interests) interest_value
+        select interests.interest_value from unnest(r.positive_interests) as interests(interest_value)
       ))::numeric*1.5
       - cardinality(array(
-        select label_value from unnest(r.labels) label_value
+        select labels.label_value from unnest(r.labels) as labels(label_value)
         intersect
-        select interest_value from unnest(r.negative_interests) interest_value
+        select interests.interest_value from unnest(r.negative_interests) as interests(interest_value)
       ))::numeric*6
       + coalesce((r.creator_weights->>r.user_id::text)::numeric,0)
       + case when r.user_id=any(r.positive_creators) then 6::numeric else 0::numeric end
