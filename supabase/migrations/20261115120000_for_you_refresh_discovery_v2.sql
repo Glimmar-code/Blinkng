@@ -80,7 +80,8 @@ begin
      where id = old.post_id;
   end if;
 
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
 end;
 $$;
 
@@ -230,7 +231,7 @@ returns table(
   request_seed uuid
 )
 language sql
-stable
+volatile
 security definer
 set search_path = ''
 as $$
@@ -412,6 +413,7 @@ scored as (
       + (case when c.is_original then 2.0 else 0.0 end)
       + (case when c.creator_verified then 2.0 else 0.0 end)
       + (case when c.creator_followers<100 then 2.0 else 0.0 end)
+      + least(6.0,greatest(0.0,private_ranking.active_blink_boost_factor(c.id,c.rank_as_of)-1.0)*6.0)
       - least(15.0,greatest(0,c.report_count)::numeric*2.0)
       + least(8.0,greatest(0,c.reel_completion_rate)*8.0)
     )::numeric as quality_score,
@@ -453,6 +455,7 @@ tiered as (
     case when s.candidate_tier=5 then
       -extract(epoch from coalesce(s.last_viewed_at,s.rank_as_of))::numeric/1000000.0
       -s.viewer_views
+      -least(120.0,greatest(0.0,s.seen_penalty))
     else
       least(500.0,greatest(-100.0,s.quality_score-s.seen_penalty))
     end as tier_sort_score
