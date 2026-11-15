@@ -41,6 +41,13 @@ create table public.comments (
 );
 create table public.feed_posts (id uuid primary key);
 
+-- The primary key starts with user_id, so the post_id foreign key needs its own index.
+create table public.feed_preferences (
+  user_id uuid not null,
+  post_id uuid not null references public.feed_posts(id),
+  primary key(user_id, post_id)
+);
+
 create function public.market_seller_has_approval(p_seller_id uuid)
 returns boolean language sql stable as $function$ select true $function$;
 create table public.marketplace_listings (seller_id uuid);
