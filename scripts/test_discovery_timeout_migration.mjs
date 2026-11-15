@@ -31,3 +31,8 @@ test("guards the feed function rewrite and preserves existing scoring behavior",
   assert.doesNotMatch(migration, /create or replace function private_ranking\.get_discovery_feed/i);
   assert.doesNotMatch(migration, /update public\.(profiles|feed_posts|messages)/i);
 });
+
+test("revokes client RPC execution only from trigger-only seller guards", () => {
+  assert.match(migration, /revoke execute on function public\\.market_require_approved_seller\\(\\)/i);
+  assert.match(migration, /revoke execute on function public\\.market_require_approved_seller_for_order\\(\\)/i);
+});
