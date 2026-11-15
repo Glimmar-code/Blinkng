@@ -52,6 +52,14 @@ test("adds guarded foreign-key-side indexes for uncovered constraints", () => {
   assert.match(migration, /create index if not exists/i);
 });
 
+test("queues message rewards for the existing minute worker", () => {
+  assert.ok(migration.includes("create table if not exists private.blink_message_rank_reward_outbox"));
+  assert.ok(migration.includes("insert into private.blink_message_rank_reward_outbox(message_id, sender_id)"));
+  assert.ok(migration.includes("public.process_message_rank_reward_outbox"));
+  assert.ok(migration.includes("grant execute on function public.process_message_rank_reward_outbox(integer)"));
+  assert.ok(migration.includes("set_config('lock_timeout', '100ms', true)"));
+});
+
 test("repairs VIP expiry reminder to use the live notification schema", () => {
   assert.match(migration, /notifications\(user_id, type, text, sub_text, is_read\)/i);
   assert.doesNotMatch(migration, /notifications\(user_id,\s*type,\s*comment\)/i);
