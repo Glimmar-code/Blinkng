@@ -172,8 +172,9 @@
   function bindReelWatchTracking(rpc, vids) {
     vids.forEach(video=>{
       if(video.dataset.reelTelemetryBound==='1')return;
-      const postId=video.closest('[data-post-id]')?.dataset.postId;
-      if(!postId)return;
+      const card=video.closest('[data-post-id]');
+      const postId=card?.dataset.postId;
+      if(!postId||(card.dataset.isReel!=='true'&&!card.classList.contains('reel-card')))return;
       video.dataset.reelTelemetryBound='1';
       let sessionId=newUuid(),watchedMs=0,lastTime=Number(video.currentTime)||0;
       const flush=()=>{
