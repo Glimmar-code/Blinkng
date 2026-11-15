@@ -58,6 +58,8 @@ jobs:
       PGDATABASE: blink_test
     steps:
       - uses: actions/checkout@v4
+      - name: Verify discovery timeout migration contract
+        run: node --test scripts/test_discovery_timeout_migration.mjs
       - name: Ensure PostgreSQL client is available
         run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
       - name: Apply isolated, disposable BLINK payment schema fixture
