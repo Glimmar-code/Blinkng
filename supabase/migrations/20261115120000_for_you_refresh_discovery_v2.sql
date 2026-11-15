@@ -112,12 +112,12 @@ declare
     returning view_count into v_view_count;
 $old$;
   v_after text := $new$
-    select coalesce(sum(pv.weighted_view_count),0)::integer
+    select least(2147483647::bigint, coalesce(sum(pv.weighted_view_count),0))::integer
       into v_view_count
       from public.post_views pv
      where pv.post_id = p_post_id;
     update public.feed_posts
-       set view_count = v_view_count,
+       set view_count = least(2147483647::bigint, greatest(0::bigint, v_view_count::bigint))::integer,
            updated_at = now()
      where id = p_post_id;
 $new$;
@@ -197,11 +197,15 @@ begin
          and not exists (select 1 from public.muted_users m
            where m.user_id=v_user and m.muted_id=fp.user_id)
     ) then
-      perform private_ranking.record_recommendation_event(
-        v_surface, 'post', v_post_id::text, 'impression', 0, p_session_id,
-        jsonb_build_object('source','for_you_page')
-      );
-      v_count := v_count + 1;
+      begin
+        perform private_ranking.record_recommendation_event(
+          v_surface, 'post', v_post_id::text, 'impression', 0, p_session_id,
+          jsonb_build_object('source','for_you_page')
+        );
+        v_count := v_count + 1;
+      exception when others then
+        null;
+      end;
     end if;
   end loop;
 
@@ -215,12 +219,12 @@ grant execute on function public.record_feed_impressions(text,uuid[],uuid) to au
 -- Cursor-based weighted_decay_v1. The old offset overload remains available
 -- only for clients that have not yet upgraded.
 create or replace function private_ranking.get_discovery_feed(
-  p_limit integer default 20,
-  p_cursor_score numeric default null,
-  p_cursor_post_id uuid default null,
-  p_as_of timestamptz default now(),
-  p_request_seed uuid default null,
-  p_surface text default 'feed'
+  p_limit integer,
+  p_cursor_score numeric,
+  p_cursor_post_id uuid,
+  p_as_of timestamptz,
+  p_request_seed uuid,
+  p_surface text
 )
 returns table(
   item jsonb,
@@ -396,7 +400,7 @@ candidate_source as (
     and not exists (
       select 1 from public.feed_preferences pref
        where pref.user_id=cfg.viewer_id and pref.post_id=fp.id
-         and lower(pref.preference) in ('hide','hidden','not_interested','not interested')
+         and lower(pref.preference::text) in ('hide','hidden','not_interested','not interested')
     )
 ),
 scored as (
@@ -711,12 +715,16 @@ begin
       /(private_ranking.discovery_reel_metrics.watch_samples+1)::numeric,
     updated_at=now();
 
-  perform private_ranking.record_recommendation_event(
-    'reels','post',p_post_id::text,case when v_skipped then 'skip' else 'dwell' end,
-    v_watch_ms,p_session_id,
-    jsonb_build_object('watch_percentage',v_watch_pct,'watched_ms',v_watch_ms,
-      'duration_ms',p_duration_ms,'completed',v_completed,'rewatched',v_rewatched)
-  );
+  begin
+    perform private_ranking.record_recommendation_event(
+      'reels','post',p_post_id::text,case when v_skipped then 'skip' else 'dwell' end,
+      v_watch_ms,p_session_id,
+      jsonb_build_object('watch_percentage',v_watch_pct,'watched_ms',v_watch_ms,
+        'duration_ms',p_duration_ms,'completed',v_completed,'rewatched',v_rewatched)
+    );
+  exception when others then
+    null;
+  end;
 end;
 $$;
 
