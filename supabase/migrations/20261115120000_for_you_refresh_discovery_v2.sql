@@ -283,6 +283,7 @@ returns table(
   item jsonb,
   ranking_score numeric,
   ranking_reason text,
+  ranking_components jsonb,
   post_id uuid,
   next_cursor_score text,
   next_cursor_post_id uuid,
@@ -732,9 +733,30 @@ page as (
     cl.matches_interest,
     cl.impressions,
     cl.reel_completion_rate,
+    cl.reel_completion_samples,
+    cl.streak_component,
+    cl.virality_component,
+    cl.proximity_component,
+    cl.affinity_component,
+    cl.verification_multiplier,
+    cl.cold_start_multiplier,
+    cl.creator_tier,
+    cl.has_followed_repost,
+    cl.seen_penalty,
+    cl.request_jitter,
+    cl.campus_bonus,
+    cl.reel_completion_bonus,
     cl.tier_sort_score,
     cl.created_at,
-    to_jsonb(fp) as item
+    to_jsonb(fp) || jsonb_build_object(
+      'repost_id',cl.repost_id,
+      'reposted_by_id',cl.reposted_by_id,
+      'reposted_by_username',cl.reposted_by_username,
+      'is_reposted_by_me',exists(
+        select 1 from public.post_reposts mine
+         where mine.post_id=cl.id and mine.user_id=cfg.viewer_id
+      )
+    ) as item
   from creator_limited cl
   join public.feed_posts fp on fp.id=cl.id
   cross join cfg
@@ -758,6 +780,25 @@ select
     when p.candidate_tier=4 then 'Quality discovery backfill'
     else 'Returning to a post you have seen before'
   end as ranking_reason,
+  jsonb_build_object(
+    'model','weighted_decay_v1',
+    'candidate_tier',p.candidate_tier,
+    'exploration',p.is_exploration,
+    'creator_tier',p.creator_tier,
+    'streak_component',p.streak_component,
+    'virality_component',p.virality_component,
+    'proximity_component',p.proximity_component,
+    'affinity_component',p.affinity_component,
+    'verification_multiplier',p.verification_multiplier,
+    'cold_start_multiplier',p.cold_start_multiplier,
+    'campus_bonus',p.campus_bonus,
+    'reel_completion_rate',p.reel_completion_rate,
+    'reel_completion_samples',p.reel_completion_samples,
+    'reel_completion_bonus',p.reel_completion_bonus,
+    'followed_repost',p.has_followed_repost,
+    'seen_penalty',p.seen_penalty,
+    'request_jitter',p.request_jitter
+  ) as ranking_components,
   p.id as post_id,
   (select lc.final_score::text from last_cursor lc) as next_cursor_score,
   (select lc.id from last_cursor lc) as next_cursor_post_id,
@@ -780,6 +821,7 @@ returns table(
   item jsonb,
   ranking_score numeric,
   ranking_reason text,
+  ranking_components jsonb,
   post_id uuid,
   next_cursor_score text,
   next_cursor_post_id uuid,
@@ -1287,6 +1329,7 @@ returns table(
   item jsonb,
   ranking_score numeric,
   ranking_reason text,
+  ranking_components jsonb,
   post_id uuid,
   next_cursor_score text,
   next_cursor_post_id uuid,
