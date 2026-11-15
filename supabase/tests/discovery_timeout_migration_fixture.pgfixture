@@ -41,6 +41,37 @@ create table public.comments (
 );
 create table public.feed_posts (id uuid primary key);
 
+create type public.notification_type_enum as enum ('system');
+create table public.profiles (
+  id uuid primary key,
+  blink_vip_until timestamptz
+);
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  type public.notification_type_enum not null,
+  text text,
+  sub_text text,
+  is_read boolean not null default false
+);
+create table public.blink_inventory (
+  id uuid primary key default gen_random_uuid(),
+  status text not null,
+  expires_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+create table public.blink_boosts (
+  id uuid primary key default gen_random_uuid(),
+  status text not null,
+  ends_at timestamptz not null
+);
+create table public.blink_vip_passes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  expires_at timestamptz not null,
+  expiry_reminder_sent boolean not null default false
+);
+
 -- The primary key starts with user_id, so the post_id foreign key needs its own index.
 create table public.feed_preferences (
   user_id uuid not null,
