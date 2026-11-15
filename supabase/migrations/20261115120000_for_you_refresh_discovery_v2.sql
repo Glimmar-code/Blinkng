@@ -636,7 +636,7 @@ returns table(
   ranking_score numeric,
   ranking_reason text,
   post_id uuid,
-  next_cursor_score numeric,
+  next_cursor_score text,
   next_cursor_post_id uuid,
   as_of timestamptz,
   request_seed uuid
