@@ -184,7 +184,7 @@ begin
     if position(v_anchor in v_source) = 0 then
       raise exception 'FOR_YOU_VIEW_IMPRESSION_ANCHOR_DRIFT';
     end if;
-    v_source := replace(v_source, v_anchor, v_anchor || E'\n\n    -- Accepted qualified views also establish a recommendation impression.\n    begin\n      perform private_ranking.record_recommendation_event(\n        case when v_is_reel then ''reels'' else ''feed'' end,\n        ''post'', p_post_id::text, ''impression'', 0, p_event_id,\n        jsonb_build_object(''source'',''qualified_view'')\n      );\n    exception when others then\n      null;\n    end;');
+    v_source := replace(v_source, v_anchor, v_anchor || E'\n\n    -- Accepted qualified views also establish a recommendation impression.\n    begin\n      perform private_ranking.record_recommendation_event(\n        case when v_is_reel then ''reels'' else ''feed'' end,\n        ''post'', p_post_id::text, ''impression'', 0, p_event_id,\n        jsonb_build_object(''source'',''qualified_view'',''model'',''weighted_decay_v1'')\n      );\n    exception when others then\n      null;\n    end;');
   end if;
   execute v_source;
 end;
@@ -256,7 +256,7 @@ begin
       begin
         perform private_ranking.record_recommendation_event(
           v_surface, 'post', v_post_id::text, 'impression', 0, p_session_id,
-          jsonb_build_object('source','for_you_page')
+          jsonb_build_object('source','for_you_page','model','weighted_decay_v1')
         );
         v_count := v_count + 1;
       exception when others then
@@ -972,7 +972,7 @@ begin
     perform private_ranking.record_recommendation_event(
       'reels','post',p_post_id::text,case when v_skipped then 'skip' else 'dwell' end,
       v_watch_ms,p_session_id,
-      jsonb_build_object('watch_percentage',v_watch_pct,'watched_ms',v_watch_ms,
+      jsonb_build_object('model','weighted_decay_v1','watch_percentage',v_watch_pct,'watched_ms',v_watch_ms,
         'duration_ms',p_duration_ms,'completed',v_completed,'rewatched',v_rewatched)
     );
   exception when others then
