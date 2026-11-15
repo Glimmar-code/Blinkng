@@ -332,9 +332,14 @@ class SupabaseService {
     private enum class SessionRefreshOutcome { REFRESHED, EXPIRED, TRANSIENT_FAILURE }
 
     private val refreshMutex = Mutex()
+    private data class DiscoveryRequestState(
+        val requestSeed: String,
+        val asOf: String? = null,
+        val cursorScore: String? = null,
+        val cursorPostId: String? = null
+    )
     private val discoveryCursorMutex = Mutex()
-    private val discoveryOffsets = mutableMapOf<String, Int>()
-    private val discoveryAsOf = mutableMapOf<String, String>()
+    private val discoveryRequests = mutableMapOf<String, DiscoveryRequestState>()
 
     private suspend fun executeRequest(request: Request): okhttp3.Response {
         val isAuthenticated = request.header("X-Authenticated") == "true"
@@ -2105,6 +2110,32 @@ fun getCurrentUserId(): String? {
         parseFeedPost(mapped).copy(isLiked = liked, isBookmarked = bookmarked)
     }
 
+    private suspend fun recordFeedImpressions(items: JSONArray, surface: String, sessionId: String) {
+        val ids = JSONArray()
+        for (index in 0 until items.length()) {
+            val id = items.optJSONObject(index)?.optString("id").orEmpty()
+            if (isValidUuid(id)) ids.put(id)
+        }
+        if (ids.length() == 0) return
+        runCatching {
+            val body = JSONObject()
+                .put("p_surface", surface)
+                .put("p_post_ids", ids)
+                .put("p_session_id", sessionId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/record_feed_impressions", authenticated = true)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Cache-Control", "no-cache, no-store")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "FEED_IMPRESSIONS failed status=${response.code} body=${response.body?.string().orEmpty().take(300)}")
+                }
+            }
+        }.onFailure { Log.w(TAG, "FEED_IMPRESSIONS exception", it) }
+    }
+
     suspend fun fetchFeedPage(
         limit: Int = 30,
         beforeCreatedAt: String? = null,
@@ -2132,27 +2163,34 @@ fun getCurrentUserId(): String? {
         val postsRaw: JSONArray = if (useRankedDiscovery) {
             val isInitialPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
             val cursorKey = normalizedFeedType
-            val (offset, asOf) = discoveryCursorMutex.withLock {
-                if (isInitialPage) {
-                    discoveryOffsets[cursorKey] = 0
-                    discoveryAsOf.remove(cursorKey)
+            val requestState = discoveryCursorMutex.withLock {
+                if (isInitialPage || discoveryRequests[cursorKey] == null) {
+                    discoveryRequests[cursorKey] = DiscoveryRequestState(
+                        requestSeed = java.util.UUID.randomUUID().toString()
+                    )
                 }
-                (discoveryOffsets[cursorKey] ?: 0) to discoveryAsOf[cursorKey]
+                discoveryRequests.getValue(cursorKey)
             }
 
             val rpcBody = JSONObject().apply {
+                put("p_surface", normalizedFeedType)
                 put("p_limit", limit.coerceIn(1, 60))
-                put("p_offset", offset)
-                put("p_as_of", asOf ?: JSONObject.NULL)
-                put("p_feed_type", normalizedFeedType)
+                put("p_cursor_score", requestState.cursorScore?.let {
+                    runCatching { java.math.BigDecimal(it) }.getOrNull() ?: JSONObject.NULL
+                } ?: JSONObject.NULL)
+                put("p_cursor_post_id", requestState.cursorPostId ?: JSONObject.NULL)
+                put("p_as_of", requestState.asOf ?: JSONObject.NULL)
+                put("p_request_seed", requestState.requestSeed)
             }
 
             val rankedRows = executeRequest(
                 newRequestBuilder(
-                    "/rest/v1/rpc/get_ranked_feed_page",
+                    "/rest/v1/rpc/get_for_you_feed_page",
                     authenticated = true
                 )
                     .addHeader("Content-Type", "application/json")
+                    .addHeader("Cache-Control", "no-cache, no-store")
+                    .addHeader("Pragma", "no-cache")
                     .post(rpcBody.toString().toRequestBody(jsonMediaType))
                     .build()
             ).use { response ->
@@ -2166,23 +2204,34 @@ fun getCurrentUserId(): String? {
             }
 
             val items = JSONArray()
-            var resolvedAsOf = asOf
-            var nextOffset = offset
+            var resolvedAsOf = requestState.asOf
+            var resolvedSeed = requestState.requestSeed
+            var nextCursorScore: String? = null
+            var nextCursorPostId: String? = null
             for (index in 0 until rankedRows.length()) {
                 val ranked = rankedRows.optJSONObject(index) ?: continue
                 ranked.optJSONObject("item")?.let(items::put)
-                ranked.cleanString("as_of")
-                    .takeIf { it.isNotBlank() }
-                    ?.let { resolvedAsOf = it }
-                nextOffset = maxOf(nextOffset, ranked.optInt("next_offset", nextOffset))
+                ranked.cleanString("as_of").takeIf { it.isNotBlank() }?.let { resolvedAsOf = it }
+                ranked.cleanString("request_seed").takeIf { it.isNotBlank() }?.let { resolvedSeed = it }
+                ranked.opt("next_cursor_score")?.takeIf { it != JSONObject.NULL }?.toString()
+                    ?.takeIf { it.isNotBlank() }?.let { nextCursorScore = it }
+                ranked.cleanString("next_cursor_post_id")
+                    .takeIf { isValidUuid(it) }?.let { nextCursorPostId = it }
             }
 
             discoveryCursorMutex.withLock {
-                discoveryOffsets[cursorKey] = nextOffset
-                resolvedAsOf
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { discoveryAsOf[cursorKey] = it }
+                discoveryRequests[cursorKey] = DiscoveryRequestState(
+                    requestSeed = resolvedSeed,
+                    asOf = resolvedAsOf,
+                    cursorScore = nextCursorScore,
+                    cursorPostId = nextCursorPostId
+                )
             }
+            recordFeedImpressions(
+                items = items,
+                surface = if (normalizedFeedType == "reels") "reels" else "feed",
+                sessionId = requestState.requestSeed
+            )
             items
         } else {
             val rpcName = if (searchQuery.isNullOrBlank()) "get_feed_page" else "search_feed_page"
