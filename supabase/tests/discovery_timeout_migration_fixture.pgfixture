@@ -41,6 +41,8 @@ create table public.comments (
   created_at timestamptz not null default now()
 );
 create table public.feed_posts (id uuid primary key);
+create table public.fk_parent (id uuid primary key);
+create table public.category_parent (slug text primary key);
 
 create type public.notification_type_enum as enum ('system');
 create table public.profiles (
@@ -63,9 +65,75 @@ create table public.blink_inventory (
 );
 create table public.blink_boosts (
   id uuid primary key default gen_random_uuid(),
+  content_id uuid references public.fk_parent(id),
   status text not null,
   ends_at timestamptz not null
 );
+create index blink_boosts_content_active_idx
+  on public.blink_boosts(content_id,ends_at) where status='ACTIVE';
+
+create table private.blink_paystack_renewals (
+  user_id uuid not null references public.fk_parent(id),
+  status text not null
+);
+create unique index blink_paystack_one_open_renewal_per_user
+  on private.blink_paystack_renewals(user_id)
+  where status in ('creating','active','cancel_pending');
+
+create table public.blink_contest_entry_appeals (
+  contest_id uuid not null references public.fk_parent(id),
+  status text not null,
+  created_at timestamptz not null default now()
+);
+create index blink_contest_appeals_pending_idx
+  on public.blink_contest_entry_appeals(contest_id,created_at desc)
+  where status='pending';
+
+create table public.blink_referrals (
+  referrer_user_id uuid not null references public.fk_parent(id),
+  status text not null,
+  confirmed_at timestamptz
+);
+create index blink_referrals_referrer_idx
+  on public.blink_referrals(referrer_user_id,confirmed_at desc)
+  where status='confirmed';
+
+create table public.blink_vip_claims (
+  user_id uuid not null references public.fk_parent(id),
+  claim_key text not null,
+  claim_date date
+);
+create unique index blink_vip_daily_claim_unique
+  on public.blink_vip_claims(user_id,claim_key,claim_date)
+  where claim_date is not null;
+
+create table public.connect_listings (
+  category_slug text references public.category_parent(slug),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index idx_connect_listings_category_live_newest
+  on public.connect_listings(category_slug,created_at desc)
+  where is_active=true;
+
+create table public.mentor_requests (
+  mentor_profile_id uuid not null references public.fk_parent(id),
+  requester_id uuid not null,
+  status text not null
+);
+create unique index mentor_requests_pending_uidx
+  on public.mentor_requests(mentor_profile_id,requester_id)
+  where status='pending';
+
+create table public.reading_mate_requests (
+  reading_profile_id uuid not null references public.fk_parent(id),
+  requester_id uuid not null,
+  status text not null
+);
+create unique index reading_mate_requests_pending_uidx
+  on public.reading_mate_requests(reading_profile_id,requester_id)
+  where status='pending';
+
 create table public.blink_vip_passes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
