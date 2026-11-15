@@ -44,7 +44,7 @@ async function rest(path: string): Promise<unknown[]> {
   const base = Deno.env.get("SUPABASE_URL") || "";
   const key = serviceKey();
   if (!base || !key) throw new Error("Supabase runtime credentials are unavailable");
-  const response = await fetch(`${base}/rest/v1/${path}`, { headers: gatewayHeaders(key) });
+  const response = await fetch(`${base}/rest/v1/${path}`, {\n    headers: gatewayHeaders(key),\n    signal: AbortSignal.timeout(2500),\n  });
   if (!response.ok) throw new Error(`REST lookup failed (${response.status})`);
   return await response.json() as unknown[];
 }
