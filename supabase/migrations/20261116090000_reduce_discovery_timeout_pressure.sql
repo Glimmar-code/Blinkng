@@ -1,5 +1,6 @@
 -- Reduce discovery-feed scoring and personalization lookup pressure.
 -- Add targeted hot-path indexes and cover currently unindexed FK columns in public/private.
+-- Also repair the confirmed recurring VIP expiry reminder writer schema mismatch.
 -- Safe additive indexes for the viewer/creator predicates used by the current
 -- ranking function. Preserve all eligibility, privacy, scoring and monetization
 -- behavior. This migration intentionally does not change candidate caps/weights.
