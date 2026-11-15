@@ -72,7 +72,9 @@ test("impressions, qualified views, Reel watch time and view counters are server
   assert.match(migration, /public\.record_reel_engagement/);
   assert.match(migration, /private_ranking\.reel_engagement_sessions/);
   assert.match(migration, /trg_sync_feed_post_view_count/);
+  assert.match(migration, /feed_view_count_baselines/);
   assert.match(migration, /sum\(pv\.weighted_view_count\)/);
+  assert.match(migration, /baseline_view_count/);
   assert.match(android, /record_feed_impressions/);
   assert.match(windows, /record_feed_impressions/);
   assert.match(web, /record_feed_impressions/);
