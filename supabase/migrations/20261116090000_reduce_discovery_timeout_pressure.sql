@@ -1,4 +1,5 @@
 -- Reduce discovery-feed scoring and personalization lookup pressure.
+-- Add targeted hot-path indexes and cover currently unindexed FK columns in public/private.
 -- Safe additive indexes for the viewer/creator predicates used by the current
 -- ranking function. Preserve all eligibility, privacy, scoring and monetization
 -- behavior. This migration intentionally does not change candidate caps/weights.
