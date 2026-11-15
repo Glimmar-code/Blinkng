@@ -13,12 +13,9 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Windows-side route for the same Reel retention telemetry used by Android.
- *
- * The current desktop Reels screen does not yet host a native video player, so
- * this service deliberately does not invent watch-time samples from card
- * exposure. A desktop player can call this route with real playback metrics as
- * soon as playback is available, while ranking remains shared in Supabase.
+ * Windows-side route for the same server-authoritative Reel retention telemetry
+ * used by Android and Web. The Compose Media Player reports actual playback
+ * time; card exposure is never substituted for watch-time.
  */
 class DesktopReelRecommendationService {
     companion object {
