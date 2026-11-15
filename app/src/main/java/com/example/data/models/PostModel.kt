@@ -43,7 +43,9 @@ data class CreatePostRequest(
     val isDisappearing: Boolean = false,
     val audioTitle: String? = null,
     val altText: String? = null,
-    val textStyle: String? = null
+    val textStyle: String? = null,
+    /** Cursor RPC flag; null for legacy endpoints without explicit pagination metadata. */
+    val hasMore: Boolean? = null
 )
 
 data class FeedPost(
