@@ -232,6 +232,8 @@ declare
   v_processed integer := 0;
   v_limit integer := greatest(1, least(coalesce(p_limit, 25), 100));
 begin
+  perform pg_catalog.set_config('lock_timeout', '100ms', true);
+
   for v_job in
     select o.message_id, o.sender_id, o.attempts
     from private.blink_message_rank_reward_outbox o
