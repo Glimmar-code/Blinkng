@@ -4426,7 +4426,9 @@ suspend fun uploadPostMedia(
             altText = obj.cleanString("alt_text").takeIf { it.isNotBlank() },
             textStyle = obj.optJSONObject("gradient")
                 ?.cleanString("key")
-                ?.takeIf { it.isNotBlank() }
+                ?.takeIf { it.isNotBlank() },
+            hasMore = if (obj.has("has_more") && !obj.isNull("has_more"))
+                obj.optBoolean("has_more") else null
         )
     }
 
