@@ -1311,12 +1311,11 @@ class DesktopSupabaseClient(
         }
         if (ids.length() == 0) return
         runCatching {
-            postArray(
+            postObject(
                 "/rest/v1/rpc/record_feed_impressions",
                 JSONObject().put("p_surface", surface)
                     .put("p_post_ids", ids)
                     .put("p_session_id", sessionId),
-                "return=representation",
             )
         }
     }
