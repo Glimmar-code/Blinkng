@@ -52,6 +52,102 @@ begin
   end if;
 
   if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='user_id'
+    where n.nspname='private' and t.relname='blink_paystack_renewals'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_blink_paystack_renewals_user_id';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='content_id'
+    where n.nspname='public' and t.relname='blink_boosts'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_blink_boosts_content_id';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='contest_id'
+    where n.nspname='public' and t.relname='blink_contest_entry_appeals'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_blink_contest_entry_appeals_contest_id';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='referrer_user_id'
+    where n.nspname='public' and t.relname='blink_referrals'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_blink_referrals_referrer_user_id';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='user_id'
+    where n.nspname='public' and t.relname='blink_vip_claims'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_blink_vip_claims_user_id';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='category_slug'
+    where n.nspname='public' and t.relname='connect_listings'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_connect_listings_category_slug';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='mentor_profile_id'
+    where n.nspname='public' and t.relname='mentor_requests'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_mentor_requests_mentor_profile_id';
+  end if;
+
+  if not exists (
+    select 1 from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='reading_profile_id'
+    where n.nspname='public' and t.relname='reading_mate_requests'
+      and i.indisvalid and i.indisready and i.indpred is null and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FULL_FOREIGN_KEY_INDEX_MISSING_reading_mate_requests_reading_profile_id';
+  end if;
+
+  if not exists (
     select 1
     from pg_index i
     join pg_class t on t.oid=i.indrelid
