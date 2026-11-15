@@ -7,6 +7,7 @@ const migration = readFileSync(new URL("../migrations/20261115120000_for_you_ref
 const android = readFileSync(new URL("../../app/src/main/java/com/example/data/supabase/SupabaseService.kt", import.meta.url), "utf8");
 const windows = readFileSync(new URL("../../desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt", import.meta.url), "utf8");
 const web = readFileSync(new URL("../../web/app.js", import.meta.url), "utf8");
+const webDiscovery = readFileSync(new URL("../../web/discovery.js", import.meta.url), "utf8");
 
 function seededOrder(ids, seed) {
   return [...ids].sort((a, b) => {
@@ -24,10 +25,11 @@ test("refresh twice returns new posts for a tied candidate cohort", () => {
   assert.match(migration, /hashtextextended\(c\.id::text\|\|':'\|\|c\.seed::text,0\)/);
   assert.match(android, /java\.util\.UUID\.randomUUID\(\)/);
   assert.match(windows, /UUID\.randomUUID\(\)/);
-  assert.match(web, /crypto\?\.randomUUID\?\.\(\)/);
+  assert.match(webDiscovery, /crypto\?\.randomUUID\?\.\(\)/);
   assert.match(android, /get_for_you_feed_page/);
   assert.match(windows, /get_for_you_feed_page/);
-  assert.match(web, /get_for_you_feed_page/);
+  assert.match(webDiscovery, /get_for_you_feed_page/);
+  assert.match(web, /BlinkFeedRecommendation\.fetchPage/);
 });
 
 test("empty fresh pool falls back to older eligible content", () => {
@@ -77,7 +79,7 @@ test("impressions, qualified views, Reel watch time and view counters are server
   assert.match(migration, /baseline_view_count/);
   assert.match(android, /record_feed_impressions/);
   assert.match(windows, /record_feed_impressions/);
-  assert.match(web, /record_feed_impressions/);
+  assert.match(webDiscovery, /record_feed_impressions/);
 });
 
 test("all platform feed refresh requests bypass client cache", () => {
