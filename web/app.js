@@ -49,7 +49,7 @@
   const fmt = (v) => new Intl.NumberFormat().format(Number(v || 0));
   const money = (v, currency='NGN') => { try { return new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0)); } catch { return `₦${fmt(v)}`; } };
   const ago = (v) => { const d=new Date(v); if(Number.isNaN(d.valueOf()))return ''; const s=Math.max(1,Math.floor((Date.now()-d)/1000)); if(s<60)return `${s}s`; if(s<3600)return `${Math.floor(s/60)}m`; if(s<86400)return `${Math.floor(s/3600)}h`; if(s<604800)return `${Math.floor(s/86400)}d`; return d.toLocaleDateString(); };
-   const uid = () => state.session?.user?.id || '';
+  const uid = () => state.session?.user?.id || '';
   const token = () => state.session?.access_token || '';
   const isAuthed = () => !!token();
   const routeHref = (path) => `${PREVIEW_BASE}${path}` || '/';
