@@ -65,7 +65,9 @@ test("ranking tiers reserve exploration, test distribution, cap creators and mix
   assert.match(migration, /partition by t\.candidate_tier,t\.is_exploration,t\.is_reel/);
   assert.match(migration, /cl\.creator_page_position<=2/);
   assert.match(migration, /when g\.is_reel then g\.group_rank\*4/);
-  assert.match(migration, /when i\.is_exploration then i\.candidate_tier/);
+  assert.match(migration, /count\(\*\) filter \(where i\.is_exploration\) over \(\)/);
+  assert.match(migration, /global_group_rank\*5/);
+  assert.match(migration, /global_group_rank\+\(\(o\.global_group_rank-1\)\/4\)/);
 });
 
 test("impressions, qualified views, Reel watch time and view counters are server logged", () => {
