@@ -1,0 +1,77 @@
+-- Minimal disposable schema for the discovery timeout migration contract.
+-- Contains no production data or credentials.
+create schema if not exists private_ranking;
+
+create table public.blocks (
+  blocker_id uuid not null,
+  blocked_id uuid not null
+);
+create table public.post_views (
+  viewer_id uuid not null,
+  post_id uuid not null,
+  last_viewed_at timestamptz not null default now()
+);
+create table public.post_likes (
+  user_id uuid not null,
+  post_id uuid not null,
+  created_at timestamptz not null default now()
+);
+create table public.post_bookmarks (
+  user_id uuid not null,
+  post_id uuid not null,
+  created_at timestamptz not null default now()
+);
+create table public.comments (
+  author_id uuid not null,
+  post_id uuid not null,
+  created_at timestamptz not null default now()
+);
+create table public.feed_posts (id uuid primary key);
+
+create function public.record_content_view(p_post_id uuid, p_event_id uuid)
+returns void language plpgsql as $function$
+begin
+  perform 1 from public.feed_posts where id=p_post_id for key share;
+end;
+$function$;
+
+create function private_ranking.get_discovery_feed(
+  p_limit integer default 40,
+  p_offset integer default 0,
+  p_as_of timestamptz default now(),
+  p_gravity numeric default 1.5,
+  p_w1 numeric default 2.0,
+  p_w2 numeric default 1.0,
+  p_w3 numeric default 250.0,
+  p_w4 numeric default 4.0
+)
+returns table(
+  item jsonb,
+  feed_score numeric,
+  ranking_components jsonb,
+  feed_position integer,
+  as_of timestamptz,
+  next_offset integer
+)
+language plpgsql
+set search_path = ''
+as $function$
+declare
+  v_position integer;
+  v_target_count integer := 1;
+begin
+  create temporary table discovery_candidates (
+    post_id uuid primary key,
+    creator_id uuid not null,
+    is_reel boolean not null,
+    creator_tier text not null,
+    feed_score numeric not null,
+    created_at timestamptz not null
+  ) on commit drop;
+
+  for v_position in 1..v_target_count loop
+    exit;
+  end loop;
+  return;
+end;
+$function$;
