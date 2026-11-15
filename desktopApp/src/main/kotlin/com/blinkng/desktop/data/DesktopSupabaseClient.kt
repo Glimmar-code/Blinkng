@@ -1205,6 +1205,7 @@ class DesktopSupabaseClient(
         limit: Int = 60,
     ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val cleanSearch = search?.trim()?.takeIf { it.isNotBlank() }
+        cleanSearch?.takeIf { it.startsWith("#") }?.let(::recordTagSearch)
         val rows = if (cleanSearch == null) {
             val surface = if (reelsOnly) "reels" else "posts"
             val cursorKey = surface
