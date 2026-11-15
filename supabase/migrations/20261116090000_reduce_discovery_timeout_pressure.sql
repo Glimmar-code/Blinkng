@@ -22,6 +22,23 @@ create index if not exists post_bookmarks_user_created_post_idx
 
 create index if not exists comments_author_created_post_idx
   on public.comments (author_id, created_at desc, post_id);
+create index if not exists blink_paystack_renewals_user_id_fk_idx
+  on private.blink_paystack_renewals (user_id);
+create index if not exists blink_boosts_content_id_fk_idx
+  on public.blink_boosts (content_id);
+create index if not exists blink_contest_entry_appeals_contest_id_fk_idx
+  on public.blink_contest_entry_appeals (contest_id);
+create index if not exists blink_referrals_referrer_user_id_fk_idx
+  on public.blink_referrals (referrer_user_id);
+create index if not exists blink_vip_claims_user_id_fk_idx
+  on public.blink_vip_claims (user_id);
+create index if not exists connect_listings_category_slug_fk_idx
+  on public.connect_listings (category_slug);
+create index if not exists mentor_requests_mentor_profile_id_fk_idx
+  on public.mentor_requests (mentor_profile_id);
+create index if not exists reading_mate_requests_reading_profile_id_fk_idx
+  on public.reading_mate_requests (reading_profile_id);
+
 
 -- These SECURITY DEFINER routines are trigger-only, not client RPCs.
 -- Existing triggers continue to invoke them; clients must not call them directly.
