@@ -40,6 +40,6 @@ test("adds guarded foreign-key-side indexes for uncovered constraints", () => {
 });
 
 test("revokes client RPC execution only from trigger-only seller guards", () => {
-  assert.match(migration, /revoke execute on function public\\.market_require_approved_seller\\(\\)/i);
-  assert.match(migration, /revoke execute on function public\\.market_require_approved_seller_for_order\\(\\)/i);
+  assert.match(migration, /revoke execute on function public\.market_require_approved_seller\(\)/i);
+  assert.match(migration, /revoke execute on function public\.market_require_approved_seller_for_order\(\)/i);
 });
