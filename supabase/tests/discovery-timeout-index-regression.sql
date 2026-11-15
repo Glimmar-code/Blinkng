@@ -32,6 +32,25 @@ begin
     raise exception 'DISCOVERY_FEED_TEMP_INDEX_OPTIMIZATION_MISSING';
   end if;
 
+  if has_function_privilege('anon', 'public.market_require_approved_seller()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.market_require_approved_seller()', 'EXECUTE')
+     or has_function_privilege('anon', 'public.market_require_approved_seller_for_order()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.market_require_approved_seller_for_order()', 'EXECUTE') then
+    raise exception 'TRIGGER_ONLY_MARKET_FUNCTION_STILL_CLIENT_EXECUTABLE';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+    where not tgisinternal
+      and tgfoid='public.market_require_approved_seller()'::regprocedure
+  ) or not exists (
+    select 1 from pg_trigger
+    where not tgisinternal
+      and tgfoid='public.market_require_approved_seller_for_order()'::regprocedure
+  ) then
+    raise exception 'MARKET_SELLER_GUARD_TRIGGER_MISSING';
+  end if;
+
   -- The prior view-lock repair must remain in place: expensive reward work
   -- should not retain an exclusive feed_posts row lock.
   v_definition := pg_get_functiondef('public.record_content_view(uuid,uuid)'::regprocedure);
