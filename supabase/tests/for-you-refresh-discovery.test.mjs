@@ -62,6 +62,10 @@ test("new feed RPC is score + post-id cursor based and offset-free", () => {
   assert.match(fn, /r\.id<p_cursor_post_id/);
   assert.doesNotMatch(fn, /p_offset|next_offset/i);
   assert.match(fn, /coalesce\(p_request_seed,gen_random_uuid\(\)\)/);
+  assert.match(fn, /ranking_components jsonb/);
+  assert.match(fn, /next_cursor_score text/);
+  assert.equal(migration.split("create or replace function private_ranking.get_discovery_feed").length - 1, 1);
+  assert.equal(migration.split("create or replace function public.get_for_you_feed_page").length - 1, 1);
 });
 
 test("ranking tiers reserve exploration, test distribution, cap creators and mix formats", () => {
