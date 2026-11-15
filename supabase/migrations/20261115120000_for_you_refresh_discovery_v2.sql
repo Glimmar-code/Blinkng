@@ -512,8 +512,9 @@ tiered as (
       -extract(epoch from coalesce(s.last_viewed_at,s.rank_as_of))::numeric/1000000.0
       -s.viewer_views
       -least(120.0,greatest(0.0,s.seen_penalty))
+      +s.request_jitter*0.01
     else
-      least(500.0,greatest(-100.0,s.quality_score-s.seen_penalty))
+      least(500.0,greatest(-100.0,s.quality_score-s.seen_penalty+s.request_jitter*0.25))
     end as tier_sort_score
   from scored s
 ),
