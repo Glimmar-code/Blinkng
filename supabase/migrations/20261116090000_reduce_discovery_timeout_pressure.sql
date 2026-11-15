@@ -114,4 +114,50 @@ begin
   execute v_source;
 end;
 $migration$;
+
+-- Repair the recurring VIP reminder job: notifications uses text/sub_text,
+-- not the removed comment column. Keep the existing schedule and expiry policy.
+create or replace function private.expire_blink_items_and_remind_vip()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.blink_inventory
+  set status = 'EXPIRED', updated_at = now()
+  where status = 'ACTIVE' and expires_at is not null and expires_at <= now();
+
+  update public.blink_boosts
+  set status = 'ENDED'
+  where status = 'ACTIVE' and ends_at <= now();
+
+  insert into public.notifications(user_id, type, text, sub_text, is_read)
+  select v.user_id,
+         'system'::public.notification_type_enum,
+         '👑 Your Blink VIP expires in less than 24 hours. Open Blink Store to review or renew.',
+         'Blink VIP expiry reminder',
+         false
+  from public.blink_vip_passes v
+  where v.expires_at > now()
+    and v.expires_at <= now() + interval '24 hours'
+    and not v.expiry_reminder_sent;
+
+  update public.blink_vip_passes
+  set expiry_reminder_sent = true
+  where expires_at > now()
+    and expires_at <= now() + interval '24 hours'
+    and not expiry_reminder_sent;
+
+  update public.profiles p
+  set blink_vip_until = (
+    select max(v.expires_at)
+    from public.blink_vip_passes v
+    where v.user_id = p.id and v.expires_at > now()
+  )
+  where p.blink_vip_until is not null
+    and p.blink_vip_until <= now();
+end;
+$function$;
+
 commit;
