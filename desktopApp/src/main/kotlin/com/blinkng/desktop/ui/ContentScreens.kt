@@ -269,7 +269,7 @@ fun HomeScreen(
             }
             posts = page.distinctBy { it.id }
             consumedPostRows = page.size
-            hasMorePosts = page.size >= 60
+            hasMorePosts = page.isNotEmpty()
             error = null
         } catch (cause: Exception) {
             // Keep the previous page and its scroll position on network failures.
@@ -288,7 +288,7 @@ fun HomeScreen(
             val knownIds = posts.asSequence().map { it.id }.toHashSet()
             val newRows = page.filter { it.id !in knownIds }.distinctBy { it.id }
             posts = posts + newRows
-            hasMorePosts = page.size >= 60 && newRows.isNotEmpty()
+            hasMorePosts = page.isNotEmpty() && newRows.isNotEmpty()
             error = null
         } catch (cause: Exception) {
             // Keep content/cursor intact, so an explicit retry can continue.
