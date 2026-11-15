@@ -82,6 +82,8 @@ test("ranking tiers reserve exploration, test distribution, cap creators and mix
   assert.match(migration, /c\.created_at>=c\.rank_as_of-interval '48 hours'/);
   assert.match(migration, /c\.created_at>=c\.rank_as_of-interval '7 days'/);
   assert.match(migration, /c\.impressions>=20/);
+  assert.match(migration, /engagement_rate/);
+  assert.match(migration, /Below baseline; held for later/);
   assert.match(migration, /< 0\.05 then 4/);
   assert.match(migration, /c\.new_creator or greatest\(0,c\.view_count\)<50/);
   assert.match(migration, /partition by t\.candidate_tier,t\.is_exploration,t\.is_reel/);
