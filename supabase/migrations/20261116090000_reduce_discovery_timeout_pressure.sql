@@ -290,4 +290,65 @@ revoke all on function public.process_message_rank_reward_outbox(integer)
 grant execute on function public.process_message_rank_reward_outbox(integer)
   to service_role;
 
+
+-- Wake the existing minute worker when message rewards are pending, even if
+-- there are no channel notifications or contest emails to dispatch.
+create or replace function private.blink_channel_dispatch_due()
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  secret text;
+begin
+  perform private.blink_channel_emit_due(200);
+
+  if not exists(select 1 from public.blink_claim_channel_push_notifications(1))
+     and not exists(
+       select 1 from public.blink_essential_email_outbox
+       where kind='contest_launch' and (
+         (status='pending' and available_at<=now())
+         or (status='sending' and updated_at<now()-interval '10 minutes')
+       )
+     )
+     and not exists(
+       select 1 from private.blink_message_rank_reward_outbox
+       where status='pending'
+          or (
+            status='failed' and attempts<8
+            and updated_at <= now() - make_interval(
+              secs => least(1800, (30 * power(2, greatest(attempts - 1, 0)))::integer)
+            )
+          )
+          or (
+            status='processing' and attempts<8
+            and updated_at <= now() - interval '2 minutes'
+          )
+     ) then
+    return false;
+  end if;
+
+  select worker_token into secret
+  from private.blink_channel_worker_credentials
+  where singleton;
+
+  if secret is null then
+    raise exception 'CHANNEL_WORKER_SECRET_MISSING';
+  end if;
+
+  perform net.http_post(
+    url := 'https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/blink-channel-push-worker',
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'x-blink-channel-worker',secret
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+
+  return true;
+end;
+$function$;
+
 commit;
