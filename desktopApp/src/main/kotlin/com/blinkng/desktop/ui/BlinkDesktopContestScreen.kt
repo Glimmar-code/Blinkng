@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopRpcActions
+import com.blinkng.shared.BlinkContestDraftValidator
 import com.blinkng.shared.BlinkContestPolicy
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -203,7 +204,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(contest.optString("title"), color = Color.White, fontWeight = FontWeight.Bold)
                                 if (contest.optString("season").isNotBlank() && contest.optString("season") != "null") Text(contest.optString("season"), color = Color(0xFF8BCBFF), fontSize = 10.sp)
-                                Text("${contest.optString("competition_scope")} · ${contest.optString("university")} · ${contest.optString("status")} · Applications: ${dt(contest.optString("registration_opens_at"))} · Voting closes: ${dt(contest.optString("voting_closes_at"))}",
+                                Text("${contest.optString("competition_scope")} · ${contest.optString("university")} · ${contest.optString("status")} · Starts: ${dt(contest.optString("start_at").ifBlank { contest.optString("voting_opens_at") })} · Ends: ${dt(contest.optString("end_at").ifBlank { contest.optString("voting_closes_at") })}",
                                     color = Color(0xFFBDDFFF), fontSize = 11.sp)
                                 Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes",
                                     color = Color.White, fontSize = 11.sp)
@@ -316,7 +317,10 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                         Text("1st " + prize(c.optInt("prize_first")) +
                             " · 2nd " + prize(c.optInt("prize_second")) +
                             " · 3rd " + prize(c.optInt("prize_third")), fontWeight = FontWeight.Bold)
-                        Text("Voting closes: " + dt(c.optString("voting_closes_at")))
+                        Text("Voting and entries end: " + dt(c.optString("end_at").ifBlank {
+                            c.optString("voting_closes_at")
+                        }))
+                        Text("Results announced: " + dt(c.optString("results_at")))
                         if (c.optString("rules").isNotBlank()) Text("Rules: " + c.optString("rules"))
                         if (status == "completed") {
                             Text("Official winners",style=MaterialTheme.typography.titleLarge)
@@ -392,7 +396,7 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                         }
                         if (voted.isNotBlank()) Text("You've already used your free vote.")
                     }
-                    if (status == "registration" && own.isBlank()) item {
+                    if (status in setOf("registration", "voting") && own.isBlank()) item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(statement, { statement = it.take(500) },
                                 label = { Text("Why should people vote for you?") },
@@ -433,7 +437,9 @@ fun BlinkDesktopContestScreen(state: DesktopAppState) {
                                     }
                                 }) { Text("Upload public preview") }
                             }
-                            Button(enabled = !busy && BlinkContestPolicy.canApply(statement, false, mediaUrl), onClick = {
+                            Button(enabled = !busy && BlinkContestPolicy.canApplyDuringWindow(
+                                status, statement, false, mediaUrl
+                            ), onClick = {
                                 busy = true
                                 scope.launch {
                                     runCatching { api.contestApply(c.optString("id"), statement, mediaUrl) }
@@ -698,10 +704,8 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf("") }
-    var regStart by remember { mutableStateOf("") }
-    var regEnd by remember { mutableStateOf("") }
-    var voteStart by remember { mutableStateOf("") }
-    var voteEnd by remember { mutableStateOf("") }
+    var contestStart by remember { mutableStateOf("") }
+    var contestEnd by remember { mutableStateOf("") }
     var results by remember { mutableStateOf("") }
     var first by remember { mutableStateOf("0") }
     var second by remember { mutableStateOf("0") }
@@ -805,25 +809,28 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
             }
         }) { Text("Add topic") }
         listOf(
-            "Applications open" to regStart, "Applications close" to regEnd,
-            "Voting opens" to voteStart, "Voting closes" to voteEnd, "Results announced" to results
+            "Contest start" to contestStart, "Contest end" to contestEnd,
+            "Results announcement" to results
         ).forEach { (label, value) ->
             OutlinedTextField(value, {
                 when(label) {
-                    "Applications open" -> regStart = it
-                    "Applications close" -> regEnd = it
-                    "Voting opens" -> voteStart = it
-                    "Voting closes" -> voteEnd = it
+                    "Contest start" -> contestStart = it
+                    "Contest end" -> contestEnd = it
                     else -> results = it
                 }
             }, label = { Text(label) }, modifier = Modifier.fillMaxWidth())
         }
+        val timingError = BlinkContestDraftValidator.error(
+            title, listOf(contestStart, contestEnd, results), listOf(first, second, third),
+            "", "", false
+        )
+        if (timingError != null) Text(timingError, color = MaterialTheme.colorScheme.error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(first, { first = it }, label = { Text("1st prize ₦") }, modifier = Modifier.weight(1f))
             OutlinedTextField(second, { second = it }, label = { Text("2nd prize ₦") }, modifier = Modifier.weight(1f))
             OutlinedTextField(third, { third = it }, label = { Text("3rd prize ₦") }, modifier = Modifier.weight(1f))
         }
-        Button(enabled = !busy && title.trim().length >= 4 && topicId.isNotBlank() &&
+        Button(enabled = !busy && timingError == null && topicId.isNotBlank() &&
             !topicsLoading && topicLoadError == null &&
             (scopeType != "campus" || university.isNotBlank()), onClick = {
             busy = true
@@ -832,8 +839,7 @@ fun BlinkDesktopContestAdminScreen(state: DesktopAppState) {
                 .put("topic_id", if (topicId.isBlank()) JSONObject.NULL else topicId)
                 .put("competition_scope", scopeType).put("university", university.trim())
                 .put("season", season.trim())
-                .put("registration_opens_at", regStart).put("registration_closes_at", regEnd)
-                .put("voting_opens_at", voteStart).put("voting_closes_at", voteEnd)
+                .put("start_at", contestStart).put("end_at", contestEnd)
                 .put("results_at", results).put("prize_first", first.toIntOrNull() ?: 0)
                 .put("prize_second", second.toIntOrNull() ?: 0)
                 .put("prize_third", third.toIntOrNull() ?: 0)
