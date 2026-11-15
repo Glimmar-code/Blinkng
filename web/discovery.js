@@ -143,7 +143,8 @@
     if(reels.length)calls.push(rpc('record_feed_impressions',{p_surface:'reels',p_post_ids:reels,p_session_id:sessionId}).catch(()=>null));
     await Promise.all(calls);
   }
-  async function fetchPage(rpc, session, {surface='all',limit=30,refresh=false}={}) {
+  async function fetchPage(rpc, session, {surface='all',limit=30,refresh=false,isCurrent=()=>true}={}) {
+    if(!isCurrent())return [];
     if(refresh||!session.feedRequestSeed) {
       session.feedCursorScore=null;
       session.feedCursorPostId=null;
@@ -157,6 +158,7 @@
       p_as_of:session.feedAsOf,
       p_request_seed:session.feedRequestSeed
     });
+    if(!isCurrent())return rows||[];
     if(rows?.length) {
       const first=rows[0];
       session.feedCursorScore=first.next_cursor_score??null;
