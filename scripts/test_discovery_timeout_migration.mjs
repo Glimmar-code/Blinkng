@@ -32,6 +32,13 @@ test("guards the feed function rewrite and preserves existing scoring behavior",
   assert.doesNotMatch(migration, /update public\.(profiles|feed_posts|messages)/i);
 });
 
+test("adds guarded foreign-key-side indexes for uncovered constraints", () => {
+  assert.match(migration, /from pg_constraint c/i);
+  assert.match(migration, /c.contype='f'/i);
+  assert.match(migration, /i.indnkeyatts >= cardinality\(c.conkey\)/i);
+  assert.match(migration, /create index if not exists/i);
+});
+
 test("revokes client RPC execution only from trigger-only seller guards", () => {
   assert.match(migration, /revoke execute on function public\\.market_require_approved_seller\\(\\)/i);
   assert.match(migration, /revoke execute on function public\\.market_require_approved_seller_for_order\\(\\)/i);
