@@ -189,7 +189,6 @@ fun HomeScreen(
     var loading by remember { mutableStateOf(true) }
     var loadingMorePosts by remember { mutableStateOf(false) }
     var hasMorePosts by remember { mutableStateOf(true) }
-    var consumedPostRows by remember { mutableStateOf(0) }
     var feedFilter by remember { mutableStateOf("All") }
     val visiblePosts = remember(posts, feedFilter) {
         posts.filter { post ->
@@ -277,8 +276,7 @@ fun HomeScreen(
                 }
             }
             posts = page.distinctBy { it.id }
-            consumedPostRows = page.size
-            hasMorePosts = page.isNotEmpty()
+            hasMorePosts = page.firstOrNull()?.hasMore ?: page.isNotEmpty()
             error = null
         } catch (cause: Exception) {
             // Keep the previous page and its scroll position on network failures.
@@ -297,7 +295,7 @@ fun HomeScreen(
             val knownIds = posts.asSequence().map { it.id }.toHashSet()
             val newRows = page.filter { it.id !in knownIds }.distinctBy { it.id }
             posts = posts + newRows
-            hasMorePosts = page.isNotEmpty() && newRows.isNotEmpty()
+            hasMorePosts = page.firstOrNull()?.hasMore ?: (page.isNotEmpty() && newRows.isNotEmpty())
             error = null
         } catch (cause: Exception) {
             // Keep content/cursor intact, so an explicit retry can continue.
