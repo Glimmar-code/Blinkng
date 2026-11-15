@@ -2,11 +2,11 @@
   'use strict';
 
   const C = window.BLINK_WEB_CONFIG || {};
-  const SUPABASE_URL = String(C.supabaseUrl || '').replace(/\/$/, '');
+  const SUPABASE_URL = String(C.supabaseUrl || '').replace(/newRequestUuid()/$/, '');
   const KEY = C.publishableKey || '';
   const PREVIEW_BASE = location.hostname.endsWith('github.io') ? '/Blinkng' : '';
   const LOGO_URL = `${PREVIEW_BASE}/blink-logo-v2.png`;
-  const SITE_URL = String(C.siteUrl || location.origin).replace(/\/$/, '');
+  const SITE_URL = String(C.siteUrl || location.origin).replace(/newRequestUuid()/$/, '');
   const ROOT = document.getElementById('app');
   const MODALS = document.getElementById('modal-root');
   const toastEl = document.getElementById('toast');
@@ -49,6 +49,10 @@
   const fmt = (v) => new Intl.NumberFormat().format(Number(v || 0));
   const money = (v, currency='NGN') => { try { return new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0)); } catch { return `₦${fmt(v)}`; } };
   const ago = (v) => { const d=new Date(v); if(Number.isNaN(d.valueOf()))return ''; const s=Math.max(1,Math.floor((Date.now()-d)/1000)); if(s<60)return `${s}s`; if(s<3600)return `${Math.floor(s/60)}m`; if(s<86400)return `${Math.floor(s/3600)}h`; if(s<604800)return `${Math.floor(s/86400)}d`; return d.toLocaleDateString(); };
+  const newRequestUuid = () => globalThis.crypto?.randomUUID?.() ||
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
+      const r=Math.random()*16|0;return (ch==='x'?r:(r&0x3|0x8)).toString(16);
+    });
   const uid = () => state.session?.user?.id || '';
   const token = () => state.session?.access_token || '';
   const isAuthed = () => !!token();
@@ -252,7 +256,7 @@
   function currentPath(){
     const redirected=new URLSearchParams(location.search).get('p');
     if(redirected){
-      const clean=(redirected.startsWith('/')?redirected:`/${redirected}`).replace(/^\/\/+/, '/');
+      const clean=(redirected.startsWith('/')?redirected:`/${redirected}`).replace(/^newRequestUuid()/newRequestUuid()/+/, '/');
       history.replaceState({},'',routeHref(clean));
       return safeDecodeUri(clean.split('?')[0].split('#')[0]);
     }
@@ -283,7 +287,7 @@
   function navItem(path,key,label,badge=''){ const active=currentPath()===path || (path!=='/'&&currentPath().startsWith(path)); return `<button class="nav-btn ${active?'active':''}" data-nav="${esc(path)}"><span class="icon">${icon(key)}</span><span>${esc(label)}</span>${badge?`<span class="badge">${esc(badge)}</span>`:''}</button>`; }
   function mobileItem(path,key,label){ const active=currentPath()===path || (path!=='/'&&currentPath().startsWith(path)); return `<button class="${active?'active':''}" data-nav="${esc(path)}"><span>${icon(key)}</span>${esc(label)}</button>`; }
   function routeMotionSensitive(path=currentPath()){
-    return path.startsWith('/settings') || /^\/(?:checkout|payment)(?:\/|$)/i.test(path) || /^\/market\/(?:checkout|payment|confirm)(?:\/|$)/i.test(path);
+    return path.startsWith('/settings') || /^newRequestUuid()/(?:checkout|payment)(?:newRequestUuid()/|$)/i.test(path) || /^newRequestUuid()/marketnewRequestUuid()/(?:checkout|payment|confirm)(?:newRequestUuid()/|$)/i.test(path);
   }
   function shell(content,title='Blink',right=''){
     setTitle(title);
@@ -370,12 +374,12 @@
 
   async function signup(fullName,username,email,password,referrerId='',birthDate=''){
     const parsed=new Date(birthDate+'T00:00:00Z');
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
+    if(!/^newRequestUuid()d{4}-newRequestUuid()d{2}-newRequestUuid()d{2}$/.test(birthDate) ||
        !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10)!==birthDate ||
        parsed > new Date() || parsed < new Date(new Date().getUTCFullYear()-120,0,1)){
       throw new Error('Enter a valid birthday before selecting your referrer.');
     }
-    if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/\d/.test(password)||!/[^A-Za-z0-9\s]/.test(password))throw new Error('Use 8+ characters with uppercase, lowercase, a number and a symbol.');
+    if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/newRequestUuid()d/.test(password)||!/[^A-Za-z0-9newRequestUuid()s]/.test(password))throw new Error('Use 8+ characters with uppercase, lowercase, a number and a symbol.');
     const cleanUser=username.trim().toLowerCase().replace(/^@/,''); if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(cleanUser))throw new Error('Use 2–30 lowercase letters, numbers, dots, dashes or underscores.');
     const metadata={username:cleanUser,full_name:fullName.trim(),name:fullName.trim()};
     if(/^[0-9a-fA-F-]{36}$/.test(String(referrerId)))metadata.blink_referrer_id=referrerId;
@@ -398,7 +402,7 @@
   function googleLogin(){
     state.authError=null;
     storageSet(OAUTH_NEXT_KEY,safeInternalPath(location.pathname+location.search,'/feed'));
-    const redirectBase=(SITE_URL||location.origin).replace(/\/+$/,'');
+    const redirectBase=(SITE_URL||location.origin).replace(/newRequestUuid()/+$/,'');
     const params=new URLSearchParams({provider:'google',redirect_to:`${redirectBase}/`});
     location.assign(`${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`);
   }
@@ -826,7 +830,7 @@
   }
 
   async function blinkEditSelectedPhoto(file){
-    if(!file||!/^image\/(jpeg|png)$/i.test(file.type))return file;
+    if(!file||!/^imagenewRequestUuid()/(jpeg|png)$/i.test(file.type))return file;
     const bitmap=await createImageBitmap(file);
     const ratio=Math.min(1,2048/Math.max(bitmap.width,bitmap.height));
     let surface=document.createElement('canvas');
@@ -1026,7 +1030,7 @@
       return 'Product listings must be created in BLINK Market.';
     const copy=String(text||'').trim();
     const salePhrase=/(^|[^a-z])(for sale|selling (?:this|my|a|an)|available for (?:purchase|sale)|dm to (?:buy|order)|buy now|order now|price is)([^a-z]|$)/i;
-    const nairaPrice=/(₦|NGN\s*)\s*[0-9]/i;
+    const nairaPrice=/(₦|NGNnewRequestUuid()s*)newRequestUuid()s*[0-9]/i;
     return salePhrase.test(copy)&&nairaPrice.test(copy)
       ? 'This appears to be a product advertisement. Please list it in BLINK Market instead.'
       : '';
@@ -1148,9 +1152,9 @@
     const raw=typeof post.video_url==='string'?post.video_url.trim():'';
     const video=safeUrl(raw);
     const declaredVideo=post.media_type==='video'||post.type==='video'||post.is_reel===true;
-    const videoExtension=/\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(raw);
+    const videoExtension=/newRequestUuid().(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(raw);
     const invalidPlaceholder=/^(null|undefined|none|false|0|about:blank)$/i.test(raw);
-    const hasRealVideo=!!video&&!invalidPlaceholder&&(declaredVideo||videoExtension||/\/storage\/v1\/object\//i.test(raw));
+    const hasRealVideo=!!video&&!invalidPlaceholder&&(declaredVideo||videoExtension||/newRequestUuid()/storagenewRequestUuid()/v1newRequestUuid()/objectnewRequestUuid()//i.test(raw));
     if(hasRealVideo)return `<div class="post-media" data-video-post><video src="${esc(video)}" controls playsinline preload="none" data-autopause onerror="this.closest('[data-video-post]').innerHTML='<div class=&quot;muted&quot; style=&quot;padding:16px&quot;>Video unavailable</div>'"></video></div>`;
     if(imgs.length===1)return `<div class="post-media"><img data-media-image src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;
     if(imgs.length>1){const alt=esc(post.alt_text||'Post image');return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img data-media-image src="${esc(u)}" alt="${alt}" loading="lazy">`).join('')}</div>`;}
@@ -1509,7 +1513,7 @@
     document.getElementById('share-referral')?.addEventListener('click',async()=>{
       const username=String(state.profile?.username||'').toLowerCase().replace(/^@/,'');
       if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(username)){toast('Complete your username first.');return;}
-      const invite='Join me on BLINK — connect and discover students beyond link.\n'+
+      const invite='Join me on BLINK — connect and discover students beyond link.newRequestUuid()n'+
         SITE_URL+'/invite/'+encodeURIComponent(username);
       try{
         if(navigator.share) {
@@ -1870,7 +1874,7 @@
       document.getElementById('password-form').onsubmit=async e=>{
         e.preventDefault();const form=e.currentTarget,f=new FormData(form),password=String(f.get('password')||''),confirm=String(f.get('confirm')||''),msg=document.getElementById('password-msg');
         if(password!==confirm){msg.innerHTML='<div class="error">Passwords do not match.</div>';return;}
-        if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!/[^A-Za-z0-9\s]/.test(password)){msg.innerHTML='<div class="error">Use at least 8 characters with uppercase, lowercase, a number and a symbol.</div>';return;}
+        if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!/[^A-Za-z0-9newRequestUuid()s]/.test(password)){msg.innerHTML='<div class="error">Use at least 8 characters with uppercase, lowercase, a number and a symbol.</div>';return;}
         const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
         try{await updatePassword(password);msg.innerHTML='<div class="success">Password updated.</div>';form.reset();}
         catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}
@@ -2007,17 +2011,17 @@
     state.viewObserver?.disconnect();state.viewObserver=null;
     state.mediaObserver?.disconnect();state.mediaObserver=null;
     state.searchRequestId++;
-    const contestInvite = path.match(/^\/contest\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/?$/i);
+    const contestInvite = path.match(/^newRequestUuid()/contestnewRequestUuid()/([0-9a-f-]{36})newRequestUuid()/([0-9a-f-]{36})newRequestUuid()/?$/i);
     if (contestInvite && window.BlinkContestInvite?.render?.(ROOT, contestInvite[1], contestInvite[2])) return;
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
-    const invited=path.match(/^\/invite\/([a-z0-9._-]{2,30})\/?$/i);
+    const invited=path.match(/^newRequestUuid()/invitenewRequestUuid()/([a-z0-9._-]{2,30})newRequestUuid()/?$/i);
     if(invited)return renderReferralInvitation(invited[1]);
     if(path==='/login')return renderLogin();
     if(path==='/site-stats')return renderSiteAnalytics();
     if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));
-    const legacy=path.match(/^\/profile\/([^/]+)$/);if(legacy)return renderPublicProfile(safeDecodeUri(legacy[1]));
-    const content=path.match(/^\/(post|reel)\/([0-9a-f-]+)$/i);if(content)return renderPublicContent(content[1].toLowerCase(),content[2]);
+    const legacy=path.match(/^newRequestUuid()/profilenewRequestUuid()/([^/]+)$/);if(legacy)return renderPublicProfile(safeDecodeUri(legacy[1]));
+    const content=path.match(/^newRequestUuid()/(post|reel)newRequestUuid()/([0-9a-f-]+)$/i);if(content)return renderPublicContent(content[1].toLowerCase(),content[2]);
     if(path==='/feed')return renderFeed(path);
     if(path==='/reels')return renderReels();
     if(path==='/search')return renderSearch();
