@@ -411,6 +411,8 @@ raw_candidates as (
     coalesce(ic.positive_creators,'{}'::uuid[]) as positive_creators,
     coalesce(ic.negative_creators,'{}'::uuid[]) as negative_creators,
     coalesce(ic.creator_weights,'{}'::jsonb) as creator_weights,
+    coalesce(private_ranking.active_blink_boost_factor(fp.id,cfg.rank_as_of),1.0)::numeric as active_boost_factor,
+    coalesce(private_ranking.viewer_personalization_bonus(cfg.viewer_id,fp.id,fp.user_id,cfg.rank_as_of),0)::numeric as personalization_bonus,
     case
       when vg.location is not null and cg.location is not null
         then extensions.st_distance(vg.location,cg.location)
@@ -587,8 +589,8 @@ scored as (
           +4.0*c.affinity_component
         )/power(c.age_hours+2::numeric,1.5)
       )*c.verification_multiplier*c.cold_start_multiplier
-        *private_ranking.active_blink_boost_factor(c.id,c.rank_as_of)
-        +coalesce(private_ranking.viewer_personalization_bonus(c.viewer_id,c.id,c.user_id,c.rank_as_of),0)
+        *c.active_boost_factor
+        +c.personalization_bonus
     ,0)
     + least(4::numeric,
         (case when c.same_university then 2::numeric else 0::numeric end)
@@ -791,6 +793,8 @@ select
     'affinity_component',p.affinity_component,
     'verification_multiplier',p.verification_multiplier,
     'cold_start_multiplier',p.cold_start_multiplier,
+    'active_boost_factor',p.active_boost_factor,
+    'personalization_bonus',p.personalization_bonus,
     'campus_bonus',p.campus_bonus,
     'reel_completion_rate',p.reel_completion_rate,
     'reel_completion_samples',p.reel_completion_samples,
