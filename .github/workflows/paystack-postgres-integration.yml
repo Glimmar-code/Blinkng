@@ -104,7 +104,13 @@ jobs:
         run: |
           createdb blink_discovery_perf_ci
           PGDATABASE=blink_discovery_perf_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_discovery_perf_fixture.pgfixture
-      - name: Apply and verify discovery timeout migration in disposable PostgreSQL\n        run: |\n          createdb blink_timeout_ci\n          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery_timeout_migration_fixture.pgfixture\n          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261116090000_reduce_discovery_timeout_pressure.sql\n          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery-timeout-index-regression.sql\n      - name: Production-safety affirmation
+      - name: Apply and verify discovery timeout migration in disposable PostgreSQL
+        run: |
+          createdb blink_timeout_ci
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery_timeout_migration_fixture.pgfixture
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261116090000_reduce_discovery_timeout_pressure.sql
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery-timeout-index-regression.sql
+      - name: Production-safety affirmation
         run: |
           echo 'All tests run against a disposable GitHub runner PostgreSQL service.'
           echo 'No production Supabase or live Paystack credentials are loaded.'
