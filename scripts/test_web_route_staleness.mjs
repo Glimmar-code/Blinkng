@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
+const discoverySource=readFileSync(new URL('../web/discovery.js',import.meta.url),'utf8');
 const cut=(from,to)=>{
   const a=source.indexOf(from),b=source.indexOf(to,a+from.length);
   assert.ok(a>=0&&b>a,'Cannot locate app renderer: '+from);
@@ -173,6 +174,7 @@ const profile=cut('  async function renderPublicProfile(', '  async function ren
 assert.ok(profile.indexOf('if(!live())return;')<profile.indexOf('history.replaceState('),
   'Do not canonicalize a stale public profile URL');
 new Function(source);
+new Function(discoverySource);
 const utf8=Buffer.byteLength(source,'utf8');
 assert.ok(utf8<=164000,`web/app.js exceeds the 162KB mobile budget: ${utf8}`);
 console.log('PASS web stale navigation: different routes, same-route refetch, account switch, old errors, coverage, profile canonicalization and asset budget.');
