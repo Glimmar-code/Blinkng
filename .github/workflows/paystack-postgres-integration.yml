@@ -111,6 +111,7 @@ jobs:
           PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261116090000_reduce_discovery_timeout_pressure.sql
           PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery-timeout-index-regression.sql
           PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/vip-expiry-reminder-regression.sql
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/message-rank-reward-outbox-regression.sql
       - name: Production-safety affirmation
         run: |
           echo 'All tests run against a disposable GitHub runner PostgreSQL service.'
