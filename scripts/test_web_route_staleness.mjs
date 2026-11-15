@@ -12,7 +12,7 @@ const market=cut('  async function renderMarket(){','  async function renderConn
 const connect=cut('  async function renderConnect(){','  async function renderGames(){');
 const loadMore=cut('  async function loadMoreFeed(){','  async function renderFollowing(');
 let owner='user-A';
-const state={pageSerial:0,loading:false,feedOffset:30,feedAsOf:'snapshot',feedMode:'posts'};
+const state={pageSerial:0,loading:false,feedCursorScore:'old-score',feedCursorPostId:'old-post',feedAsOf:'snapshot',feedRequestSeed:'seed',feedMode:'posts'};
 const location={href:'https://blink.test/market',search:''};
 const ROOT={innerHTML:''};
 const pending=[];
@@ -31,7 +31,30 @@ const api={
   safeUrl:v=>v||'',esc:v=>String(v??''),money:v=>String(v),
   richLinkCard:()=>'',fmt:v=>String(v),document:doc,
   fetchProfiles:async()=>new Map(),normalizeFeedItem:r=>r,postCard:r=>r.title,bindPostCards:()=>{},
-  URL,URLSearchParams,encodeURIComponent,toast:()=>{},navigate:()=>{}
+  URL,URLSearchParams,encodeURIComponent,toast:()=>{},navigate:()=>{},
+  window:{BlinkFeedRecommendation:{
+    fetchPage:async(rpc,session,{surface='all',limit=30,refresh=false,isCurrent=()=>true}={})=>{
+      if(!isCurrent())return [];
+      if(refresh||!session.feedRequestSeed){
+        session.feedCursorScore=null;session.feedCursorPostId=null;
+        session.feedAsOf=null;session.feedRequestSeed='fresh-seed';
+      }
+      const rows=await rpc('get_for_you_feed_page',{
+        p_surface:surface,p_limit:limit,p_cursor_score:session.feedCursorScore,
+        p_cursor_post_id:session.feedCursorPostId,p_as_of:session.feedAsOf,
+        p_request_seed:session.feedRequestSeed
+      });
+      if(!isCurrent())return rows||[];
+      if(rows?.length){
+        const first=rows[0];session.feedCursorScore=first.next_cursor_score??null;
+        session.feedCursorPostId=first.next_cursor_post_id??null;
+        session.feedAsOf=first.as_of??session.feedAsOf;
+        session.feedRequestSeed=first.request_seed??session.feedRequestSeed;
+      }
+      return rows||[];
+    },
+    bindReelWatchTracking:()=>{}
+  }}
 };
 const create=new Function(...Object.keys(api),
   guard+market+connect+loadMore+'return {renderMarket,renderConnect,loadMoreFeed};');
@@ -86,21 +109,22 @@ assert.match(ROOT.innerHTML,/Connect/);
 // A paginated feed request must not mutate a newer screen or overwrite a new
 // pagination cursor after navigating away.
 location.href='https://blink.test/feed';owner='user-A';
-const oldCursor=state.feedOffset;
+const oldCursor={score:state.feedCursorScore,id:state.feedCursorPostId,asOf:state.feedAsOf,seed:state.feedRequestSeed};
 const stalePage=loadMoreFeed();
 assert.equal(state.loading,true);
 location.href='https://blink.test/reels';
-pending.shift().resolve([{id:'old-page',title:'STALE FEED POST',next_offset:60}]);
+pending.shift().resolve([{id:'old-page',title:'STALE FEED POST',next_cursor_score:'stale-score',next_cursor_post_id:'stale-post',as_of:'stale-asof',request_seed:'stale-seed'}]);
 await stalePage;
-assert.equal(state.feedOffset,oldCursor);
+assert.deepEqual({score:state.feedCursorScore,id:state.feedCursorPostId,asOf:state.feedAsOf,seed:state.feedRequestSeed},oldCursor);
 assert.equal(appended.length,0);
 assert.equal(feedButton.textContent,'Loading…');
 
 location.href='https://blink.test/feed';state.loading=false;
 const freshPage=loadMoreFeed();
-pending.shift().resolve([{id:'new-page',title:'CURRENT FEED POST',next_offset:60}]);
+pending.shift().resolve([{id:'new-page',title:'CURRENT FEED POST',next_cursor_score:'fresh-score',next_cursor_post_id:'fresh-post',as_of:'fresh-asof',request_seed:'fresh-seed'}]);
 await freshPage;
-assert.equal(state.feedOffset,60);
+assert.equal(state.feedCursorScore,'fresh-score');
+assert.equal(state.feedCursorPostId,'fresh-post');
 assert.equal(state.loading,false);
 assert.equal(appended.length,1);
 assert.match(appended[0],/CURRENT FEED POST/);
