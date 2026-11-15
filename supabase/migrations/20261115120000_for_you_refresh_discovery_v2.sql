@@ -574,6 +574,8 @@ scored as (
   select
     c.*,
     (c.affinity_component>0) as matches_interest,
+    ((c.likes+c.comments+c.shares+c.reposts+c.reel_completed_count)::numeric
+      /greatest(1,c.views)::numeric) as engagement_rate,
     least(4::numeric,
       (case when c.same_university then 2::numeric else 0::numeric end)
       +(case when c.same_faculty then 1.5::numeric else 0::numeric end)
@@ -737,6 +739,7 @@ page as (
     cl.same_university,
     cl.matches_interest,
     cl.impressions,
+    cl.engagement_rate,
     cl.reel_completion_rate,
     cl.reel_completion_samples,
     cl.streak_component,
@@ -784,13 +787,16 @@ select
     when p.candidate_tier=1 then 'From someone you follow or your interests'
     when p.candidate_tier=2 then 'Trending on your campus'
     when p.candidate_tier=3 then 'Fresh from the last 7 days'
-    when p.candidate_tier=4 then 'Quality discovery backfill'
+    when p.candidate_tier=4 and p.impressions>=20 then 'Below baseline; held for later'
+    when p.candidate_tier=4 then 'Older quality backfill'
     else 'Returning to a post you have seen before'
   end as ranking_reason,
   jsonb_build_object(
     'model','weighted_decay_v1',
     'candidate_tier',p.candidate_tier,
     'exploration',p.is_exploration,
+    'impressions',p.impressions,
+    'engagement_rate',p.engagement_rate,
     'creator_tier',p.creator_tier,
     'streak_component',p.streak_component,
     'virality_component',p.virality_component,
