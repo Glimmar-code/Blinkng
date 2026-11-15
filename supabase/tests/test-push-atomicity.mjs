@@ -44,6 +44,14 @@ try {
     /finishDispatch\(admin, notificationId, claim\.tracked, false, "firebase_service_account_missing"\)/,
     'missing Firebase credentials must mark the dispatch failed so retry backoff applies');
 
+  const channelWorkerSource = fs.readFileSync(
+    new URL('../functions/blink-channel-push-worker/index.ts', import.meta.url), 'utf8',
+  );
+  const rewardDrainPosition = channelWorkerSource.indexOf('process_message_rank_reward_outbox');
+  const channelClaimPosition = channelWorkerSource.indexOf('blink_claim_channel_push_notifications');
+  assert.ok(rewardDrainPosition >= 0 && rewardDrainPosition < channelClaimPosition,
+    'the minute worker must drain message Rank Point rewards independently before channel push work');
+
   // Source-level contract: these are the same PostgREST filters used in each
   // dispatcher; no unconditional upsert may silently override a newer claim.
   for (const name of ['send-activity-notification','send-push-notification','send-call-notification']) {
