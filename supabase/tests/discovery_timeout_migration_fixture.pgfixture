@@ -2,6 +2,7 @@
 -- Contains no production data or credentials.
 create schema if not exists private_ranking;
 create schema if not exists private;
+create schema if not exists net;
 
 do $roles$
 begin
@@ -21,6 +22,38 @@ begin
 exception when duplicate_object then null;
 end;
 $roles$;
+
+create table private.blink_channel_worker_credentials (
+  singleton boolean primary key default true,
+  worker_token text not null
+);
+insert into private.blink_channel_worker_credentials(singleton,worker_token)
+values (true, repeat('a',64));
+
+create table public.blink_essential_email_outbox (
+  kind text not null,
+  status text not null,
+  available_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create function public.blink_claim_channel_push_notifications(p_limit integer default 40)
+returns table(notification_id uuid)
+language sql stable
+as $function$ select null::uuid where false $function$;
+
+create function private.blink_channel_emit_due(p_limit integer)
+returns void language plpgsql
+as $function$ begin return; end; $function$;
+
+create function net.http_post(
+  url text,
+  headers jsonb,
+  body jsonb,
+  timeout_milliseconds integer
+)
+returns bigint language sql
+as $function$ select 1::bigint $function$;
 
 create table public.blocks (
   blocker_id uuid not null,
