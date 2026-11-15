@@ -40,9 +40,9 @@ test("adds guarded foreign-key-side indexes for uncovered constraints", () => {
 });
 
 test("repairs VIP expiry reminder to use the live notification schema", () => {
-  assert.match(migration, /notifications\\(user_id, type, text, sub_text, is_read\\)/i);
-  assert.doesNotMatch(migration, /notifications\\(user_id,\\s*type,\\s*comment\\)/i);
-  assert.match(migration, /private\\.expire_blink_items_and_remind_vip\\(\\)/i);
+  assert.match(migration, /notifications\(user_id, type, text, sub_text, is_read\)/i);
+  assert.doesNotMatch(migration, /notifications\(user_id,\s*type,\s*comment\)/i);
+  assert.match(migration, /private\.expire_blink_items_and_remind_vip\(\)/i);
 });
 
 test("revokes client RPC execution only from trigger-only seller guards", () => {
