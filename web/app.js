@@ -1169,8 +1169,45 @@
     bindQualifiedViews();
     autoPauseVideos();
   }
+  function bindReelWatchTracking(vids){
+    vids.forEach(video=>{
+      if(video.dataset.reelTelemetryBound==='1')return;
+      const card=video.closest('[data-post-id]');
+      const postId=card?.dataset.postId;
+      if(!postId)return;
+      video.dataset.reelTelemetryBound='1';
+      let sessionId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      let watchedMs=0,lastTime=Number(video.currentTime)||0;
+      const flush=()=>{
+        const durationMs=Math.round((Number(video.duration)||0)*1000);
+        if(watchedMs>=250&&durationMs>=1000&&durationMs<=600000){
+          const sample=watchedMs;
+          void rpc('record_reel_engagement',{
+            p_post_id:postId,p_watched_ms:Math.min(sample,durationMs*3),
+            p_duration_ms:durationMs,p_session_id:sessionId,
+            p_completed:sample>=durationMs*.9,p_rewatched:sample>=durationMs*1.05
+          }).catch(()=>{});
+        }
+        watchedMs=0;
+        sessionId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        lastTime=Number(video.currentTime)||0;
+      };
+      video.addEventListener('playing',()=>{lastTime=Number(video.currentTime)||0;});
+      video.addEventListener('timeupdate',()=>{
+        const current=Number(video.currentTime)||0;
+        if(!video.paused&&!video.seeking){
+          const delta=current-lastTime;
+          if(delta>0&&delta<=2.5)watchedMs+=Math.round(delta*1000);
+        }
+        lastTime=current;
+      });
+      video.addEventListener('pause',flush);
+      video.addEventListener('ended',flush);
+    });
+  }
   function autoPauseVideos(){
     const vids=[...document.querySelectorAll('video[data-autopause]')];
+    bindReelWatchTracking(vids);
     state.mediaObserver?.disconnect();
     state.mediaObserver=null;
     // Keep tap-to-play available on older browsers.
@@ -1514,6 +1551,7 @@
     if(!q){out.innerHTML='<div class="card empty"><h2>Find anything on Blink</h2><p>Enter a name, username, post or tag.</p></div>';return;}
     const requestId=++state.searchRequestId;
     out.innerHTML='<div class="spinner"></div>';
+    if(q.startsWith('#'))void rpc('blink_record_tag_search',{p_tag:q}).catch(()=>{});
     try{
       const profileResults=isAuthed()
         ? rpc('blink_referral_profile_search',{p_query:q,p_limit:20})
