@@ -249,6 +249,9 @@ begin
               or (b.blocker_id=fp.user_id and b.blocked_id=v_user))
          and not exists (select 1 from public.muted_users m
            where m.user_id=v_user and m.muted_id=fp.user_id)
+         and not exists (select 1 from public.feed_preferences pref
+           where pref.user_id=v_user and pref.post_id=fp.id
+             and lower(pref.preference::text) in ('hide','hidden','not_interested','not interested'))
     ) then
       begin
         perform private_ranking.record_recommendation_event(
@@ -915,6 +918,9 @@ begin
         where (b.blocker_id=v_viewer and b.blocked_id=fp.user_id)
            or (b.blocker_id=fp.user_id and b.blocked_id=v_viewer))
       and not exists(select 1 from public.muted_users m where m.user_id=v_viewer and m.muted_id=fp.user_id)
+      and not exists(select 1 from public.feed_preferences pref
+        where pref.user_id=v_viewer and pref.post_id=fp.id
+          and lower(pref.preference::text) in ('hide','hidden','not_interested','not interested'))
   ) then raise exception 'INVALID_REEL'; end if;
 
   perform pg_catalog.pg_advisory_xact_lock(
