@@ -33,6 +33,17 @@ try {
       values (${keys.join(',')},'sending','${next}')`),
       /duplicate key|unique constraint/i, `${table} must reject double first claim`);
   }
+  const activitySource = fs.readFileSync(
+    new URL('../functions/send-activity-notification/index.ts', import.meta.url), 'utf8',
+  );
+  const activityClaimPosition = activitySource.indexOf('const claim = await claimDispatch(admin, notificationId)');
+  const firebaseMissingPosition = activitySource.indexOf('if (!firebaseJson)');
+  assert.ok(activityClaimPosition >= 0 && firebaseMissingPosition > activityClaimPosition,
+    'missing Firebase credentials must be handled after a durable dispatch claim');
+  assert.match(activitySource,
+    /finishDispatch\(admin, notificationId, claim\.tracked, false, "firebase_service_account_missing"\)/,
+    'missing Firebase credentials must mark the dispatch failed so retry backoff applies');
+
   // Source-level contract: these are the same PostgREST filters used in each
   // dispatcher; no unconditional upsert may silently override a newer claim.
   for (const name of ['send-activity-notification','send-push-notification','send-call-notification']) {
