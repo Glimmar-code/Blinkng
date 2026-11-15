@@ -28,6 +28,52 @@ revoke execute on function public.market_require_approved_seller()
 revoke execute on function public.market_require_approved_seller_for_order()
   from public, anon, authenticated;
 
+-- Add the missing foreign-key-side indexes reported by the production advisor.
+-- Existing indexes are checked by their leading key columns so this skips
+-- constraints already covered by a primary/composite index.
+do $foreign_key_indexes$
+declare
+  v_fk record;
+  v_index_name text;
+begin
+  for v_fk in
+    select
+      c.conname,
+      n.nspname,
+      t.relname,
+      (select string_agg(a.attname, '_' order by k.ord)
+         from unnest(c.conkey) with ordinality k(attnum, ord)
+         join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum) as column_suffix,
+      (select string_agg(format('%I', a.attname), ', ' order by k.ord)
+         from unnest(c.conkey) with ordinality k(attnum, ord)
+         join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum) as column_list
+    from pg_constraint c
+    join pg_class t on t.oid=c.conrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    where c.contype='f'
+      and n.nspname in ('public','private')
+      and not exists (
+        select 1
+        from pg_index i
+        where i.indrelid=c.conrelid
+          and i.indisvalid
+          and i.indisready
+          and i.indnkeyatts >= cardinality(c.conkey)
+          and (
+            select array_agg((i.indkey::smallint[])[s] order by s)
+            from generate_series(0,cardinality(c.conkey)-1) s
+          ) = c.conkey
+      )
+  loop
+    v_index_name := left('idx_' || v_fk.relname || '_' || v_fk.column_suffix || '_fk', 63);
+    execute format(
+      'create index if not exists %I on %I.%I (%s)',
+      v_index_name, v_fk.nspname, v_fk.relname, v_fk.column_list
+    );
+  end loop;
+end;
+$foreign_key_indexes$;
+
 -- The discovery RPC repeatedly selects the highest-ranked remaining candidate
 -- for each position. Index its temporary candidate set once, then retain the
 -- existing priority lanes and diversity rules. Guard the source rewrite so an
