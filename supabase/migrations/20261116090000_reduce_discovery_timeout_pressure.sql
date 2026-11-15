@@ -249,8 +249,8 @@ begin
          and o.updated_at <= now() - interval '2 minutes'
        )
     order by o.created_at, o.message_id
-    for update skip locked
     limit v_limit
+    for update skip locked
   loop
     update private.blink_message_rank_reward_outbox
     set status = 'processing',
