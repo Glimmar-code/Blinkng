@@ -37,6 +37,19 @@ class BlinkChatPrivateMediaSafetyTest {
     }
 
     @Test
+    fun cancelledVideoUploadAbortsBeforeCheckingSessionOrOpeningSource() = runBlocking {
+        val result = MessageMediaService.sendAttachment(
+            context = context,
+            receiverUsername = "testing-only",
+            uri = Uri.parse("content://never-opened/cancelled-video"),
+            kind = BlinkChatAttachmentKind.VIDEO,
+            shouldCancel = { true }
+        )
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is InterruptedIOException)
+    }
+
+    @Test
     fun emptyConversationPageNeedsNoPrivateMediaLookups() = runBlocking {
         val result = MessageMediaService.hydrateViewOnceFlags(emptyList(), "")
         assertTrue(result.isEmpty())

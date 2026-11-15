@@ -1,3 +1,10 @@
+## 2026-11-15 — Android chat album upload actions
+
+- **Android:** Grouped photo and video bubbles now forward their retry/cancel controls to the active conversation handlers. Pending non-image media cancellation also reaches the existing upload service cancellation guard; the durable image WorkManager/outbox cancellation path remains intact.
+- **Windows equivalent:** The desktop client uses its separate durable photo outbox, which retries queued pictures when BLINK is reopened. Its current message screen does not expose the same transient grouped-album status overlay or in-flight cancel action, and Windows does not share Android's WorkManager/local-URI upload lifecycle. The closest existing Windows equivalent is durable retry on relaunch; no Windows behavior or backend contract is changed by this Android wiring repair.
+- **PARITY-EXCEPTION: android-chat-album-upload-actions-20261115** — This repair restores controls in the Android-native grouped album bubble and extends cancellation through the Android media-service path. The Windows client has a distinct persistent photo worker and no corresponding grouped upload-status control to wire into; its durable retry behavior remains available.
+- **Scope:** No database, storage, permissions or message protocol changes. A confirmed server message is not cancelled or deleted by this control.
+
 ## 2026-11-14 — BLINK Market Android visual refresh
 
 - **Android:** BLINK Market receives a shared Compose visual layer for cards, surfaces, pills, spacing, motion tokens, seller onboarding, product detail, orders, offers and seller insights. Existing navigation, callbacks, Supabase calls, listing/order/offer state, seller approval rules and Paystack gating remain unchanged.

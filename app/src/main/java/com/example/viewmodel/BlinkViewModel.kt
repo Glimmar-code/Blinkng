@@ -341,6 +341,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val pendingAttachments =
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
     private val cancelledImageUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val cancelledAttachmentUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val chatImageObservers = mutableListOf<
         Pair<androidx.lifecycle.LiveData<WorkInfo?>, Observer<WorkInfo?>>
     >()
@@ -5880,6 +5881,7 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch(Dispatchers.IO) {
             if (!activeOutboxIds.add(tempId)) return@launch
             try {
+                if (cancelledAttachmentUploads.contains(tempId)) return@launch
                 var reportedProgress = -5
                 MessageMediaService.sendAttachment(
                     appContext, partner, pending.uri, pending.kind, pending.durationMs,
@@ -5896,10 +5898,12 @@ private suspend fun restoreSupabaseSession() {
                     },
                     caption = pending.caption,
                     imageQuality = pending.imageQuality,
-                    album = pending.album
+                    album = pending.album,
+                    shouldCancel = { cancelledAttachmentUploads.contains(tempId) }
                 ).fold(
                     onSuccess = { message ->
                         pendingAttachments.remove(tempId)
+                        cancelledAttachmentUploads.remove(tempId)
                         // Recorded notes are app-owned temporary cache files.
                         if (pending.kind == BlinkChatAttachmentKind.VOICE &&
                             pending.uri.scheme == "file") {
@@ -5919,6 +5923,7 @@ private suspend fun restoreSupabaseSession() {
                         withContext(Dispatchers.Main) { fetchSupabaseData() }
                     },
                     onFailure = { error ->
+                        if (cancelledAttachmentUploads.contains(tempId)) return@fold
                         withContext(Dispatchers.Main) {
                             if (supabaseService.getCurrentUserId() == pending.ownerId) {
                                 updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
@@ -5929,31 +5934,39 @@ private suspend fun restoreSupabaseSession() {
                 )
             } finally {
                 activeOutboxIds.remove(tempId)
+                cancelledAttachmentUploads.remove(tempId)
             }
         }
     }
 
-    /** Best effort cancellation: remove only the pending local picture and stop its unique job.
-     * Never delete or change a confirmed server message from this control. */
+    /** Best-effort cancellation of a pending local upload; confirmed server messages are untouched. */
     fun cancelAttachmentMessage(partnerUsername: String, message: ChatMessage) {
         val tempId = message.id
         if (!tempId.startsWith("temp_attachment_") || !message.isFromMe ||
             message.status != MessageStatus.SENDING) return
         val pending = pendingAttachments[tempId] ?: return
-        if (pending.kind != BlinkChatAttachmentKind.IMAGE ||
-            pending.ownerId != supabaseService.getCurrentUserId()) return
-        cancelledImageUploads.add(tempId)
+        if (pending.ownerId != supabaseService.getCurrentUserId()) return
         pendingAttachments.remove(tempId)
-        cleanupPrivatePictureSource(pending.uri)
-        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
-            .resolve("${tempId.removePrefix("temp_attachment_")}.pending").delete()
-        WorkManager.getInstance(appContext).cancelUniqueWork(
-            "blink_chat_image_${tempId.removePrefix("temp_attachment_")}"
-        )
         val messageId = tempId.removePrefix("temp_attachment_")
-        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
-            .listFiles()?.filter { it.name.startsWith("$messageId.") }
-            ?.forEach { runCatching { it.delete() } }
+        if (pending.kind == BlinkChatAttachmentKind.IMAGE) {
+            cancelledImageUploads.add(tempId)
+            cleanupPrivatePictureSource(pending.uri)
+            java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+                .resolve("$messageId.pending").delete()
+            WorkManager.getInstance(appContext).cancelUniqueWork("blink_chat_image_$messageId")
+            java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+                .listFiles()?.filter { it.name.startsWith("$messageId.") }
+                ?.forEach { runCatching { it.delete() } }
+        } else {
+            cancelledAttachmentUploads.add(tempId)
+            if (pending.kind == BlinkChatAttachmentKind.VOICE && pending.uri.scheme == "file") {
+                runCatching {
+                    java.io.File(pending.uri.path.orEmpty()).takeIf {
+                        it.parentFile == appContext.cacheDir && it.name.startsWith("blink-voice-")
+                    }?.delete()
+                }
+            }
+        }
         val state = _uiState.value
         _uiState.value = state.copy(conversations = state.conversations.map { conversation ->
             if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
