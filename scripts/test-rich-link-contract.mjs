@@ -54,7 +54,12 @@ test('backend forbids arbitrary hosts, redirects and unbounded reads', () => {
   assert.match(code, /token\|secret\|key\|auth\|code\|signature\|session/);
 });
 
-test('share-preview REST lookups have a bounded upstream request duration', () => {\n  const code = read('supabase/functions/share-preview/index.ts');\n  assert.match(code, /signal: AbortSignal\\.timeout\\(2500\\)/);\n});\n\ntest('profile sharing uses the official domain instead of temporary placeholder', () => {
+test('share-preview REST lookups have a bounded upstream request duration', () => {
+  const code = read('supabase/functions/share-preview/index.ts');
+  assert.match(code, /signal: AbortSignal\.timeout\(2500\)/);
+});
+
+test('profile sharing uses the official domain instead of temporary placeholder', () => {
   const code = read('supabase/functions/share-preview/index.ts');
   assert.match(code, /const SHARE_ORIGIN = "https:\/\/blink\.com\.ng"/);
   assert.doesNotMatch(code, /my-app\.com/);
