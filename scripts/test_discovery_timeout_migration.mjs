@@ -32,6 +32,19 @@ test("guards the feed function rewrite and preserves existing scoring behavior",
   assert.doesNotMatch(migration, /update public\.(profiles|feed_posts|messages)/i);
 });
 
+test("adds full indexes where existing partial indexes do not cover every foreign-key row", () => {
+  for (const index of [
+    "blink_paystack_renewals_user_id_fk_idx",
+    "blink_boosts_content_id_fk_idx",
+    "blink_contest_entry_appeals_contest_id_fk_idx",
+    "blink_referrals_referrer_user_id_fk_idx",
+    "blink_vip_claims_user_id_fk_idx",
+    "connect_listings_category_slug_fk_idx",
+    "mentor_requests_mentor_profile_id_fk_idx",
+    "reading_mate_requests_reading_profile_id_fk_idx",
+  ]) assert.match(migration, new RegExp("create index if not exists " + index, "i"));
+});
+
 test("adds guarded foreign-key-side indexes for uncovered constraints", () => {
   assert.match(migration, /from pg_constraint c/i);
   assert.match(migration, /c.contype='f'/i);
