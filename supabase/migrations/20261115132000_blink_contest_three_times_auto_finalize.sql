@@ -432,6 +432,13 @@ begin
     into v_before from public.blink_contest_prizes where contest_id=p_contest_id;
   select coalesce(max(override_number),0)+1 into v_override
     from private.blink_contest_finalization_overrides where contest_id=p_contest_id;
+  -- destructive-change-reviewed
+  -- Replace only this contest's unpaid prize assignments, within the same transaction.
+  -- The before-image is already captured in the immutable private audit row payload below;
+  -- processing/paid rows are rejected above, so no settled payout can be erased.
+  -- rollback-plan: If an unpaid override is incorrect, call this audited override RPC again
+  -- with place/entry_id values from the latest audit row's previous_winners payload. That
+  -- creates a compensating audit record and correction notices; never delete audit rows.
   delete from public.blink_contest_prizes where contest_id=p_contest_id;
   for v_row in select value from jsonb_array_elements(p_winners)
   loop
