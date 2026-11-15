@@ -6,6 +6,16 @@ create index if not exists feed_posts_for_you_eligible_created_idx
   on public.feed_posts (created_at desc, id desc)
   where is_active = true and is_flagged = false;
 
+create index if not exists feed_posts_for_you_creator_idx
+  on public.feed_posts (user_id, created_at desc, id desc)
+  where is_active = true and is_flagged = false;
+
+create index if not exists profiles_for_you_campus_idx
+  on public.profiles (university, faculty, department);
+
+create index if not exists user_interest_weights_for_you_lookup_idx
+  on public.user_interest_weights (user_id, surface, feature_type, feature_value);
+
 create index if not exists post_views_viewer_recent_post_idx
   on public.post_views (viewer_id, last_viewed_at desc, post_id);
 
@@ -43,6 +53,12 @@ create table if not exists private_ranking.reel_engagement_sessions (
 
 create index if not exists reel_engagement_sessions_viewer_post_recent_idx
   on private_ranking.reel_engagement_sessions (viewer_id, post_id, created_at desc);
+
+update private_ranking.discovery_reel_metrics
+   set watch_samples = completion_samples,
+       completed_count = round(completion_rate * completion_samples)::bigint,
+       watch_percentage_sum = completion_rate * completion_samples
+ where watch_samples = 0 and completion_samples > 0;
 
 alter table private_ranking.reel_engagement_sessions enable row level security;
 revoke all on private_ranking.reel_engagement_sessions from public, anon, authenticated;
@@ -660,6 +676,10 @@ begin
         or (lower(coalesce(fp.audience,''))='university' and exists (
           select 1 from public.profiles me join public.profiles author on author.id=fp.user_id
           where me.id=v_viewer and nullif(lower(me.university),'')=nullif(lower(author.university),'')
+        ))
+        or (lower(coalesce(fp.audience,''))='faculty' and exists (
+          select 1 from public.profiles me join public.profiles author on author.id=fp.user_id
+          where me.id=v_viewer and nullif(lower(me.faculty),'')=nullif(lower(author.faculty),'')
         ))
       )
       and (not exists(select 1 from public.user_settings s where s.user_id=fp.user_id and s.private_account=true)
