@@ -279,7 +279,7 @@ me as (
 seen as (
   select
     pv.post_id,
-    greatest(coalesce(pv.impression_count,0),0)::numeric as viewer_views,
+    greatest(coalesce(pv.impression_count,0),coalesce(pv.weighted_view_count,0),1)::numeric as viewer_views,
     pv.last_viewed_at
   from public.post_views pv
   join cfg on cfg.viewer_id=pv.viewer_id
@@ -337,6 +337,7 @@ candidate_source as (
       select 1 from public.user_interest_weights iw
        where iw.user_id=cfg.viewer_id
          and iw.surface in ('feed','reels')
+         and iw.weight > 0
          and (
            (iw.feature_type='author' and iw.feature_value=fp.user_id::text)
            or (iw.feature_type='category' and iw.feature_value=lower(btrim(coalesce(fp.category,''))))
@@ -360,7 +361,7 @@ candidate_source as (
       nullif(lower(me.department),'') is not null
       and nullif(lower(me.department),'')=nullif(lower(ap.department),'')
     ) as same_department,
-    (ap.created_at >= cfg.rank_as_of-interval '30 days' or coalesce(fp.creator_post_number,0)<=10) as new_creator,
+    (ap.created_at >= cfg.rank_as_of-interval '30 days' or coalesce(fp.creator_post_number,11)<=10) as new_creator,
     cfg.rank_as_of,
     cfg.seed,
     cfg.surface,
