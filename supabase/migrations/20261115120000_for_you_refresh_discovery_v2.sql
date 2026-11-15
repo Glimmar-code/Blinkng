@@ -562,7 +562,7 @@ candidate_source as (
         intersect
         select interests.interest_value from unnest(r.negative_interests) as interests(interest_value)
       ))::numeric*6
-      + coalesce((r.creator_weights->>r.user_id::text)::numeric,0)
+      + coalesce((r.creator_weights ->> (r.user_id::text))::numeric,0)
       + case when r.user_id=any(r.positive_creators) then 6::numeric else 0::numeric end
       - case when r.user_id=any(r.negative_creators) then 12::numeric else 0::numeric end
       + case when r.has_followed_repost then 12::numeric else 0::numeric end
