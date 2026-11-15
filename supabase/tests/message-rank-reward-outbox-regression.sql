@@ -9,6 +9,26 @@ values (
   'message outbox test'
 );
 
+do $permissions_test$
+begin
+  if has_function_privilege('anon', 'public.process_message_rank_reward_outbox(integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.process_message_rank_reward_outbox(integer)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.process_message_rank_reward_outbox(integer)', 'EXECUTE') then
+    raise exception 'MESSAGE_REWARD_WORKER_EXECUTE_GRANTS_INVALID';
+  end if;
+  if not exists (
+    select 1 from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='private'
+      and c.relname='blink_message_rank_reward_outbox'
+      and c.relrowsecurity
+      and not exists (select 1 from pg_policy p where p.polrelid=c.oid)
+  ) then
+    raise exception 'MESSAGE_REWARD_OUTBOX_MUST_REMAIN_PRIVATE';
+  end if;
+end;
+$permissions_test$;
+
 do $enqueue_test$
 begin
   if (select points from public.profiles where id='00000000-0000-4000-8000-000000000093') <> 0 then
