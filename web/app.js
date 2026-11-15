@@ -49,11 +49,7 @@
   const fmt = (v) => new Intl.NumberFormat().format(Number(v || 0));
   const money = (v, currency='NGN') => { try { return new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0)); } catch { return `₦${fmt(v)}`; } };
   const ago = (v) => { const d=new Date(v); if(Number.isNaN(d.valueOf()))return ''; const s=Math.max(1,Math.floor((Date.now()-d)/1000)); if(s<60)return `${s}s`; if(s<3600)return `${Math.floor(s/60)}m`; if(s<86400)return `${Math.floor(s/3600)}h`; if(s<604800)return `${Math.floor(s/86400)}d`; return d.toLocaleDateString(); };
-  const newRequestUuid = () => globalThis.crypto?.randomUUID?.() ||
-    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
-      const r=Math.random()*16|0;return (ch==='x'?r:(r&0x3|0x8)).toString(16);
-    });
-  const uid = () => state.session?.user?.id || '';
+   const uid = () => state.session?.user?.id || '';
   const token = () => state.session?.access_token || '';
   const isAuthed = () => !!token();
   const routeHref = (path) => `${PREVIEW_BASE}${path}` || '/';
@@ -158,22 +154,6 @@
     return parseJsonSafe(res);
   }
   async function rpc(name, body={}, auth=true){ return api(`/rest/v1/rpc/${name}`,{method:'POST',body,auth}); }
-  async function recordFeedImpressions(rows, mode, sessionId){
-    const items=(rows||[]).map(row=>row?.item||row).filter(item=>item?.id);
-    const posts=items.filter(item=>!item.is_reel).map(item=>item.id);
-    const reels=items.filter(item=>!!item.is_reel).map(item=>item.id);
-    const calls=[];
-    if(posts.length)calls.push(rpc('record_feed_impressions',{p_surface:'feed',p_post_ids:posts,p_session_id:sessionId}).catch(()=>null));
-    if(reels.length)calls.push(rpc('record_feed_impressions',{p_surface:'reels',p_post_ids:reels,p_session_id:sessionId}).catch(()=>null));
-    await Promise.all(calls);
-  }
-  function updateFeedCursor(rows){
-    const first=rows?.[0]||{};
-    state.feedCursorScore=first.next_cursor_score??null;
-    state.feedCursorPostId=first.next_cursor_post_id??null;
-    state.feedAsOf=first.as_of??state.feedAsOf;
-    state.feedRequestSeed=first.request_seed??state.feedRequestSeed;
-  }
   async function anonRpc(name,body={}){ return rpc(name,body,false); }
   async function table(name,query='',auth=true){ return api(`/rest/v1/${name}${query?`?${query}`:''}`,{auth}); }
   async function insert(name,body,prefer='return=representation'){ return api(`/rest/v1/${name}`,{method:'POST',body,prefer}); }
@@ -1173,45 +1153,9 @@
     bindQualifiedViews();
     autoPauseVideos();
   }
-  function bindReelWatchTracking(vids){
-    vids.forEach(video=>{
-      if(video.dataset.reelTelemetryBound==='1')return;
-      const card=video.closest('[data-post-id]');
-      const postId=card?.dataset.postId;
-      if(!postId)return;
-      video.dataset.reelTelemetryBound='1';
-      let sessionId=newRequestUuid();
-      let watchedMs=0,lastTime=Number(video.currentTime)||0;
-      const flush=()=>{
-        const durationMs=Math.round((Number(video.duration)||0)*1000);
-        if(watchedMs>=250&&durationMs>=1000&&durationMs<=600000){
-          const sample=watchedMs;
-          void rpc('record_reel_engagement',{
-            p_post_id:postId,p_watched_ms:Math.min(sample,durationMs*3),
-            p_duration_ms:durationMs,p_session_id:sessionId,
-            p_completed:sample>=durationMs*.9,p_rewatched:sample>=durationMs*1.05
-          }).catch(()=>{});
-        }
-        watchedMs=0;
-        sessionId=newRequestUuid();
-        lastTime=Number(video.currentTime)||0;
-      };
-      video.addEventListener('playing',()=>{lastTime=Number(video.currentTime)||0;});
-      video.addEventListener('timeupdate',()=>{
-        const current=Number(video.currentTime)||0;
-        if(!video.paused&&!video.seeking){
-          const delta=current-lastTime;
-          if(delta>0&&delta<=2.5)watchedMs+=Math.round(delta*1000);
-        }
-        lastTime=current;
-      });
-      video.addEventListener('pause',flush);
-      video.addEventListener('ended',flush);
-    });
-  }
   function autoPauseVideos(){
     const vids=[...document.querySelectorAll('video[data-autopause]')];
-    bindReelWatchTracking(vids);
+    window.BlinkFeedRecommendation.bindReelWatchTracking(rpc,vids);
     state.mediaObserver?.disconnect();
     state.mediaObserver=null;
     // Keep tap-to-play available on older browsers.
@@ -1281,10 +1225,10 @@
 
   async function renderFeed(path='/feed'){
     if(!requireAuth())return;const live=still(); state.loading=true; ROOT.innerHTML=shell('<div class="feed-skeleton" role="status" aria-label="Loading BLINK feed"><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div><div class="feed-skeleton-line"></div></div><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div></div><span class="sr-only">Loading your BLINK feed</span></div>','Home');bindCommon();
-    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'all';state.feedMode=['posts','reels','all'].includes(mode)?mode:'all';state.feedCursorScore=null;state.feedCursorPostId=null;state.feedAsOf=null;state.feedRequestSeed=newRequestUuid();const rows=await rpc('get_for_you_feed_page',{p_surface:state.feedMode,p_limit:30,p_cursor_score:null,p_cursor_post_id:null,p_as_of:null,p_request_seed:state.feedRequestSeed});updateFeedCursor(rows);await recordFeedImpressions(rows,state.feedMode,state.feedRequestSeed);const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));if(!live())return;state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`${storyStrip(stories)}<div class="tabs"><button class="tab ${['posts','all'].includes(state.feedMode)?'active':''}" data-feed-mode="all">For you</button><button class="tab" data-following>Following</button></div><section class="card composer" style="display:none"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindStories(stories);bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
+    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'all';state.feedMode=['posts','reels','all'].includes(mode)?mode:'all';const rows=await window.BlinkFeedRecommendation.fetchPage(rpc,state,{surface:state.feedMode,limit:30,refresh:true});const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));if(!live())return;state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`${storyStrip(stories)}<div class="tabs"><button class="tab ${['posts','all'].includes(state.feedMode)?'active':''}" data-feed-mode="all">For you</button><button class="tab" data-following>Following</button></div><section class="card composer" style="display:none"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindStories(stories);bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){if(!live())return;ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
     finally{if(live())state.loading=false;}
   }
-  async function loadMoreFeed(){if(state.loading)return;state.loading=true;const live=still();const btn=document.getElementById('load-more-feed');if(btn)btn.textContent='Loading…';try{if(!state.feedRequestSeed)throw new Error('Refresh the feed to start a new discovery session.');const rows=await rpc('get_for_you_feed_page',{p_surface:state.feedMode,p_limit:30,p_cursor_score:state.feedCursorScore,p_cursor_post_id:state.feedCursorPostId,p_as_of:state.feedAsOf,p_request_seed:state.feedRequestSeed});if(!live())return;if(!rows?.length){toast('You’re caught up');return;}updateFeedCursor(rows);await recordFeedImpressions(rows,state.feedMode,state.feedRequestSeed);const profiles=await fetchProfiles(rows.map(r=>(r.item||r).user_id));const items=rows.map(r=>normalizeFeedItem(r,profiles));if(!live())return;const list=document.getElementById('feed-list');if(!list)return;const existing=new Set([...list.querySelectorAll('[data-post-id]')].map(el=>el.dataset.postId));const fresh=items.filter(item=>!existing.has(String(item.id)));if(fresh.length){list.insertAdjacentHTML('beforeend',fresh.map(postCard).join(''));bindPostCards();}else toast('No new posts on this page');}catch(e){toast(e.message);}finally{if(live()){state.loading=false;if(btn?.isConnected)btn.textContent='Load more';}}}
+  async function loadMoreFeed(){if(state.loading)return;state.loading=true;const live=still();const btn=document.getElementById('load-more-feed');if(btn)btn.textContent='Loading…';try{const rows=await window.BlinkFeedRecommendation.fetchPage(rpc,state,{surface:state.feedMode,limit:30,refresh:false});if(!live())return;if(!rows?.length){toast('You’re caught up');return;}const profiles=await fetchProfiles(rows.map(r=>(r.item||r).user_id));const items=rows.map(r=>normalizeFeedItem(r,profiles));if(!live())return;const list=document.getElementById('feed-list');if(!list)return;const existing=new Set([...list.querySelectorAll('[data-post-id]')].map(el=>el.dataset.postId));const fresh=items.filter(item=>!existing.has(String(item.id)));if(fresh.length){list.insertAdjacentHTML('beforeend',fresh.map(postCard).join(''));bindPostCards();}else toast('No new posts on this page');}catch(e){toast(e.message);}finally{if(live()){state.loading=false;if(btn?.isConnected)btn.textContent='Load more';}}}
   async function renderFollowing(){
     const live=still();try{
       const rows=await rpc('get_following_feed',{p_limit:40,p_cursor:null});
@@ -1304,7 +1248,7 @@
     if(!requireAuth())return;const live=still();
     ROOT.innerHTML=shell('<div class="boot" style="min-height:55vh"><div class="spinner"></div></div>','Reels');bindCommon();
     try{
-      const reelSeed=newRequestUuid();const rows=await rpc('get_for_you_feed_page',{p_surface:'reels',p_limit:30,p_cursor_score:null,p_cursor_post_id:null,p_as_of:null,p_request_seed:reelSeed});await recordFeedImpressions(rows,'reels',reelSeed);
+      const reelSession={feedCursorScore:null,feedCursorPostId:null,feedAsOf:null,feedRequestSeed:null};const rows=await window.BlinkFeedRecommendation.fetchPage(rpc,reelSession,{surface:'reels',limit:30,refresh:true});
       const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));if(!live())return;
       const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
       const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p>${richLinkCard([r.text||r.caption||'',r.link_url||''].join(' '))}</div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
