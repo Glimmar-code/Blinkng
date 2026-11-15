@@ -51,6 +51,19 @@ begin
     raise exception 'MARKET_SELLER_GUARD_TRIGGER_MISSING';
   end if;
 
+  if not exists (
+    select 1
+    from pg_index i
+    join pg_class t on t.oid=i.indrelid
+    join pg_namespace n on n.oid=t.relnamespace
+    join pg_attribute a on a.attrelid=t.oid and a.attname='post_id'
+    where n.nspname='public' and t.relname='feed_preferences'
+      and i.indisvalid and i.indisready and i.indnkeyatts >= 1
+      and (i.indkey::smallint[])[0]=a.attnum
+  ) then
+    raise exception 'FOREIGN_KEY_SIDE_INDEX_MISSING';
+  end if;
+
   -- The prior view-lock repair must remain in place: expensive reward work
   -- should not retain an exclusive feed_posts row lock.
   v_definition := pg_get_functiondef('public.record_content_view(uuid,uuid)'::regprocedure);
