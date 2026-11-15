@@ -1203,11 +1203,16 @@ class DesktopSupabaseClient(
         search: String? = null,
         offset: Int = 0,
         limit: Int = 60,
+        includeReels: Boolean = false,
     ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val cleanSearch = search?.trim()?.takeIf { it.isNotBlank() }
         cleanSearch?.takeIf { it.startsWith("#") }?.let(::recordTagSearch)
         val rows = if (cleanSearch == null) {
-            val surface = if (reelsOnly) "reels" else "posts"
+            val surface = when {
+                reelsOnly -> "reels"
+                includeReels -> "all"
+                else -> "posts"
+            }
             val cursorKey = surface
             val requestState = synchronized(discoveryState) {
                 if (offset <= 0 || discoveryState[cursorKey] == null) {
@@ -1253,7 +1258,7 @@ class DesktopSupabaseClient(
                     cursorPostId = nextId,
                 )
             }
-            recordFeedImpressions(items, if (reelsOnly) "reels" else "feed", requestState.requestSeed)
+            recordFeedImpressions(items, requestState.requestSeed)
             items
         } else {
             val filter = buildString {
@@ -1303,21 +1308,28 @@ class DesktopSupabaseClient(
         }
     }
 
-    private fun recordFeedImpressions(items: JSONArray, surface: String, sessionId: String) {
-        val ids = JSONArray()
+    private fun recordFeedImpressions(items: JSONArray, sessionId: String) {
+        val postIds = JSONArray()
+        val reelIds = JSONArray()
         for (index in 0 until items.length()) {
-            val id = items.optJSONObject(index)?.optString("id").orEmpty()
-            if (runCatching { UUID.fromString(id) }.isSuccess) ids.put(id)
+            val row = items.optJSONObject(index) ?: continue
+            val id = row.optString("id")
+            if (runCatching { UUID.fromString(id) }.isFailure) continue
+            if (row.optBoolean("is_reel")) reelIds.put(id) else postIds.put(id)
         }
-        if (ids.length() == 0) return
-        runCatching {
-            postObject(
-                "/rest/v1/rpc/record_feed_impressions",
-                JSONObject().put("p_surface", surface)
-                    .put("p_post_ids", ids)
-                    .put("p_session_id", sessionId),
-            )
+        fun send(surface: String, ids: JSONArray) {
+            if (ids.length() == 0) return
+            runCatching {
+                postObject(
+                    "/rest/v1/rpc/record_feed_impressions",
+                    JSONObject().put("p_surface", surface)
+                        .put("p_post_ids", ids)
+                        .put("p_session_id", sessionId),
+                )
+            }
         }
+        send("feed", postIds)
+        send("reels", reelIds)
     }
 
     suspend fun createPost(
