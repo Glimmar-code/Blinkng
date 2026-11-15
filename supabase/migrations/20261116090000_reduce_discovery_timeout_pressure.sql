@@ -178,4 +178,114 @@ begin
 end;
 $function$;
 
+
+-- Move message Rank Point awards out of the message transaction. The durable
+-- outbox is drained by the existing minute channel worker, so sending a message
+-- no longer waits for a contended profiles.points row.
+create table if not exists private.blink_message_rank_reward_outbox (
+  message_id uuid primary key references public.messages(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  status text not null default 'pending'
+    check (status in ('pending','processing','failed','processed')),
+  attempts integer not null default 0 check (attempts >= 0),
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+
+create index if not exists blink_message_rank_reward_outbox_due_idx
+  on private.blink_message_rank_reward_outbox(status, updated_at, created_at);
+
+create index if not exists blink_message_rank_reward_outbox_sender_idx
+  on private.blink_message_rank_reward_outbox(sender_id, created_at desc);
+
+alter table private.blink_message_rank_reward_outbox enable row level security;
+revoke all on table private.blink_message_rank_reward_outbox
+  from public, anon, authenticated;
+
+create or replace function public.award_message_points()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  insert into private.blink_message_rank_reward_outbox(message_id, sender_id)
+  values (new.id, new.sender_id)
+  on conflict (message_id) do nothing;
+  return new;
+end;
+$function$;
+
+-- Trigger-only function: the existing trg_points_message trigger remains intact.
+revoke all on function public.award_message_points() from public, anon, authenticated;
+
+create or replace function public.process_message_rank_reward_outbox(p_limit integer default 25)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_job record;
+  v_processed integer := 0;
+  v_limit integer := greatest(1, least(coalesce(p_limit, 25), 100));
+begin
+  for v_job in
+    select o.message_id, o.sender_id, o.attempts
+    from private.blink_message_rank_reward_outbox o
+    where o.status = 'pending'
+       or (
+         o.status = 'failed'
+         and o.attempts < 8
+         and o.updated_at <= now() - make_interval(
+           secs => least(1800, (30 * power(2, greatest(o.attempts - 1, 0)))::integer)
+         )
+       )
+       or (
+         o.status = 'processing'
+         and o.attempts < 8
+         and o.updated_at <= now() - interval '2 minutes'
+       )
+    order by o.created_at, o.message_id
+    for update skip locked
+    limit v_limit
+  loop
+    update private.blink_message_rank_reward_outbox
+    set status = 'processing',
+        attempts = v_job.attempts + 1,
+        last_error = null,
+        updated_at = now()
+    where message_id = v_job.message_id;
+
+    begin
+      perform public.award_points(v_job.sender_id, 'message_user', v_job.message_id);
+
+      update private.blink_message_rank_reward_outbox
+      set status = 'processed',
+          last_error = null,
+          processed_at = now(),
+          updated_at = now()
+      where message_id = v_job.message_id;
+
+      v_processed := v_processed + 1;
+    exception when others then
+      update private.blink_message_rank_reward_outbox
+      set status = 'failed',
+          last_error = left(sqlerrm, 800),
+          updated_at = now()
+      where message_id = v_job.message_id;
+    end;
+  end loop;
+
+  return v_processed;
+end;
+$function$;
+
+revoke all on function public.process_message_rank_reward_outbox(integer)
+  from public, anon, authenticated;
+grant execute on function public.process_message_rank_reward_outbox(integer)
+  to service_role;
+
 commit;
