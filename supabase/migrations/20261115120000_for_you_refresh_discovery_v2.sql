@@ -280,7 +280,7 @@ returns table(
   ranking_score numeric,
   ranking_reason text,
   post_id uuid,
-  next_cursor_score numeric,
+  next_cursor_score text,
   next_cursor_post_id uuid,
   as_of timestamptz,
   request_seed uuid
@@ -614,7 +614,7 @@ select
     else 'Returning to a post you have seen before'
   end as ranking_reason,
   p.id as post_id,
-  (select lc.final_score from last_cursor lc) as next_cursor_score,
+  (select lc.final_score::text from last_cursor lc) as next_cursor_score,
   (select lc.id from last_cursor lc) as next_cursor_post_id,
   cfg.rank_as_of as as_of,
   cfg.seed as request_seed
