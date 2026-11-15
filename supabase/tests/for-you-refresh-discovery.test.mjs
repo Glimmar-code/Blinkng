@@ -87,7 +87,10 @@ test("ranking tiers reserve exploration, test distribution, cap creators and mix
   assert.match(migration, /< 0\.05 then 4/);
   assert.match(migration, /c\.new_creator or greatest\(0,c\.view_count\)<50/);
   assert.match(migration, /partition by t\.candidate_tier,t\.is_exploration,t\.is_reel/);
-  assert.match(migration, /cl\.creator_page_position<=2/);
+  assert.match(migration, /partition by f\.user_id/);
+  assert.match(migration, /\(\(cr\.creator_rank-1\)\/2\)::bigint as creator_page_batch/);
+  assert.match(migration, /cl\.creator_page_batch=cb\.creator_page_batch/);
+  assert.doesNotMatch(migration, /creator_page_position/);
   assert.match(migration, /when g\.is_reel then g\.group_rank\*4/);
   assert.match(migration, /count\(\*\) filter \(where i\.is_exploration\) over \(\)/);
   assert.match(migration, /global_group_rank\*5/);
