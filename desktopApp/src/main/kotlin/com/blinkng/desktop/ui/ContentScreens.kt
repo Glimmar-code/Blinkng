@@ -1045,6 +1045,7 @@ private fun DesktopReelPlayer(
     postId: String,
     videoUrl: String,
     client: DesktopSupabaseClient?,
+    trackReel: Boolean = true,
     modifier: Modifier = Modifier,
     height: androidx.compose.ui.unit.Dp = 320.dp,
 ) {
@@ -1055,7 +1056,7 @@ private fun DesktopReelPlayer(
     fun flushWatchSample() {
         val sampleMs = watchedMs
         val durationMs = playerState.metadata.duration?.toLong() ?: 0L
-        if (client == null || sampleMs < 250L || durationMs < 1_000L) return
+        if (client == null || !trackReel || sampleMs < 250L || durationMs < 1_000L) return
         watchedMs = 0L
         val sessionId = playbackSessionId
         playbackSessionId = UUID.randomUUID()
@@ -4721,6 +4722,7 @@ internal fun DesktopFeedPostCard(
                     postId = post.id,
                     videoUrl = post.videoUrl.orEmpty(),
                     client = viewClient,
+                    trackReel = post.isReel,
                     modifier = Modifier.fillMaxWidth().padding(start = if (xFeedStyle) 58.dp else 0.dp),
                     height = if (xFeedStyle) 360.dp else 320.dp,
                 )
