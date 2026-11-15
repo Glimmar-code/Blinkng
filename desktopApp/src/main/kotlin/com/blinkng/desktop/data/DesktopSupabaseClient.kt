@@ -1201,9 +1201,10 @@ class DesktopSupabaseClient(
     suspend fun fetchFeed(
         reelsOnly: Boolean = false,
         search: String? = null,
-        offset: Int = 0,
+        searchOffset: Int = 0,
         limit: Int = 60,
         includeReels: Boolean = false,
+        resetCursor: Boolean = true,
     ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val cleanSearch = search?.trim()?.takeIf { it.isNotBlank() }
         cleanSearch?.takeIf { it.startsWith("#") }?.let(::recordTagSearch)
@@ -1215,7 +1216,7 @@ class DesktopSupabaseClient(
             }
             val cursorKey = surface
             val requestState = synchronized(discoveryState) {
-                if (offset <= 0 || discoveryState[cursorKey] == null) {
+                if (resetCursor || discoveryState[cursorKey] == null) {
                     discoveryState[cursorKey] = DesktopDiscoveryState(UUID.randomUUID().toString())
                 }
                 discoveryState.getValue(cursorKey)
@@ -1270,7 +1271,7 @@ class DesktopSupabaseClient(
                 if (tag != null) append("&tags=cs.${encode("{$tag}")}")
                 else append("&or=${encode("(text.ilike.*$cleanSearch*,caption.ilike.*$cleanSearch*)")}")
                 append("&order=created_at.desc,id.desc")
-                append("&limit=${limit.coerceIn(1, 60)}&offset=${offset.coerceAtLeast(0)}")
+                append("&limit=${limit.coerceIn(1, 60)}&offset=${searchOffset.coerceAtLeast(0)}")
             }
             getArray(filter)
         }
