@@ -300,6 +300,7 @@ returns table(
   post_id uuid,
   next_cursor_score text,
   next_cursor_post_id uuid,
+  has_more boolean,
   as_of timestamptz,
   request_seed uuid
 )
@@ -840,6 +841,13 @@ select
   p.id as post_id,
   (select lc.final_score::text from last_cursor lc) as next_cursor_score,
   (select lc.id from last_cursor lc) as next_cursor_post_id,
+  exists(
+    select 1
+      from ranked remaining
+      cross join last_cursor lc
+     where remaining.final_score<lc.final_score
+        or (remaining.final_score=lc.final_score and remaining.id<lc.id)
+  ) as has_more,
   cfg.rank_as_of as as_of,
   cfg.seed as request_seed
 from page p
@@ -863,6 +871,7 @@ returns table(
   post_id uuid,
   next_cursor_score text,
   next_cursor_post_id uuid,
+  has_more boolean,
   as_of timestamptz,
   request_seed uuid
 )
