@@ -2110,30 +2110,52 @@ fun getCurrentUserId(): String? {
         parseFeedPost(mapped).copy(isLiked = liked, isBookmarked = bookmarked)
     }
 
-    private suspend fun recordFeedImpressions(items: JSONArray, surface: String, sessionId: String) {
-        val ids = JSONArray()
+    private suspend fun recordFeedImpressions(items: JSONArray, sessionId: String) {
+        val postIds = JSONArray()
+        val reelIds = JSONArray()
         for (index in 0 until items.length()) {
-            val id = items.optJSONObject(index)?.optString("id").orEmpty()
-            if (isValidUuid(id)) ids.put(id)
+            val item = items.optJSONObject(index) ?: continue
+            val id = item.optString("id")
+            if (!isValidUuid(id)) continue
+            if (item.optBoolean("is_reel")) reelIds.put(id) else postIds.put(id)
         }
-        if (ids.length() == 0) return
+        suspend fun send(surface: String, ids: JSONArray) {
+            if (ids.length() == 0) return
+            runCatching {
+                val body = JSONObject()
+                    .put("p_surface", surface)
+                    .put("p_post_ids", ids)
+                    .put("p_session_id", sessionId)
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/record_feed_impressions", authenticated = true)
+                        .addHeader("Content-Type", "application/json")
+                        .addHeader("Cache-Control", "no-cache, no-store")
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "FEED_IMPRESSIONS failed status=${response.code} body=${response.body?.string().orEmpty().take(300)}")
+                    }
+                }
+            }.onFailure { Log.w(TAG, "FEED_IMPRESSIONS exception", it) }
+        }
+        send("feed", postIds)
+        send("reels", reelIds)
+    }
+
+    private suspend fun recordHashtagSearch(rawQuery: String) {
+        val tag = rawQuery.trim().removePrefix("#").lowercase(Locale.US)
+        if (!tag.matches(Regex("[a-z0-9_]{2,32}"))) return
         runCatching {
-            val body = JSONObject()
-                .put("p_surface", surface)
-                .put("p_post_ids", ids)
-                .put("p_session_id", sessionId)
             executeRequest(
-                newRequestBuilder("/rest/v1/rpc/record_feed_impressions", authenticated = true)
+                newRequestBuilder("/rest/v1/rpc/blink_record_tag_search", authenticated = true)
                     .addHeader("Content-Type", "application/json")
-                    .addHeader("Cache-Control", "no-cache, no-store")
-                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .post(JSONObject().put("p_tag", tag).toString().toRequestBody(jsonMediaType))
                     .build()
             ).use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "FEED_IMPRESSIONS failed status=${response.code} body=${response.body?.string().orEmpty().take(300)}")
-                }
+                if (!response.isSuccessful) Log.w(TAG, "TAG_SEARCH_EVENT failed status=${response.code}")
             }
-        }.onFailure { Log.w(TAG, "FEED_IMPRESSIONS exception", it) }
+        }
     }
 
     suspend fun fetchFeedPage(
@@ -2160,6 +2182,9 @@ fun getCurrentUserId(): String? {
             .takeIf { it == "posts" || it == "reels" || it == "following" || it == "all" }
             ?: "posts"
         val useRankedDiscovery = searchQuery.isNullOrBlank() && feedType.startsWith("ranked_")
+        if (!searchQuery.isNullOrBlank() && searchQuery.trim().startsWith("#")) {
+            recordHashtagSearch(searchQuery)
+        }
         val postsRaw: JSONArray = if (useRankedDiscovery) {
             val isInitialPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
             val cursorKey = normalizedFeedType
@@ -2229,7 +2254,6 @@ fun getCurrentUserId(): String? {
             }
             recordFeedImpressions(
                 items = items,
-                surface = if (normalizedFeedType == "reels") "reels" else "feed",
                 sessionId = requestState.requestSeed
             )
             items
