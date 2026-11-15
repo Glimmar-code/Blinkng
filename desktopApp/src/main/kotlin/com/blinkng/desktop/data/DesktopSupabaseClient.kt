@@ -88,6 +88,13 @@ class DesktopSupabaseClient(
         .writeTimeout(45, TimeUnit.SECONDS)
         .build()
     private val profileCache = mutableMapOf<String, DesktopProfile>()
+    private data class DesktopDiscoveryState(
+        val requestSeed: String,
+        val asOf: String? = null,
+        val cursorScore: String? = null,
+        val cursorPostId: String? = null,
+    )
+    private val discoveryState = mutableMapOf<String, DesktopDiscoveryState>()
 
     @Volatile
     var session: DesktopSession? = initialSession ?: sessionStore.load()
@@ -1197,27 +1204,74 @@ class DesktopSupabaseClient(
         offset: Int = 0,
         limit: Int = 60,
     ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
-        val filter = buildString {
-            append("/rest/v1/feed_posts?select=id,user_id,text,caption,link_url,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
-            append("&is_active=eq.true")
-            if (reelsOnly) append("&is_reel=eq.true")
-            else append("&is_reel=eq.false&video_url=is.null")
-            search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
-                val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
-                if (tag != null) append("&tags=cs.${encode("{$tag}")}")
-                else append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
+        val cleanSearch = search?.trim()?.takeIf { it.isNotBlank() }
+        val rows = if (cleanSearch == null) {
+            val surface = if (reelsOnly) "reels" else "posts"
+            val cursorKey = surface
+            val requestState = synchronized(discoveryState) {
+                if (offset <= 0 || discoveryState[cursorKey] == null) {
+                    discoveryState[cursorKey] = DesktopDiscoveryState(UUID.randomUUID().toString())
+                }
+                discoveryState.getValue(cursorKey)
             }
-            // Stable secondary ordering is required for paged discovery when
-            // multiple posts have the same creation timestamp.
-            append("&order=created_at.desc,id.desc")
-            append("&limit=${limit.coerceIn(1, 60)}&offset=${offset.coerceAtLeast(0)}")
+            val body = JSONObject()
+                .put("p_surface", surface)
+                .put("p_limit", limit.coerceIn(1, 60))
+                .put("p_cursor_score", requestState.cursorScore?.let {
+                    runCatching { java.math.BigDecimal(it) }.getOrNull() ?: JSONObject.NULL
+                } ?: JSONObject.NULL)
+                .put("p_cursor_post_id", requestState.cursorPostId ?: JSONObject.NULL)
+                .put("p_as_of", requestState.asOf ?: JSONObject.NULL)
+                .put("p_request_seed", requestState.requestSeed)
+            val rankedRows = JSONArray(execute(
+                authenticatedRequest("/rest/v1/rpc/get_for_you_feed_page")
+                    .header("Cache-Control", "no-cache, no-store")
+                    .header("Pragma", "no-cache")
+                    .post(body.toString().toRequestBody(jsonMedia))
+                    .build()
+            ))
+            val items = JSONArray()
+            var resolvedAsOf = requestState.asOf
+            var resolvedSeed = requestState.requestSeed
+            var nextScore: String? = null
+            var nextId: String? = null
+            for (index in 0 until rankedRows.length()) {
+                val ranked = rankedRows.optJSONObject(index) ?: continue
+                ranked.optJSONObject("item")?.let(items::put)
+                ranked.optString("as_of").takeIf(String::isNotBlank)?.let { resolvedAsOf = it }
+                ranked.optString("request_seed").takeIf(String::isNotBlank)?.let { resolvedSeed = it }
+                ranked.opt("next_cursor_score")?.takeIf { it != JSONObject.NULL }?.toString()
+                    ?.takeIf(String::isNotBlank)?.let { nextScore = it }
+                ranked.optString("next_cursor_post_id").takeIf(String::isNotBlank)?.let { nextId = it }
+            }
+            synchronized(discoveryState) {
+                discoveryState[cursorKey] = DesktopDiscoveryState(
+                    requestSeed = resolvedSeed,
+                    asOf = resolvedAsOf,
+                    cursorScore = nextScore,
+                    cursorPostId = nextId,
+                )
+            }
+            recordFeedImpressions(items, if (reelsOnly) "reels" else "feed", requestState.requestSeed)
+            items
+        } else {
+            val filter = buildString {
+                append("/rest/v1/feed_posts?select=id,user_id,text,caption,link_url,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
+                append("&is_active=eq.true")
+                if (reelsOnly) append("&is_reel=eq.true")
+                else append("&is_reel=eq.false&video_url=is.null")
+                val tag = if (cleanSearch.startsWith("#")) BlinkSmartTags.normalize(cleanSearch) else null
+                if (tag != null) append("&tags=cs.${encode("{$tag}")}")
+                else append("&or=${encode("(text.ilike.*$cleanSearch*,caption.ilike.*$cleanSearch*)")}")
+                append("&order=created_at.desc,id.desc")
+                append("&limit=${limit.coerceIn(1, 60)}&offset=${offset.coerceAtLeast(0)}")
+            }
+            getArray(filter)
         }
-        val rows = getArray(filter)
+
         val likedIds = fetchMyLikedPostIds()
         val bookmarkedIds = fetchMyBookmarkedPostIds()
         val repostedIds = fetchMyRepostedPostIds()
-        // One bounded, authenticated metadata read for the current page.
-        // A lack of polls permission must not block all Feed content.
         val pageIds = (0 until rows.length())
             .mapNotNull { rows.optJSONObject(it)?.optString("id")?.takeIf(String::isNotBlank) }
         val pollLookup = runCatching {
@@ -1244,6 +1298,24 @@ class DesktopSupabaseClient(
             ).copy(
                 hasPoll = postId in pollPostIds,
                 pollMetadataAvailable = pollLookup.isSuccess
+            )
+        }
+    }
+
+    private fun recordFeedImpressions(items: JSONArray, surface: String, sessionId: String) {
+        val ids = JSONArray()
+        for (index in 0 until items.length()) {
+            val id = items.optJSONObject(index)?.optString("id").orEmpty()
+            if (runCatching { UUID.fromString(id) }.isSuccess) ids.put(id)
+        }
+        if (ids.length() == 0) return
+        runCatching {
+            postArray(
+                "/rest/v1/rpc/record_feed_impressions",
+                JSONObject().put("p_surface", surface)
+                    .put("p_post_ids", ids)
+                    .put("p_session_id", sessionId),
+                "return=representation",
             )
         }
     }
