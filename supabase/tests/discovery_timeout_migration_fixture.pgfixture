@@ -2,6 +2,19 @@
 -- Contains no production data or credentials.
 create schema if not exists private_ranking;
 
+do $roles$
+begin
+  create role anon nologin;
+exception when duplicate_object then null;
+end;
+$roles$;
+do $roles$
+begin
+  create role authenticated nologin;
+exception when duplicate_object then null;
+end;
+$roles$;
+
 create table public.blocks (
   blocker_id uuid not null,
   blocked_id uuid not null
@@ -27,6 +40,31 @@ create table public.comments (
   created_at timestamptz not null default now()
 );
 create table public.feed_posts (id uuid primary key);
+
+create function public.market_seller_has_approval(p_seller_id uuid)
+returns boolean language sql stable as $function$ select true $function$;
+create table public.marketplace_listings (seller_id uuid);
+create table public.marketplace_orders (seller_id uuid);
+create function public.market_require_approved_seller()
+returns trigger language plpgsql security definer as $function$
+begin
+  if not public.market_seller_has_approval(new.seller_id) then raise exception 'MARKET_SELLER_APPROVAL_REQUIRED'; end if;
+  return new;
+end;
+$function$;
+create function public.market_require_approved_seller_for_order()
+returns trigger language plpgsql security definer as $function$
+begin
+  if not public.market_seller_has_approval(new.seller_id) then raise exception 'MARKET_SELLER_APPROVAL_REQUIRED'; end if;
+  return new;
+end;
+$function$;
+create trigger market_require_approved_seller_trigger
+before insert or update on public.marketplace_listings
+for each row execute function public.market_require_approved_seller();
+create trigger market_require_approved_seller_for_order_trigger
+before insert or update on public.marketplace_orders
+for each row execute function public.market_require_approved_seller_for_order();
 
 create function public.record_content_view(p_post_id uuid, p_event_id uuid)
 returns void language plpgsql as $function$
