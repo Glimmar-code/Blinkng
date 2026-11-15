@@ -3890,6 +3890,7 @@ class DesktopSupabaseClient(
         isBookmarked = bookmarked,
         isRepostedByMe = reposted,
         repostCount = row.optInt("repost_count"),
+        hasMore = if (row.has("has_more") && !row.isNull("has_more")) row.optBoolean("has_more") else null,
     )
 
     private fun parseMessage(row: JSONObject) = DesktopMessage(
