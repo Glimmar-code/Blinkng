@@ -65,6 +65,13 @@ test("new feed RPC is score + post-id cursor based and offset-free", () => {
 });
 
 test("ranking tiers reserve exploration, test distribution, cap creators and mix formats", () => {
+  assert.match(migration, /r\.comments::numeric\*3/);
+  assert.match(migration, /r\.shares::numeric\*5/);
+  assert.match(migration, /r\.reposts::numeric\*5/);
+  assert.match(migration, /power\(c\.age_hours\+2::numeric,1\.5\)/);
+  assert.match(migration, /active_blink_boost_factor/);
+  assert.match(migration, /viewer_personalization_bonus/);
+  assert.match(migration, /'model','weighted_decay_v1'/);
   assert.match(migration, /viewer_exposure as \(/);
   assert.match(migration, /when c\.viewer_views>0 then 5/);
   assert.doesNotMatch(migration, /s\.post_id\s+is\s+null/i);
