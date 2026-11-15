@@ -53,6 +53,14 @@ begin
 end;
 $enqueue_test$;
 
+do $cron_wakeup_test$
+begin
+  if private.blink_channel_dispatch_due() is not true then
+    raise exception 'MESSAGE_REWARD_OUTBOX_DID_NOT_WAKE_MINUTE_WORKER';
+  end if;
+end;
+$cron_wakeup_test$;
+
 select public.process_message_rank_reward_outbox(10);
 select public.process_message_rank_reward_outbox(10);
 
