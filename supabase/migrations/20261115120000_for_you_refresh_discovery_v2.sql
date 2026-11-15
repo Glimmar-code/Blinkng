@@ -65,7 +65,7 @@ begin
    where pv.post_id = v_post_id;
 
   update public.feed_posts
-     set view_count = least(2147483647, greatest(0, v_total::integer)),
+     set view_count = least(2147483647::bigint, greatest(0::bigint, v_total))::integer,
          updated_at = now()
    where id = v_post_id;
 
@@ -91,11 +91,13 @@ after insert or update or delete on public.post_views
 for each row execute function private_ranking.sync_feed_post_view_count();
 
 update public.feed_posts fp
-   set view_count = coalesce((
-     select sum(pv.weighted_view_count)::integer
-       from public.post_views pv
-      where pv.post_id = fp.id
-   ), 0);
+   set view_count = least(2147483647::bigint, greatest(0::bigint, totals.weighted_views))::integer
+  from (
+    select pv.post_id, sum(pv.weighted_view_count)::bigint as weighted_views
+      from public.post_views pv
+     group by pv.post_id
+  ) totals
+ where totals.post_id=fp.id;
 
 -- Preserve the existing anti-replay/cap checks in record_content_view. Only
 -- replace its final arithmetic increment with the canonical aggregate read.
@@ -423,7 +425,7 @@ scored as (
         (greatest(0,c.like_count)+greatest(0,c.comment_count)+greatest(0,c.share_count)
           +greatest(0,c.repost_count)
           +greatest(0,c.reel_completion_rate*c.reel_completion_samples))
-        / greatest(1,c.impressions)
+        / greatest(1,c.view_count)
       ) < 0.05 then 4
       when c.is_followed or c.matches_interest then 1
       when c.created_at>=c.rank_as_of-interval '48 hours'
@@ -586,7 +588,7 @@ returns table(
   request_seed uuid
 )
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $$
 begin
@@ -607,6 +609,7 @@ begin
 end;
 $$;
 
+revoke all on function private_ranking.get_discovery_feed(integer,numeric,uuid,timestamptz,uuid,text) from public,anon,authenticated;
 revoke all on function public.get_for_you_feed_page(text,integer,numeric,uuid,timestamptz,uuid) from public,anon;
 grant execute on function public.get_for_you_feed_page(text,integer,numeric,uuid,timestamptz,uuid) to authenticated;
 
