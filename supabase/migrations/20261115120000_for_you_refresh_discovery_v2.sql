@@ -538,19 +538,36 @@ interleaved as (
 ordered as (
   select
     i.*,
-    case
-      when i.is_exploration then i.candidate_tier::bigint*1000000000 + i.format_order*5
-      else i.candidate_tier::bigint*1000000000 + i.format_order + ((i.format_order-1)/4)
-    end as feed_order
+    row_number() over (
+      partition by i.is_exploration
+      order by i.candidate_tier asc,i.format_order asc,
+        i.tier_sort_score desc,i.request_jitter desc,i.created_at desc,i.id desc
+    ) as global_group_rank,
+    count(*) filter (where not i.is_exploration) over () as normal_count,
+    count(*) filter (where i.is_exploration) over () as exploration_count
   from interleaved i
 ),
 ranked as (
   select
     o.*,
+    case
+      when o.is_exploration then
+        case when o.normal_count=0 then o.global_group_rank else o.global_group_rank*5 end
+      else
+        case when o.exploration_count=0 then o.global_group_rank
+             else o.global_group_rank+((o.global_group_rank-1)/4) end
+    end::bigint as feed_order,
     (
-      (6-o.candidate_tier)::numeric*1000000000000
-      - o.feed_order::numeric*1000000
-      + least(999999.0,greatest(-999999.0,o.tier_sort_score))
+      -(
+        case
+          when o.is_exploration then
+            case when o.normal_count=0 then o.global_group_rank else o.global_group_rank*5 end
+          else
+            case when o.exploration_count=0 then o.global_group_rank
+                 else o.global_group_rank+((o.global_group_rank-1)/4) end
+        end
+      )::numeric*1000000
+      + least(999999.0,greatest(-999999.0,o.quality_score))
       + o.request_jitter
     )::numeric as final_score
   from ordered o
