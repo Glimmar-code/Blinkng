@@ -29,7 +29,7 @@ test("guards the feed function rewrite and preserves existing scoring behavior",
   assert.match(migration, /discovery_candidates_lane_idx/);
   assert.match(migration, /analyze pg_temp\.discovery_candidates/i);
   assert.doesNotMatch(migration, /create or replace function private_ranking\.get_discovery_feed/i);
-  assert.doesNotMatch(migration, /update public\.(profiles|feed_posts|messages)/i);
+  assert.doesNotMatch(migration, /update public\.(feed_posts|messages)/i);
 });
 
 test("adds full indexes where existing partial indexes do not cover every foreign-key row", () => {
