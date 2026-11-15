@@ -742,6 +742,8 @@ page as (
     cl.affinity_component,
     cl.verification_multiplier,
     cl.cold_start_multiplier,
+    cl.active_boost_factor,
+    cl.personalization_bonus,
     cl.creator_tier,
     cl.has_followed_repost,
     cl.seen_penalty,
