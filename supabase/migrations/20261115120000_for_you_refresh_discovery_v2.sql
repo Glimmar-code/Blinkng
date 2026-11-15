@@ -344,7 +344,7 @@ global_exposure as (
   from public.recommendation_events e
   where e.target_type='post'
     and e.created_at >= coalesce(p_as_of,now()) - interval '30 days'
-    and e.target_key ~* '^[0-9a-f-]{36}$'
+    and e.target_key ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   group by e.target_key::uuid
 ),
 raw_candidates as (
