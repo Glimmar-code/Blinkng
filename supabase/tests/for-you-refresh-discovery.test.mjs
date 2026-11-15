@@ -16,11 +16,20 @@ function seededOrder(ids, seed) {
   });
 }
 
-test("refresh twice returns new posts for a tied candidate cohort", () => {
+test("refresh twice returns new posts before previously served impressions", () => {
   const ids = Array.from({ length: 40 }, (_, i) => `post-${i + 1}`);
-  const first = seededOrder(ids, "refresh-seed-one").slice(0, 20);
-  const second = seededOrder(ids, "refresh-seed-two").slice(0, 20);
+  const page = (seen, seed) => {
+    const unseen = seededOrder(ids.filter(id => !seen.has(id)), seed);
+    const previouslyServed = seededOrder(ids.filter(id => seen.has(id)), seed);
+    return [...unseen, ...previouslyServed].slice(0, 20);
+  };
+  const first = page(new Set(), "refresh-seed-one");
+  const second = page(new Set(first), "refresh-seed-two");
 
+  assert.equal(first.length, 20);
+  assert.equal(second.length, 20);
+  assert.equal(second.filter(id => first.includes(id)).length, 0,
+    "a fresh page must backfill from unseen posts before returning prior impressions");
   assert.notDeepEqual(first, second, "a fresh request seed must perturb equal-score ordering");
   assert.match(migration, /hashtextextended\(c\.id::text\|\|':'\|\|c\.seed::text,0\)/);
   assert.match(android, /java\.util\.UUID\.randomUUID\(\)/);
