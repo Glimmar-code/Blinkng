@@ -114,8 +114,13 @@ begin
       into v_total
       from public.post_views pv
      where pv.post_id = old.post_id;
+    select coalesce(b.baseline_view_count,0)
+      into v_baseline
+      from private_ranking.feed_view_count_baselines b
+     where b.post_id=old.post_id;
+    v_baseline := coalesce(v_baseline,0);
     update public.feed_posts
-       set view_count = least(2147483647, greatest(0, v_total::integer)),
+       set view_count = least(2147483647::bigint, greatest(0::bigint, v_total+v_baseline))::integer,
            updated_at = now()
      where id = old.post_id;
   end if;
@@ -175,7 +180,7 @@ begin
     if position(v_anchor in v_source) = 0 then
       raise exception 'FOR_YOU_VIEW_IMPRESSION_ANCHOR_DRIFT';
     end if;
-    v_source := replace(v_source, v_anchor, v_anchor || E'\n\n    -- Accepted qualified views also establish a recommendation impression.\n    perform private_ranking.record_recommendation_event(\n      case when v_is_reel then ''reels'' else ''feed'' end,\n      ''post'', p_post_id::text, ''impression'', 0, p_event_id,\n      jsonb_build_object(''source'',''qualified_view'')\n    );');
+    v_source := replace(v_source, v_anchor, v_anchor || E'\n\n    -- Accepted qualified views also establish a recommendation impression.\n    begin\n      perform private_ranking.record_recommendation_event(\n        case when v_is_reel then ''reels'' else ''feed'' end,\n        ''post'', p_post_id::text, ''impression'', 0, p_event_id,\n        jsonb_build_object(''source'',''qualified_view'')\n      );\n    exception when others then\n      null;\n    end;');
   end if;
   execute v_source;
 end;
