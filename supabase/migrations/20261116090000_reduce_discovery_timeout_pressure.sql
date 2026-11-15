@@ -21,6 +21,13 @@ create index if not exists post_bookmarks_user_created_post_idx
 create index if not exists comments_author_created_post_idx
   on public.comments (author_id, created_at desc, post_id);
 
+-- These SECURITY DEFINER routines are trigger-only, not client RPCs.
+-- Existing triggers continue to invoke them; clients must not call them directly.
+revoke execute on function public.market_require_approved_seller()
+  from public, anon, authenticated;
+revoke execute on function public.market_require_approved_seller_for_order()
+  from public, anon, authenticated;
+
 -- The discovery RPC repeatedly selects the highest-ranked remaining candidate
 -- for each position. Index its temporary candidate set once, then retain the
 -- existing priority lanes and diversity rules. Guard the source rewrite so an
