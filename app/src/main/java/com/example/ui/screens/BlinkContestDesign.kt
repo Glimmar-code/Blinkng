@@ -370,19 +370,42 @@ internal fun BlinkContestPrizeRow(first: Long, second: Long, third: Long) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 internal fun contestDeadline(
-    contest: JSONObject
+    contest: JSONObject,
+    now: Instant = Instant.now()
 ): Pair<String, String> {
-    val start = contest.optString("start_at").takeUnless { it.isBlank() || it == "null" }
-        ?: contest.optString("voting_opens_at")
-    val end = contest.optString("end_at").takeUnless { it.isBlank() || it == "null" }
-        ?: contest.optString("voting_closes_at")
-    return when (contest.optString("status")) {
+    val status = contest.optString("status").lowercase(Locale.US)
+    when (status) {
+        "completed" -> return "Results confirmed" to ""
+        "cancelled" -> return "Contest cancelled" to ""
+        "paused" -> return "Contest paused" to ""
+    }
+
+    fun timestamp(key: String): String? = contest.optString(key)
+        .takeUnless { it.isBlank() || it == "null" }
+
+    fun instant(value: String): Instant? =
+        runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
+            ?: runCatching { Instant.parse(value) }.getOrNull()
+
+    val upcomingMilestones = listOf(
+        "registration_opens_at" to "Applications open",
+        "registration_closes_at" to "Applications close",
+        "voting_opens_at" to "Voting opens",
+        "voting_closes_at" to "Voting closes",
+        "results_at" to "Results scheduled",
+    )
+    upcomingMilestones.firstNotNullOfOrNull { (key, label) ->
+        val value = timestamp(key) ?: return@firstNotNullOfOrNull null
+        val at = instant(value) ?: return@firstNotNullOfOrNull null
+        if (at.isAfter(now)) label to value else null
+    }?.let { return it }
+
+    val start = timestamp("start_at") ?: timestamp("voting_opens_at").orEmpty()
+    val end = timestamp("end_at") ?: timestamp("voting_closes_at").orEmpty()
+    return when (status) {
         "upcoming" -> "Contest starts" to start
         "registration", "voting" -> "Voting and entries end" to end
-        "review" -> "Results scheduled" to contest.optString("results_at")
-        "completed" -> "Results confirmed" to ""
-        "cancelled" -> "Contest cancelled" to ""
-        "paused" -> "Contest paused" to ""
+        "review" -> "Results scheduled" to timestamp("results_at").orEmpty()
         else -> "Voting and entries end" to end
     }
 }
