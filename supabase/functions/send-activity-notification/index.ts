@@ -175,7 +175,6 @@ Deno.serve(async (req) => {
   const serverAuthorizedDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
-  if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
 
   let notificationId = "";
   try {
@@ -341,6 +340,13 @@ Deno.serve(async (req) => {
   if (tokens.size === 0) {
     await finishDispatch(admin, notificationId, claim.tracked, false, "recipient_has_no_push_token");
     return json({ ok: true, skipped: "recipient_has_no_push_token" });
+  }
+
+  if (!firebaseJson) {
+    // Record the failed attempt before returning so the durable worker applies
+    // its existing exponential backoff instead of retrying every minute.
+    await finishDispatch(admin, notificationId, claim.tracked, false, "firebase_service_account_missing");
+    return json({ error: "Firebase server credential is not configured", retryable: true }, 503);
   }
 
   const firebase = await firebaseAccessToken(firebaseJson);

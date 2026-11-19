@@ -58,6 +58,8 @@ jobs:
       PGDATABASE: blink_test
     steps:
       - uses: actions/checkout@v4
+      - name: Verify discovery timeout migration contract
+        run: node --test scripts/test_discovery_timeout_migration.mjs
       - name: Ensure PostgreSQL client is available
         run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
       - name: Apply isolated, disposable BLINK payment schema fixture
@@ -102,6 +104,14 @@ jobs:
         run: |
           createdb blink_discovery_perf_ci
           PGDATABASE=blink_discovery_perf_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_discovery_perf_fixture.pgfixture
+      - name: Apply and verify discovery timeout migration in disposable PostgreSQL
+        run: |
+          createdb blink_timeout_ci
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery_timeout_migration_fixture.pgfixture
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261116090000_reduce_discovery_timeout_pressure.sql
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/discovery-timeout-index-regression.sql
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/vip-expiry-reminder-regression.sql
+          PGDATABASE=blink_timeout_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/message-rank-reward-outbox-regression.sql
       - name: Production-safety affirmation
         run: |
           echo 'All tests run against a disposable GitHub runner PostgreSQL service.'
