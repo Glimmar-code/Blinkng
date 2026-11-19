@@ -43,9 +43,7 @@ data class CreatePostRequest(
     val isDisappearing: Boolean = false,
     val audioTitle: String? = null,
     val altText: String? = null,
-    val textStyle: String? = null,
-    /** Cursor RPC flag; null for legacy endpoints without explicit pagination metadata. */
-    val hasMore: Boolean? = null
+    val textStyle: String? = null
 )
 
 data class FeedPost(
@@ -95,7 +93,9 @@ data class FeedPost(
     val authorUsername: String = "",
     /** Public author UUID from the server; needed for Follow when the profile list is partial. */
     val authorProfileId: String = "",
-    val textStyle: String? = null
+    val textStyle: String? = null,
+    /** Cursor RPC flag; null for legacy endpoints without explicit pagination metadata. */
+    val hasMore: Boolean? = null
 )
 
 data class PostDraft(

@@ -290,8 +290,7 @@ fun HomeScreen(
         if (loading || loadingMorePosts || !hasMorePosts || posts.isEmpty()) return
         loadingMorePosts = true
         try {
-            val page = state.client.fetchFeed(offset = consumedPostRows, includeReels = true)
-            consumedPostRows += page.size
+            val page = state.client.fetchFeed(includeReels = true, resetCursor = false)
             val knownIds = posts.asSequence().map { it.id }.toHashSet()
             val newRows = page.filter { it.id !in knownIds }.distinctBy { it.id }
             posts = posts + newRows
