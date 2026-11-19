@@ -89,6 +89,16 @@ def added_exception_marker(range_: str) -> bool:
 
 
 def main() -> int:
+    # A push event contains only the pushed commit, which can omit the matching
+    # desktop/shared implementation from an earlier commit on the same PR branch.
+    # The pull_request event below compares the full PR diff against its base.
+    if os.getenv("GITHUB_EVENT_NAME", "").strip() == "push":
+        print(
+            "Windows parity gate: PASS — aggregate parity is validated by the pull_request event; "
+            "a branch push does not contain the full PR diff."
+        )
+        return 0
+
     range_ = diff_range()
     files = changed_files(range_)
 
