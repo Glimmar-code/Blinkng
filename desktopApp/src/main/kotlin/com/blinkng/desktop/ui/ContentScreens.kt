@@ -71,6 +71,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -97,6 +98,7 @@ import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopSupabaseClient
 import com.blinkng.desktop.data.DesktopFeaturedReel
 import com.blinkng.desktop.data.featuredReels12h
+import com.blinkng.desktop.data.recordReelEngagement
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -129,9 +131,14 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.xpProgress
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
+import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import kotlin.random.Random
 import java.awt.Desktop
 import java.net.URI
@@ -182,15 +189,16 @@ fun HomeScreen(
     var loading by remember { mutableStateOf(true) }
     var loadingMorePosts by remember { mutableStateOf(false) }
     var hasMorePosts by remember { mutableStateOf(true) }
-    var consumedPostRows by remember { mutableStateOf(0) }
     var feedFilter by remember { mutableStateOf("All") }
     val visiblePosts = remember(posts, feedFilter) {
         posts.filter { post ->
-            // Home is text/photos/polls only; exclude legacy video rows too.
-            !post.isReel && post.videoUrl.isNullOrBlank() && when (feedFilter) {
-                "Photos" -> post.images.any { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ||
-                    !post.imageUrl.isNullOrBlank()
-                "Polls" -> post.hasPoll
+            val isVideo = post.isReel || !post.videoUrl.isNullOrBlank()
+            when (feedFilter) {
+                "Photos" -> !isVideo && (
+                    post.images.any { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ||
+                        !post.imageUrl.isNullOrBlank()
+                )
+                "Polls" -> !isVideo && post.hasPoll
                 else -> true
             }
         }
@@ -258,7 +266,7 @@ fun HomeScreen(
         if (loading && posts.isNotEmpty()) return
         loading = true
         try {
-            val page = state.client.fetchFeed()
+            val page = state.client.fetchFeed(includeReels = true)
             runCatching { giveawayRpc.getGiveawayFeedDiscovery(20) }.onSuccess { root ->
                 val items = root.optJSONArray("items")
                 giveawayDiscovery = buildList {
@@ -268,8 +276,7 @@ fun HomeScreen(
                 }
             }
             posts = page.distinctBy { it.id }
-            consumedPostRows = page.size
-            hasMorePosts = page.size >= 60
+            hasMorePosts = page.firstOrNull()?.hasMore ?: page.isNotEmpty()
             error = null
         } catch (cause: Exception) {
             // Keep the previous page and its scroll position on network failures.
@@ -283,12 +290,11 @@ fun HomeScreen(
         if (loading || loadingMorePosts || !hasMorePosts || posts.isEmpty()) return
         loadingMorePosts = true
         try {
-            val page = state.client.fetchFeed(offset = consumedPostRows)
-            consumedPostRows += page.size
+            val page = state.client.fetchFeed(includeReels = true, resetCursor = false)
             val knownIds = posts.asSequence().map { it.id }.toHashSet()
             val newRows = page.filter { it.id !in knownIds }.distinctBy { it.id }
             posts = posts + newRows
-            hasMorePosts = page.size >= 60 && newRows.isNotEmpty()
+            hasMorePosts = page.firstOrNull()?.hasMore ?: (page.isNotEmpty() && newRows.isNotEmpty())
             error = null
         } catch (cause: Exception) {
             // Keep content/cursor intact, so an explicit retry can continue.
@@ -1032,6 +1038,91 @@ internal fun DesktopCommentsPanel(state: DesktopAppState, postId: String) {
 }
 
 @Composable
+private fun DesktopReelPlayer(
+    postId: String,
+    videoUrl: String,
+    client: DesktopSupabaseClient?,
+    trackReel: Boolean = true,
+    modifier: Modifier = Modifier,
+    height: androidx.compose.ui.unit.Dp = 320.dp,
+) {
+    val playerState = rememberVideoPlayerState()
+    var watchedMs by remember(postId, videoUrl) { mutableStateOf(0L) }
+    var playbackSessionId by remember(postId, videoUrl) { mutableStateOf(UUID.randomUUID()) }
+
+    fun flushWatchSample() {
+        val sampleMs = watchedMs
+        val durationMs = playerState.metadata.duration?.toLong() ?: 0L
+        if (client == null || !trackReel || sampleMs < 250L || durationMs < 1_000L) return
+        watchedMs = 0L
+        val sessionId = playbackSessionId
+        playbackSessionId = UUID.randomUUID()
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                client.recordReelEngagement(
+                    postId = postId,
+                    watchedMs = sampleMs,
+                    durationMs = durationMs,
+                    completed = sampleMs >= durationMs * 0.90,
+                    rewatched = sampleMs >= durationMs * 1.05,
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(videoUrl) {
+        runCatching { playerState.openUri(videoUrl, InitialPlayerState.PAUSE) }
+    }
+    LaunchedEffect(playerState.isPlaying, playerState.isLoading) {
+        if (playerState.isPlaying && !playerState.isLoading) {
+            var lastTick = System.nanoTime()
+            while (playerState.isPlaying && !playerState.isLoading) {
+                delay(250L)
+                val now = System.nanoTime()
+                if (playerState.isPlaying && !playerState.isLoading) {
+                    watchedMs += ((now - lastTick) / 1_000_000L).coerceIn(0L, 1_000L)
+                }
+                lastTick = now
+            }
+        } else {
+            flushWatchSample()
+        }
+    }
+    DisposableEffect(postId, videoUrl) {
+        onDispose {
+            flushWatchSample()
+            playerState.stop()
+        }
+    }
+
+    Surface(
+        modifier = modifier.height(height),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            VideoPlayerSurface(playerState = playerState, modifier = Modifier.fillMaxSize())
+            if (playerState.isLoading) CircularProgressIndicator()
+            if (playerState.error != null) {
+                Text(
+                    "Video could not be played",
+                    modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            TextButton(
+                onClick = {
+                    if (playerState.isPlaying) playerState.pause() else playerState.play()
+                },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+            ) {
+                Text(if (playerState.isPlaying) "Pause" else "Play")
+            }
+        }
+    }
+}
+
+@Composable
 fun ReelsScreen(state: DesktopAppState) {
     var reels by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var featured by remember { mutableStateOf<List<DesktopFeaturedReel>>(emptyList()) }
@@ -1162,12 +1253,19 @@ fun ReelsScreen(state: DesktopAppState) {
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                reel.videoUrl?.let { "Video ready: ${it.take(80)}" } ?: "Reel video is unavailable",
-                                modifier = Modifier.padding(24.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (!reel.videoUrl.isNullOrBlank()) {
+                            DesktopReelPlayer(
+                                postId = reel.id,
+                                videoUrl = reel.videoUrl.orEmpty(),
+                                client = state.client,
+                                modifier = Modifier.fillMaxSize(),
+                                height = 320.dp,
                             )
+                        } else {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("Reel video is unavailable", modifier = Modifier.padding(24.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                     Text("${displayedViewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -4615,6 +4713,17 @@ internal fun DesktopFeedPostCard(
             )
 
             if (post.hasPoll && viewClient != null) DesktopFeedPollCard(post.id, viewClient)
+
+            if ((post.isReel || !post.videoUrl.isNullOrBlank()) && !post.videoUrl.isNullOrBlank()) {
+                DesktopReelPlayer(
+                    postId = post.id,
+                    videoUrl = post.videoUrl.orEmpty(),
+                    client = viewClient,
+                    trackReel = post.isReel,
+                    modifier = Modifier.fillMaxWidth().padding(start = if (xFeedStyle) 58.dp else 0.dp),
+                    height = if (xFeedStyle) 360.dp else 320.dp,
+                )
+            }
 
             if (mediaUrls.isNotEmpty()) {
                 Row(

@@ -125,3 +125,81 @@
   window.BLINK_DISCOVERY = Object.freeze({initLanding,initReleaseInfo});
   ready(()=>initReleaseInfo());
 })();
+
+/* Cursor-ranked For You requests and privacy-safe recommendation telemetry. */
+(() => {
+  'use strict';
+  const newUuid = () => globalThis.crypto?.randomUUID?.() ||
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
+      const r=Math.random()*16|0;
+      return (ch==='x'?r:(r&0x3|0x8)).toString(16);
+    });
+  async function recordImpressions(rpc, rows, sessionId) {
+    const items=(rows||[]).map(row=>row?.item||row).filter(item=>item?.id);
+    const posts=items.filter(item=>!item.is_reel).map(item=>item.id);
+    const reels=items.filter(item=>!!item.is_reel).map(item=>item.id);
+    const calls=[];
+    if(posts.length)calls.push(rpc('record_feed_impressions',{p_surface:'feed',p_post_ids:posts,p_session_id:sessionId}).catch(()=>null));
+    if(reels.length)calls.push(rpc('record_feed_impressions',{p_surface:'reels',p_post_ids:reels,p_session_id:sessionId}).catch(()=>null));
+    await Promise.all(calls);
+  }
+  async function fetchPage(rpc, session, {surface='all',limit=30,refresh=false,isCurrent=()=>true}={}) {
+    if(!isCurrent())return [];
+    if(refresh||!session.feedRequestSeed) {
+      session.feedCursorScore=null;
+      session.feedCursorPostId=null;
+      session.feedAsOf=null;
+      session.feedRequestSeed=newUuid();
+    }
+    const rows=await rpc('get_for_you_feed_page',{
+      p_surface:surface,p_limit:limit,
+      p_cursor_score:session.feedCursorScore,
+      p_cursor_post_id:session.feedCursorPostId,
+      p_as_of:session.feedAsOf,
+      p_request_seed:session.feedRequestSeed
+    });
+    if(!isCurrent())return rows||[];
+    if(rows?.length) {
+      const first=rows[0];
+      session.feedCursorScore=first.next_cursor_score??null;
+      session.feedCursorPostId=first.next_cursor_post_id??null;
+      session.feedAsOf=first.as_of??session.feedAsOf;
+      session.feedRequestSeed=first.request_seed??session.feedRequestSeed;
+      await recordImpressions(rpc,rows,session.feedRequestSeed);
+    }
+    return rows||[];
+  }
+  function bindReelWatchTracking(rpc, vids) {
+    vids.forEach(video=>{
+      if(video.dataset.reelTelemetryBound==='1')return;
+      const card=video.closest('[data-post-id]');
+      const postId=card?.dataset.postId;
+      if(!postId||(card.dataset.isReel!=='true'&&!card.classList.contains('reel-card')))return;
+      video.dataset.reelTelemetryBound='1';
+      let sessionId=newUuid(),watchedMs=0,lastTime=Number(video.currentTime)||0;
+      const flush=()=>{
+        const durationMs=Math.round((Number(video.duration)||0)*1000);
+        if(watchedMs>=250&&durationMs>=1000&&durationMs<=600000) {
+          void rpc('record_reel_engagement',{
+            p_post_id:postId,p_watched_ms:Math.min(watchedMs,durationMs*3),
+            p_duration_ms:durationMs,p_session_id:sessionId,
+            p_completed:watchedMs>=durationMs*.9,p_rewatched:watchedMs>=durationMs*1.05
+          }).catch(()=>{});
+        }
+        watchedMs=0;sessionId=newUuid();lastTime=Number(video.currentTime)||0;
+      };
+      video.addEventListener('playing',()=>{lastTime=Number(video.currentTime)||0;});
+      video.addEventListener('timeupdate',()=>{
+        const current=Number(video.currentTime)||0;
+        if(!video.paused&&!video.seeking) {
+          const delta=current-lastTime;
+          if(delta>0&&delta<=2.5)watchedMs+=Math.round(delta*1000);
+        }
+        lastTime=current;
+      });
+      video.addEventListener('pause',flush);
+      video.addEventListener('ended',flush);
+    });
+  }
+  window.BlinkFeedRecommendation={fetchPage,bindReelWatchTracking};
+})();
