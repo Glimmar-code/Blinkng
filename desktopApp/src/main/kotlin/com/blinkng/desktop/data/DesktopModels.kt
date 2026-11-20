@@ -105,6 +105,7 @@ data class DesktopFeedPost(
     val hasPoll: Boolean = false,
     val pollMetadataAvailable: Boolean = true,
     val textStyle: String? = null,
+    val hasMore: Boolean? = null,
 )
 
 data class DesktopFeedPollOption(val id: String, val text: String, val votes: Int)

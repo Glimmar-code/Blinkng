@@ -2491,13 +2491,13 @@ private suspend fun restoreSupabaseSession() {
                         )
                         isReel -> now.copy(
                             reels = refreshed.items,
-                            hasMoreReels = page.size >= pageSize,
+                            hasMoreReels = page.firstOrNull()?.hasMore ?: (page.size >= pageSize),
                             reelsPaginationErrorMessage = null
                         )
                         else -> now.copy(
                             posts = refreshed.items,
                             postsRefreshRevision = now.postsRefreshRevision + 1,
-                            hasMorePosts = page.size >= pageSize,
+                            hasMorePosts = page.firstOrNull()?.hasMore ?: (page.size >= pageSize),
                             feedPaginationErrorMessage = null
                         )
                     }
@@ -2644,9 +2644,8 @@ private suspend fun restoreSupabaseSession() {
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
-        // Ranked discovery uses its own offset, but a timeout falls back to
-        // chronological paging. Both ID and timestamp must be valid so the
-        // fallback cannot silently repeat page one forever.
+        // Ranked discovery advances with its score + post ID cursor. A timeout may
+        // fall back to chronological paging, which still needs both ID and timestamp.
         if (last.id.isBlank() || last.createdAt.isBlank()) return
         val requestEpoch = if (isReel) reelPageEpoch else postPageEpoch
 
@@ -2674,15 +2673,17 @@ private suspend fun restoreSupabaseSession() {
                         _uiState.value = latest.copy(
                             reels = (latest.reels + page).distinctBy { it.id },
                             // Server-side ranking/fallback must advance the visible cursor.
-                            hasMoreReels = page.size >= 30 &&
-                                page.any { item -> latest.reels.none { it.id == item.id } },
+                            hasMoreReels = page.firstOrNull()?.hasMore ?: (
+                                page.size >= 30 && page.any { item -> latest.reels.none { it.id == item.id } }
+                            ),
                             reelsPaginationErrorMessage = null
                         )
                     } else {
                         _uiState.value = latest.copy(
                             posts = (latest.posts + page).distinctBy { it.id },
-                            hasMorePosts = page.size >= 30 &&
-                                page.any { item -> latest.posts.none { it.id == item.id } },
+                            hasMorePosts = page.firstOrNull()?.hasMore ?: (
+                                page.size >= 30 && page.any { item -> latest.posts.none { it.id == item.id } }
+                            ),
                             feedPaginationErrorMessage = null
                         )
                     }
