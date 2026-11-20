@@ -369,6 +369,18 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            if (!notificationDeliveryEnabled) {
+                item {
+                    SettingsAction(
+                        icon = Icons.Default.OpenInNew,
+                        title = "Enable Android notifications",
+                        subtitle = "Open BLINK's system notification settings, then return here to verify delivery."
+                    ) {
+                        BlinkNotificationHelper.openNotificationSettings(context)
+                    }
+                }
+            }
+
             item {
                 StatusCard(
                     title = "Push registration",

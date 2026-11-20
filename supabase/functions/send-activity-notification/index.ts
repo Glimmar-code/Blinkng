@@ -157,6 +157,7 @@ function wireType(notification: Record<string, unknown>): string {
   const type = String(notification.type ?? "social").toLowerCase();
   const targetType = String(notification.target_type ?? "").toLowerCase();
   const metadata = (notification.metadata ?? {}) as Record<string, unknown>;
+  if (metadata.kind === "blink_contest_launch") return "admin";
   if (targetType === "story" && type === "like") return "story_like";
   if (type === "comment" && metadata.is_reply === true) return "reply";
   return type;
@@ -174,7 +175,6 @@ Deno.serve(async (req) => {
   const serverAuthorizedDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
-  if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
 
   let notificationId = "";
   try {
@@ -227,6 +227,20 @@ Deno.serve(async (req) => {
       );
       if (authError || authorized !== true) {
         return json({ error: "Contact notification was not independently authorized" }, 403);
+      }
+    } else if (kind === "blink_contest_launch" && notification.target_type === "contest") {
+      const contestId = String(notification.metadata?.contest_id ?? "");
+      if (!contestId || contestId !== String(notification.target_id ?? "")) {
+        return json({ error: "Invalid contest launch notification" }, 403);
+      }
+      const { data: contest, error: contestError } = await admin
+        .from("blink_contests")
+        .select("id,title,status")
+        .eq("id", contestId)
+        .maybeSingle();
+      if (contestError || !contest || contest.status !== "published" ||
+          String(contest.title) !== String(notification.metadata?.contest_title ?? "")) {
+        return json({ ok: true, skipped: "contest_no_longer_published" });
       }
     } else if (kind === "blink_channel_update" && notification.target_type === "channel") {
       // Every recipient is rechecked at delivery time: unfollowing, banning
@@ -288,6 +302,17 @@ Deno.serve(async (req) => {
   if (preferenceDecision === "skip") {
     return json({ ok: true, skipped: "recipient_preferences" });
   }
+  if (notification.metadata?.kind === "blink_contest_launch") {
+    const { data: settings, error: settingsError } = await admin
+      .from("user_settings").select("push_notifs_enabled")
+      .eq("user_id", recipientId).maybeSingle();
+    if (settingsError) {
+      return json({ error: "push_preferences_unavailable", retryable: true }, 503);
+    }
+    if (settings?.push_notifs_enabled === false) {
+      return json({ ok: true, skipped: "recipient_preferences" });
+    }
+  }
 
   const claim = await claimDispatch(admin, notificationId);
   if (!claim.proceed) {
@@ -317,6 +342,13 @@ Deno.serve(async (req) => {
     return json({ ok: true, skipped: "recipient_has_no_push_token" });
   }
 
+  if (!firebaseJson) {
+    // Record the failed attempt before returning so the durable worker applies
+    // its existing exponential backoff instead of retrying every minute.
+    await finishDispatch(admin, notificationId, claim.tracked, false, "firebase_service_account_missing");
+    return json({ error: "Firebase server credential is not configured", retryable: true }, 503);
+  }
+
   const firebase = await firebaseAccessToken(firebaseJson);
   if (!firebase.token || !firebase.projectId) {
     await finishDispatch(admin, notificationId, claim.tracked, false, String(firebase.error ?? "firebase_auth_failed"));
@@ -328,15 +360,19 @@ Deno.serve(async (req) => {
   const senderAvatar = String(actor?.avatar_url ?? "");
   const action = String(notification.text ?? "New activity").trim();
   const body = String(notification.sub_text ?? "").trim() || action;
-  const title = notification.metadata?.kind === "blink_contact_joined"
-    ? `${senderName} from your contacts is now on BLINK!`
-    : action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
-      ? action : `${senderName} ${action}`.trim();
+  const isContestLaunch = notification.metadata?.kind === "blink_contest_launch";
+  const contestTitle = String(notification.metadata?.contest_title ?? body).trim();
+  const title = isContestLaunch
+    ? "🏆 A New BLINK Contest Is LIVE!"
+    : notification.metadata?.kind === "blink_contact_joined"
+      ? `${senderName} from your contacts is now on BLINK!`
+      : action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
+        ? action : `${senderName} ${action}`.trim();
 
   const data: Record<string, string> = {
     type,
     title: title.slice(0, 180),
-    body: body.slice(0, 1200),
+    body: (isContestLaunch ? `${contestTitle} has officially started. Join, showcase your talent and compete for prizes!` : body).slice(0, 1200),
     notification_id: notificationId,
     recipient_id: recipientId,
     sender_id: String(notification.actor_id ?? ""),

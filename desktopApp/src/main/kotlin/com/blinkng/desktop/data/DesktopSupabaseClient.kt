@@ -530,6 +530,14 @@ class DesktopSupabaseClient(
         }
     }
 
+    suspend fun setMyPresence(online: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (session == null) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/set_my_presence", JSONObject().put("p_online", online))
+            true
+        }.getOrDefault(false)
+    }
+
     fun signOut() {
         val owner = session?.userId
         clearSession()
@@ -3125,6 +3133,18 @@ class DesktopSupabaseClient(
             "/rest/v1/rpc/market_seller_has_approval",
             JSONObject().put("p_user", myId)
         ))
+    }
+
+    suspend fun recordMarketplaceView(itemId: String): Long = withContext(Dispatchers.IO) {
+        require(itemId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "Choose a valid Market listing." }
+        val response = postObject(
+            "/rest/v1/rpc/record_marketplace_view",
+            JSONObject().put("p_item_id", itemId).put("p_event_id", UUID.randomUUID().toString()),
+        )
+        when (response) {
+            is JSONObject -> response.optString("value").trim().trim('"').toLongOrNull()
+            else -> null
+        } ?: throw IllegalStateException("Marketplace view was not recorded.")
     }
 
     suspend fun registerVerifiedMarketSeller(

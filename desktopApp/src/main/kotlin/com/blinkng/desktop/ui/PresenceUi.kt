@@ -37,7 +37,7 @@ internal fun desktopPresenceStatus(
     val instant = if (raw.isBlank() || raw.equals("null", true)) null else {
         runCatching { Instant.parse(raw) }.getOrNull()
             ?: runCatching { OffsetDateTime.parse(raw).toInstant() }.getOrNull()
-    } ?: return "Last seen recently"
+    } ?: return "Last seen unavailable"
     val seconds = max(0L, now.epochSecond - instant.epochSecond)
     val minutes = seconds / 60L
     val hours = seconds / 3_600L

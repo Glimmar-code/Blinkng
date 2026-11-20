@@ -9,7 +9,7 @@ const key=readFileSync('web/'+INDEXNOW_KEY+'.txt','utf8').trim();
 assert.match(INDEXNOW_KEY,/^[a-f0-9]{32}$/);
 assert.equal(key,INDEXNOW_KEY);
 assert.equal(INDEXNOW_KEY_LOCATION,SITE+'/'+INDEXNOW_KEY+'.txt');
-assert.equal(all.length,9);
+assert.equal(all.length,10);
 assert.equal(new Set(all).size,all.length);
 assert.deepEqual(
  selectChangedPublicUrls(['web/'+INDEXNOW_KEY+'.txt']),all,
@@ -23,6 +23,7 @@ assert.deepEqual(selectChangedPublicUrls([
  'web/sitemap.xml','web/404.html','web/app.js','web/paystack-return.js'
 ]),[],'Sitemap-only and private SPA changes must not notify unrelated pages');
 assert.deepEqual(selectChangedPublicUrls(['web/privacy/index.html']),[SITE+'/privacy/']);
+assert.deepEqual(selectChangedPublicUrls(['web/delete-account/index.html']),[SITE+'/delete-account/']);
 assert.throws(()=>validateIndexNowUrls([SITE+'/messages/']),/Unapproved/);
 assert.throws(()=>validateIndexNowUrls([SITE+'/settings/']),/Unapproved/);
 assert.throws(()=>validateIndexNowUrls([SITE+'/students/?p=private']),/Unapproved/);
@@ -42,4 +43,4 @@ assert.match(script,/checkLivePages\(\)/);
 assert.match(script,/\[200,202\]/);
 assert.match(script,/api\.indexnow\.org\/indexnow/);
 assert.ok(!script.includes('google.com/ping'),'Google deprecated anonymous sitemap pings');
-console.log('PASS: IndexNow safe nine-URL allowlist, key file, changed-file selection and production-only deployment hook');
+console.log('PASS: IndexNow safe ten-URL allowlist, key file, changed-file selection and production-only deployment hook');

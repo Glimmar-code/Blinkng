@@ -60,7 +60,7 @@ permissions:
 jobs:
   release-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,6 +136,9 @@ jobs:
           chmod 600 "$KEYSTORE_PATH"
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
+      - name: Clean release outputs before packaging
+        shell: bash
+        run: gradle clean --no-build-cache --no-daemon
       - name: Install Godot 4.3 Web exporter
         run: bash scripts/setup_godot_43_web.sh
 
@@ -155,14 +158,18 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
-        run: gradle :app:assembleRelease :app:bundleRelease -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+        # Clean stale KSP state, then build variants sequentially to avoid Room schema export races.
+        run: |
+          set -euo pipefail
+          gradle :app:assembleRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+          gradle :app:bundlePlayStoreRelease -Pksp.incremental=false --no-build-cache -x :app:uploadCrashlyticsMappingFilePlayStoreRelease --stacktrace --no-daemon
 
       - name: Verify small website APK plus native on-demand Play split
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/playStoreRelease -name '*.aab' -type f | head -n 1)"
           unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-base-apk-files.txt"
           if grep -E '(^|/)libgodot_android\.so$|(^|/)project\.godot$' "$RUNNER_TEMP/blink-base-apk-files.txt"; then
             echo "::error::Lightweight APK unexpectedly contains Godot native runtime."
@@ -171,6 +178,21 @@ jobs:
           unzip -Z1 "$AAB" > "$RUNNER_TEMP/blink-play-bundle-files.txt"
           grep -Fxq blinkLifeFeature/assets/project.godot "$RUNNER_TEMP/blink-play-bundle-files.txt"
           grep -Fxq blinkLifeFeature/lib/arm64-v8a/libgodot_android.so "$RUNNER_TEMP/blink-play-bundle-files.txt"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/aapt" dump permissions "$APK" | grep -Fq android.permission.REQUEST_INSTALL_PACKAGES || {
+            echo "::error::Website APK lost its explicit website-update installer permission."
+            exit 1
+          }
+          PLAY_MERGED_MANIFEST="$(find app/build/intermediates -type f -path '*playStoreRelease*' -name AndroidManifest.xml | grep -E 'merged_manifest|packaged_manifests' | head -n 1)"
+          if [ -z "$PLAY_MERGED_MANIFEST" ]; then
+            echo "::error::Cannot locate the Play Store merged manifest."
+            exit 1
+          fi
+          if grep -Fq android.permission.REQUEST_INSTALL_PACKAGES "$PLAY_MERGED_MANIFEST"; then
+            echo "::error::Play Store build contains restricted REQUEST_INSTALL_PACKAGES."
+            exit 1
+          fi
           sha256sum -c app/build/outputs/publish/blink-life-web.zip.sha256
           # Fail closed: publishing the old ~345 MB universal APK would break Option B.
           # The optional game is published separately, never silently fused into Blink.
@@ -204,7 +226,7 @@ jobs:
         run: |
           set -euo pipefail
           APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/playStoreRelease -name '*.aab' -type f | head -n 1)"
           test -n "$APK"
           test -n "$AAB"
 

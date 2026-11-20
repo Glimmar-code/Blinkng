@@ -34,7 +34,12 @@ import com.example.ui.components.blinkSelectedClipDurationLabel
 
 /** An album includes only confirmed videos with the same server-recorded ID. */
 @Composable
-internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: MessagePalette) {
+internal fun BlinkChatVideoAlbumBubble(
+    messages: List<ChatMessage>,
+    palette: MessagePalette,
+    onRetry: (ChatMessage) -> Unit = {},
+    onCancelAttachment: (ChatMessage) -> Unit = {},
+) {
     val videos = remember(messages) {
         messages.sortedBy { it.imageAlbumPosition }
             .filter(BlinkChatVideoAlbumMedia::available)
@@ -133,6 +138,19 @@ internal fun BlinkChatVideoAlbumBubble(messages: List<ChatMessage>, palette: Mes
                                 Text("+" + (videos.size - 4),
                                     color = Color.White, fontSize = 24.sp)
                             }
+                        }
+                        if (message.status == MessageStatus.SENDING || message.status == MessageStatus.FAILED) {
+                            BlinkChatAlbumStatusOverlay(
+                                state = AlbumUploadState(
+                                    total = 1,
+                                    completed = 0,
+                                    progress = ((message.uploadProgress ?: 0).coerceIn(0, 100)) / 100f,
+                                    failed = message.status == MessageStatus.FAILED,
+                                ),
+                                onRetry = { onRetry(message) },
+                                onCancel = { onCancelAttachment(message) },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
                     }
                 }

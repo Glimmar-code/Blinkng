@@ -4,7 +4,6 @@ import com.blinkng.shared.BlinkDesignTokens
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -214,8 +213,10 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
             row.optString("id"), row.optInt("price_ngn"), row.optInt("coins")
         )
     }
-    val coinCheckoutEnabled = economy.optBoolean("cash_checkout_enabled", false) &&
-        !isInstalledFromGooglePlay(context)
+    // Coin packs are digital goods. Do not expose the Paystack path on any
+    // Android distribution until Google Play Billing and server verification
+    // are implemented. Physical marketplace checkout remains separate.
+    val coinCheckoutEnabled = false
     // Keep merchandising consistent with the actual server catalog. It can be smaller
     // than the app's bundled visual registry; never offer absent SKUs or stale prices.
     val liveRows = snapshot.optJSONArray("catalog").objects()
@@ -715,22 +716,6 @@ private fun StoreTab(
     }
 }
 
-/**
- * Third-party hosted payments must never run inside Play-distributed Android builds,
- * unless a separately reviewed eligible billing program is deliberately integrated.
- * This app currently has no Play Billing adapter; fail closed.
- */
-@Suppress("DEPRECATION")
-private fun isInstalledFromGooglePlay(context: android.content.Context): Boolean =
-    runCatching {
-        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
-        } else {
-            context.packageManager.getInstallerPackageName(context.packageName)
-        }
-        installer == "com.android.vending"
-    }.getOrDefault(true)
-
 @Composable
 private fun BlinkCoinPackShelf(
     offers: List<BlinkCoinCheckoutOffer>,
@@ -749,7 +734,7 @@ private fun BlinkCoinPackShelf(
         }
         Text(
             if (checkoutEnabled) "Fixed-price packs • optional purchases • server-verified delivery."
-            else "Coin packs are shown for reference. Secure checkout is not enabled yet.",
+            else "Coin packs are shown for reference. Google Play Billing is required before digital coin purchases are enabled.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
         )

@@ -1,5 +1,6 @@
 package com.example.data.supabase
 
+import android.util.Log
 import com.blinkng.shared.BlinkBackendDefaults
 import com.example.BuildConfig
 
@@ -19,6 +20,7 @@ object SupabaseConfig {
     private fun resolveConfig(fallback: String, vararg values: String?): String {
         return values.firstOrNull {
             !it.isNullOrBlank() && !it.contains("placeholder", ignoreCase = true)
-        }?.trim() ?: fallback
+        }?.trim()
+            ?: fallback.also { Log.w("SupabaseConfig", "Using fallback config value; check your .env setup.") }
     }
 }

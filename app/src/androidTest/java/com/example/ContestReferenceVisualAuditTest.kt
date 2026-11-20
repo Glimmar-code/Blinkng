@@ -67,7 +67,8 @@ class ContestReferenceVisualAuditTest {
         }
         rule.waitForIdle()
         rule.onNodeWithText("BLINK Campus Showcase").assertExists()
-        rule.onNodeWithText("Open contest →").assertExists()
+        rule.onNodeWithText("Open contest").assertExists()
+        rule.onNodeWithText("→").assertExists()
         rule.onNodeWithText("Leaderboard leaders").assertExists()
         rule.onNodeWithText("Prize ₦30,000").assertExists()
         capture("contest-hero-podium-winners-staging.png")

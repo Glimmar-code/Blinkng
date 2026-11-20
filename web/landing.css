@@ -112,3 +112,15 @@
 .boot .boot-static-download{text-align:center;line-height:1.7}
 .boot .boot-static a:focus-visible{outline:3px solid #b9a5ff;outline-offset:4px;border-radius:4px}
 @media(max-width:680px){.boot .boot-static-grid{grid-template-columns:1fr}.boot:has(.boot-static){padding:20px 16px 32px}}
+
+/* Public-first fallback: readable without JavaScript and strictly black/white. */
+.public-shell{min-height:100vh;display:grid;align-content:center;justify-items:center;gap:9px;padding:26px 16px 42px;text-align:center;background:#000;color:#fff}
+.public-shell>div{width:min(100%,840px);margin:0 auto}
+.public-shell .boot-static-lead{max-width:48rem;margin:8px auto 18px;color:#aaa;line-height:1.6}
+.public-shell .boot-static-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;text-align:left}
+.public-shell .boot-static-grid section{min-width:0;background:#111;border:1px solid #333;border-radius:16px;padding:16px}
+.public-shell .boot-static-grid h2{font-size:17px;line-height:1.3;margin:0 0 8px}
+.public-shell .boot-static-grid p{font-size:14px;line-height:1.55;color:#aaa;margin:0 0 12px}
+.public-shell a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+.public-shell .boot-static-download{line-height:1.7}
+@media(max-width:680px){.public-shell .boot-static-grid{grid-template-columns:1fr}.public-shell{padding:20px 16px 32px}}

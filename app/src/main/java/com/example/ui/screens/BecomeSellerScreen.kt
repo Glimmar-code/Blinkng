@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -58,6 +59,7 @@ fun BecomeSellerScreen(
     var offersPickup by remember { mutableStateOf(true) }
     var agreedToTerms by remember { mutableStateOf(false) }
     var stateDropdownOpen by remember { mutableStateOf(false) }
+    var showSellerIntro by rememberSaveable { mutableStateOf(true) }
 
     val phoneDigits = phone.filter(Char::isDigit)
     val whatsappDigits = whatsapp.filter(Char::isDigit)
@@ -73,6 +75,31 @@ fun BecomeSellerScreen(
         (offersDelivery || offersPickup) &&
         agreedToTerms
     val canSubmit = detailsValid && isVerified && !isSubmitting
+
+    if (showSellerIntro) {
+        AlertDialog(
+            onDismissRequest = onBack,
+            title = { Text("Before you open a Market store") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Sell campus essentials from a trusted BLINK storefront.")
+                    Text("Seller benefits", fontWeight = FontWeight.Bold, color = BlinkPink)
+                    Text("• Add photos, stock, pricing and delivery or campus pickup options.")
+                    Text("• Let buyers message you privately through BLINK.")
+                    Text("• Approved sellers receive a separate Market seller badge.")
+                    Text("Posting limits", fontWeight = FontWeight.Bold, color = BlinkGold)
+                    Text("Unverified sellers can publish up to 3 products per day. Active BLINK verification unlocks the verified seller flow; seller approval is still required before publishing.")
+                    Text("Registration is free. The separate BLINK verification checkout is ₦800 for Blue verification when you choose to get verified.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showSellerIntro = false }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = onBack) { Text("Not now") }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -140,9 +167,18 @@ fun BecomeSellerScreen(
             }
 
             item {
+                MarketSectionHeader("Set up your storefront", "A few details help students shop with confidence")
+                LinearProgressIndicator(
+                    progress = { if (detailsValid) 1f else 0.55f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+            item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -173,7 +209,7 @@ fun BecomeSellerScreen(
                         autoCorrectEnabled = true
                     ),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -189,7 +225,7 @@ fun BecomeSellerScreen(
                     ),
                     singleLine = true,
                     isError = phone.isNotBlank() && phoneDigits.length !in 10..15,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -205,7 +241,7 @@ fun BecomeSellerScreen(
                     ),
                     singleLine = true,
                     isError = whatsapp.isNotBlank() && whatsappDigits.length !in 10..15,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -222,7 +258,7 @@ fun BecomeSellerScreen(
                         label = { Text("State") },
                         placeholder = { Text("Choose state") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = stateDropdownOpen) },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                         modifier = Modifier
                             .fillMaxWidth()
                             .menuAnchor()
@@ -322,7 +358,7 @@ fun BecomeSellerScreen(
                         autoCorrectEnabled = true
                     ),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -397,7 +433,7 @@ fun BecomeSellerScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -455,7 +491,7 @@ fun BecomeSellerScreen(
                         containerColor = Color.White,
                         contentColor = Color.Black
                     ),
-                    shape = RoundedCornerShape(100.dp),
+                    shape = RoundedCornerShape(MarketTokens.PillRadius),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)

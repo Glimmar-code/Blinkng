@@ -1,0 +1,32 @@
+name: BLINK Contest Topic History Testlab
+on:
+  pull_request:
+    branches:
+      - main
+      - "Testlab/**"
+    paths:
+      - "supabase/migrations/*blink_contest_topics_history.sql"
+      - "supabase/tests/contest-topic-history-contract.test.mjs"
+      - ".github/workflows/contest-topic-history-testlab.yml"
+  push:
+    branches:
+      - "Testlab/**"
+    paths:
+      - "supabase/migrations/*blink_contest_topics_history.sql"
+      - "supabase/tests/contest-topic-history-contract.test.mjs"
+      - ".github/workflows/contest-topic-history-testlab.yml"
+permissions:
+  contents: read
+jobs:
+  contest-topic-history:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase/tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify Contest topic and permanent-history contract
+        run: node --test contest-topic-history-contract.test.mjs

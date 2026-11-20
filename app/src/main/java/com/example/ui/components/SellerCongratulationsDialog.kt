@@ -133,7 +133,7 @@ fun SellerCongratulationsDialog(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "BLINK Market will review your seller details before you can publish.",
+                        text = "BLINK Market will review your seller details within about 5 minutes. You will get a notification when the review is complete.",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = BlinkGold,
@@ -179,7 +179,7 @@ fun SellerCongratulationsDialog(
                             icon = Icons.Default.AddBusiness,
                             iconTint = BlinkPink,
                             title = "Approval Required",
-                            description = "Registration is free. Publishing is available after a separate Market approval."
+                            description = "Registration is free. Your application stays pending until Market approval; you cannot publish during review."
                         )
                         FeaturePerkItem(
                             icon = Icons.Default.Chat,

@@ -21,6 +21,12 @@ android {
     namespace = "com.example.game.feature"
     compileSdk { version = release(37) }
     defaultConfig { minSdk = 24 }
+    // Keep the on-demand feature variant aligned with the Play Store base app.
+    buildTypes {
+        create("playStoreRelease") {
+            initWith(getByName("release"))
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

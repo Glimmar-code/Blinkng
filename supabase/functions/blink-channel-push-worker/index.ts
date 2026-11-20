@@ -35,13 +35,31 @@ Deno.serve(async (request: Request) => {
     return reply({ error: "Unauthorized" }, 401);
   }
 
+  // Drain durable message Rank Point rewards outside the message-send
+  // transaction. This prevents concurrent profile-point writes from delaying
+  // the sender's message acknowledgement.
+  const { data: rankRewardsProcessed, error: rankRewardsError } = await admin.rpc(
+    "process_message_rank_reward_outbox", { p_limit: 25 },
+  );
+  if (rankRewardsError) {
+    console.error("message_rank_reward_outbox_failed", rankRewardsError.message);
+  }
+
   const { data: pending, error: claimError } = await admin.rpc(
     "blink_claim_channel_push_notifications", { p_limit: 40 },
   );
   if (claimError || !Array.isArray(pending)) {
-    return reply({ error: "Unable to query channel delivery backlog" }, 503);
+    return reply({
+      error: "Unable to query channel delivery backlog",
+      rank_rewards_processed: Number(rankRewardsProcessed ?? 0),
+    }, 503);
   }
-  const stats = { checked: 0, delivered: 0, settled: 0, failed: 0 };
+  const stats = {
+    checked: 0,
+    delivered: 0,
+    settled: 0,
+    failed: rankRewardsError ? 1 : 0,
+  };
   // Keep short worker invocations, bounded load and existing idempotency.
   for (const item of pending as Array<{ notification_id: string }>) {
     stats.checked++;
@@ -89,6 +107,26 @@ Deno.serve(async (request: Request) => {
       stats.failed++;
     }
   }
+  // The same minute worker drains Contest launch email outbox rows through
+  // the existing Brevo worker. Service-role auth is server-only; clients never hold it.
+  let email: Record<string, unknown> = { skipped: "not_attempted" };
+  try {
+    const response = await fetch(`${url}/functions/v1/send-essential-email`, {
+      method: "POST",
+      headers: {
+        apikey: serviceRole,
+        Authorization: `Bearer ${serviceRole}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ kind_filter: "contest_launch" }),
+      signal: AbortSignal.timeout(20000),
+    });
+    email = await response.json() as Record<string, unknown>;
+    if (!response.ok) stats.failed++;
+  } catch {
+    stats.failed++;
+    email = { error: "email_worker_unavailable" };
+  }
   // A retry is eligible only when the existing dispatch ledger allows it.
-  return reply(stats, stats.failed && !stats.delivered && !stats.settled ? 503 : 200);
+  return reply({ ...stats, rank_rewards_processed: Number(rankRewardsProcessed ?? 0), email }, stats.failed && !stats.delivered && !stats.settled ? 503 : 200);
 });

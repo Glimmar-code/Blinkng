@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
@@ -58,9 +61,12 @@ import com.example.data.local.rememberPersistentTextState
 import com.example.data.models.MarketItem
 import com.example.data.models.VerificationBadge
 import com.example.data.models.kMarketCategoriesList
+import com.example.data.views.MarketViewDisplayCoordinator
+import com.example.data.views.rememberDelayedMarketViewCount
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.VerifiedMark
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -95,6 +101,9 @@ fun MarketScreen(
     isDark: Boolean
 ) {
     val marketAccessService = remember { com.example.data.supabase.SupabaseService() }
+    val marketViewService = remember { com.example.data.supabase.SupabaseService() }
+    val viewScope = rememberCoroutineScope()
+    val scheduledMarketViews = remember { mutableSetOf<String>() }
     var sellerApproval by remember(isSellerActive) { mutableStateOf<Boolean?>(null) }
     var approvalRevision by remember { mutableIntStateOf(0) }
     LaunchedEffect(isSellerActive, approvalRevision) {
@@ -172,7 +181,7 @@ fun MarketScreen(
     val marketListState = rememberLazyListState()
     LazyColumn(
         state = marketListState,
-        contentPadding = PaddingValues(bottom = 120.dp),
+        contentPadding = PaddingValues(bottom = 132.dp),
         modifier = Modifier
             .fillMaxSize()
             .testTag("market_screen")
@@ -181,7 +190,7 @@ fun MarketScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 8.dp)
+                    .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 10.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -192,20 +201,26 @@ fun MarketScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Storefront,
-                            contentDescription = null,
-                            modifier = Modifier.size(27.dp)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(MarketTokens.ButtonRadius),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        ) {
+                            Icon(
+                                Icons.Default.Storefront,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(9.dp).size(24.dp)
+                            )
+                        }
                         Column {
                             Text(
-                                "BLINK MARKET",
+                                "Market / campus finds",
                                 fontSize = 21.sp,
                                 fontWeight = FontWeight.Black,
-                                letterSpacing = 0.6.sp
+                                letterSpacing = (-0.3).sp
                             )
                             Text(
-                                "Campus listings from BLINK users",
+                                "Buy from people you already trust",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -216,13 +231,27 @@ fun MarketScreen(
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Market")
                     }
                 }
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    "Campus finds from people you trust",
+                    fontSize = 26.sp,
+                    lineHeight = 30.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "Buy, sell, and connect with students around you.",
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
 
         item {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(MarketTokens.CardRadius),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 7.dp)
@@ -324,7 +353,7 @@ fun MarketScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
                     Row(
@@ -397,7 +426,7 @@ fun MarketScreen(
         item {
             if (!isSellerActive || sellerApproval != true) {
                 Card(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(MarketTokens.CardRadius),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.inverseSurface),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -424,7 +453,7 @@ fun MarketScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Button(
                             onClick = { if (isSellerActive) onRefresh() else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
-                            shape = RoundedCornerShape(100.dp),
+                            shape = RoundedCornerShape(MarketTokens.PillRadius),
                             modifier = Modifier.testTag("market_become_seller_btn")
                         ) {
                             Text(if (isSellerActive) "Refresh" else if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
@@ -433,7 +462,7 @@ fun MarketScreen(
                 }
             } else {
                 Card(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(MarketTokens.CardRadius),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
@@ -455,7 +484,7 @@ fun MarketScreen(
                         }
                         Button(
                             onClick = onOpenPostItem,
-                            shape = RoundedCornerShape(100.dp),
+                            shape = RoundedCornerShape(MarketTokens.PillRadius),
                             modifier = Modifier.testTag("market_create_post_btn")
                         ) {
                             Icon(Icons.Default.Add, null, modifier = Modifier.size(17.dp))
@@ -501,7 +530,7 @@ fun MarketScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -543,7 +572,7 @@ fun MarketScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "${visibleItems.size} loaded",
+                    "${visibleItems.size} items",
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -619,6 +648,20 @@ fun MarketScreen(
                             onClick = { onItemClick(item) },
                             onToggleSave = { onToggleSave(item) },
                             isDark = isDark,
+                            onQualifiedVisibility = {
+                                if (item.id.isNotBlank() && scheduledMarketViews.add(item.id)) {
+                                    viewScope.launch {
+                                        delay(60_000L)
+                                        marketViewService.recordMarketView(item.id)?.let { authoritative ->
+                                            MarketViewDisplayCoordinator.recordExposure(
+                                                item.id,
+                                                item.viewsCount,
+                                                authoritative,
+                                            )
+                                        }
+                                    }
+                                }
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -634,7 +677,7 @@ fun MarketScreen(
                     if (isLoadingMore) {
                         CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
                     } else {
-                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
+                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(MarketTokens.PillRadius)) {
                             Text("Load more listings")
                         }
                     }
@@ -719,16 +762,22 @@ fun ProductCard(
     onClick: () -> Unit,
     isDark: Boolean,
     modifier: Modifier = Modifier,
-    onToggleSave: (() -> Unit)? = null
+    onToggleSave: (() -> Unit)? = null,
+    onQualifiedVisibility: () -> Unit = {}
 ) {
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     val pressInteraction = remember { MutableInteractionSource() }
+    val displayedViews = rememberDelayedMarketViewCount(item.id, item.viewsCount)
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(MarketTokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = modifier
             .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                if (bounds.bottom > 0f && bounds.top < 1400f) onQualifiedVisibility()
+            }
             .blinkPressFeedback(pressInteraction, pressedScale = BlinkDesignTokens.Motion.PressedScale)
             .clickable(interactionSource = pressInteraction, indication = null, onClick = onClick)
             .testTag("product_card_${item.id}")
@@ -737,7 +786,7 @@ fun ProductCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(142.dp)
+                    .height(168.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 val cover = item.images.firstOrNull()
@@ -768,9 +817,9 @@ fun ProductCard(
                         modifier = Modifier.align(Alignment.TopStart)
                     ) {
                         Text(
-                            "PROMOTED",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Black,
+                            "Promoted",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.inverseOnSurface,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
@@ -798,7 +847,7 @@ fun ProductCard(
                 if (item.isSold || item.status != "active") {
                     Surface(
                         color = Color.Black.copy(alpha = 0.75f),
-                        shape = RoundedCornerShape(100.dp),
+                        shape = RoundedCornerShape(MarketTokens.PillRadius),
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(8.dp)
@@ -818,15 +867,15 @@ fun ProductCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "₦${nairaFormat.format(item.price)}",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Black,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
                     if (item.isNegotiable) {
                         Text(
                             "NEG.",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -835,8 +884,8 @@ fun ProductCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     item.title,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     minLines = 2
@@ -883,6 +932,29 @@ fun ProductCard(
                         username = item.sellerUsername,
                         knownVip = if (item.sellerIsVip) true else null,
                         modifier = Modifier.padding(start = 3.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Visibility,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        "$displayedViews views",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("•", color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        if (item.isNegotiable) "Open to offers" else "Ready to buy",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

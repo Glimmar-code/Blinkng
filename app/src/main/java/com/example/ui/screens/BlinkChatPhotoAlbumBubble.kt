@@ -41,7 +41,9 @@ internal fun BlinkChatPhotoAlbumBubble(
     palette: MessagePalette,
     onOpen: (ChatMessage) -> Unit,
     onReply: () -> Unit,
-    onActions: () -> Unit
+    onActions: () -> Unit,
+    onRetry: (ChatMessage) -> Unit = {},
+    onCancelAttachment: (ChatMessage) -> Unit = {},
 ) {
     if (messages.isEmpty()) return
     val ordered = remember(messages) {
@@ -87,14 +89,14 @@ internal fun BlinkChatPhotoAlbumBubble(
             // the existing viewer without changing the album's ordering.
             when (visible.size) {
                 1 -> AlbumPhotoTile(visible[0], 0, groupedCount,
-                    Modifier.fillMaxWidth().height(196.dp), onOpen)
+                    Modifier.fillMaxWidth().height(196.dp), onOpen, onRetry, onCancelAttachment)
                 2 -> Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     visible.forEachIndexed { index, photo ->
                         AlbumPhotoTile(photo, index, groupedCount,
-                            Modifier.weight(1f).height(172.dp), onOpen)
+                            Modifier.weight(1f).height(172.dp), onOpen, onRetry, onCancelAttachment)
                     }
                 }
                 3 -> Row(
@@ -104,7 +106,7 @@ internal fun BlinkChatPhotoAlbumBubble(
                     // The current screenshot uses three equally sized adjacent photos.
                     visible.forEachIndexed { index, photo ->
                         AlbumPhotoTile(photo, index, groupedCount,
-                            Modifier.weight(1f).aspectRatio(BlinkChatReferenceStyle.TrioPhotoAspect), onOpen)
+                            Modifier.weight(1f).aspectRatio(BlinkChatReferenceStyle.TrioPhotoAspect), onOpen, onRetry, onCancelAttachment)
                     }
                 }
                 else -> {
@@ -116,7 +118,7 @@ internal fun BlinkChatPhotoAlbumBubble(
                             (row * 2 until minOf((row + 1) * 2, visible.size))
                                 .forEach { index ->
                                     AlbumPhotoTile(visible[index], index, groupedCount,
-                                        Modifier.weight(1f).height(128.dp), onOpen)
+                                        Modifier.weight(1f).height(128.dp), onOpen, onRetry, onCancelAttachment)
                                 }
                         }
                         if (row == 0) Spacer(Modifier.height(3.dp))
@@ -181,7 +183,9 @@ private fun AlbumPhotoTile(
     position: Int,
     total: Int,
     modifier: Modifier,
-    onOpen: (ChatMessage) -> Unit
+    onOpen: (ChatMessage) -> Unit,
+    onRetry: (ChatMessage) -> Unit,
+    onCancelAttachment: (ChatMessage) -> Unit,
 ) {
     val context = LocalContext.current
     val photoSource = listOf(photo.imagePreviewUrl, photo.attachedImageUrl, photo.localAttachmentUri)
@@ -229,16 +233,18 @@ private fun AlbumPhotoTile(
                     fontWeight = FontWeight.Bold, fontSize = 24.sp)
             }
         }
-        if (photo.status == MessageStatus.SENDING) {
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(5.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = .65f))
-                    .padding(horizontal = 7.dp, vertical = 4.dp)
-            ) {
-                Text("${photo.uploadProgress ?: 0}%", color = Color.White,
-                    fontSize = 10.sp)
-            }
+        if (photo.status == MessageStatus.SENDING || photo.status == MessageStatus.FAILED) {
+            BlinkChatAlbumStatusOverlay(
+                state = AlbumUploadState(
+                    total = 1,
+                    completed = 0,
+                    progress = ((photo.uploadProgress ?: 0).coerceIn(0, 100)) / 100f,
+                    failed = photo.status == MessageStatus.FAILED,
+                ),
+                onRetry = { onRetry(photo) },
+                onCancel = { onCancelAttachment(photo) },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

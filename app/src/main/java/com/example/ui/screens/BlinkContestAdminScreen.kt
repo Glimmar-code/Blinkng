@@ -34,11 +34,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.supabase.BlinkContestService
 import com.blinkng.shared.BlinkContestDraftValidator
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.Brush
+import coil.request.ImageRequest
+
+/**
+ * LazyColumn keys must be nonblank and unique across every item section in this screen.
+ * API payloads can contain missing/blank IDs; include the section and row index as a
+ * collision-safe fallback instead of passing the empty string to Compose.
+ */
+private fun contestLazyItemKey(section: String, index: Int, row: JSONObject): String {
+    val id = row.optString("id").trim().ifBlank { "missing" }
+    return "$section:$id:$index"
+}
 
 /**
  * Dashboard entry is capability-gated. Every mutation is independently checked
@@ -83,6 +99,16 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     var pendingContestDecision by remember { mutableStateOf<Pair<String, String>?>(null) }
     var pendingContestError by remember { mutableStateOf<String?>(null) }
 
+    var topicRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var topicsLoading by remember { mutableStateOf(false) }
+    var topicLoadError by remember { mutableStateOf<String?>(null) }
+    var topicId by remember { mutableStateOf("") }
+    var topicMenu by remember { mutableStateOf(false) }
+    var competitionScope by remember { mutableStateOf("campus") }
+    var season by remember { mutableStateOf("") }
+    var newTopicName by remember { mutableStateOf("") }
+    var newTopicCategory by remember { mutableStateOf("") }
+    var newTopicDescription by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf("") }
@@ -109,6 +135,7 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     val resetDraft: () -> Unit = {
         editingContestId = null
         title = ""; description = ""; rules = ""; category = "General"
+        topicId = ""; competitionScope = "campus"; season = ""
         university = ""; cover = ""; coverChoice = null
         registrationStart = ""; registrationEnd = ""; votingStart = ""
         votingEnd = ""; resultsDate = ""
@@ -124,6 +151,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         if (message.isNotBlank()) snackbarHostState.showSnackbar(message)
     }
     LaunchedEffect(revision) {
+        topicsLoading = true
+        topicLoadError = null
+        api.topicDirectory()
+            .onSuccess { topicRows = it.contestObjects() }
+            .onFailure { topicLoadError = it.message ?: "Contest topics could not be loaded." }
+        topicsLoading = false
         contestsLoading = true
         api.adminContests().onSuccess { contests = it.contestObjects() }
             .onFailure { message = it.message ?: "Cannot load contests." }
@@ -188,27 +221,123 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Contest manager", modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onBack) { Text("Close") }
-            }
-            Text("Applications and voting are always free. Dates use ISO format with a time zone (e.g. 2026-11-01T09:00:00+01:00).")
-            if (message.isNotBlank()) {
-                Text(message, color = MaterialTheme.colorScheme.primary)
-                TextButton(onClick = { message = "" }) { Text("Dismiss") }
-            }
-            Text(if (editingContestId == null) "Create contest draft" else "Edit contest draft",
-                style = MaterialTheme.typography.titleMedium)
-            if (editingContestId != null) {
-                TextButton(enabled = !busy, onClick = resetDraft) { Text("Cancel editing") }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.fillMaxWidth().contestEntrance().clip(RoundedCornerShape(20.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF0B1626), Color(0xFF123A68))))) {
+                    Row(Modifier.padding(start = 18.dp, end = 8.dp, top = 14.dp, bottom = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Contest manager", color = Color.White,
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Create, moderate and finalize contests",
+                                color = Color(0xFFBDDFFF), fontSize = 12.sp)
+                        }
+                        TextButton(onClick = onBack) { Text("Close", color = Color.White) }
+                    }
+                }
+                Text("Applications and voting are always free. Dates use ISO format with a time zone (e.g. 2026-11-01T09:00:00+01:00).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (message.isNotBlank()) BlinkContestBanner(
+                    message,
+                    isError = message.contains("fail", true) || message.contains("cannot", true) ||
+                        message.contains("unable", true),
+                    actionLabel = "Dismiss", modifier = Modifier.fillMaxWidth()
+                ) { message = "" }
+                BlinkContestSectionTitle(
+                    if (editingContestId == null) "Create contest draft" else "Edit contest draft")
+                if (editingContestId != null) {
+                    TextButton(enabled = !busy, onClick = resetDraft) { Text("Cancel editing") }
+                }
             }
         }
         item { OutlinedTextField(title, { title = it.take(100) }, label = { Text("Contest title") }, modifier = Modifier.fillMaxWidth()) }
         item { OutlinedTextField(description, { description = it.take(2000) }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
         item { OutlinedTextField(rules, { rules = it.take(4000) }, label = { Text("Competition rules") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
         item { OutlinedTextField(category, { category = it.take(60) }, label = { Text("Category") }, modifier = Modifier.fillMaxWidth()) }
-        item { OutlinedTextField(university, { university = it.take(120) }, label = { Text("University (optional, blank = all)") }, modifier = Modifier.fillMaxWidth()) }
+        item {
+            Text("Contest topic", style = MaterialTheme.typography.titleMedium)
+            Box {
+                OutlinedButton(onClick = { topicMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(topicRows.firstOrNull { it.optString("id") == topicId }?.optString("name")
+                        ?: "Select a required contest topic")
+                }
+                DropdownMenu(expanded = topicMenu, onDismissRequest = { topicMenu = false }) {
+                    topicRows.forEach { topic ->
+                        DropdownMenuItem(text = { Text(topic.optString("name")) }, onClick = {
+                            topicId = topic.optString("id")
+                            category = topic.optString("category")
+                            topicMenu = false
+                        })
+                    }
+                }
+            }
+            Text("Choose a public topic before saving a contest. To create a new topic, add it to the library below; it will be selected automatically.",
+                style = MaterialTheme.typography.bodySmall)
+            if (topicsLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            topicLoadError?.let { error ->
+                Text("Topics unavailable: $error",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                TextButton(enabled = !topicsLoading, onClick = { revision++ }) {
+                    Text("Retry loading topics")
+                }
+            }
+            if (!topicsLoading && topicLoadError == null && topicRows.isEmpty()) {
+                Text("No contest topics are available yet. Add a topic to the library first.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(newTopicName, { newTopicName = it.take(100) },
+                label = { Text("Create custom topic name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(newTopicCategory, { newTopicCategory = it.take(60) },
+                label = { Text("Topic category") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(newTopicDescription, { newTopicDescription = it.take(500) },
+                label = { Text("Topic description") }, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(enabled = !busy && newTopicName.trim().length >= 3 &&
+                newTopicCategory.trim().length >= 2, onClick = {
+                busy = true
+                scope.launch {
+                    api.adminSaveTopic(JSONObject().put("name", newTopicName.trim())
+                        .put("category", newTopicCategory.trim())
+                        .put("description", newTopicDescription.trim()))
+                        .onSuccess {
+                            topicId = it.optString("id")
+                            category = it.optString("category")
+                            newTopicName = ""; newTopicCategory = ""; newTopicDescription = ""
+                            revision++
+                            message = "Contest topic added to the public directory."
+                        }.onFailure { message = it.message ?: "Unable to add topic." }
+                    busy = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Add topic to library") }
+        }
+        item {
+            Text("Competition coverage", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = competitionScope == "campus", onClick = { competitionScope = "campus" },
+                    label = { Text("Campus") })
+                FilterChip(selected = competitionScope == "nationwide", onClick = {
+                    competitionScope = "nationwide"; university = ""
+                }, label = { Text("Nationwide") })
+            }
+            if (competitionScope == "campus") {
+                OutlinedTextField(university, { university = it.take(120) },
+                    label = { Text("University (required for campus contests)") },
+                    modifier = Modifier.fillMaxWidth())
+            } else {
+                Text("Open to eligible BLINK users across all universities.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(season, { season = it.take(80) },
+                label = { Text("Season (optional, e.g. BLINK Season 1)") },
+                modifier = Modifier.fillMaxWidth())
+        }
+        item {
+            if (topicId.isBlank() && !topicsLoading && topicLoadError == null) {
+                Text("A contest topic is required. Select an existing topic or add your custom topic to the library above.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
         item {
             Text("Contest cover", style = MaterialTheme.typography.titleMedium)
             OutlinedButton(onClick = {
@@ -270,7 +399,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 Text(draftError, color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             }
-            Button(enabled = !busy && draftError == null, onClick = {
+            Button(enabled = !busy && draftError == null && topicId.isNotBlank() &&
+                !topicsLoading && topicLoadError == null,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(14.dp), onClick = {
                 busy = true
                 message = ""
                 val data = JSONObject()
@@ -278,6 +410,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     .put("description", description.trim())
                     .put("rules", rules.trim())
                     .put("category", category.trim().ifBlank { "General" })
+                    .put("topic_id", if (topicId.isBlank()) JSONObject.NULL else topicId)
+                    .put("competition_scope", competitionScope)
+                    .put("season", season.trim())
                     .put("university", university.trim())
                     .put("banner_url", cover.trim())
                     .put("registration_opens_at", registrationStart.trim())
@@ -305,7 +440,14 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     }.onFailure { message = it.message ?: "Unable to save draft." }
                     busy = false
                 }
-            }) { Text(if (editingContestId == null) "Save contest draft" else "Save draft changes") }
+            }) {
+                if (busy) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp,
+                        color = LocalContentColor.current)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (editingContestId == null) "Save contest draft" else "Save draft changes")
+            }
         }
         item {
             HorizontalDivider()
@@ -315,11 +457,19 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             if (!contestsLoading && contests.isEmpty()) Text("No contests available. Create a draft above.")
             TextButton(enabled = !contestsLoading, onClick = { revision++ }) { Text("Refresh manager") }
         }
-        items(contests, key = { it.optString("id") }) { contest ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(contest.optString("title"), fontWeight = FontWeight.Bold)
-                    Text(contest.optString("status"))
+        itemsIndexed(contests, key = { index, row -> contestLazyItemKey("contest", index, row) }) { index, contest ->
+            ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
+                shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(contest.optString("title"), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f))
+                        BlinkContestStatusChip(
+                            contest.optString("status").replaceFirstChar { it.uppercase() },
+                            contest.optString("status"),
+                            live = contest.optString("status") in listOf("voting", "registration"))
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         TextButton(onClick = {
                             entries = emptyList()
@@ -334,6 +484,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                                 description = contest.optString("description")
                                 rules = contest.optString("rules")
                                 category = contest.optString("category")
+                                topicId = contest.optString("topic_id").takeUnless { it == "null" }.orEmpty()
+                                competitionScope = contest.optString("competition_scope").ifBlank { "campus" }
+                                season = contest.optString("season").takeUnless { it == "null" }.orEmpty()
                                 university = contest.optString("university").takeUnless { it == "null" }.orEmpty()
                                 cover = contest.optString("banner_url").takeUnless { it == "null" }.orEmpty()
                                 coverChoice = null
@@ -440,8 +593,9 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 minLines = 2, modifier = Modifier.fillMaxWidth()
             )
         }
-        items(appeals, key = { "appeal-" + it.optString("id") }) { appeal ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
+        itemsIndexed(appeals, key = { index, row -> contestLazyItemKey("appeal", index, row) }) { index, appeal ->
+            ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
+                shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("@" + appeal.optString("username") + " · Pending appeal",
@@ -505,15 +659,26 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
             if (stats == null) {
                 if (insightsError == null) Text("Loading contest metrics…")
             } else {
-                Text("Recorded shares: " + stats.optInt("shares") +
-                    " · Unique sharers: " + stats.optInt("unique_sharers"))
-                Text("Counted votes: " + stats.optInt("counted_votes") +
-                    " · Under review: " + stats.optInt("review_votes") +
-                    " · Invalidated: " + stats.optInt("rejected_votes"))
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BlinkContestStatTile("Recorded shares", stats.optInt("shares"), Modifier.weight(1f))
+                    BlinkContestStatTile("Unique sharers", stats.optInt("unique_sharers"), Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BlinkContestStatTile("Counted votes", stats.optInt("counted_votes"),
+                        Modifier.weight(1f), contestStatusColor("approved"))
+                    BlinkContestStatTile("Under review", stats.optInt("review_votes"),
+                        Modifier.weight(1f), contestStatusColor("pending"))
+                    BlinkContestStatTile("Invalidated", stats.optInt("rejected_votes"),
+                        Modifier.weight(1f), contestStatusColor("rejected"))
+                }
                 val total = stats.optInt("total_votes").coerceAtLeast(1)
+                val validShare = contestAnimatedFloat(stats.optInt("counted_votes").toFloat() / total)
                 LinearProgressIndicator(
-                    progress = { stats.optInt("counted_votes").toFloat() / total },
-                    modifier = Modifier.fillMaxWidth(), color = Color(0xFF1685FF)
+                    progress = { validShare },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = Color(0xFF1685FF)
                 )
                 Text("Valid votes out of all received votes",
                     style = MaterialTheme.typography.bodySmall)
@@ -538,9 +703,10 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 label={Text("Review reason (at least 8 characters)")},
                 modifier=Modifier.fillMaxWidth())
         }
-        items(insights?.optJSONArray("review_queue")?.contestObjects().orEmpty(),
-            key = { it.optString("id") }) { vote ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
+        itemsIndexed(insights?.optJSONArray("review_queue")?.contestObjects().orEmpty(),
+            key = { index, row -> contestLazyItemKey("vote", index, row) }) { index, vote ->
+            ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
+                shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Vote: " + vote.optString("id").take(8) + " · " +
                         vote.optString("reason"),style=MaterialTheme.typography.bodySmall)
@@ -572,12 +738,13 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 label={Text("Admin payment note (optional)")},
                 modifier=Modifier.fillMaxWidth())
         }
-        items(insights?.optJSONArray("prizes")?.contestObjects().orEmpty(),
-            key = { it.optString("id") }) { prize ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
+        itemsIndexed(insights?.optJSONArray("prizes")?.contestObjects().orEmpty(),
+            key = { index, row -> contestLazyItemKey("prize", index, row) }) { index, prize ->
+            ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
+                shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("#" + prize.optInt("place") + " @" + prize.optString("username") +
-                        " · ₦" + prize.optInt("amount_ngn") + " · " +
+                        " · " + contestNaira(prize.optLong("amount_ngn")) + " · " +
                         prize.optString("payment_status"))
                     Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                         listOf("processing","failed","paid").forEach { action ->
@@ -598,14 +765,22 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 }
             }
         }
-        items(entries.filter {
+        itemsIndexed(entries.filter {
             applicantFilter == "All" ||
                 it.optString("status").equals(applicantFilter, ignoreCase = true)
-        }, key = { it.optString("id") }) { entry ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
+        }, key = { index, row -> contestLazyItemKey("entry", index, row) }) { index, entry ->
+            ElevatedCard(Modifier.fillMaxWidth().contestEntrance(index).animateContentSize(),
+                shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("@" + entry.optString("username") + " · " + entry.optString("status"),
-                        fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("@" + entry.optString("username"), fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f))
+                        BlinkContestStatusChip(
+                            entry.optString("status").replaceFirstChar { it.uppercase() },
+                            entry.optString("status"),
+                            live = entry.optString("status") == "pending")
+                    }
                     Text(entry.optString("statement"))
                     TextButton(enabled = !busy, onClick = {
                         reviewHistoryName = entry.optString("username")
@@ -640,7 +815,11 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                                         busy = false
                                     }
                                 }
-                            }) { Text(action.replaceFirstChar { it.uppercase() }) }
+                            }) {
+                                Text(action.replaceFirstChar { it.uppercase() },
+                                    color = if (action == "approve") Color(0xFF2ECC71)
+                                        else MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
                 }
@@ -875,7 +1054,8 @@ internal fun BlinkContestApplicantMediaCard(media: String, onPreview: () -> Unit
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
-                        model = media,
+                        model = ImageRequest.Builder(LocalContext.current).data(media)
+                            .crossfade(400).build(),
                         contentDescription = if (imageLoaded) "Loaded application photo"
                             else "Submitted application photo",
                         contentScale = ContentScale.Crop,

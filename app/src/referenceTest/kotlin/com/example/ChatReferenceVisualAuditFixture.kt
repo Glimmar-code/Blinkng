@@ -12,9 +12,11 @@ import java.io.File
 import java.io.FileOutputStream
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -55,6 +57,46 @@ import org.junit.Test
 abstract class ChatReferenceVisualAuditFixture {
     protected abstract fun capture(name: String)
     @get:Rule val rule = createComposeRule()
+
+    @Test fun albumUploadProgressOverlayCapturesAndRoutesCancelAndRetry() {
+        var canceled = 0
+        var retried = 0
+        var failed by mutableStateOf(false)
+        rule.setContent {
+            BlinkTheme(darkTheme = true) {
+                Box(
+                    Modifier.fillMaxWidth().height(220.dp)
+                        .testTag("chat_conversation_root"),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Box(Modifier.size(160.dp).background(Color(0xFF222222))) {
+                        com.example.ui.screens.BlinkChatAlbumStatusOverlay(
+                            state = com.example.ui.screens.AlbumUploadState(
+                                total = 1,
+                                completed = 0,
+                                progress = if (failed) 0f else .67f,
+                                failed = failed,
+                            ),
+                            onRetry = { retried++ },
+                            onCancel = { canceled++ },
+                            modifier = Modifier.fillMaxWidth().height(160.dp)
+                        )
+                    }
+                }
+            }
+        }
+        rule.onNodeWithText("67%").assertExists()
+        capture("chat-album-upload-progress-overlay.png")
+        rule.onNodeWithContentDescription("Cancel upload").performClick()
+        rule.runOnIdle {
+            check(canceled == 1)
+            failed = true
+        }
+        rule.onNodeWithText("Tap to retry").assertExists()
+        capture("chat-album-upload-retry-overlay.png")
+        rule.onNodeWithTag("chat_album_status_overlay").performClick()
+        rule.runOnIdle { check(retried == 1) }
+    }
 
     @Test fun chatReferenceComposerHasAccessibleMicrophoneAndOutlinedCamera() {
         var voiceTyping = 0

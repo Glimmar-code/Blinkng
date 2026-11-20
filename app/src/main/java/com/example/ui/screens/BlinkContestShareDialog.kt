@@ -13,6 +13,8 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.SweepGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -46,6 +48,20 @@ import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+import java.text.NumberFormat
+import java.util.Locale
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.delay
 
 private val flyerHttp = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS)
     .readTimeout(10, TimeUnit.SECONDS).build()
@@ -73,6 +89,25 @@ private fun Canvas.center(text: String, y: Float, initialSize: Float, color: Int
         trim + "…"
     }
     drawText(label, (FLYER_W - paint.measureText(label)) / 2, y, paint)
+}
+
+private fun Canvas.centerAt(text: String, cx: Float, y: Float, initialSize: Float, color: Int,
+                            maxWidth: Float, bold: Boolean = false, spacing: Float = 0f) {
+    val paint = textPaint(initialSize, color, bold).apply { letterSpacing = spacing }
+    while (paint.measureText(text) > maxWidth && paint.textSize > 22f) paint.textSize -= 2f
+    val label = if (paint.measureText(text) <= maxWidth) text else {
+        var trim = text
+        while (trim.length > 1 && paint.measureText(trim + "…") > maxWidth) trim = trim.dropLast(1)
+        trim + "…"
+    }
+    drawText(label, cx - paint.measureText(label) / 2f, y, paint)
+}
+
+private fun rankTone(rank: Int): Int = when (rank) {
+    1 -> Color.rgb(255, 200, 87)
+    2 -> Color.rgb(201, 212, 227)
+    3 -> Color.rgb(217, 145, 91)
+    else -> BLUE
 }
 
 private fun loadAvatar(url: String): Bitmap? {
@@ -108,14 +143,31 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
     val bitmap = Bitmap.createBitmap(FLYER_W, FLYER_H, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val rank = candidate.optInt("rank")
+    val tone = rankTone(rank)
+
+    // Deep navy base.
     paint.shader = LinearGradient(0f, 0f, 1080f, 1350f,
         intArrayOf(Color.rgb(7, 13, 25), Color.rgb(16, 25, 44), Color.rgb(3, 8, 17)),
         null, Shader.TileMode.CLAMP)
     canvas.drawRect(0f, 0f, 1080f, 1350f, paint)
+    // Cobalt glow behind the portrait.
+    paint.shader = RadialGradient(540f, 434f, 560f,
+        intArrayOf(Color.argb(105, 59, 154, 255), Color.argb(0, 59, 154, 255)),
+        null, Shader.TileMode.CLAMP)
+    canvas.drawRect(0f, 0f, 1080f, 1000f, paint)
     paint.shader = null
 
-    // Restrained cobalt framing and premium topographic geometry.
-    paint.color = BLUE
+    // Subtle dot-grid texture.
+    paint.color = Color.argb(20, 255, 255, 255)
+    var gy = 90f
+    while (gy < 1300f) {
+        var gx = 90f
+        while (gx < 1000f) { canvas.drawCircle(gx, gy, 2f, paint); gx += 60f }
+        gy += 60f
+    }
+
+    // Restrained cobalt framing.
     canvas.drawRoundRect(RectF(56f, 56f, 1024f, 1294f), 38f, 38f,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = BLUE; style = Paint.Style.STROKE; strokeWidth = 2f; alpha = 120
@@ -128,12 +180,17 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
     paint.color = BLUE
     canvas.drawRoundRect(RectF(410f, 230f, 670f, 237f), 4f, 4f, paint)
 
+    // Portrait with gradient ring.
     val cx = 540f
     val cy = 434f
     paint.color = Color.rgb(19, 35, 57)
-    canvas.drawCircle(cx, cy, 170f, paint)
-    paint.color = BLUE
-    canvas.drawCircle(cx, cy, 157f, paint)
+    canvas.drawCircle(cx, cy, 174f, paint)
+    val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 12f
+        shader = SweepGradient(cx, cy,
+            intArrayOf(BLUE, Color.rgb(125, 224, 255), BLUE, Color.rgb(125, 224, 255), BLUE), null)
+    }
+    canvas.drawCircle(cx, cy, 160f, ring)
     if (avatar != null) {
         val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = BitmapShader(avatar, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also { shader ->
@@ -151,6 +208,15 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
         canvas.center(candidate.optString("name").take(1).uppercase().ifBlank { "B" },
             cy + 43f, 130f, WHITE, 220f, true)
     }
+    // Rank badge on the portrait.
+    if (rank > 0) {
+        paint.color = Color.rgb(7, 13, 25)
+        canvas.drawCircle(cx + 122f, cy + 122f, 54f, paint)
+        paint.color = tone
+        canvas.drawCircle(cx + 122f, cy + 122f, 46f, paint)
+        canvas.centerAt("#$rank", cx + 122f, cy + 140f, 42f,
+            if (rank in 1..3) Color.rgb(11, 22, 38) else WHITE, 72f, true)
+    }
 
     // A real scan-to-vote QR also works when a social app drops EXTRA_TEXT for image shares.
     val qr = QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 164, 164,
@@ -164,8 +230,7 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
                 802f + x, 327f + y, paint)
         }
     }
-    canvas.drawText("SCAN TO VOTE", 794f, 535f,
-        textPaint(22f, MUTED, true))
+    canvas.centerAt("SCAN TO VOTE", 883f, 535f, 22f, MUTED, 190f, true, 0.08f)
 
     val name = candidate.optString("name").ifBlank { candidate.optString("username") }
     canvas.center(name, 662f, 65f, WHITE, 880f, true)
@@ -173,15 +238,25 @@ private fun createContestFlyer(candidate: JSONObject, link: String, avatar: Bitm
     canvas.center("I'M CONTESTING IN", 781f, 27f, BLUE, 900f, true)
     canvas.center(candidate.optString("contest_title"), 829f, 37f, WHITE, 880f, true)
 
+    // Stats card: rank | votes.
     paint.color = Color.rgb(18, 32, 52)
     canvas.drawRoundRect(RectF(129f, 870f, 951f, 1072f), 28f, 28f, paint)
-    val rank = candidate.optInt("rank")
-    canvas.center(if (rank > 0) "RANK #$rank" else "CONTESTANT", 949f, 64f, WHITE, 730f, true)
-    canvas.center(candidate.optInt("votes").toString() + " VOTES SO FAR", 1008f, 29f, MUTED)
+    paint.color = Color.argb(70, 59, 154, 255)
+    canvas.drawRect(539f, 904f, 541f, 1040f, paint)
+    canvas.centerAt("RANK", 334f, 926f, 24f, MUTED, 330f, true, 0.12f)
+    canvas.centerAt(if (rank > 0) "#$rank" else "—", 334f, 1018f, 84f, tone, 360f, true)
+    canvas.centerAt("VOTES", 746f, 926f, 24f, MUTED, 330f, true, 0.12f)
+    canvas.centerAt(NumberFormat.getIntegerInstance(Locale.US).format(candidate.optInt("votes")),
+        746f, 1018f, 84f, WHITE, 360f, true)
 
-    canvas.center("HELP ME REACH THE TOP!", 1147f, 38f, WHITE, 850f, true)
-    canvas.center("Your support matters. Vote for me for FREE.", 1202f, 27f, MUTED)
-    canvas.center("OPEN BLINK & VOTE  •  ONE VOTE PER ACCOUNT", 1253f, 22f, BLUE, 850f, true)
+    // Call to action pill.
+    paint.shader = LinearGradient(220f, 0f, 860f, 0f, BLUE, Color.rgb(30, 111, 230),
+        Shader.TileMode.CLAMP)
+    canvas.drawRoundRect(RectF(220f, 1098f, 860f, 1174f), 38f, 38f, paint)
+    paint.shader = null
+    canvas.centerAt("HELP BY VOTING", 540f, 1150f, 40f, WHITE, 580f, true, 0.06f)
+    canvas.center("Your support matters. Vote for me for FREE.", 1220f, 27f, MUTED, 850f)
+    canvas.center("OPEN BLINK & VOTE  •  ONE VOTE PER ACCOUNT", 1262f, 22f, BLUE, 850f, true)
 
     // The full clickable URL is attached to the shared image as caption.
     // On the image itself the official domain is unmistakable.
@@ -223,27 +298,51 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
         }
     }
 
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
+    val haptic = LocalHapticFeedback.current
+
     Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+        Surface(shape = RoundedCornerShape(26.dp),
+            color = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Share contestant flyer", style = MaterialTheme.typography.titleLarge)
-                Text("Personalized for " + name, style = MaterialTheme.typography.bodySmall)
-                val preview = rendered
-                if (preview == null) {
-                    Box(Modifier.fillMaxWidth().height(300.dp),
-                        contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                } else {
-                    Image(bitmap = preview.asImageBitmap(), contentDescription = "Personalized voting flyer for " + name,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 390.dp),
-                        contentScale = ContentScale.Fit)
+                Text("Personalized for " + name, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Crossfade(targetState = rendered, animationSpec = tween(450), label = "flyerPreview") { preview ->
+                    if (preview == null) {
+                        Box(Modifier.height(390.dp).aspectRatio(FLYER_W.toFloat() / FLYER_H)
+                            .clip(RoundedCornerShape(16.dp)).contestShimmer(),
+                            contentAlignment = Alignment.Center) {
+                            Text("Designing your flyer…", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        var appeared by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) { appeared = true }
+                        val pop by animateFloatAsState(
+                            if (appeared) 1f else 0.9f,
+                            spring(dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow),
+                            label = "flyerPop")
+                        Image(bitmap = preview.asImageBitmap(),
+                            contentDescription = "Personalized voting flyer for " + name,
+                            modifier = Modifier.heightIn(max = 390.dp)
+                                .graphicsLayer { scaleX = pop; scaleY = pop; alpha = pop.coerceIn(0f, 1f) }
+                                .shadow(14.dp, RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(14.dp)),
+                            contentScale = ContentScale.Fit)
+                    }
                 }
                 Button(
-                    enabled = rendered != null && !sharing, modifier = Modifier.fillMaxWidth(),
+                    enabled = rendered != null && !sharing,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
                     onClick = {
                         val image = rendered ?: return@Button
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         sharing = true
                         scope.launch {
                             try {
@@ -281,26 +380,42 @@ fun BlinkContestShareDialog(candidate: JSONObject, onDismiss: () -> Unit) {
                             }
                         }
                     }
-                ) { Text("Share flyer and voting link") }
+                ) {
+                    if (sharing) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp,
+                            color = LocalContentColor.current)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Preparing flyer…")
+                    } else Text("Share flyer and voting link")
+                }
                 OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
                     onClick = {
-                        val copied = runCatching {
+                        val didCopy = runCatching {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
                                 ?: error("Clipboard is unavailable")
                             clipboard.setPrimaryClip(ClipData.newPlainText(
                                 "BLINK contestant voting link", caption
                             ))
                         }.isSuccess
-                        Toast.makeText(context,
-                            if (copied) "Voting message copied" else "Unable to copy voting link",
-                            Toast.LENGTH_SHORT).show()
+                        if (didCopy) {
+                            copied = true
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        } else {
+                            Toast.makeText(context, "Unable to copy voting link",
+                                Toast.LENGTH_SHORT).show()
+                        }
                         // Do not inflate share analytics when clipboard access failed.
-                        if (copied) scope.launch {
+                        if (didCopy) scope.launch {
                             eventApi.recordShare(contestId, id, "copy")
                         }
                     }
-                ) { Text("Copy voting message") }
+                ) {
+                    Crossfade(targetState = copied, animationSpec = tween(200), label = "copyLabel") { done ->
+                        Text(if (done) "Copied ✓" else "Copy voting message")
+                    }
+                }
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
         }

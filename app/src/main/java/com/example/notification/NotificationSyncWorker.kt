@@ -161,7 +161,9 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
         while (true) {
             // A partial scan must not advance the cursor or older events will be skipped.
             if (pagesFetched >= maxPages) error("Social recovery exceeded $maxPages pages")
-            val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications?select=*&is_read=eq.false&order=created_at.asc,id.asc&limit=$pageSize&offset=$offset"
+            val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications" +
+                "?select=id,user_id,created_at,type,target_type,target_id,text,sub_text,post_id,metadata" +
+                "&user_id=eq.$uid&is_read=eq.false&order=created_at.asc,id.asc&limit=$pageSize&offset=$offset"
             val request = Request.Builder()
                 .url(endpoint)
                 .addHeader("apikey", SupabaseConfig.anonKey)
@@ -251,7 +253,11 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
 
     private fun refreshOfficialHistory(token: String, uid: String) {
         val request = Request.Builder()
-            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications?select=*&order=created_at.desc&limit=100")
+            .url(
+                "${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications" +
+                    "?select=id,user_id,created_at,type,target_type,target_id,text,sub_text,post_id,metadata" +
+                    "&user_id=eq.$uid&order=created_at.desc&limit=100"
+            )
             .addHeader("apikey", SupabaseConfig.anonKey)
             .addHeader("Authorization", "Bearer $token")
             .get()

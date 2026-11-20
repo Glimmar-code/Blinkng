@@ -149,7 +149,7 @@ fun SignInScreen(
         delay(300)
         if (rememberMe) {
             if (emailOrUsername.isNotBlank()) {
-                RememberedLoginStore.save(context, emailOrUsername, "")
+                RememberedLoginStore.save(context, emailOrUsername)
             }
         } else {
             RememberedLoginStore.clear(context)
@@ -366,7 +366,7 @@ fun SignInScreen(
                                     if (success) {
                                         AccountSessionStore.setSignInRequired(context, !rememberMe)
                                         if (rememberMe) {
-                                            RememberedLoginStore.save(context, emailOrUsername.trim(), "")
+                                            RememberedLoginStore.save(context, emailOrUsername.trim())
                                         } else {
                                             RememberedLoginStore.clear(context)
                                         }

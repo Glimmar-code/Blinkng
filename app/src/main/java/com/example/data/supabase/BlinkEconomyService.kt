@@ -207,12 +207,16 @@ class BlinkEconomyService {
         surface: String,
     ) = runCatching {
         require(campaignId.isNotBlank()) { "Campaign is missing." }
+        val normalizedSurface = surface.trim().uppercase()
+        require(normalizedSurface in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET", "REELS")) {
+            "Unknown Boost delivery surface."
+        }
         rpc(
             "record_blink_boost_delivery",
             JSONObject()
                 .put("p_campaign_id", campaignId.trim())
                 .put("p_event_type", eventType.trim().uppercase())
-                .put("p_surface", surface.trim().uppercase())
+                .put("p_surface", normalizedSurface)
         )
     }
 

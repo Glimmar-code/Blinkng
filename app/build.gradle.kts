@@ -208,6 +208,13 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
+    // Website APK distribution retains its explicit installer-approved update flow.
+    // Google Play receives a separate signed build with that restricted permission removed.
+    create("playStoreRelease") {
+      initWith(getByName("release"))
+      matchingFallbacks.add("release")
+      signingConfig = signingConfigs.getByName("release")
+    }
     // CI-only R8-shrunk variant: exercises the same native WebRTC JNI names
     // as release without requiring or exposing the production signing key.
     create("rtcSmoke") {

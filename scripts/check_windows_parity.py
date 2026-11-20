@@ -79,7 +79,7 @@ def changed_files(range_: str | None) -> list[str]:
 
 def added_exception_marker(range_: str) -> bool:
     try:
-        patch = git("diff", "--unified=0", range_, "--", PARITY_LEDGER)
+        patch = git("diff", "--no-color", "--unified=0", range_, "--", PARITY_LEDGER)
     except subprocess.CalledProcessError:
         return False
     return any(

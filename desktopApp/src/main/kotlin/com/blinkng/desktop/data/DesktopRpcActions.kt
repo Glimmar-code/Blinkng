@@ -91,6 +91,16 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     // Free-entry BLINK Contest. All writes enforce authenticated server-side rules.
     suspend fun contestList(): JSONArray =
         rpcAny("list_blink_contests", JSONObject()) as? JSONArray ?: JSONArray()
+    suspend fun contestTopicDirectory(): JSONArray =
+        rpcAny("list_blink_contest_topics", JSONObject()) as? JSONArray ?: JSONArray()
+    suspend fun contestTopicDetail(id: String): JSONObject =
+        rpc("get_blink_contest_topic", JSONObject().put("p_topic_id", id))
+    suspend fun contestParticipantProfile(id: String): JSONObject =
+        rpc("get_blink_contest_participant_profile", JSONObject().put("p_user_id", id))
+    suspend fun contestFollowTopic(id: String): JSONObject =
+        rpc("follow_blink_contest_topic", JSONObject().put("p_topic_id", id))
+    suspend fun contestUnfollowTopic(id: String): JSONObject =
+        rpc("unfollow_blink_contest_topic", JSONObject().put("p_topic_id", id))
     suspend fun contestDetail(id: String): JSONObject =
         rpc("get_blink_contest", JSONObject().put("p_contest_id", id))
     suspend fun contestSearchCandidates(contestId: String, query: String, offset: Int): JSONObject =
@@ -161,6 +171,11 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         requireAdmin()
         return rpcAny("admin_list_blink_contest_entries",
             JSONObject().put("p_contest_id", id)) as? JSONArray ?: JSONArray()
+    }
+    suspend fun adminContestSaveTopic(data: JSONObject): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_contest_topic",
+            JSONObject().put("p_id", JSONObject.NULL).put("p_data", data))
     }
     suspend fun adminContestSave(data: JSONObject): JSONObject {
         requireAdmin()
@@ -302,13 +317,18 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun getBoostMissions(limit: Int = 12): JSONObject =
         rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
 
-    suspend fun getPromotedBoostSlots(surface: String, limit: Int = 3): JSONObject =
-        rpc(
-            "get_blink_promoted_slots",
+    suspend fun getPromotedBoostSlots(surface: String, limit: Int = 3): JSONObject {
+        val normalizedSurface = surface.trim().uppercase()
+        require(normalizedSurface in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET", "REELS")) {
+            "Unknown Boost placement."
+        }
+        return rpc(
+            if (normalizedSurface == "MARKET") "get_market_promoted_slots" else "get_blink_promoted_slots",
             JSONObject()
-                .put("p_surface", surface.trim().uppercase())
+                .put("p_surface", normalizedSurface)
                 .put("p_limit", limit.coerceIn(1, 10)),
         )
+    }
 
     suspend fun quoteBoostCampaign(
         targetType: String,
@@ -393,14 +413,20 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun followDropCreator(id: String): JSONObject =
         rpc("follow_blink_drop_creator", JSONObject().put("p_creator_id", id))
 
-    suspend fun recordBoostDelivery(campaignId: String, eventType: String, surface: String): JSONObject =
-        rpc(
+    suspend fun recordBoostDelivery(campaignId: String, eventType: String, surface: String): JSONObject {
+        require(campaignId.isNotBlank()) { "Campaign is missing." }
+        val normalizedSurface = surface.trim().uppercase()
+        require(normalizedSurface in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET", "REELS")) {
+            "Unknown Boost delivery surface."
+        }
+        return rpc(
             "record_blink_boost_delivery",
             JSONObject()
                 .put("p_campaign_id", campaignId.trim())
                 .put("p_event_type", eventType.trim().uppercase())
-                .put("p_surface", surface.trim().uppercase()),
+                .put("p_surface", normalizedSurface),
         )
+    }
 
     suspend fun completeBoostMissionAction(
         campaignId: String,

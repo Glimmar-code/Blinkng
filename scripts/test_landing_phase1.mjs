@@ -29,7 +29,7 @@ assert.match(landing,/searchForm\?\.addEventListener\('submit'/);
 assert.match(landing,/navigate\('\/@'\+encodeURIComponent\(username\)\)/);
 assert.match(landing,/href="\$\{APK_URL\}"/);
 assert.equal((landing.match(/class="landing-feature-card"/g)||[]).length,6,'all six feature cards must render');
-for(const name of ['BLINK Feed','BLINK Reels','BLINK Market','BLINK Connect','BLINK Messages','BLINK LIFE'])assert.ok(landing.includes(name),'missing feature '+name);
+for(const name of ['BLINK Feed','BLINK Reels','BLINK Market','BLINK Connect','BLINK Messages','Creators'])assert.ok(landing.includes(name),'missing feature '+name);
 for(const dest of ['/features/','/about/','/download/','/faq/','/privacy/'])assert.ok(landing.includes("routeHref('"+dest+"')"),'missing site navigation '+dest);
 assert.ok(landing.includes('noopener noreferrer'),'external links need safe target attributes');
 assert.ok(landing.includes('maxlength="32"'),'search must avoid unbounded input');

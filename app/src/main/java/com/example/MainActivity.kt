@@ -82,6 +82,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+internal fun shouldSkipStartupIntro(savedInstanceState: Bundle?): Boolean =
+    savedInstanceState != null
+
     /** One authoritative action binding for every chat entry point. */
 private fun messageInteractionActions(viewModel: BlinkViewModel): ChatInteractionActions = ChatInteractionActions(
             onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
@@ -268,7 +271,7 @@ class MainActivity : ComponentActivity() {
         presenceHeartbeatJob = lifecycleScope.launch {
             while (isActive && viewModel.uiState.value.destination == AppDestination.MAIN) {
                 viewModel.updatePresence(true)
-                delay(60_000)
+                delay(30_000)
             }
         }
     }
@@ -442,6 +445,11 @@ class MainActivity : ComponentActivity() {
                 itemsOpenSignal += 1
             }
 
+            BlinkNotificationHelper.ACTION_OPEN_CONTEST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(2)
+            }
+
             BlinkNotificationHelper.ACTION_OPEN_BOOST -> {
                 viewModel.setTab(MainTab.HOME)
                 viewModel.setFeedSubTab(0)
@@ -515,6 +523,11 @@ class MainActivity : ComponentActivity() {
                         putExtra(BlinkDropsActivity.EXTRA_DROP_ID, event.targetId)
                     }
                 )
+            }
+
+            BlinkInAppNotificationDestination.CONTEST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(2)
             }
 
             BlinkInAppNotificationDestination.BOOST -> {
@@ -637,7 +650,7 @@ class MainActivity : ComponentActivity() {
                     .recordException(error)
             }
         }
-        stopPresenceHeartbeat(markOffline = true)
+        stopPresenceHeartbeat(markOffline = false)
         super.onStop()
     }
 
@@ -687,9 +700,11 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val reduceAppMotion = rememberBlinkReduceMotion()
-            // Covers auth/session restoration too: returning users must see the intro.
-            var showStartupIntro by remember { mutableStateOf(true) }
-            var introAnimationFinished by remember { mutableStateOf(false) }
+            // Skip only a configuration/task recreation. A warm, authenticated user
+            // still deserves the branded animation on a genuine cold app launch.
+            val skipStartupIntro = shouldSkipStartupIntro(savedInstanceState)
+            var showStartupIntro by remember { mutableStateOf(!skipStartupIntro) }
+            var introAnimationFinished by remember { mutableStateOf(skipStartupIntro) }
             // Never reveal the legacy black SPLASH placeholder after the wordmark.
             // Keep the final BLINK frame visible until a real destination is ready.
             LaunchedEffect(introAnimationFinished, uiState.destination) {
@@ -787,6 +802,25 @@ class MainActivity : ComponentActivity() {
             val idleHomeForPrompts = idleAppForUpdate &&
                 uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
 
+            // Refresh the authoritative conversation presence projection while Messages
+            // or a chat is visible. This keeps an already-open chat from showing stale status.
+            LaunchedEffect(
+                uiState.destination,
+                uiState.selectedTab,
+                uiState.activeConversationPartner,
+                uiState.myProfile.id
+            ) {
+                val shouldRefreshMessages = uiState.destination == AppDestination.MAIN &&
+                    uiState.myProfile.id.isNotBlank() &&
+                    (uiState.selectedTab == MainTab.MESSAGES || uiState.activeConversationPartner != null)
+                if (shouldRefreshMessages) {
+                    viewModel.refreshMessagePresence()
+                    while (isActive) {
+                        delay(30_000L)
+                        viewModel.refreshMessagePresence()
+                    }
+                }
+            }
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
                     startPresenceHeartbeat()
@@ -935,8 +969,25 @@ class MainActivity : ComponentActivity() {
                                         ) + fadeOut(animationSpec = tween(150))
                                     )
                                 } else {
-                                    fadeIn(animationSpec = tween(160)) togetherWith
-                                        fadeOut(animationSpec = tween(120))
+                                    // Premium app motion: pages feel connected instead of
+                                    // blinking between unrelated surfaces. Keep the movement
+                                    // restrained so it remains fast on feed/chat transitions.
+                                    (
+                                        slideInHorizontally(
+                                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                                            initialOffsetX = { it / 14 }
+                                        ) +
+                                            fadeIn(animationSpec = tween(180)) +
+                                            scaleIn(
+                                                initialScale = 0.985f,
+                                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                                            )
+                                    ) togetherWith (
+                                        slideOutHorizontally(
+                                            animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                            targetOffsetX = { -it / 20 }
+                                        ) + fadeOut(animationSpec = tween(130))
+                                    )
                                 }
                             },
                             label = "AppNavigation"
@@ -1297,10 +1348,23 @@ fun MainAppContent(
     val adminService = remember { AdminSupabaseService() }
     val adminContext = androidx.compose.ui.platform.LocalContext.current
     var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
-    LaunchedEffect(uiState.myProfile.id) {
+    // Re-check when the menu opens as well as when the signed-in account changes.
+    // A transient auth/session restore failure must not permanently hide the owner entry.
+    LaunchedEffect(uiState.myProfile.id, uiState.isMenuOpen) {
         canOpenAdmin = false
         if (uiState.myProfile.id.isNotBlank()) {
-            canOpenAdmin = adminService.fetchCapability().getOrNull()?.isAdmin == true
+            var resolved = false
+            var attempt = 0
+            while (!resolved && attempt < 3) {
+                val capability = adminService.fetchCapability()
+                if (capability.isSuccess) {
+                    canOpenAdmin = capability.getOrNull()?.isAdmin == true
+                    resolved = true
+                } else {
+                    attempt += 1
+                    if (attempt < 3) delay(750)
+                }
+            }
         }
     }
     LaunchedEffect(feedUtilitySheet) {
@@ -1752,6 +1816,38 @@ fun MainAppContent(
         uiState.activeViewingStory == null &&
         !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3)
 
+    val feedRealtimeActive = selectedPage == 0 && pagerState.currentPage == 0 &&
+        !pagerState.isScrollInProgress &&
+        (mainPageSwipeEnabled || uiState.activeCommentsPostId != null ||
+            uiState.activePostOptionsPost != null || sharingPostId != null)
+    DisposableEffect(viewModel, feedRealtimeActive) {
+        if (feedRealtimeActive) viewModel.realtimeManager.subscribeToScreenTable("feed_posts")
+        onDispose {
+            if (feedRealtimeActive) viewModel.realtimeManager.unsubscribeFromScreenTable("feed_posts")
+        }
+    }
+
+    val connectHubRealtimeTables = remember {
+        listOf(
+            "roommate_profiles", "roommate_applications", "mentor_profiles", "mentor_requests",
+            "reading_mate_profiles", "reading_mate_requests", "housing_agent_profiles",
+            "housing_requests", "housing_request_applications", "game_challenges",
+            "study_circles", "study_circle_members"
+        )
+    }
+    val connectHubRealtimeActive = selectedPage == 3 && pagerState.currentPage == 3 &&
+        !pagerState.isScrollInProgress
+    DisposableEffect(viewModel, connectHubRealtimeActive) {
+        if (connectHubRealtimeActive) {
+            connectHubRealtimeTables.forEach(viewModel.realtimeManager::subscribeToScreenTable)
+        }
+        onDispose {
+            if (connectHubRealtimeActive) {
+                connectHubRealtimeTables.forEach(viewModel.realtimeManager::unsubscribeFromScreenTable)
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(
             state = pagerState,
@@ -2055,6 +2151,12 @@ fun MainAppContent(
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
+                        onCallHistory = {
+                            context.startActivitySafely(
+                                Intent(context, com.example.call.CallHistoryActivity::class.java),
+                                "Could not open call history."
+                            )
+                        },
                         onUpdateChatPrivacy = { settings ->
                             viewModel.updateChatPrivacySettings(settings)
                         },
@@ -2063,7 +2165,7 @@ fun MainAppContent(
                             viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                         },
                         onCreateGroup = { showGroupInvitations = true },
-                        onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
+                        onMyProfileClick = { viewModel.openMyProfile() },
                         onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
@@ -2405,7 +2507,7 @@ fun MainAppContent(
                                 "notifications" -> viewModel.openActivity(true)
                                 "store" -> showStoreComingSoon = true
                                 "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
-                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                                "profile" -> viewModel.openMyProfile()
                             }
                         }
                     )
@@ -2967,9 +3069,16 @@ fun MainAppContent(
 
         // Modals: Post Options Menu Sheet (Save, Share, Delete, Report, Mute)
         uiState.activePostOptionsPost?.let { post ->
+            val currentUsername = uiState.myProfile.username.trim().removePrefix("@")
+            val postAuthorUsername = post.authorUsername.trim().removePrefix("@")
+            val postAuthorDisplayName = post.author.trim().removePrefix("@")
+            val canDeletePost = currentUsername.isNotBlank() && (
+                postAuthorUsername.equals(currentUsername, ignoreCase = true) ||
+                    postAuthorDisplayName.equals(currentUsername, ignoreCase = true)
+                )
             PostOptionsMenuSheet(
                 post = post,
-                isAuthor = post.author.equals(uiState.myProfile.username, ignoreCase = true),
+                isAuthor = canDeletePost,
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openPostOptions(null) },
                 onToggleSave = { viewModel.toggleBookmark(post.id) },
@@ -3050,6 +3159,10 @@ fun MainAppContent(
                 onNotificationClick = { activity ->
                     viewModel.handleNotificationClick(activity)
                     when (activity.targetType?.lowercase()) {
+                        "contest" -> {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(2)
+                        }
                         "channel" -> {
                             val id = activity.targetResourceId.orEmpty()
                             if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
@@ -3403,7 +3516,7 @@ fun MainAppContent(
                 onViewProfile = {
                     showSavedProfile = false
                     viewModel.openMenu(false)
-                    viewModel.openProfile("you")
+                    viewModel.openMyProfile()
                 },
                 onLeaderboard = {
                     viewModel.openMenu(false)
@@ -3421,7 +3534,7 @@ fun MainAppContent(
                 onSaved = {
                     showSavedProfile = true
                     viewModel.openMenu(false)
-                    viewModel.openProfile("you")
+                    viewModel.openMyProfile()
                 },
                 onVerification = {
                     viewModel.openMenu(false)
@@ -3452,7 +3565,10 @@ fun MainAppContent(
                 },
                 onOpenAdmin = {
                     viewModel.openMenu(false)
-                    if (canOpenAdmin) context.startActivitySafely(
+                    // Keep the entry point discoverable while the async capability check
+                    // is resolving. AdminControlCenterActivity performs the authoritative
+                    // server-side check before showing any protected controls.
+                    context.startActivitySafely(
                         Intent(context, AdminControlCenterActivity::class.java),
                         "Could not open administration."
                     )

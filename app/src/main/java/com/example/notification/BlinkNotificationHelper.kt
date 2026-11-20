@@ -117,6 +117,7 @@ object BlinkNotificationHelper {
     const val ACTION_OPEN_SOCIAL = "OPEN_SOCIAL"
     const val ACTION_OPEN_ITEMS = "OPEN_ITEMS"
     const val ACTION_OPEN_BOOST = "OPEN_BOOST"
+    const val ACTION_OPEN_CONTEST = "OPEN_CONTEST"
 
     // ================================================================
     // COLORS
@@ -930,6 +931,16 @@ object BlinkNotificationHelper {
                             buildDropsPendingIntent(context, targetId)
                         targetType.equals("boost", ignoreCase = true) ->
                             buildBoostPendingIntent(context, targetId)
+                        targetType.equals("contest", ignoreCase = true) ->
+                            PendingIntent.getActivity(
+                                context,
+                                positiveHash("contest:${targetId ?: "launch"}"),
+                                Intent(context, MainActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    putExtra(EXTRA_ACTION, ACTION_OPEN_CONTEST)
+                                },
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
                         targetType.equals("story", ignoreCase = true) ||
                             targetType.equals("notification", ignoreCase = true) ||
                             (targetPostId.isNullOrBlank() && targetId.isNullOrBlank()) ->

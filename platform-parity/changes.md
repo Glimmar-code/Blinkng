@@ -1,20 +1,52 @@
-## 2026-10-31 — Android Chat composer touch/hold accessibility and reference icons
+## 2026-11-14 — BLINK Market Android visual refresh
 
-- **PARITY-EXCEPTION: android-chat-composer-touch-microphone-20261031** — Android Compose's inline microphone supports touch tap (voice typing) and long press (start voice-note recording). The fix gives the control proper click/long-click accessibility semantics and matches the supplied outlined camera/microphone artwork. These are native Android gesture/accessibility affordances; applying an Android long-press modifier to the Windows desktop composer would be inappropriate.
-- **Desktop scope:** Windows composer and its existing send/attachment actions remain unchanged. This exception does **not** certify full voice recording/dictation parity on Windows.
-- **Validation hold:** An Android instrumentation screenshot fixture and real semantic-action assertions cover camera, tap-to-dictate, long-press-to-record, and send. Latest-head CI, updated screenshot comparison and native device functionality must pass before main merge.
+- **Android:** BLINK Market receives a shared Compose visual layer for cards, surfaces, pills, spacing, motion tokens, seller onboarding, product detail, orders, offers and seller insights. Existing navigation, callbacks, Supabase calls, listing/order/offer state, seller approval rules and Paystack gating remain unchanged.
+- **Windows equivalent:** The Windows client retains its existing desktop Market presentation and shared backend/data contracts. Android Compose corner radii, touch-sized controls, mobile scrolling/layout, image treatment and Android-specific motion have no direct desktop UI equivalent; no Windows capability or server contract is removed by this presentation-only refresh.
+- **PARITY-EXCEPTION: android-market-compose-visual-refresh-20261114** — This change is intentionally limited to Android UI/animation components in `app/src/main/java/com/example/ui/screens`. A Windows visual redesign is not claimed; any future desktop Market polish requires a separate native Windows UX change and validation.
+- **Verification:** Existing Market search, filters, pagination, saved/verified views, orders, offers, seller insights, request purchase, private offers, sharing/reporting and disabled “Coming soon” Paystack paths remain wired through their existing callbacks and services. Android compilation and Windows CI checks remain required before promotion.
 
-## 2026-10-30 — Compact native Android Chat voice player (reference fidelity)
+## 2026-11-13 — Messaging inbox chip accessibility
 
-- **PARITY-EXCEPTION: android-native-compact-voice-player-20261030** — The small-screen Android `BlinkChatVoicePlayer` renders the selected reference's compact single-row waveform, duration and playback-speed control using Android MediaPlayer. Android native DownloadManager remains available from the message action menu, not an extra button consuming inline waveform space.
-- **Desktop equivalent and gap:** The Windows conversation is a desktop-native surface with a different layout and file actions. This Testlab change does not implement or certify Windows voice playback/download parity. Existing desktop conversations remain unchanged; any missing desktop voice feature still requires a separately validated implementation before claiming full cross-platform feature parity.
-- **Validation hold:** The Android emulator fixture must show waveform, time and 1× control together; Android playback/download functionality and keyboard tests, Windows quality and full device visual comparison must pass before merge into `main`. Do not treat a source-only visual edit as exact reference screenshot evidence.
+- **PARITY-EXCEPTION: android-background-call-and-call-history-20261113** — Android
+  keeps an active Telecom/WebRTC call alive when its UI is backgrounded or removed from
+  Recents, and adds a Calls chip that opens the existing authenticated call-history screen.
+  Windows retains its desktop call surface and existing call-history entry points; no
+  Windows capability or backend contract is removed by this Android lifecycle/navigation fix.
 
-## 2026-10-30 — Create Post recent gallery: Android-specific local MediaStore discovery
+- **Android:** Inbox filter chips now use 12sp labels and a 48dp minimum touch target.
+- **Windows:** The desktop inbox already uses Material `FilterChip`, whose platform
+  implementation owns the desktop-sized touch target and label typography; no Windows
+  source change is required for this Android-specific Compose sizing correction.
+- **PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android** — Android's compact
+  horizontal inbox rail needs an explicit 48dp mobile target, while Windows uses the
+  desktop Material filter-chip implementation and retains its desktop interaction model.
+- **CI evidence:** This remains the documented `PARITY-EXCEPTION: messaging-inbox-chip-touch-target-android`
+  for the Android-only touch-target correction; no Windows capability is removed.
 
-- **PARITY-EXCEPTION: android-recent-mediastore-thumbnails-20261030** — Android may display a limited, newest-first row of real camera-roll thumbnails **only if the user has already granted media permission**. Without that permission, the app displays explicitly saved-draft images and offers the Android Photo Picker. Windows does not have Android's MediaStore or runtime permission API, so attempting to duplicate this code on desktop would be incorrect.
-- **Windows equivalent:** `DesktopCreatePostDialog.kt` already uses a native `JFileChooser` for selecting multiple photos, previews the selected images, and supports reorder, removal, editor and publishing. This user-facing selection pathway remains unchanged; unlike Android's permission-scoped recent row, Windows does not automatically enumerate local photos.
-- This exception is only for the **operating-system-specific recent thumbnail affordance**. It does not exempt missing posting functionality, content security or visual verification. Android Compose tests, emulator captures and actual reference-image comparisons are still release blockers; no merge or deployment is authorized by this entry.
+## 2026-11-10 — Android cold-launch branding and cache-first hydration
+
+- **Android:** Show the shared BLINK intro on true cold launches for returning as well as signed-out users; only Activity recreation skips replay. After authentication, retain the local snapshot and quietly refresh only the currently visible surface instead of eagerly refetching every section. Cached feed content stays visible without a loading indicator; an empty feed still reports loading while its first page is fetched.
+- **Windows equivalent:** The desktop app uses its own startup lifecycle and `DesktopAppState.loadAuthenticatedState`, which loads profile, settings and admin capability rather than invoking Android's multi-section sync. It continues loading data through its existing desktop route flows; no shared API, backend contract, or user-facing capability changes are introduced.
+- **PARITY-EXCEPTION: android-cold-start-cache-hydration-20261110** — Activity recreation policy, local app snapshot restoration, Android session stores and native launch timing are Android lifecycle/cache adapters. The shared Compose wordmark remains unchanged and is already used by the desktop intro. Windows does not use Android's session snapshot or broad startup sync, so this fix does not change Windows code.
+- **Verification:** Android intro regression, ViewModel/refresh tests, Android build and Windows compile/parity checks are required before promotion. No backend or production release change is included.
+
+## 2026-11-07 — BLINK Contest topic loading and publishing repair (PR #675)
+
+- **PARITY-EXCEPTION: android-contest-topic-error-recovery-20261107** — Android admin topic selection now gives an explicit required-topic state and an inline retry action when the directory RPC cannot load. Creating a custom topic continues to select its returned topic ID automatically. The underlying Contest RPC/database contract is shared; no Windows-only backend behavior is introduced.
+- **Windows equivalent:** Windows uses the shared authenticated Contest RPCs and its independent desktop admin presentation; this Android-only message/retry affordance does not remove desktop contest creation or publishing capabilities.
+- **Verification:** The isolated local Supabase integration suite now applies the topic/history migration and exercises the seeded directory, custom topic creation, public listing, follow/unfollow, topic detail, required-topic rejection, campus-university validation and authenticated publishing. This is disposable CI only; it never connects to the hosted production database.
+
+## 2026-11-06 — Android realtime lifecycle and credential hardening (PR #663)
+
+- **PARITY-EXCEPTION: android-realtime-and-secure-storage-adapters-20261106** — Android keeps messages, conversations, presence, notifications, activities, balances and incoming calls live; feed-post events are joined only while the Home feed is active, and ConnectHub-specific tables are joined only while Connect is active. The subscription set is replayed safely after reconnects. Android's identifier-only remembered-login migration uses Android Keystore/SharedPreferences; its private bug-report screenshot reader accepts `jpg`, `jpeg`, `png`, `webp`, `heic` and `heif` without changing storage authorization. The Android-only config fallback warning and conversation cursor pagination are client-adapter changes; the pinned `blink-web` frontend response is shared by both clients.
+- **Windows equivalent:** Windows keeps its independent REST-backed desktop data/session workflows and manual refresh affordances; it does not use Android's OkHttp Realtime socket or Android Keystore. The desktop sign-in flow does not persist passwords. Windows bug reports remain text-only (`p_screenshot=false`) with the existing admin review flow; Windows screenshot attachment/rendering is not introduced by this PR. No shared database schema, authorization or endpoint contract changes are made.
+- **Scope:** This exception covers OS-specific realtime lifecycle, local identifier storage and Android screenshot-file handling only; it does not claim new Windows screenshot support or change Windows behavior.
+
+## 2026-11-05 — Android own-profile shortcut routing (PR #662)
+
+- **PARITY-EXCEPTION: self-profile-entry-routing** — Android Activity entry points (chat profile shortcut, top-bar Profile action and profile menu actions) now use the canonical `you` self-profile route rather than a username that may still be blank during profile hydration. This is Android navigation wiring only; it does not add or remove profile capabilities or change backend behavior.
+- **Windows equivalent:** The existing desktop profile dialog resolves ownership from `initialProfile.id == state.session?.userId` and loads the signed-in user's profile by authenticated user ID. It does not depend on the Android `you` route or a hydrated username, so the desktop flow already avoids this timing issue.
+- **Verification:** Android runtime/build checks are required for the navigation change; Windows parity is covered by the existing authenticated-ID profile flow. This exception does not claim a Windows code change.
 
 ## 2026-10-29 — Combined Contest, Create Post and Chat repair
 
@@ -1864,15 +1896,41 @@ The Android composer accepts an optional trending-tag loader so native and Robol
 - Android-only contrast hardening sets explicit light foreground colors inside the dark Drops empty/podium cards and Boost quote/analytics cards. This is a native Compose presentation correction; it does not change the shared data model, API, eligibility, pricing, balances, transactions or user actions.
 - Windows equivalent: the desktop Drops and Boost surfaces retain their existing native theme-aware text rendering and separate layout. The parity contract is identical data, actions and readable foreground/background contrast, not pixel-identical native card styling. The Windows parity/build gate verifies its existing desktop implementation independently.
 
+### PARITY-EXCEPTION: contest-android-native-compose-presentation-20261101 (latest Contest CTA audit)
 
-## Testlab — repeat-qualified content and Marketplace views (2026-10-31)
+- The Contest PR updates Android's native Compose presentation (animated cards, chips, admin dashboard layout, applicant media preview and share-flyer dialog). These are Android-native screen treatments; contest eligibility, moderation, ranking, voting, prize data and service contracts remain shared/server-authoritative and are unchanged by the presentation work.
+- Windows equivalent: retain the existing Windows-native Contest screens and their equivalent contest data/actions using desktop layout and controls. Pixel-identical Compose animation and Android image-picker/player/dialog behavior are not required on Windows; functional parity remains the same contest lifecycle, candidate moderation, free voting, leaderboard, sharing/link and prize-status capabilities. Windows parity/build checks still run independently.
 
-- Android Feed and Profile post cards, inline Reels, and active full-screen Reels now qualify a visible exposure after 1.5 seconds at the existing 50% visibility threshold. Existing window-focus, playback-active, off-screen/pager-prefetch and continuous-session guards remain in place. Scrolling fully away and returning starts a new exposure; repeated layouts while still visible do not.
-- Windows content cards use the same 1.5-second visible-dwell rule before recording. The shared server-side record_content_view remains authoritative for 1/3/6 active verification weights, per-content viewer caps and event idempotency.
-- Marketplace listing detail opens wait two seconds before sending a view event and cancel logically when the user has already navigated away. The staged SQL records repeat visits with event IDs, a two-second per-viewer/listing rate limit, 100-event daily cap, 600 weighted-contribution cap, owner-view exclusion, and server-resolved active verification weights. The legacy daily unique-visitor table remains for analytics. The Android listing counter is held at its baseline for the same 120-second presentation delay; writes are immediate.
-- Promoted Market listing delivery remains separate: its existing START/QUALIFIED campaign session is preserved and still requires a sustained visible placement; opening the listing also contributes a normal listing view after the detail dwell.
-- Automated tests are added for Android/Windows dwell gates and the isolated Marketplace SQL contract. These are staged changes only; production Supabase has not been migrated and no APK/EXE has been published. Live Testlab backend integration, full Android/Windows build/runtime checks and latest-head CI remain required before promotion.
+### PARITY-EXCEPTION: android-admin-capability-refresh-on-menu-open-20261101
 
-### PARITY-EXCEPTION: windows-market-listing-views-not-implemented-20261031
+- Android's native Compose menu now retries the signed-in user's admin capability lookup when the menu opens, so a transient session-restore/RPC failure does not leave the owner dashboard entry hidden for the rest of the session. Server-side authorization is unchanged.
+- Windows equivalent: `desktopApp/src/main/kotlin/com/blinkng/desktop/ui/BlinkDesktopMenuScreen.kt` already renders its `Switch to Admin Profile` action from `state.adminCapability.allowed`; its separate desktop state lifecycle and admin navigation remain unchanged. This is an Android lifecycle/retry fix, not a new admin capability or a change to shared authorization.
 
-- The current Windows desktop source has no Market listing/detail route, so there is no desktop Market exposure surface to wire in this patch. No placeholder Market UI was invented. The closest Windows equivalent is the existing desktop content-view tracker, which now uses the same 1.5-second visible dwell for Feed/Reels. The shared Marketplace RPC remains compatible with one-argument authenticated callers through its generated event-ID default; when Windows Market detail is implemented, it must adopt the same two-second detail dwell, event idempotency, 1/3/6 weights and 120-second display delay.
+### PARITY-EXCEPTION: contest-launch-notification-routing-20261101
+
+- Android FCM and in-app launch alerts route to the Contest tab using the existing Home feed subtab destination. Windows foreground and notification-centre alerts route to the existing `connect` Contest destination.
+- The notification event and target are server-generated and validated against a currently published contest. Windows has no Android FCM receiver; email and the durable in-app notification rows remain cross-platform.
+
+## 2026-11-07 — Android lifecycle, mobile data policy and account-surface hardening (PR #666)
+
+- **PARITY-EXCEPTION: android-mobile-runtime-and-account-adapters-20261107** — This PR's Android-only files contain native platform adapters and Android presentation/lifecycle wiring, not a new cross-platform service contract. The Android data saver is enforced at the Coil/OkHttp boundary using Android's metered-network signal; it blocks only uncached image network requests when the user opts in, while cache hits and unmetered connections continue. Android notification settings open the OS-owned app-notification settings page, and FCM token unregistration is part of Android account deletion because this client registers FCM tokens. WorkManager notification recovery is Android's background execution adapter and now scopes both pending and history queries to the authenticated UID. Startup task-recreation handling and Compose page transitions are native Android lifecycle/presentation behavior. The post-save action and author-delete identity check retain existing post/bookmark server contracts.
+- **Windows equivalents:** The desktop client already has a native `Data saver` preference in `SettingsScreen` backed by `DesktopUserSettings`; it uses desktop settings and transport behavior rather than Android's `ConnectivityManager`/Coil interceptor. Windows notifications are handled by `DesktopShell` and its native tray/in-app notification flow, not FCM or Android notification settings. Windows notification reads use the desktop authenticated client. Windows account sign-out/session cleanup is independent of FCM because the desktop client does not register Android FCM tokens. Desktop startup/navigation uses its own Compose Desktop shell and lifecycle. Windows feed cards already expose bookmark toggling through `state.client.toggleBookmark`, and the desktop menu/admin route remains gated by its own server-derived `adminCapability`.
+- **Verification boundary:** This exception does not claim that Windows runs Android APIs or that desktop screens must copy Android-native animations/dialogs. Functional equivalents remain native to each platform. Shared backend authorization, post ownership, bookmark semantics and notification ownership must remain unchanged. Reviewers must still run the Windows desktop quality/build checks; this ledger entry does not waive or modify the parity gate.
+
+## 2026-11-07 — Android Play Store distribution and backup policy
+
+- **PARITY-EXCEPTION: android-play-store-distribution-and-backup-policy-20261107** — Android now builds a separate `playStoreRelease` variant that removes the restricted `REQUEST_INSTALL_PACKAGES` permission from the Play Store manifest while preserving the existing website APK's user-approved self-update path. Android cloud backup and device-transfer exclusions are explicit because the Android app already sets `allowBackup=false` and stores account/session/private-message state locally.
+- **Windows equivalent:** Windows desktop is not distributed through Google Play, does not install Android APKs, and does not participate in Android OS cloud-backup or device-transfer APIs. It retains its independent desktop installer and account-scoped Windows storage behavior; no shared feature, backend contract or desktop capability changes.
+- **Scope:** This is Android distribution/OS-policy configuration only. It does not change user-facing features, server data, payment behavior or Windows implementation.
+- **PARITY-EXCEPTION: pr-686-android-chat-editor-state-repair-20261114** — PR 686's merge-resolution update carries forward Android's Compose chat video-editor state/animation repair and message-screen import correction; it changes Android implementation details only, not chat actions, authorization or backend contracts.
+- **Windows equivalent:** Windows retains its existing native desktop media editor, message-screen layout and animation implementation; no Windows feature or behavior is removed.
+- **PARITY-EXCEPTION: android-chat-editor-state-and-message-animation-20261112** — The Android changes repair local Compose state for the native chat video-editor dialog and restore the existing Android message-screen animation import. These are Android-only presentation and lifecycle details; they do not add or alter a shared feature, payload, permission, backend contract or user action.
+- **Windows equivalent:** Windows continues to use its existing native desktop media-editor state and message-screen layout/animation implementation. The equivalent editor and messaging actions remain available through the desktop implementation, but Android Compose state holders and animation APIs are not portable Windows code.
+- **Scope:** This exception covers only the Android compile repairs in `BlinkChatVideoEditorDialog.kt` and `PremiumMessagesScreen.kt`; Windows parity/build checks remain required and are not waived.
+
+
+## 2026-11-14 — Digital Paystack checkout compliance gate
+
+- **PARITY-EXCEPTION: android-play-billing-coin-pack-checkout-20261114** — Android coin-pack checkout is hard-disabled in `BlinkStoreActivity.kt` because coin packs are digital goods and no Google Play Billing integration with server-side purchase verification exists. The Supabase migration rejects digital coin and gift Paystack RPCs for every client; physical marketplace checkout remains separate.
+- **Windows equivalent:** The desktop Profile surface now presents coin purchases as unavailable rather than offering a Paystack action that the shared backend rejects. Windows is not subject to Google Play Billing, but the shared digital-goods purchase path stays closed on both clients until secure billing is available; physical marketplace checkout remains separate.
+- **Scope:** This is an Android distribution-policy restriction plus a shared backend fail-closed change, reflected in the desktop UI. When a compliant billing contract is implemented, update the shared entitlement and both client surfaces together.

@@ -197,6 +197,8 @@ body.br-marketing-active #android-ui-parity-dock {
     justify-items: stretch;
     margin-top: 21px;
     gap: 6px;
+    width: calc(100% + 16px);
+    margin-inline: -8px;
   }
   .br-button-main {
     width: 100%;
@@ -274,3 +276,14 @@ body.br-marketing-active #android-ui-parity-dock {
   .br-details > summary { font-size: 15px; }
   .br-detail-content h2 { font-size: 23px; }
 }
+
+/* BLINK public brand palette: black, white and neutral grey only. */
+.br-page{--br-blue:#fff;--br-purple:#777;--br-text:#fff;--br-muted:#aaa;--land-line:rgba(255,255,255,.18);--land-muted:#aaa;--land-highlight:#fff;background:#000;color:#fff}
+.br-page .br-gradient{background:linear-gradient(90deg,#fff,#aaa);-webkit-background-clip:text;background-clip:text;text-decoration-color:#fff}
+.br-page .br-hashtag{border-color:#666;color:#fff;background:#111}
+.br-page .br-aura{background:radial-gradient(ellipse at 50% 60%,rgba(255,255,255,.16),transparent 62%)}
+.br-page .br-ring{background:linear-gradient(125deg,#fff,#666)}
+.br-page .br-post-visual{background:linear-gradient(#666,#222 60%,#000)}
+.br-page .br-detail-grid a,.br-page a:hover,.br-page .br-nav a[aria-current]:after{color:#fff}
+.br-page .br-nav a[aria-current]:after{background:#fff}
+@media(prefers-reduced-motion:reduce){.br-page *{animation:none!important}}

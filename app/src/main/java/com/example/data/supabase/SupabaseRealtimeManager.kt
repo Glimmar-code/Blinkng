@@ -138,7 +138,7 @@ class SupabaseRealtimeManager private constructor() {
         } catch (e: Exception) { Log.e(TAG, "Failed to initiate WebSocket connection", e); isConnecting.set(false); scheduleReconnect() }
     }
     private fun createListener() = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = ""; startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true) }
+        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = ""; startHeartbeat(); sendAccessToken(); subscribeToTables() }
         override fun onMessage(webSocket: WebSocket, text: String) = handleIncomingMessage(text)
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { handleDisconnected() }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "WebSocket Failure: ${t.message}", t); handleDisconnected(); scheduleReconnect() }
@@ -169,7 +169,6 @@ class SupabaseRealtimeManager private constructor() {
                         put("ref", "hb_${refCounter.getAndIncrement()}")
                     }.toString()
                 )
-                setPresence(true)
             }
         }
     }
@@ -186,10 +185,59 @@ class SupabaseRealtimeManager private constructor() {
         ) == true
         if (sent) lastAccessTokenSent = token
     }
-    private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","conversation_presence","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes","user_balances")
-        tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
+    private val alwaysOnTables = listOf("messages","conversations","conversation_presence","notifications","activities","user_balances","calls")
+    private val screenSubscriptionLock = Any()
+    private val screenScopedTables = mutableSetOf<String>()
+
+    fun subscribeToTables() {
+        synchronized(screenSubscriptionLock) {
+            alwaysOnTables.forEach { joinTable(it) }
+            screenScopedTables.forEach { joinTable(it) }
+        }
     }
+
+    fun subscribeToScreenTable(table: String) {
+        if (table in alwaysOnTables) return
+        synchronized(screenSubscriptionLock) {
+            if (screenScopedTables.add(table)) joinTable(table)
+        }
+    }
+
+    fun unsubscribeFromScreenTable(table: String) {
+        if (table in alwaysOnTables) return
+        synchronized(screenSubscriptionLock) {
+            if (screenScopedTables.remove(table)) {
+                webSocket?.send(buildLeave(table))
+            }
+        }
+    }
+
+    private fun joinTable(table: String) {
+        val join = JSONObject().apply {
+            put("topic", "realtime:public:$table")
+            put("event", "phx_join")
+            put("payload", JSONObject().apply {
+                put("config", JSONObject().apply {
+                    put("postgres_changes", org.json.JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("event", "*")
+                            put("schema", "public")
+                            put("table", table)
+                        })
+                    })
+                })
+            })
+            put("ref", refCounter.getAndIncrement().toString())
+        }
+        webSocket?.send(join.toString())
+    }
+
+    private fun buildLeave(table: String) = JSONObject().apply {
+        put("topic", "realtime:public:$table")
+        put("event", "phx_leave")
+        put("payload", JSONObject())
+        put("ref", refCounter.getAndIncrement().toString())
+    }.toString()
     private fun handleIncomingMessage(text: String) {
         try {
             val json = JSONObject(text)
@@ -376,7 +424,6 @@ class SupabaseRealtimeManager private constructor() {
         _messagesSubscribed.value = false
         lastAccessTokenSent = ""
         heartbeatJob?.cancel()
-        setPresence(false)
     }
     private fun scheduleReconnect() { reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) } }
     fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = "" }

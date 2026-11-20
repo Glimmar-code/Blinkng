@@ -423,12 +423,30 @@ private fun ReelsContent(
     var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("Reels") }
     val featuredService = remember { BlinkFeaturedReelsService() }
     var featuredReels by remember(resumeUserKey) { mutableStateOf<List<BlinkFeaturedReel>>(emptyList()) }
-    LaunchedEffect(isScreenActive, resumeUserKey) {
-        if (!isScreenActive) return@LaunchedEffect
-        // Only poll while Reels is active; database cohorts change at 00:00/12:00 UTC.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            appForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(isScreenActive, appForeground, resumeUserKey) {
+        if (!isScreenActive || !appForeground) return@LaunchedEffect
+        // Only poll while Reels is visible and the app is foregrounded. The server
+        // rotates the completed trending cohort at its UTC window boundary; the
+        // immediate fetch on resume prevents a stale banner after backgrounding.
         while (true) {
             featuredReels = featuredService.fetch()
             delay(300_000L)
+        }
+    }
+    LaunchedEffect(isRefreshing, isScreenActive, appForeground) {
+        if (isRefreshing && isScreenActive && appForeground) {
+            featuredReels = featuredService.fetch()
         }
     }
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()

@@ -93,9 +93,11 @@ import com.example.data.models.AppSettings
 import com.example.data.models.MarketplaceOrder
 import com.example.data.models.ScheduledPost
 import com.example.data.models.UserProfile
+import com.example.data.local.BlinkDataUsagePreferences
 import com.example.data.repository.ProfessionalRepository
 import com.example.data.repository.ScheduledPostRepository
 import com.example.data.supabase.SupabaseService
+import com.example.notification.BlinkFirebaseMessagingService
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.BlinkUserPickerSheet
 import com.example.ui.components.BlinkCommunitiesPanel
@@ -159,6 +161,9 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var accountUsername by remember {
+        mutableStateOf(service.getCurrentUsername().orEmpty().trim().removePrefix("@"))
+    }
 
     suspend fun reload() {
         loading = true
@@ -169,6 +174,13 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
             orders = repository.fetchMarketplaceOrders()
             scheduledPosts = scheduledRepository.fetchMine(includeHistory = true)
             wishlistCount = repository.fetchWishlistIds().size
+            if (accountUsername.isBlank()) {
+                accountUsername = service.getCurrentUserId()
+                    ?.let { service.fetchProfileById(it)?.username }
+                    .orEmpty()
+                    .trim()
+                    .removePrefix("@")
+            }
         }.onFailure { errorText = it.message ?: "Couldn't load Professional Center." }
         loading = false
     }
@@ -382,8 +394,17 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
                     )
 
                     ProfessionalSection.ACCOUNT -> AccountSection(
-                        username = service.getCurrentUsername().orEmpty(),
+                        username = accountUsername,
                         busy = busy,
+                        reduceMobileData = BlinkDataUsagePreferences.isReduceMobileDataEnabled(context),
+                        onReduceMobileDataChanged = { enabled ->
+                            BlinkDataUsagePreferences.setReduceMobileDataEnabled(context, enabled)
+                            Toast.makeText(
+                                context,
+                                if (enabled) "Data saver enabled for mobile networks." else "Data saver disabled.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
                         onClearCache = {
                             scope.launch(Dispatchers.IO) {
                                 context.cacheDir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
@@ -418,6 +439,10 @@ private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: S
                                 busy = true
                                 runCatching { repository.deleteAccount(confirmation) }
                                     .onSuccess {
+                                        runCatching {
+                                            BlinkFirebaseMessagingService.unregisterCurrentToken(context)
+                                        }
+                                        SupabaseService.clearSession()
                                         context.getSharedPreferences("blink_user_session", Context.MODE_PRIVATE).edit().clear().apply()
                                         context.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).edit().clear().apply()
                                         Toast.makeText(context, "Account deleted.", Toast.LENGTH_LONG).show()
@@ -704,6 +729,8 @@ private fun GroupsSection(
 private fun AccountSection(
     username: String,
     busy: Boolean,
+    reduceMobileData: Boolean,
+    onReduceMobileDataChanged: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onExport: () -> Unit,
     onDelete: (String) -> Unit
@@ -717,6 +744,23 @@ private fun AccountSection(
         item { Header(Icons.Default.Security, "Account & security", "Account deletion revokes server sessions first.") }
         item {
             Panel("Data & storage") {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Use less mobile data", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Avoid uncached image downloads on metered networks. Wi-Fi and cached images continue normally.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = reduceMobileData,
+                        onCheckedChange = onReduceMobileDataChanged
+                    )
+                }
                 ActionRow(Icons.Default.Storage, "Clear temporary cache", "Keep account data; remove disposable cache.", onClearCache)
                 ActionRow(Icons.Default.CloudDownload, "Export my data", "Export profile, posts, messages and marketplace records.", onExport)
             }

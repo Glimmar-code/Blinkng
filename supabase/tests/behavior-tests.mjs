@@ -3,7 +3,8 @@ export async function behaviorTests(db) {
  const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',C='00000000-0000-4000-8000-000000000003';
  const chat='00000000-0000-4000-8000-000000000010',msg='00000000-0000-4000-8000-000000000011',post='00000000-0000-4000-8000-000000000012',key='00000000-0000-4000-8000-000000000013';
  const sql=s=>db.query(s); const scalar=async s=>Object.values((await sql(s)).rows[0])[0];
- async function user(id){await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);set role authenticated;`);}
+  const sessionFor = id => id===A ? '00000000-0000-4000-8000-000000000021' : id===B ? '00000000-0000-4000-8000-000000000022' : '00000000-0000-4000-8000-000000000023';
+  async function user(id){const session=sessionFor(id);await db.exec(`reset role;insert into auth.sessions(id,user_id) values ('${session}','${id}') on conflict (id) do nothing;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claims','{"sub":"${id}","session_id":"${session}"}',false);set role authenticated;`);}
  async function admin(){await db.exec('reset role;');}
  async function test(name,fn){try{await fn();console.log('PASS behavior:',name);}catch(e){console.log('FAIL behavior:',name,e.message);throw e;}}
  await db.exec(`insert into auth.users(id,email) values ('${A}','owner@example.invalid'),('${B}','recipient@example.invalid'),('${C}','outsider@example.invalid');

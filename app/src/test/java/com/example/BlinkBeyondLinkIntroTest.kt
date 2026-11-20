@@ -31,6 +31,14 @@ class BlinkBeyondLinkIntroTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun coldLaunchShowsBrandingButActivityRecreationDoesNotReplayIt() {
+        assertTrue("Cold launches, including returning accounts, show the intro",
+            !shouldSkipStartupIntro(null))
+        assertTrue("Only a restored Activity instance skips the intro",
+            shouldSkipStartupIntro(android.os.Bundle()))
+    }
+
+    @Test
     @Config(qualifiers = "w320dp-h720dp")
     fun compactPhoneSnapshotAndCompletion() = verifyFrame(
         "src/test/screenshots/intro-320dp.png"

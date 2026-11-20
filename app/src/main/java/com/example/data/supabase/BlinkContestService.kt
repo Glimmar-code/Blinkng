@@ -70,6 +70,29 @@ class BlinkContestService {
     }
 
     suspend fun contests(): Result<JSONArray> = contestResult { JSONArray(call("list_blink_contests")) }
+    suspend fun topicDirectory(): Result<JSONArray> = contestResult {
+        JSONArray(call("list_blink_contest_topics"))
+    }
+    suspend fun topicDetail(topicId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("get_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
+    }
+    suspend fun participantProfile(userId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("get_blink_contest_participant_profile", JSONObject().put("p_user_id", userId)))
+    }
+    suspend fun followTopic(topicId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("follow_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
+    }
+    suspend fun unfollowTopic(topicId: String): Result<JSONObject> = contestResult {
+        JSONObject(call("unfollow_blink_contest_topic", JSONObject().put("p_topic_id", topicId)))
+    }
+    suspend fun adminSaveTopic(data: JSONObject, id: String? = null): Result<JSONObject> = contestResult {
+        JSONObject(call("admin_save_blink_contest_topic", JSONObject()
+            .put("p_id", id ?: JSONObject.NULL).put("p_data", data)))
+    }
+    suspend fun adminSetTopicActive(topicId: String, active: Boolean): Result<JSONObject> = contestResult {
+        JSONObject(call("admin_set_blink_contest_topic_active", JSONObject()
+            .put("p_topic_id", topicId).put("p_active", active)))
+    }
     suspend fun detail(id: String): Result<JSONObject> = contestResult {
         JSONObject(call("get_blink_contest", JSONObject().put("p_contest_id", id)))
     }
