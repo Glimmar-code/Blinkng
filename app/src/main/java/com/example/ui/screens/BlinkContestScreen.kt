@@ -541,7 +541,7 @@ fun BlinkContestScreen(
                                 if (!contest.optString("season").isNullOrBlank() && contest.optString("season") != "null") Text(contest.optString("season"), fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                                 Text("${contest.optString("competition_scope").replaceFirstChar { it.uppercase() }} · ${contest.optString("university").takeUnless { it == "null" }.orEmpty()}",
                                     fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Applications: ${dateLabel(contest.optString("registration_opens_at"))} · Voting closes: ${dateLabel(contest.optString("voting_closes_at"))}",
+                                Text("Starts: ${dateLabel(contest.optString("start_at").ifBlank { contest.optString("voting_opens_at") })} · Ends: ${dateLabel(contest.optString("end_at").ifBlank { contest.optString("voting_closes_at") })}",
                                     fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("${contest.optInt("participants")} participants · ${contest.optInt("votes")} votes · ${contest.optString("status")}",
                                     fontSize = 11.sp)
@@ -642,12 +642,14 @@ fun BlinkContestScreen(
                                 c.optLong("prize_third"))
                             when (status) {
                                 "upcoming" -> Text(
-                                    "Applications open " + dateLabel(c.optString("registration_opens_at")),
-                                    fontWeight = FontWeight.Medium
+                                    "Contest starts " + dateLabel(c.optString("start_at").ifBlank {
+                                        c.optString("voting_opens_at")
+                                    }), fontWeight = FontWeight.Medium
                                 )
-                                "registration" -> Text(
-                                    "Applications close " + dateLabel(c.optString("registration_closes_at")),
-                                    fontWeight = FontWeight.Medium
+                                "voting", "registration" -> Text(
+                                    "Voting and entries end " + dateLabel(c.optString("end_at").ifBlank {
+                                        c.optString("voting_closes_at")
+                                    }), fontWeight = FontWeight.Medium
                                 )
                             }
                             Surface(color = Color(0xFF0B1626), shape = RoundedCornerShape(14.dp)) {
@@ -741,7 +743,7 @@ fun BlinkContestScreen(
                             }
                         }
                     }
-                    if (status == "registration" && own.isBlank()) item {
+                    if (status in setOf("registration", "voting") && own.isBlank()) item {
                         Column(Modifier.animateContentSize(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -797,7 +799,9 @@ fun BlinkContestScreen(
                                         busy = false
                                     }
                                 },
-                                enabled = !busy && BlinkContestPolicy.canApply(statement, mediaChoice != null, ""),
+                                enabled = !busy && BlinkContestPolicy.canApplyDuringWindow(
+                                    status, statement, mediaChoice != null, ""
+                                ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 if (busy) CircularProgressIndicator(

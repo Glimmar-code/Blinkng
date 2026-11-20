@@ -34,10 +34,14 @@ const appealsMigration = readFileSync(
 const orphanAuditMigration = readFileSync(
   new URL('../migrations/20261031130000_blink_contest_orphan_media_audit.sql', import.meta.url), 'utf8'
 );
+const contestTimingMigration = readFileSync(
+  new URL('../migrations/20261115132000_blink_contest_three_times_auto_finalize.sql', import.meta.url), 'utf8'
+);
 const admin = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const creator1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const creator2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const voter = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const topicId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const mediaOne = `https://example.test/functions/v1/blink-contest-private-media/${creator1}/11111111-1111-4111-8111-111111111111.jpg`;
 const mediaTwo = `https://example.test/functions/v1/blink-contest-private-media/${creator2}/22222222-2222-4222-8222-222222222222.jpg`;
 const later = (days) => new Date(Date.now() + days * 86400000).toISOString();
@@ -49,9 +53,14 @@ const payload = {
   prize_first: 30000,
   prize_second: 15000,
   prize_third: 5000,
-  registration_opens_at: later(-1),
-  registration_closes_at: later(1),
-  voting_opens_at: later(2),
+  topic_id: topicId,
+  competition_scope: 'campus',
+  university: 'FUTA',
+  start_at: later(-1),
+  end_at: later(3),
+  registration_opens_at: later(-2),
+  registration_closes_at: later(-1),
+  voting_opens_at: later(-1),
   voting_closes_at: later(3),
   results_at: later(4),
   auto_approve: false,
@@ -80,6 +89,31 @@ try {
   await db.exec(cancelledVisibilityMigration);
   await db.exec(appealsMigration);
   await db.exec(orphanAuditMigration);
+  await db.exec(`
+    alter table public.blink_contests
+      add column topic_id uuid,
+      add column competition_scope text not null default 'campus',
+      add column season text;
+    create table public.blink_contest_topics(
+      id uuid primary key,slug text not null unique,name text not null,
+      category text not null,description text not null default '',
+      is_active boolean not null default true
+    );
+    insert into public.blink_contest_topics(id,slug,name,category)
+      values ('${topicId}','creator-showcase','Creator Showcase','Creators');
+  `);
+  await db.exec(contestTimingMigration);
+  const scheduledJob = (await q(`select jobname,schedule,command from cron.job
+    where jobname='blink-contest-auto-finalize'`)).rows[0];
+  assert.equal(scheduledJob.schedule,'* * * * *');
+  assert.match(scheduledJob.command,/process_blink_contest_schedule/);
+  const privateAcl=(await q(`select
+    has_table_privilege('anon','private.blink_contest_notice_deliveries','select') as anon_notice_read,
+    has_table_privilege('authenticated','private.blink_contest_finalization_overrides','select') as user_override_read,
+    has_table_privilege('authenticated','private.blink_contest_finalization_snapshots','select') as user_snapshot_read`)).rows[0];
+  assert.equal(privateAcl.anon_notice_read,false);
+  assert.equal(privateAcl.user_override_read,false);
+  assert.equal(privateAcl.user_snapshot_read,false);
   await q('insert into storage.objects(bucket_id,name) values ($1,$2),($1,$3)', [
     'blink-contest-private',
     creator1 + '/11111111-1111-4111-8111-111111111111.jpg',
@@ -102,6 +136,15 @@ try {
   assert.equal(created.status,'draft');
   const id = created.id;
   assert.equal(created.prize_first, 30000);
+  assert.equal(Date.parse(created.start_at),Date.parse(payload.start_at));
+  assert.equal(Date.parse(created.end_at),Date.parse(payload.end_at));
+  const legacyPayload={...payload,title:'Legacy schedule compatibility'};
+  delete legacyPayload.start_at;
+  delete legacyPayload.end_at;
+  const legacyDraft=json((await rpc('admin_save_blink_contest','$1::uuid,$2::jsonb',
+    [null,JSON.stringify(legacyPayload)])).rows[0].result);
+  assert.equal(Date.parse(legacyDraft.start_at),Date.parse(legacyPayload.voting_opens_at));
+  assert.equal(Date.parse(legacyDraft.end_at),Date.parse(legacyPayload.voting_closes_at));
   await assert.rejects(() => rpc('admin_finalize_blink_contest','$1::uuid',[created.id]),
     /RESULTS_NOT_READY/);
   await rpc('admin_transition_blink_contest', '$1::uuid,$2::text',[id,'publish']);
@@ -118,6 +161,7 @@ try {
   const publicList = json((await rpc('list_blink_contests','',[])).rows[0].result);
   assert.ok(publicList.some(c=>c.id===launched.id && c.status==='cancelled'));
   assert.ok(!publicList.some(c=>c.id===unpublished.id));
+  assert.ok(publicList.some(c=>c.id===id && c.status==='voting'));
   const ended = json((await rpc('get_blink_contest','$1::uuid',[launched.id])).rows[0].result);
   assert.equal(ended.contest.status,'cancelled');
   await assert.rejects(() => rpc('get_blink_contest','$1::uuid',[unpublished.id]),
@@ -287,13 +331,13 @@ try {
   await assert.rejects(() => rpc('get_blink_contest_candidate', '$1::uuid,$2::uuid',
     [id,'99999999-9999-4999-8999-999999999999']), /CANDIDATE_NOT_AVAILABLE/);
 
-  await assert.rejects(() => rpc('vote_blink_contest','$1::uuid,$2::uuid',
-    [id, first.entry_id]), /VOTING_CLOSED/);
+  const liveWindow=json((await rpc('get_blink_contest','$1::uuid',[id])).rows[0].result);
+  assert.equal(liveWindow.contest.status,'voting');
 
   // Move the disposable fixture clock-window forward without waiting days.
   await q(`update public.blink_contests
-    set registration_opens_at=now()-interval '3 days',
-        registration_closes_at=now()-interval '1 day',
+    set registration_opens_at=now()-interval '12 hours',
+        registration_closes_at=now()+interval '1 day',
         voting_opens_at=now()-interval '12 hours',
         voting_closes_at=now()+interval '1 day',
         results_at=now()+interval '2 days' where id=$1`,[id]);
@@ -354,17 +398,65 @@ try {
   await setUser(admin);
   await assert.rejects(() => rpc('admin_transition_blink_contest', '$1::uuid,$2::text',
     [id,'complete']), /INVALID_CONTEST_TRANSITION/);
+  await rpc('admin_transition_blink_contest','$1::uuid,$2::text',[id,'resume']);
+  await rpc('admin_review_blink_contest_vote','$1::uuid,$2::text,$3::text',
+    [voteRow,'hold','Pending final vote integrity review']);
 
-  // Close the disposable contest and snapshot winners by trustworthy counted votes.
-  await q(`update public.blink_contests set voting_closes_at=now()-interval '1 hour',
-    results_at=now()-interval '30 minutes' where id=$1`,[id]);
+  // Automatic close happens at voting end; results stay hidden until the third time.
+  await q(`update public.blink_contests set
+    voting_closes_at=now()-interval '1 hour',
+    registration_closes_at=now()-interval '1 hour',
+    results_at=now()+interval '30 minutes' where id=$1`,[id]);
+  await setUser(creator1);
+  await assert.rejects(() => rpc('apply_blink_contest','$1::uuid,$2::text,$3::text',
+    [id,'A late entry should be closed',mediaOne]),/REGISTRATION_CLOSED/);
+  await setUser(voter);
+  await assert.rejects(() => rpc('vote_blink_contest','$1::uuid,$2::uuid',
+    [id,first.entry_id]),/VOTING_CLOSED/);
+  const autoClose=json((await q('select private.process_blink_contest_schedule(100) as result')).rows[0].result);
+  assert.equal(autoClose.finalized,1);
+  assert.equal(autoClose.results_announced,0);
+  const snapshot=(await q(`select pending_vote_reviews,ranked_entries,original_winners
+    from private.blink_contest_finalization_snapshots where contest_id=$1`,[id])).rows[0];
+  assert.equal(snapshot.pending_vote_reviews,1);
+  assert.equal(snapshot.ranked_entries.length,2);
+  assert.equal(snapshot.ranked_entries[0].valid_votes,0);
+  assert.equal(snapshot.original_winners.length,2);
+  const hiddenDetail=json((await rpc('get_blink_contest','$1::uuid',[id])).rows[0].result);
+  assert.equal(hiddenDetail.contest.status,'review');
+  assert.deepEqual(hiddenDetail.winners,[]);
+  await q(`update public.blink_contests set results_at=now()-interval '1 minute' where id=$1`,[id]);
+  const reveal=json((await q('select private.process_blink_contest_schedule(100) as result')).rows[0].result);
+  assert.equal(reveal.finalized,0);
+  assert.equal(reveal.results_announced,1);
+  const repeat=json((await q('select private.process_blink_contest_schedule(100) as result')).rows[0].result);
+  assert.equal(repeat.finalized,0);
+  assert.equal(repeat.results_announced,0);
+  await setUser(admin);
   const final=json((await rpc('admin_finalize_blink_contest','$1::uuid',[id])).rows[0].result);
   assert.equal(final.status,'completed');
-  assert.equal(final.winner_count,2);
+  assert.equal(final.already_finalized,true);
   const finalDetail=json((await rpc('get_blink_contest','$1::uuid',[id])).rows[0].result);
   assert.equal(finalDetail.winners.length,2);
   assert.equal(finalDetail.winners[0].prize_amount,30000);
   assert.equal(finalDetail.winners[0].payment_status,'pending');
+  const replacementWinners=[
+    {place:1,entry_id:second.entry_id},{place:2,entry_id:first.entry_id}
+  ];
+  await setUser(creator1);
+  await assert.rejects(() => rpc('admin_override_blink_contest_winners',
+    '$1::uuid,$2::jsonb,$3::text',[id,JSON.stringify(replacementWinners),
+      'Documented tie-break review']),/ADMIN_REQUIRED/);
+  await setUser(admin);
+  const override=json((await rpc('admin_override_blink_contest_winners',
+    '$1::uuid,$2::jsonb,$3::text',[id,JSON.stringify(replacementWinners),
+      'Documented tie-break review'])).rows[0].result);
+  assert.equal(override.override_number,1);
+  assert.equal(override.winners[0].entry_id,second.entry_id);
+  const overrideAudit=(await q(`select admin_id,reason,previous_winners,replacement_winners
+    from private.blink_contest_finalization_overrides where contest_id=$1`,[id])).rows[0];
+  assert.equal(overrideAudit.admin_id,admin);
+  assert.equal(overrideAudit.reason,'Documented tie-break review');
   const prizes=json((await rpc('admin_blink_contest_insights','$1::uuid',[id])).rows[0].result).prizes;
   assert.equal(prizes.length,2);
   await assert.rejects(() => rpc('admin_record_blink_contest_prize',
@@ -374,11 +466,17 @@ try {
     '$1::uuid,$2::text,$3::text,$4::text',
     [prizes[0].id,'paid','external-receipt-123','Manually verified receipt'])).rows[0].result);
   assert.equal(paid.status,'paid');
+  await assert.rejects(() => rpc('admin_override_blink_contest_winners',
+    '$1::uuid,$2::jsonb,$3::text',[id,JSON.stringify(replacementWinners),
+      'Another documented correction']),/PRIZE_PAYMENT_LOCKED/);
   await assert.rejects(() => rpc('admin_record_blink_contest_prize',
     '$1::uuid,$2::text,$3::text,$4::text',
     [prizes[0].id,'processing',null,null]), /PAID_PRIZE_LOCKED/);
   const rows=(await q(`select text from public.notifications where metadata->>'kind'='blink_contest_winner'`)).rows;
   assert.equal(rows.length,2);
+  const corrections=(await q(`select id from public.notifications
+    where metadata->>'kind'='blink_contest_results_corrected'`)).rows;
+  assert.equal(corrections.length,2);
   await setUser(creator1);
   await assert.rejects(() => rpc('admin_blink_contest_insights','$1::uuid',[id]), /ADMIN_REQUIRED/);
   console.log('PASS BLINK Contest growth: secure share analytics, vote alerts, review queue, winners and payment ledger');
