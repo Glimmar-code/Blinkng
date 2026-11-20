@@ -50,16 +50,15 @@ internal fun MarketSellerInsightsPanel(
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Card(
+        MarketSurface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                Text("Seller Dashboard", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                MarketSectionHeader("Seller dashboard", "Based on currently loaded listings")
                 if (loading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else if (dashboard == null) {
@@ -86,13 +85,12 @@ internal fun MarketSellerInsightsPanel(
             }
         }
         if (isGold) {
-            Card(
+            MarketSurface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                color = MaterialTheme.colorScheme.surface
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("Gold Merchant Pro", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    MarketSectionHeader("Gold Merchant Pro", "Tools to keep your store healthy")
                     Text(
                         "Listing health for ${insights.listingCount} of your currently loaded Market items. " +
                             "Search and pagination can omit other items; this is not your full inventory.",

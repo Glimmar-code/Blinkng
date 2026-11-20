@@ -181,7 +181,7 @@ fun MarketScreen(
     val marketListState = rememberLazyListState()
     LazyColumn(
         state = marketListState,
-        contentPadding = PaddingValues(bottom = 120.dp),
+        contentPadding = PaddingValues(bottom = 132.dp),
         modifier = Modifier
             .fillMaxSize()
             .testTag("market_screen")
@@ -202,7 +202,7 @@ fun MarketScreen(
                         horizontalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                         ) {
                             Icon(
@@ -233,13 +233,13 @@ fun MarketScreen(
                 }
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
-                    "Find what your campus is looking for.",
+                    "Campus finds from people you trust",
                     fontSize = 26.sp,
                     lineHeight = 30.sp,
                     fontWeight = FontWeight.Black
                 )
                 Text(
-                    "Browse sellers, compare prices, and message directly on BLINK.",
+                    "Buy, sell, and connect with students around you.",
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -251,7 +251,7 @@ fun MarketScreen(
         item {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(MarketTokens.CardRadius),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 7.dp)
@@ -353,7 +353,7 @@ fun MarketScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
                     Row(
@@ -426,7 +426,7 @@ fun MarketScreen(
         item {
             if (!isSellerActive || sellerApproval != true) {
                 Card(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(MarketTokens.CardRadius),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.inverseSurface),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -453,7 +453,7 @@ fun MarketScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Button(
                             onClick = { if (isSellerActive) onRefresh() else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
-                            shape = RoundedCornerShape(100.dp),
+                            shape = RoundedCornerShape(MarketTokens.PillRadius),
                             modifier = Modifier.testTag("market_become_seller_btn")
                         ) {
                             Text(if (isSellerActive) "Refresh" else if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
@@ -462,7 +462,7 @@ fun MarketScreen(
                 }
             } else {
                 Card(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(MarketTokens.CardRadius),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
@@ -484,7 +484,7 @@ fun MarketScreen(
                         }
                         Button(
                             onClick = onOpenPostItem,
-                            shape = RoundedCornerShape(100.dp),
+                            shape = RoundedCornerShape(MarketTokens.PillRadius),
                             modifier = Modifier.testTag("market_create_post_btn")
                         ) {
                             Icon(Icons.Default.Add, null, modifier = Modifier.size(17.dp))
@@ -530,7 +530,7 @@ fun MarketScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -572,7 +572,7 @@ fun MarketScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "${visibleItems.size} loaded",
+                    "${visibleItems.size} items",
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -677,7 +677,7 @@ fun MarketScreen(
                     if (isLoadingMore) {
                         CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
                     } else {
-                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
+                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(MarketTokens.PillRadius)) {
                             Text("Load more listings")
                         }
                     }
@@ -770,7 +770,7 @@ fun ProductCard(
     val displayedViews = rememberDelayedMarketViewCount(item.id, item.viewsCount)
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(MarketTokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = modifier
             .fillMaxWidth()
@@ -786,7 +786,7 @@ fun ProductCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(142.dp)
+                    .height(168.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 val cover = item.images.firstOrNull()
@@ -817,9 +817,9 @@ fun ProductCard(
                         modifier = Modifier.align(Alignment.TopStart)
                     ) {
                         Text(
-                            "PROMOTED",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Black,
+                            "Promoted",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.inverseOnSurface,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
@@ -847,7 +847,7 @@ fun ProductCard(
                 if (item.isSold || item.status != "active") {
                     Surface(
                         color = Color.Black.copy(alpha = 0.75f),
-                        shape = RoundedCornerShape(100.dp),
+                        shape = RoundedCornerShape(MarketTokens.PillRadius),
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(8.dp)
@@ -867,15 +867,15 @@ fun ProductCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "₦${nairaFormat.format(item.price)}",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Black,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
                     if (item.isNegotiable) {
                         Text(
                             "NEG.",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -884,8 +884,8 @@ fun ProductCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     item.title,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     minLines = 2

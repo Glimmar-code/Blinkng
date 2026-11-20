@@ -167,9 +167,18 @@ fun BecomeSellerScreen(
             }
 
             item {
+                MarketSectionHeader("Set up your storefront", "A few details help students shop with confidence")
+                LinearProgressIndicator(
+                    progress = { if (detailsValid) 1f else 0.55f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+            item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -200,7 +209,7 @@ fun BecomeSellerScreen(
                         autoCorrectEnabled = true
                     ),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -216,7 +225,7 @@ fun BecomeSellerScreen(
                     ),
                     singleLine = true,
                     isError = phone.isNotBlank() && phoneDigits.length !in 10..15,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -232,7 +241,7 @@ fun BecomeSellerScreen(
                     ),
                     singleLine = true,
                     isError = whatsapp.isNotBlank() && whatsappDigits.length !in 10..15,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -249,7 +258,7 @@ fun BecomeSellerScreen(
                         label = { Text("State") },
                         placeholder = { Text("Choose state") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = stateDropdownOpen) },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                         modifier = Modifier
                             .fillMaxWidth()
                             .menuAnchor()
@@ -349,7 +358,7 @@ fun BecomeSellerScreen(
                         autoCorrectEnabled = true
                     ),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -424,7 +433,7 @@ fun BecomeSellerScreen(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(MarketTokens.ButtonRadius),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -482,7 +491,7 @@ fun BecomeSellerScreen(
                         containerColor = Color.White,
                         contentColor = Color.Black
                     ),
-                    shape = RoundedCornerShape(100.dp),
+                    shape = RoundedCornerShape(MarketTokens.PillRadius),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)

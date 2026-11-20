@@ -1,3 +1,10 @@
+## 2026-11-14 — BLINK Market Android visual refresh
+
+- **Android:** BLINK Market receives a shared Compose visual layer for cards, surfaces, pills, spacing, motion tokens, seller onboarding, product detail, orders, offers and seller insights. Existing navigation, callbacks, Supabase calls, listing/order/offer state, seller approval rules and Paystack gating remain unchanged.
+- **Windows equivalent:** The Windows client retains its existing desktop Market presentation and shared backend/data contracts. Android Compose corner radii, touch-sized controls, mobile scrolling/layout, image treatment and Android-specific motion have no direct desktop UI equivalent; no Windows capability or server contract is removed by this presentation-only refresh.
+- **PARITY-EXCEPTION: android-market-compose-visual-refresh-20261114** — This change is intentionally limited to Android UI/animation components in `app/src/main/java/com/example/ui/screens`. A Windows visual redesign is not claimed; any future desktop Market polish requires a separate native Windows UX change and validation.
+- **Verification:** Existing Market search, filters, pagination, saved/verified views, orders, offers, seller insights, request purchase, private offers, sharing/reporting and disabled “Coming soon” Paystack paths remain wired through their existing callbacks and services. Android compilation and Windows CI checks remain required before promotion.
+
 ## 2026-11-13 — Messaging inbox chip accessibility
 
 - **PARITY-EXCEPTION: android-background-call-and-call-history-20261113** — Android
