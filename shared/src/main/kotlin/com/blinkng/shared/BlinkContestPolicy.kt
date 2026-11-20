@@ -11,7 +11,7 @@ object BlinkContestPolicy {
     }
     fun statusLabel(status: String): String = when (status) {
         "registration" -> "Applications open"
-        "voting" -> "Voting open"
+        "voting" -> "Voting and entries open"
         "review" -> "Results under review"
         "paused" -> "Paused"
         "completed" -> "Results confirmed"
@@ -38,6 +38,9 @@ object BlinkContestPolicy {
     }.getOrDefault(false)
     fun canApply(text: String, hasSelectedMedia: Boolean, mediaUrl: String): Boolean =
         validStatement(text) && (hasSelectedMedia || validEntryMediaUrl(mediaUrl))
+    fun canApplyDuringWindow(
+        status: String, text: String, hasSelectedMedia: Boolean, mediaUrl: String
+    ): Boolean = status in setOf("registration", "voting") && canApply(text, hasSelectedMedia, mediaUrl)
     /** Voting flyers should never invite people to closed or cancelled contests. */
     fun canShareVoteInvite(status: String): Boolean =
         status in setOf("upcoming", "registration", "voting")

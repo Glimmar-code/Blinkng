@@ -29,6 +29,9 @@ class BlinkContestPolicyTest {
         assertTrue(BlinkContestPolicy.canApply("My contest statement", false, "https://blink.com.ng/photo.jpg"))
         assertTrue(BlinkContestPolicy.canApply("My contest statement", true, ""))
         assertFalse(BlinkContestPolicy.canApply("short", true, ""))
+        assertTrue(BlinkContestPolicy.canApplyDuringWindow("voting", "My contest statement", true, ""))
+        assertFalse(BlinkContestPolicy.canApplyDuringWindow("upcoming", "My contest statement", true, ""))
+        assertFalse(BlinkContestPolicy.canApplyDuringWindow("review", "My contest statement", true, ""))
     }
 
     @Test fun voteInvitationsDoNotSolicitClosedContests() {
