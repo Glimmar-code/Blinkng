@@ -15,8 +15,8 @@ const ready = (more = {}) => ({
   mergeable: true,
   mergeable_state: 'clean',
   changed_files: 1,
-  labels: [{name: 'auto-promote'}],
-  body: '- [x] Build\n- [x] Verify device\n<!-- BLINK_AGENT_VERIFIED_SHA: ' + head + ' -->',
+  labels: [{name: 'auto-promote'}, {name: 'visual-verified'}],
+  body: '- [x] Build\n- [x] Verify device\n<!-- BLINK_AGENT_VERIFIED_SHA: ' + head + ' -->\n<!-- BLINK_VISUAL_VERIFIED_SHA: ' + head + ' -->',
   ...more,
 });
 const check = (name, status = 'completed', conclusion = 'success', id = 1, number = 300) => ({
@@ -141,6 +141,7 @@ test('synchronize always revokes stale agent promotion and verification attestat
     ['auto-promote', 300],
     ['staging-verified', 300],
     ['device-verified', 300],
+    ['visual-verified', 300],
   ]);
   assert.equal(await policy.revokeStaleOptIn(github, {
     ...context, payload: {...context.payload, action: 'labeled'},
@@ -151,7 +152,7 @@ test('synchronize always revokes stale agent promotion and verification attestat
         repo: {full_name: 'unauthorized/fork'},
       }}},
   }, core), false);
-  assert.equal(removed.length, 3);
+  assert.equal(removed.length, 4);
 });
 
 test('synchronize fails closed if GitHub cannot revoke existing opt-in', async () => {
@@ -245,4 +246,18 @@ test('isolated Testlab batches may use exact-head GitHub Actions dispatch checks
     {...checks[0], conclusion: 'failure'}, checks[1]
   ], ['validate', 'guard'], 300, main, head,
     {allowDispatchForBatch: true}), /validate/);
+});
+
+
+test('visual UI changes fail closed without exact-head screenshot evidence', () => {
+  const path = 'app/src/main/java/com/example/ui/screens/ChatScreen.kt';
+  assert.equal(policy.requiresVisualVerification([path]), true);
+  assert.equal(policy.requiresVisualVerification(['desktopApp/src/main/kotlin/Chat.kt']), true);
+  assert.equal(policy.requiresVisualVerification(['web/app.css']), true);
+  assert.equal(policy.requiresVisualVerification(['README.md']), false);
+  assert.equal(policy.preflight(ready(), [path]), null);
+  assert.match(policy.preflight(ready({labels: [{name: 'auto-promote'}]}), [path]), /Screenshot reference/);
+  const stale = ready({body: ready().body.replace('BLINK_VISUAL_VERIFIED_SHA: ' + head, 'BLINK_VISUAL_VERIFIED_SHA: ' + 'c'.repeat(40))});
+  assert.match(policy.preflight(stale, [path]), /Visual approval/);
+  assert.equal(policy.preflight(ready(), ['README.md']), null);
 });
