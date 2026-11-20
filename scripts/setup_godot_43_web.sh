@@ -2,6 +2,7 @@
 # Install the exact Godot editor and HTML5 export templates used by BLINK CI.
 # GitHub's release CDN can intermittently return 429/5xx (especially 504).
 # Retry all transfer failures with bounded backoff and validate both archives.
+# The release-smoke workflow uses this same helper as the signed production release.
 set -euo pipefail
 
 GODOT_VERSION=4.3-stable
@@ -14,6 +15,7 @@ download_asset() {
   local url="$1"
   local destination="$2"
 
+  # Remove any partial/stale file before retrying a transfer.
   rm -f "$destination"
   curl --fail --location --silent --show-error \
     --connect-timeout 30 --max-time 1800 \
