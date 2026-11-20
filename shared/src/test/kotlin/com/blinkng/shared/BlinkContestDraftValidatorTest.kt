@@ -7,8 +7,6 @@ import kotlin.test.assertNull
 class BlinkContestDraftValidatorTest {
     private val dates = listOf(
         "2026-11-01T09:00:00+01:00",
-        "2026-11-04T09:00:00+01:00",
-        "2026-11-05T09:00:00+01:00",
         "2026-11-07T09:00:00+01:00",
         "2026-11-08T09:00:00+01:00"
     )
@@ -28,21 +26,19 @@ class BlinkContestDraftValidatorTest {
     }
 
     @Test fun rejectsEmptyOrOutOfOrderDatesAndInvalidTimeZones() {
-        assertEquals("Select all five application, voting and results dates.",
-            check(times = listOf("", "", "", "", "")))
+        assertEquals("Select the contest start, end and results dates.",
+            check(times = listOf("", "", "")))
         assertEquals("Use valid dates with a time zone.",
             check(times = dates.toMutableList().apply { set(1, "2026-11-04") }))
-        assertEquals("Dates must follow: applications, voting, then results.",
-            check(times = dates.toMutableList().apply { set(3, "2026-11-02T09:00:00+01:00") }))
+        assertEquals("Dates must follow: contest start, end, then results.",
+            check(times = dates.toMutableList().apply { set(1, "2026-10-31T09:00:00+01:00") }))
     }
 
-    @Test fun acceptsBackToBackParticipationAndVotingWindows() {
+    @Test fun acceptsResultsAtContestEnd() {
         val backToBack = listOf(
             "2026-11-01T09:00:00+01:00",
-            "2026-11-04T09:00:00+01:00",
-            "2026-11-04T09:00:00+01:00",
             "2026-11-07T09:00:00+01:00",
-            "2026-11-07T09:00:00+01:00"
+            "2026-11-07T09:00:00+01:00",
         )
         assertNull(check(times = backToBack))
     }

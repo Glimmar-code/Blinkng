@@ -53,3 +53,30 @@ create function storage.foldername(path text) returns text[]
 language sql immutable as $$
   select string_to_array(split_part(path, '/', 1), '/');
 $$;
+
+-- Local scheduler adapter; never connects to or schedules a hosted database.
+create schema cron;
+create table cron.job(
+  jobid bigserial primary key,
+  jobname text unique not null,
+  schedule text not null,
+  command text not null
+);
+create function cron.schedule(job_name text,job_schedule text,job_command text)
+returns bigint language plpgsql as $$
+declare v_jobid bigint;
+begin
+  insert into cron.job(jobname,schedule,command)
+  values(job_name,job_schedule,job_command)
+  on conflict(jobname) do update set schedule=excluded.schedule,command=excluded.command
+  returning jobid into v_jobid;
+  return v_jobid;
+end;
+$$;
+create function cron.unschedule(job_id bigint) returns boolean
+language plpgsql as $$
+begin
+  delete from cron.job where jobid=job_id;
+  return found;
+end;
+$$;

@@ -119,10 +119,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
     val coverPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { coverChoice = it }
-    var registrationStart by remember { mutableStateOf("") }
-    var registrationEnd by remember { mutableStateOf("") }
-    var votingStart by remember { mutableStateOf("") }
-    var votingEnd by remember { mutableStateOf("") }
+    var contestStart by remember { mutableStateOf("") }
+    var contestEnd by remember { mutableStateOf("") }
     var resultsDate by remember { mutableStateOf("") }
     var prizeOne by remember { mutableStateOf("0") }
     var prizeTwo by remember { mutableStateOf("0") }
@@ -137,13 +135,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
         title = ""; description = ""; rules = ""; category = "General"
         topicId = ""; competitionScope = "campus"; season = ""
         university = ""; cover = ""; coverChoice = null
-        registrationStart = ""; registrationEnd = ""; votingStart = ""
-        votingEnd = ""; resultsDate = ""
+        contestStart = ""; contestEnd = ""; resultsDate = ""
         prizeOne = "0"; prizeTwo = "0"; prizeThree = "0"
         maxEntries = ""; autoApprove = false
     }
     val draftError = BlinkContestDraftValidator.error(
-        title, listOf(registrationStart, registrationEnd, votingStart, votingEnd, resultsDate),
+        title, listOf(contestStart, contestEnd, resultsDate),
         listOf(prizeOne, prizeTwo, prizeThree), maxEntries, cover, coverChoice != null
     )
 
@@ -354,10 +351,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                 label = { Text("Or existing HTTPS banner URL") },
                 modifier = Modifier.fillMaxWidth(), enabled = coverChoice == null)
         }
-        item { BlinkContestDateTimeField("Applications open", registrationStart, { registrationStart = it }) }
-        item { BlinkContestDateTimeField("Applications close", registrationEnd, { registrationEnd = it }) }
-        item { BlinkContestDateTimeField("Voting opens", votingStart, { votingStart = it }) }
-        item { BlinkContestDateTimeField("Voting closes", votingEnd, { votingEnd = it }) }
+        item { BlinkContestDateTimeField("Contest start", contestStart, { contestStart = it }) }
+        item { BlinkContestDateTimeField("Contest end", contestEnd, { contestEnd = it }) }
         item { BlinkContestDateTimeField("Results announcement", resultsDate, { resultsDate = it }) }
         item {
             OutlinedTextField(maxEntries, { maxEntries = it.take(6) },
@@ -415,10 +410,8 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                     .put("season", season.trim())
                     .put("university", university.trim())
                     .put("banner_url", cover.trim())
-                    .put("registration_opens_at", registrationStart.trim())
-                    .put("registration_closes_at", registrationEnd.trim())
-                    .put("voting_opens_at", votingStart.trim())
-                    .put("voting_closes_at", votingEnd.trim())
+                    .put("start_at", contestStart.trim())
+                    .put("end_at", contestEnd.trim())
                     .put("results_at", resultsDate.trim())
                     .put("prize_first", prizeOne.toIntOrNull() ?: -1)
                     .put("prize_second", prizeTwo.toIntOrNull() ?: -1)
@@ -490,10 +483,12 @@ fun BlinkContestAdminScreen(onBack: () -> Unit) {
                                 university = contest.optString("university").takeUnless { it == "null" }.orEmpty()
                                 cover = contest.optString("banner_url").takeUnless { it == "null" }.orEmpty()
                                 coverChoice = null
-                                registrationStart = contest.optString("registration_opens_at")
-                                registrationEnd = contest.optString("registration_closes_at")
-                                votingStart = contest.optString("voting_opens_at")
-                                votingEnd = contest.optString("voting_closes_at")
+                                contestStart = contest.optString("start_at")
+                                    .takeIf { it.isNotBlank() && it != "null" }
+                                    ?: contest.optString("voting_opens_at")
+                                contestEnd = contest.optString("end_at")
+                                    .takeIf { it.isNotBlank() && it != "null" }
+                                    ?: contest.optString("voting_closes_at")
                                 resultsDate = contest.optString("results_at")
                                 prizeOne = contest.optInt("prize_first").toString()
                                 prizeTwo = contest.optInt("prize_second").toString()
