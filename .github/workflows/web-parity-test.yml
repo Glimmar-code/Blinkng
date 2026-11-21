@@ -142,6 +142,9 @@ jobs:
       - name: Verify canonical web privacy writes and read receipts
         run: node scripts/test_web_privacy_settings.mjs
 
+      - name: Verify authenticated web account deletion control
+        run: node scripts/test_web_account_deletion.mjs
+
       - name: Reject stale page responses after web navigation or account changes
         run: node scripts/test_web_route_staleness.mjs
 

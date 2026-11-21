@@ -779,6 +779,10 @@ private fun AccountSection(
             title = { Text("Delete account permanently?", fontWeight = FontWeight.Black) },
             text = {
                 Column {
+                    Text(
+                        "This permanently deletes your BLINK account and associated data that is eligible for deletion. Limited security, fraud-prevention, transaction, or legal records may be retained where required."
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text("Type @$username to confirm.")
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(confirmation, { confirmation = it.take(60) }, label = { Text("Username") }, singleLine = true)

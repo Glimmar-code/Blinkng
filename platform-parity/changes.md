@@ -5,6 +5,13 @@
 - **PARITY-EXCEPTION: android-market-compose-visual-refresh-20261114** — This change is intentionally limited to Android UI/animation components in `app/src/main/java/com/example/ui/screens`. A Windows visual redesign is not claimed; any future desktop Market polish requires a separate native Windows UX change and validation.
 - **Verification:** Existing Market search, filters, pagination, saved/verified views, orders, offers, seller insights, request purchase, private offers, sharing/reporting and disabled “Coming soon” Paystack paths remain wired through their existing callbacks and services. Android compilation and Windows CI checks remain required before promotion.
 
+## 2026-11-14 — Account-deletion disclosure for Play compliance
+
+- **Android:** The existing deletion confirmation now explains that deletion applies to data eligible for deletion and that limited security, fraud-prevention, transaction or legal records may be retained where required. Username confirmation and the existing server-side deletion contract are unchanged.
+- **Web/Windows equivalent:** The authenticated web “Your data” screen and public deletion page provide the same account-deletion path and disclosure through the existing `delete_my_account` RPC. The Windows desktop shell has no separate native deletion settings page; Windows users can access the authenticated web flow in a browser.
+- **PARITY-EXCEPTION: android-account-deletion-disclosure-20261114** — This is policy-specific explanatory copy in the Android Play-compliance confirmation, not a new account-deletion capability or a changed backend contract. The same deletion capability is available through BLINK web, including on Windows.
+- **Verification:** Android and web deletion confirmation/contract checks and the Windows parity gate are required. No database schema, authorization, or retention behavior is changed by this disclosure.
+
 ## 2026-11-13 — Messaging inbox chip accessibility
 
 - **PARITY-EXCEPTION: android-background-call-and-call-history-20261113** — Android
