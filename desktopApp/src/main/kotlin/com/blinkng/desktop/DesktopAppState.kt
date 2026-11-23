@@ -8,11 +8,14 @@ import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopSession
 import com.blinkng.desktop.data.DesktopSupabaseClient
 import com.blinkng.desktop.data.DesktopUserSettings
+import com.blinkng.desktop.data.DesktopBroadcastRepository
 import com.blinkng.shared.BlinkOnboardingPolicy
 import com.blinkng.shared.discovery.BlinkUniversitySearch
+import com.blinkng.shared.broadcast.BlinkBroadcastRepository
 
 class DesktopAppState(
     val client: DesktopSupabaseClient = DesktopSupabaseClient(),
+    val broadcastRepository: BlinkBroadcastRepository = DesktopBroadcastRepository(),
 ) {
     var initialized by mutableStateOf(false)
         private set
@@ -26,6 +29,7 @@ class DesktopAppState(
         private set
     var selectedRoute by mutableStateOf("home")
     var selectedGiveawayId by mutableStateOf<String?>(null)
+    var selectedBroadcastId by mutableStateOf<String?>(null)
     var globalSearch by mutableStateOf("")
     var showNewStudentSuggestions by mutableStateOf(false)
     private var pendingNewMemberDiscovery = false

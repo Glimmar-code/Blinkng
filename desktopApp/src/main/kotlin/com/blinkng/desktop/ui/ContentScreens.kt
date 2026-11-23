@@ -1650,6 +1650,11 @@ fun NotificationsScreen(state: DesktopAppState) {
                     if (item.targetType.equals("contest", ignoreCase = true)) {
                         state.selectedRoute = "connect"
                     }
+                    if (item.targetType.orEmpty().lowercase() in
+                        setOf("broadcast", "announcement", "campaign", "promo", "promotion")) {
+                        state.selectedBroadcastId = item.targetId
+                        state.selectedRoute = "broadcasts"
+                    }
                 },
                 shape = RoundedCornerShape(16.dp),
                 tonalElevation = if (item.isRead) 0.dp else 3.dp,

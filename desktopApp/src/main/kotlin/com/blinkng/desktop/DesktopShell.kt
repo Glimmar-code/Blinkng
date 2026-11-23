@@ -126,6 +126,7 @@ import com.blinkng.desktop.ui.LeaderboardScreen
 import com.blinkng.desktop.ui.MarketplaceScreen
 import com.blinkng.desktop.ui.MessagesScreen
 import com.blinkng.desktop.ui.NotificationsScreen
+import com.blinkng.desktop.ui.BlinkDesktopBroadcastScreen
 import com.blinkng.desktop.ui.ProfileScreen
 import com.blinkng.desktop.ui.ReelsScreen
 import com.blinkng.desktop.ui.SearchScreen
@@ -155,6 +156,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("giveaway", "BLINK Giveaway", Icons.Rounded.CardGiftcard),
     DesktopDestination("store", "Blink Store · Soon", Icons.Rounded.ShoppingBag),
     DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
+    DesktopDestination("broadcasts", "Announcements", Icons.Rounded.Campaign),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
     DesktopDestination("contest-admin", "Contest admin", Icons.Rounded.EmojiEvents, adminOnly = true),
@@ -611,6 +613,7 @@ private fun AuthenticatedShell(
                         "marketplace" -> MarketplaceScreen(state)
                         "games" -> GamesScreen(state)
                         "notifications" -> NotificationsScreen(state)
+                        "broadcasts" -> BlinkDesktopBroadcastScreen(state)
                         "store" -> StoreProScreen(state)
                         "boost" -> DesktopBoostGrowthScreen(state)
                         "giveaway" -> DesktopDropsScreen(state, initialDropId = state.selectedGiveawayId)

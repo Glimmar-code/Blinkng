@@ -1,0 +1,9 @@
+<resources>
+    <string-array name="broadcast_demo_campuses">
+        <item>@string/broadcast_campus_university_lagos</item>
+        <item>@string/broadcast_campus_university_ibadan</item>
+        <item>@string/broadcast_campus_abuja</item>
+        <item>@string/broadcast_campus_covenant</item>
+        <item>@string/broadcast_campus_ahmadu_bello</item>
+    </string-array>
+</resources>

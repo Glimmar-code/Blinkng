@@ -106,6 +106,7 @@ object BlinkNotificationHelper {
     const val EXTRA_POST_ID = "EXTRA_POST_ID"
     const val EXTRA_MARKET_ID = "EXTRA_MARKET_ID"
     const val EXTRA_PROFILE_IDENTIFIER = "EXTRA_PROFILE_IDENTIFIER"
+    const val EXTRA_BROADCAST_DEEP_LINK = "EXTRA_BROADCAST_DEEP_LINK"
 
     const val ACTION_OPEN_CHANNEL = "OPEN_CHANNEL"
     const val ACTION_OPEN_CHAT = "OPEN_CHAT"
@@ -118,6 +119,7 @@ object BlinkNotificationHelper {
     const val ACTION_OPEN_ITEMS = "OPEN_ITEMS"
     const val ACTION_OPEN_BOOST = "OPEN_BOOST"
     const val ACTION_OPEN_CONTEST = "OPEN_CONTEST"
+    const val ACTION_OPEN_BROADCAST = "OPEN_BROADCAST"
 
     // ================================================================
     // COLORS
