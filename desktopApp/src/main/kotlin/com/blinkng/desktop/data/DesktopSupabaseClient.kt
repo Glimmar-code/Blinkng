@@ -3837,7 +3837,6 @@ class DesktopSupabaseClient(
         graduationYear = row.optNullableString("graduation_year"),
         relationshipStatus = row.optNullableString("relationship_status"),
         phoneVisibility = row.optString("phone_visibility").ifBlank { "PRIVATE" },
-        phone = row.optNullableString("phone"),
         whatsappVisibility = row.optString("whatsapp_visibility").ifBlank { "PRIVATE" },
         emailVisibility = row.optString("email_visibility").ifBlank { "PRIVATE" },
         website = row.optNullableString("website"),

@@ -76,5 +76,7 @@ test('Windows uses optional private phone saving, no SMS, and shared strict basi
   assert.ok(basics.indexOf('client.savePrivateBirthDate') < basics.indexOf('client.saveMyProfilePhone'));
   assert.ok(basics.indexOf('client.saveMyProfilePhone') < basics.indexOf('client.saveOnboardingProfile'));
   assert.match(desktopClient, /phone = row\.optNullableString\("phone"\)/);
+  const profileParser = desktopClient.split('private fun parseProfile(')[1].split('\n    private fun ')[0];
+  assert.equal((profileParser.match(/^\s*phone =/gm) || []).length, 1, 'phone is passed exactly once');
   assert.match(desktopClient, /JSONObject\(\)\.put\("phone", number\)\.put\("phone_visibility", "PRIVATE"\)/);
 });
