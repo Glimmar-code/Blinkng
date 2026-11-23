@@ -241,6 +241,7 @@ data class BlinkUiState(
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
+    private val signupInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     companion object {
         private const val TAG = "BlinkViewModel"
         private const val PREFS = "blink_user_session"
@@ -3087,7 +3088,7 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun signUp(fullName: String, email: String, password: String, referrerId: String? = null, birthDate: String = "") {
+    fun signUp(fullName: String, email: String, password: String, referrerId: String? = null, birthDate: String = "", onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         val temporaryUsername = "blink_" + UUID.randomUUID()
             .toString()
             .replace("-", "")
@@ -3100,21 +3101,27 @@ private suspend fun restoreSupabaseSession() {
             password = password,
             faculty = "",
             referrerId = referrerId,
-            birthDate = birthDate
+            birthDate = birthDate,
+            onResult = onResult
         )
     }
 
-    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "", referrerId: String? = null, birthDate: String = "") {
-        if (fullName.isBlank()) { showToast("Please enter your real name."); return }
-        if (username.isBlank()) { showToast("Please choose a username."); return }
-        if (password.isBlank()) { showToast("Please create a password before continuing."); return }
+    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "", referrerId: String? = null, birthDate: String = "", onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        fun fail(message: String) { showToast(message); onResult(false, message) }
+        if (fullName.isBlank()) { fail("Please enter your real name."); return }
+        if (username.isBlank()) { fail("Please choose a username."); return }
+        if (password.isBlank()) { fail("Please create a password before continuing."); return }
 
         val cleanName = fullName.trim()
         val cleanUsername = username.trim().lowercase().removePrefix("@")
         val cleanEmail = email.trim().lowercase()
 
-        if (cleanUsername.isBlank()) { showToast("Please choose a username."); return }
-        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) { showToast("Please enter a valid email address."); return }
+        if (cleanUsername.isBlank()) { fail("Please choose a username."); return }
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) { fail("Please enter a valid email address."); return }
+        if (!signupInFlight.compareAndSet(false, true)) {
+            onResult(false, "Account creation is already in progress.")
+            return
+        }
         val initialProfile = _uiState.value.myProfile.copy(fullName = cleanName, username = cleanUsername, email = ContactField(cleanEmail, true), faculty = faculty.trim())
         _uiState.value = _uiState.value.copy(myProfile = initialProfile)
         // Keep signup input in memory only. Mark the user logged in locally only after
@@ -3139,8 +3146,14 @@ private suspend fun restoreSupabaseSession() {
                         if (profile.onboardingCompleted) "Welcome back, @${profile.username}."
                         else "Account created! Set up your BLINK profile."
                     )
-                } else showToast(result.errorMessage ?: "Sign up failed.")
-            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast("Couldn't create your account. Please try again.") }
+                    onResult(true, null)
+                } else fail(result.errorMessage ?: "Sign up failed.")
+            } catch (e: Exception) {
+                Log.e(TAG, "signUp failed", e)
+                fail("Couldn't create your account. Please try again.")
+            } finally {
+                signupInFlight.set(false)
+            }
         }
     }
 
@@ -3155,18 +3168,14 @@ private suspend fun restoreSupabaseSession() {
         }
 
         viewModelScope.launch {
-            val existing = runCatching {
-                supabaseService.fetchProfileByUsername(clean)
-            }.getOrNull()
-            val currentId = _uiState.value.myProfile.id
-            val available = existing == null || (
-                currentId.isNotBlank() &&
-                    existing.id.equals(currentId, ignoreCase = true)
-                )
-            onResult(
-                available,
-                if (available) "Username available" else "Username already taken."
-            )
+            try {
+                val available = supabaseService.isOnboardingUsernameAvailable(clean)
+                onResult(available, if (available) "Username available" else "Username already taken.")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                onResult(false, "Unable to check username. Check your connection and retry.")
+            }
         }
     }
 
@@ -3230,6 +3239,8 @@ private suspend fun restoreSupabaseSession() {
         gender: String,
         birthDate: String,
         avatarUrl: String,
+        phone: String,
+        referrerId: String?,
         onResult: (Boolean, String?) -> Unit
     ) {
         val cleanUniversity = university.trim()
@@ -3239,28 +3250,16 @@ private suspend fun restoreSupabaseSession() {
         val cleanBirthDate = birthDate.trim()
         val notStudent = cleanUniversity.isBlank() && cleanDepartment.isBlank()
 
-        when {
-            cleanUniversity.isBlank() && !notStudent -> {
-                onResult(false, "Choose your university.")
-                return
-            }
-            cleanDepartment.isBlank() && !notStudent -> {
-                onResult(false, "Choose your department.")
-                return
-            }
-            cleanGender !in BlinkOnboardingCatalog.genders -> {
-                onResult(false, "Choose a valid gender option.")
-                return
-            }
-            cleanBirthDate.isNotBlank() &&
-                !cleanBirthDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")) -> {
-                onResult(false, "Use YYYY-MM-DD for your birthday, or leave it blank.")
-                return
-            }
+        BlinkOnboardingPolicy.basicsValidationMessage(
+            cleanUniversity, cleanDepartment, cleanGender, cleanBirthDate, phone, notStudent
+        )?.let { message ->
+            onResult(false, message)
+            return
         }
 
         viewModelScope.launch {
             val current = _uiState.value.myProfile
+            val number = if (phone.isBlank()) "" else com.blinkng.shared.BlinkPhonePolicy.normalize(phone).orEmpty()
             val updated = current.copy(
                 university = cleanUniversity,
                 faculty = if (notStudent) "" else current.faculty,
@@ -3270,6 +3269,8 @@ private suspend fun restoreSupabaseSession() {
                 gender = cleanGender,
                 birthDate = cleanBirthDate,
                 avatarUrl = avatarUrl.trim(),
+                phone = ContactField(number, false),
+                phoneVisibility = com.blinkng.shared.ProfileVisibilityScope.PRIVATE,
                 onboardingCompleted = false,
                 onboardingStep = maxOf(current.onboardingStep, 2)
             )
@@ -3282,6 +3283,22 @@ private suspend fun restoreSupabaseSession() {
                 return@launch
             }
 
+            // Keep the persisted step unchanged until ALL details have succeeded.
+            // Retrying an interrupted step is safe; an optional referral is idempotent.
+            val phoneSaved = supabaseService.updateMyProfilePhone(number)
+            if (!phoneSaved) {
+                onResult(false, "Unable to save your private phone number. Please retry.")
+                return@launch
+            }
+            if (!referrerId.isNullOrBlank()) {
+                val referralSaved = runCatching {
+                    com.example.data.supabase.BlinkReferralClient.claimGoogleOnboardingReferrer(referrerId)
+                }.getOrDefault(false)
+                if (!referralSaved) {
+                    onResult(false, "Could not apply this referral. Choose another name or skip it.")
+                    return@launch
+                }
+            }
             val saved = runCatching { supabaseService.updateProfile(updated) }
                 .getOrDefault(false)
             if (saved) {
@@ -3315,7 +3332,9 @@ private suspend fun restoreSupabaseSession() {
                 onboardingCompleted = false,
                 onboardingStep = maxOf(current.onboardingStep, 3)
             )
-            val saved = runCatching { supabaseService.updateProfile(updated) }
+            val saved = runCatching {
+                supabaseService.updateOnboardingProgress(updated.onboardingStep, false, cleanInterests)
+            }
                 .getOrDefault(false)
             if (saved) {
                 _uiState.value = _uiState.value.copy(myProfile = updated)
@@ -3355,7 +3374,7 @@ private suspend fun restoreSupabaseSession() {
                 onboardingCompleted = true,
                 onboardingStep = 4
             )
-            val saved = runCatching { supabaseService.updateProfile(completed) }
+            val saved = runCatching { supabaseService.updateOnboardingProgress(4, true) }
                 .getOrDefault(false)
 
             if (saved) {

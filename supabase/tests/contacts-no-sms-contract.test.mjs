@@ -6,6 +6,7 @@ const source = path => readFileSync(new URL('../../'+path, import.meta.url), 'ut
 const onboarding = source('app/src/main/java/com/example/ui/screens/AccountOnboardingScreen.kt');
 const main = source('app/src/main/java/com/example/MainActivity.kt');
 const service = source('app/src/main/java/com/example/data/supabase/SupabaseService.kt');
+const viewModel = source('app/src/main/java/com/example/viewmodel/BlinkViewModel.kt');
 const contacts = source('app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt');
 const prompt = source('app/src/main/java/com/example/ui/components/BlinkContactSyncLoginPrompt.kt');
 const client = source('app/src/main/java/com/example/data/repository/BlinkContactsDiscoveryClient.kt');
@@ -19,7 +20,9 @@ test('no SMS verification is rendered in signup or contacts', () => {
 });
 
 test('self-declared profile number is owner scoped and private until owner changes visibility', () => {
-  assert.match(main, /onSavePhone = \{ number, onResult ->/);
+  assert.match(main, /onSaveBasics = \{ university, department, level, gender, birthDate, avatarUrl, phone, referrerId, onResult ->/);
+  assert.match(viewModel, /supabaseService\.updateMyProfilePhone\(number\)/);
+  assert.match(viewModel, /phone = ContactField\(number, false\)/);
   assert.match(service, /suspend fun updateMyProfilePhone\(rawPhone: String\)/);
   assert.match(service, /newRequestBuilder\("\/rest\/v1\/profiles\?id=eq\.\$\{encodeValue\(uid\)\}", true\)/);
   assert.match(service, /put\("phone_visibility", "PRIVATE"\)/);

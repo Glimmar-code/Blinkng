@@ -1,3 +1,11 @@
+## 2026-11-23 — Signup and onboarding reliability repair
+
+- **Shared:** Android and Windows validate required real/non-future birthdays, gender, optional normalized phone numbers and student/non-student campus details through `BlinkOnboardingPolicy.basicsValidationMessage`.
+- **Android:** Email signup no longer requires a university before the non-student option is available. Both submit/terms paths share a completion-driven submission lock, backed by a ViewModel lock. Username checks use the authenticated availability RPC, reject service errors and discard cancelled/stale callbacks. Optional selected avatars have an explicit remove-and-skip action.
+- **Persistence:** Both clients read exact birthdays only from the signed-in owner's private details. Read failures are not treated as empty data. Basic-step progress is committed only after birthday, private phone and (Android) selected referral saves succeed. The Android in-memory profile includes the saved phone, preventing later interests/finish updates from erasing it.
+- **Windows:** Removed SMS controls from onboarding. An optional self-declared phone is saved by an owner-scoped partial profile PATCH with PRIVATE visibility, with no Auth phone mutation or ownership claim. Existing private birthdays survive profile refreshes and later setup steps. Android's native optional photo picker remains platform-specific; the existing Windows Profile photo workflow is retained.
+- **Tests:** Added shared validation tests, Android submit/retry UI coverage, desktop mocked-HTTP persistence/failure/retry tests and source-wiring contracts. See the pull request for executed checks versus pending CI/device validation. No live database/Auth configuration changes, merge, signed release or APK publication are part of this repair.
+
 ## 2026-11-14 — BLINK Market Android visual refresh
 
 - **Android:** BLINK Market receives a shared Compose visual layer for cards, surfaces, pills, spacing, motion tokens, seller onboarding, product detail, orders, offers and seller insights. Existing navigation, callbacks, Supabase calls, listing/order/offer state, seller approval rules and Paystack gating remain unchanged.

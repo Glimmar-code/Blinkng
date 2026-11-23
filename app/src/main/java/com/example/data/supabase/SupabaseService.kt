@@ -1760,9 +1760,63 @@ fun getCurrentUserId(): String? {
         }.getOrDefault(false)
     }
 
+    /** Later onboarding steps must never re-send stale phone/profile fields. */
+    suspend fun updateOnboardingProgress(
+        step: Int,
+        completed: Boolean,
+        interests: List<String>? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext false
+        val body = JSONObject()
+            .put("onboarding_step", step.coerceIn(0, 4))
+            .put("onboarding_completed", completed)
+            .put("updated_at", nowIso())
+        interests?.let { body.put("interests", JSONArray(it)) }
+        executeRequest(
+            newRequestBuilder("/rest/v1/profiles?id=eq.${encodeValue(uid)}", true)
+                .addHeader("Prefer", "return=representation")
+                .patch(body.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty().trim()
+            response.isSuccessful && raw.startsWith("[") && JSONArray(raw).length() == 1
+        }
+    }
+
+    /** An unavailable lookup is an error, never evidence that a username is free. */
+    suspend fun isOnboardingUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/is_blink_username_available", true)
+                .post(JSONObject().put("p_username", username).toString().toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty().trim()
+            check(response.isSuccessful && raw in setOf("true", "false")) {
+                "Unable to check username. Check your connection and retry."
+            }
+            raw == "true"
+        }
+    }
+
+    /** Read only the authenticated owner's private birthday; failures must not look like blank data. */
+    suspend fun fetchMyPrivateBirthDate(): String = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: error("Not authenticated.")
+        executeRequest(
+            newRequestBuilder(
+                "/rest/v1/profile_private_details?user_id=eq.${encodeValue(uid)}&select=birth_date&limit=1",
+                true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            check(response.isSuccessful) { "Unable to load your private birthday. Please retry." }
+            JSONArray(raw).optJSONObject(0)?.cleanString("birth_date").orEmpty()
+        }
+    }
+
     suspend fun updatePrivateBirthDate(birthDate: String): Boolean = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId()?.takeIf { it.isNotBlank() } ?: return@withContext false
         val clean = birthDate.trim()
+        if (!com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(clean)) return@withContext false
         val body = JSONObject()
             .put("user_id", uid)
             .put("birth_date", if (clean.isBlank()) JSONObject.NULL else clean)

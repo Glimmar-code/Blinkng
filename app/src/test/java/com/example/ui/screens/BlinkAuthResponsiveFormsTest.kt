@@ -12,6 +12,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -31,10 +35,34 @@ import org.robolectric.annotation.GraphicsMode
 class BlinkAuthNarrowScreenTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun signupWithoutUniversityLocksDuplicateSubmitsAndAllowsRetryAfterFailure() {
+        var attempts = 0
+        var complete: ((Boolean, String?) -> Unit)? = null
+        rule.setContent {
+            BlinkReferenceCreateAccountScreen(
+                onBack = {},
+                onCreateAccount = { _, _, _, _, _, onResult -> attempts++; complete = onResult },
+                onGoogle = {}, onLogin = {}
+            )
+        }
+        rule.onNodeWithTag("create_account_name").performScrollTo().performTextInput("Test Student")
+        rule.onNodeWithTag("create_account_email").performScrollTo().performTextInput("test@example.invalid")
+        rule.onNodeWithTag("create_account_password").performScrollTo().performTextInput("Test-Password1")
+        rule.onNodeWithTag("create_account_birthday").performScrollTo().performTextInput("2001-02-03")
+        // No university selection: non-students must be able to reach onboarding.
+        rule.onNodeWithTag("create_account_submit").performScrollTo().performClick()
+        rule.onNodeWithText("Agree & Create Account").performClick()
+        rule.runOnIdle { org.junit.Assert.assertEquals(1, attempts) }
+        rule.onNodeWithTag("create_account_submit").assertIsNotEnabled()
+        rule.runOnIdle { complete!!(false, "Please retry signup.") }
+        rule.onNodeWithTag("create_account_submit").assertIsEnabled().performClick()
+        rule.runOnIdle { org.junit.Assert.assertEquals(2, attempts) }
+    }
+
     @Test fun signupKeepsEveryInputAndProviderReachable() {
         rule.setContent {
             BlinkReferenceCreateAccountScreen(
-                onBack = {}, onCreateAccount = { _, _, _, _, _ -> },
+                onBack = {}, onCreateAccount = { _, _, _, _, _, _ -> },
                 onGoogle = {}, onLogin = {}
             )
         }
@@ -58,7 +86,7 @@ class BlinkAuthNarrowScreenTest {
             val d = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(d.density, scale)) {
                 BlinkReferenceCreateAccountScreen(
-                    onBack = {}, onCreateAccount = { _, _, _, _, _ -> },
+                    onBack = {}, onCreateAccount = { _, _, _, _, _, _ -> },
                     onGoogle = {}, onLogin = {}
                 )
             }
@@ -103,7 +131,7 @@ class BlinkAuthExpandedScreenTest {
     @Test fun tabletKeepsPosterSeparateFromInteractivePhone() {
         rule.setContent {
             BlinkReferenceCreateAccountScreen(
-                onBack = {}, onCreateAccount = { _, _, _, _, _ -> },
+                onBack = {}, onCreateAccount = { _, _, _, _, _, _ -> },
                 onGoogle = {}, onLogin = {}
             )
         }
