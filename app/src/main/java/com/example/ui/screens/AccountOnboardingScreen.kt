@@ -102,6 +102,8 @@ import com.blinkng.shared.discovery.BlinkBirthdayPolicy
 import com.blinkng.shared.BlinkPhonePolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 private const val PINNED_BLINK_CREATOR = BlinkOnboardingPolicy.PINNED_CREATOR_USERNAME
 private const val REQUIRED_ONBOARDING_FOLLOWS = BlinkOnboardingPolicy.REQUIRED_FOLLOWS
@@ -112,7 +114,6 @@ fun AccountOnboardingScreen(
     candidates: List<UserProfile>,
     onCheckUsername: (String, (Boolean, String?) -> Unit) -> Unit,
     onSaveUsername: (String, String, (Boolean, String?) -> Unit) -> Unit,
-    onSaveReferrer: (String, (Boolean, String?) -> Unit) -> Unit,
     onSaveBasics: (
         university: String,
         department: String,
@@ -120,9 +121,10 @@ fun AccountOnboardingScreen(
         gender: String,
         birthDate: String,
         avatarUrl: String,
+        phone: String,
+        referrerId: String?,
         onResult: (Boolean, String?) -> Unit
     ) -> Unit,
-    onSavePhone: (String, (Boolean, String?) -> Unit) -> Unit,
     onSaveInterests: (List<String>, (Boolean, String?) -> Unit) -> Unit,
     onFinish: ((Boolean, String?) -> Unit) -> Unit,
     onRefreshSuggestions: () -> Unit
@@ -154,6 +156,9 @@ fun AccountOnboardingScreen(
     var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
+    var privateBirthdayLoaded by remember(profile.id) { mutableStateOf(false) }
+    var birthdayLoadAttempt by remember(profile.id) { mutableIntStateOf(0) }
+    var birthdayLoadFailed by remember(profile.id) { mutableStateOf(false) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
     // Optional profile number is provided by the user, not verified by SMS.
     // Keep it private and out of Activity saved-state; do not imply ownership proof.
@@ -190,9 +195,25 @@ fun AccountOnboardingScreen(
 
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
+    LaunchedEffect(profile.id, step, birthdayLoadAttempt) {
+        if (step != 1 || privateBirthdayLoaded) return@LaunchedEffect
+        birthdayLoadFailed = false
+        try {
+            birthDate = com.example.data.supabase.SupabaseService().fetchMyPrivateBirthDate()
+            privateBirthdayLoaded = true
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            birthdayLoadFailed = true
+            error = "Unable to load your private birthday. Retry before continuing."
+        }
+    }
+
     LaunchedEffect(username, step) {
         if (step != 0) return@LaunchedEffect
         val clean = username.trim().lowercase().removePrefix("@")
+        usernameChecking = false
+        usernameAvailable = null
         if (clean.length < 3) {
             usernameAvailable = null
             usernameMessage = if (clean.isBlank()) null else "Use at least 3 characters."
@@ -202,11 +223,16 @@ fun AccountOnboardingScreen(
         usernameChecking = true
         usernameAvailable = null
         delay(350)
-        onCheckUsername(clean) { available, message ->
-            usernameChecking = false
-            usernameAvailable = available
-            usernameMessage = message
+        // The ViewModel callback outlives this effect. Cancellation discards old
+        // replies when the text changes, the step changes, or the screen closes.
+        val (available, message) = suspendCancellableCoroutine<Pair<Boolean, String?>> { pending ->
+            onCheckUsername(clean) { available, message ->
+                if (pending.isActive) pending.resume(available to message)
+            }
         }
+        usernameChecking = false
+        usernameAvailable = available
+        usernameMessage = message
     }
 
     LaunchedEffect(step) {
@@ -327,6 +353,8 @@ fun AccountOnboardingScreen(
                         OutlinedTextField(
                             value = username,
                             onValueChange = {
+                                usernameAvailable = null
+                                usernameMessage = null
                                 username = it
                                     .lowercase()
                                     .filter { char ->
@@ -458,6 +486,12 @@ fun AccountOnboardingScreen(
                                     Spacer(Modifier.width(7.dp))
                                     Text("Add profile picture")
                                 }
+                                if (pendingAvatarUri != null || avatarUrl.isNotBlank()) {
+                                    TextButton(
+                                        enabled = !saving,
+                                        onClick = { pendingAvatarUri = null; avatarUrl = ""; error = null }
+                                    ) { Text("Remove picture and skip") }
+                                }
                                 Text(
                                     "Optional — you can skip this.",
                                     color = DarkTextSecondary,
@@ -523,6 +557,7 @@ fun AccountOnboardingScreen(
 
                         OutlinedTextField(
                             value = birthDate,
+                            enabled = privateBirthdayLoaded && !saving,
                             onValueChange = { value ->
                                 birthDate = value.filter { it.isDigit() || it == '-' }.take(10)
                                 error = null
@@ -533,6 +568,15 @@ fun AccountOnboardingScreen(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+                        if (!privateBirthdayLoaded) {
+                            if (birthdayLoadFailed) {
+                                TextButton(onClick = { birthdayLoadAttempt++ }) {
+                                    Text("Retry loading birthday")
+                                }
+                            } else {
+                                Text("Loading your private birthday...", color = DarkTextSecondary)
+                            }
+                        }
 
                         Spacer(Modifier.height(14.dp))
                         OutlinedTextField(
@@ -584,6 +628,7 @@ fun AccountOnboardingScreen(
                                 gender.isNotBlank() &&
                                 phoneValid &&
                                 birthdayValid &&
+                                privateBirthdayLoaded &&
                                 !saving
                         ) {
                             scope.launch {
@@ -610,32 +655,17 @@ fun AccountOnboardingScreen(
                                     if (notStudent) "" else level,
                                     gender,
                                     birthDate,
-                                    finalAvatar
+                                    finalAvatar,
+                                    phoneNumber,
+                                    selectedReferrer?.id
                                 ) { ok, message ->
+                                    saving = false
                                     if (ok) {
-                                        val number = if (phoneNumber.isBlank()) ""
-                                            else BlinkPhonePolicy.normalize(phoneNumber).orEmpty()
-                                        onSavePhone(number) { phoneSaved, phoneError ->
-                                            if (!phoneSaved) {
-                                                saving = false
-                                                error = phoneError ?: "Unable to save phone. Please retry."
-                                            } else {
-                                                val referralId = selectedReferrer?.id.orEmpty()
-                                                onSaveReferrer(referralId) { accepted, referralError ->
-                                                    saving = false
-                                                    if (accepted) {
-                                                        SignupCampusPreference.clear(context)
-                                                        avatarUrl = finalAvatar
-                                                        pendingAvatarUri = null
-                                                        step = 2
-                                                    } else {
-                                                        error = referralError ?: "Could not confirm your optional referral."
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        SignupCampusPreference.clear(context)
+                                        avatarUrl = finalAvatar
+                                        pendingAvatarUri = null
+                                        step = 2
                                     } else {
-                                        saving = false
                                         error = message ?: "Unable to save profile."
                                     }
                                 }

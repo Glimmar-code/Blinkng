@@ -13,7 +13,7 @@ test('onboarding MaterialTheme error cannot return', () => {
 test('onboarding uses an optional private phone without SMS verification', () => {
   assert.match(onboarding, /Phone number \(optional\)/);
   assert.match(onboarding, /BlinkPhonePolicy\.normalize\(phoneNumber\)/);
-  assert.match(onboarding, /onSavePhone\(number\)/);
+  assert.match(onboarding, /finalAvatar,\s*phoneNumber,\s*selectedReferrer\?\.id/);
   assert.match(onboarding, /var phoneNumber by remember\(profile\.id\)/);
   assert.doesNotMatch(onboarding, /BlinkPhoneVerificationClient|Send SMS code|Six-digit SMS code|phoneCodeSent|phoneVerified/);
 });

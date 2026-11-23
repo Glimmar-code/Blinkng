@@ -155,13 +155,17 @@ class DesktopAppState(
         level: String,
         gender: String,
         birthDate: String,
+        phone: String,
         notStudent: Boolean = false,
     ) = profileAction {
         val canonicalUniversity = if (notStudent) "" else BlinkUniversitySearch.canonical(university)
             ?: throw IllegalArgumentException("Select a university from the BLINK directory.")
-        require(notStudent || department.trim().isNotBlank()) { "Choose your department." }
-        require(gender in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
+        BlinkOnboardingPolicy.basicsValidationMessage(
+            canonicalUniversity, department, gender, birthDate, phone, notStudent
+        )?.let { throw IllegalArgumentException(it) }
         client.savePrivateBirthDate(birthDate)
+        client.saveMyProfilePhone(phone)
+        // Advance only after the private birthday and optional private phone save.
         profile = client.saveOnboardingProfile(
             university = canonicalUniversity,
             accountType = if (notStudent) BlinkOnboardingPolicy.NON_STUDENT else "STUDENT",

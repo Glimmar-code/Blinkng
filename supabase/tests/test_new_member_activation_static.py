@@ -62,7 +62,12 @@ class NewMemberTests(unittest.TestCase):
             self.assertNotIn("Send SMS code", ui)
             self.assertNotIn("BlinkPhoneVerificationClient", ui)
         self.assertIn("Phone number (optional)", onboarding)
-        self.assertIn("onSavePhone(number)", onboarding)
+        # Phone persistence is now part of the all-details save: progress must
+        # not advance before phone/referral writes have succeeded.
+        view_model = source("app/src/main/java/com/example/viewmodel/BlinkViewModel.kt")
+        self.assertRegex(onboarding, r"finalAvatar,\s*phoneNumber,\s*selectedReferrer\?\.id")
+        self.assertIn("supabaseService.updateMyProfilePhone(number)", view_model)
+        self.assertIn("phone = ContactField(number, false)", view_model)
         self.assertIn("phone_visibility", service)
         self.assertIn('"PRIVATE"', service)
         self.assertIn("ActivityResultContracts.RequestPermission()", prompt)

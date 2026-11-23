@@ -619,10 +619,13 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,current_job_title,course_of_study,graduation_year,relationship_status,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,current_job_title,course_of_study,graduation_year,relationship_status,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,phone,phone_visibility&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
-        parseProfile(row).also { profileCache[userId] = it }
+        val parsed = parseProfile(row)
+        // Never cache a blank substitute when private data could not be loaded.
+        val complete = if (userId == ownId) parsed.copy(birthDate = fetchMyPrivateBirthDate()) else parsed
+        complete.also { profileCache[userId] = it }
     }
 
     suspend fun fetchProfileDetail(identifier: String): DesktopProfile? = withContext(Dispatchers.IO) {
@@ -871,6 +874,9 @@ class DesktopSupabaseClient(
 
     suspend fun savePrivateBirthDate(birthDate: String) = withContext(Dispatchers.IO) {
         val clean = birthDate.trim()
+        require(com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(clean)) {
+            "Enter a real birthday in YYYY-MM-DD format, not a future date."
+        }
         val body = JSONObject()
             .put("user_id", requireSession().userId)
             .put("birth_date", if (clean.isBlank()) JSONObject.NULL else clean)
@@ -880,6 +886,26 @@ class DesktopSupabaseClient(
             body,
             prefer = "resolution=merge-duplicates,return=minimal",
         )
+        profileCache.remove(requireSession().userId)
+    }
+
+    suspend fun fetchMyPrivateBirthDate(): String = withContext(Dispatchers.IO) {
+        val userId = requireSession().userId
+        getArray(
+            "/rest/v1/profile_private_details?user_id=eq.${encode(userId)}&select=birth_date&limit=1",
+        ).optJSONObject(0)?.optString("birth_date")?.takeUnless { it == "null" }.orEmpty()
+    }
+
+    /** Self-declared profile data, NOT an Auth phone change or proof of ownership. */
+    suspend fun saveMyProfilePhone(rawPhone: String) = withContext(Dispatchers.IO) {
+        val number = if (rawPhone.isBlank()) "" else
+            requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(rawPhone)) { "Enter a valid phone number." }
+        val userId = requireSession().userId
+        patch(
+            "/rest/v1/profiles?id=eq.${encode(userId)}",
+            JSONObject().put("phone", number).put("phone_visibility", "PRIVATE"),
+        )
+        profileCache.remove(userId)
     }
 
     suspend fun fetchOnboardingSuggestions(limit: Int = 40): List<DesktopProfile> = withContext(Dispatchers.IO) {
