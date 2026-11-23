@@ -104,7 +104,9 @@ class DesktopOnboardingPersistenceTest {
         assertEquals("+2348012345678", updated.phone)
         assertEquals("PRIVATE", updated.phoneVisibility)
         client.saveMyProfilePhone("")
-        assertEquals("", client.fetchProfile().phone)
+        assertEquals("", server.profile.getString("phone"))
+        // Optional profile fields are parsed as null when the server stores "".
+        assertNull(client.fetchProfile().phone)
     }
 
     @Test fun failedPhoneSaveDoesNotAdvanceOnboardingAndRetryDoes() = runBlocking {
