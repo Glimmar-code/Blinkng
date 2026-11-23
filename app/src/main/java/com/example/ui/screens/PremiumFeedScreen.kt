@@ -508,7 +508,8 @@ fun PremiumFeedScreen(
             onBottomBarTravelChange = onBottomBarTravelChange,
             onGameClick = onGameClick,
             onReelClick = { openReelsAt() },
-            onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
+            onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) },
+            onOpenBroadcastRoute = onOpenBroadcastRoute
         )
 
         1 -> FeedScreen(
@@ -723,7 +724,8 @@ private fun PremiumHomeFeed(
     onBottomBarTravelChange: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
-    onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
+    onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit,
+    onOpenBroadcastRoute: (String) -> Unit
 ) {
     val homeBackground = if (isDark) MaterialTheme.colorScheme.background else Color.White
     val context = LocalContext.current

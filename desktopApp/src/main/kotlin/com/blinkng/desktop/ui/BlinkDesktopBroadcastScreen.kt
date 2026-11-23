@@ -188,8 +188,14 @@ fun BlinkDesktopBroadcastScreen(state: DesktopAppState) {
                             onAction = {
                                 when (item.type) {
                                     BroadcastType.ANNOUNCEMENT -> perform { repository.markRead(item.id) }
-                                    BroadcastType.CAMPAIGN -> if (item.joined) { campaign = item; screen = "campaign" }
-                                    else -> perform { repository.joinCampaign(item.id) }
+                                    BroadcastType.CAMPAIGN -> {
+                                        if (item.joined) {
+                                            campaign = item
+                                            screen = "campaign"
+                                        } else {
+                                            perform { repository.joinCampaign(item.id) }
+                                        }
+                                    }
                                     BroadcastType.PROMO -> perform { repository.claimPromo(item.id) }
                                 }
                             },

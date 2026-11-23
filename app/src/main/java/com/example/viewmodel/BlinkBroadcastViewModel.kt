@@ -2,6 +2,7 @@ package com.example.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.compose.runtime.getValue
 import com.blinkng.shared.broadcast.*
 import com.example.data.repository.BlinkBroadcastUnavailableRepository
 import kotlinx.coroutines.CancellationException
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.setValue
 import java.util.concurrent.ConcurrentHashMap
 
 sealed interface BlinkBroadcastUiState {

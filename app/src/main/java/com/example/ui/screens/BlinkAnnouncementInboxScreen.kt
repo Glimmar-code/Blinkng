@@ -17,6 +17,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.blinkng.shared.broadcast.BroadcastInboxItem
 import com.blinkng.shared.broadcast.BroadcastType
 import com.example.viewmodel.BlinkBroadcastUiState
