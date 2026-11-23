@@ -1033,8 +1033,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     BlinkReferenceCreateAccountScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onCreateAccount = { name, email, password, referrerId, birthday ->
-                                            viewModel.signUp(name, email, password, referrerId = referrerId, birthDate = birthday)
+                                        onCreateAccount = { name, email, password, referrerId, birthday, onResult ->
+                                            viewModel.signUp(name, email, password, referrerId = referrerId, birthDate = birthday, onResult = onResult)
                                         },
                                         onGoogle = { email -> viewModel.loginWithGoogle(email) },
                                         onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) }
@@ -1063,10 +1063,7 @@ class MainActivity : ComponentActivity() {
                                                 username, onResult, displayName
                                             )
                                         },
-                                        onSaveReferrer = { referrerId, onResult ->
-                                            viewModel.saveGoogleOnboardingReferrer(referrerId, onResult)
-                                        },
-                                        onSaveBasics = { university, department, level, gender, birthDate, avatarUrl, onResult ->
+                                        onSaveBasics = { university, department, level, gender, birthDate, avatarUrl, phone, referrerId, onResult ->
                                             viewModel.saveOnboardingBasics(
                                                 university = university,
                                                 department = department,
@@ -1074,24 +1071,10 @@ class MainActivity : ComponentActivity() {
                                                 gender = gender,
                                                 birthDate = birthDate,
                                                 avatarUrl = avatarUrl,
+                                                phone = phone,
+                                                referrerId = referrerId,
                                                 onResult = onResult
                                             )
-                                        },
-                                        onSavePhone = { number, onResult ->
-                                            // Empty is optional; a user clearing an existing
-                                            // number must actually clear it on the server.
-                                            if (number.isBlank() && uiState.myProfile.phone.value.isBlank()) {
-                                                onResult(true, null)
-                                            } else {
-                                                lifecycleScope.launch {
-                                                    val saved = com.example.data.supabase.SupabaseService()
-                                                        .updateMyProfilePhone(number)
-                                                    onResult(
-                                                        saved,
-                                                        if (saved) null else "Could not save your private phone number."
-                                                    )
-                                                }
-                                            }
                                         },
                                         onSaveInterests = { interests, onResult ->
                                             viewModel.saveOnboardingInterests(interests, onResult)

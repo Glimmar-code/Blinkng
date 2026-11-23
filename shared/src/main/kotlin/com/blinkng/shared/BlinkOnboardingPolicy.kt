@@ -8,6 +8,25 @@ object BlinkOnboardingPolicy {
     const val PINNED_CREATOR_USERNAME: String = "futa_no1_blogger"
     const val TOTAL_STEPS: Int = 4
 
+    /** Validate the same required details before either client writes any step progress. */
+    fun basicsValidationMessage(
+        university: String,
+        department: String,
+        gender: String,
+        birthDate: String,
+        phone: String,
+        notStudent: Boolean,
+    ): String? = when {
+        !notStudent && university.isBlank() -> "Choose your university."
+        !notStudent && department.isBlank() -> "Choose your department."
+        gender.trim() !in genders -> "Choose a valid gender option."
+        !com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(birthDate) ->
+            "Enter a real birthday in YYYY-MM-DD format, not a future date."
+        phone.isNotBlank() && BlinkPhonePolicy.normalize(phone) == null ->
+            "Enter a valid phone number, or leave it blank."
+        else -> null
+    }
+
     val reservedUsernames: Set<String> = setOf(
         "admin",
         "blink",

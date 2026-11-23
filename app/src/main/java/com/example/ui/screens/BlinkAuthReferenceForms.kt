@@ -602,7 +602,7 @@ internal fun UniversityCampusPickerDialog(
 @Composable
 fun BlinkReferenceCreateAccountScreen(
     onBack: () -> Unit,
-    onCreateAccount: (String, String, String, String?, String) -> Unit,
+    onCreateAccount: (String, String, String, String?, String, (Boolean, String?) -> Unit) -> Unit,
     onGoogle: (String) -> Unit,
     onLogin: () -> Unit
 ) {
@@ -630,9 +630,22 @@ fun BlinkReferenceCreateAccountScreen(
     val emailFocus = remember { FocusRequester() }
     var error by remember { mutableStateOf<String?>(null) }
     val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
+    var submitting by remember { mutableStateOf(false) }
+
+    fun submitAccount() {
+        if (submitting || googleLoading) return
+        submitting = true
+        SignupCampusPreference.set(context, university)
+        onCreateAccount(
+            fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id, birthday.trim()
+        ) { success, message ->
+            submitting = false
+            if (!success) error = message ?: "Unable to create your account. Please retry."
+        }
+    }
 
     AuthAdaptiveShell(
-        posterTitle = "Create Your\nStudent Account",
+        posterTitle = "Create Your\nBLINK Account",
         posterSubtitle = "Sign up in moments and unlock your campus community, market and messages."
     ) {
     Box(Modifier.fillMaxSize().background(Color.White)) {
@@ -707,7 +720,7 @@ fun BlinkReferenceCreateAccountScreen(
                 Icon(Icons.Default.School, null, tint = Ink, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(17.dp))
                 Text(
-                    university.ifBlank { "University" },
+                    university.ifBlank { "University (optional for now)" },
                     modifier = Modifier.weight(1f), color = if (university.isBlank()) Hint else Ink,
                     fontSize = 14.sp, maxLines = 1
                 )
@@ -730,12 +743,13 @@ fun BlinkReferenceCreateAccountScreen(
                 lightSurface = true,
             )
             Spacer(Modifier.height(6.dp))
-            SolidAuthButton("Create Account", enabled = true,
+            SolidAuthButton("Create Account", enabled = !submitting && !googleLoading,
+                working = submitting,
                 tag = "create_account_submit") {
+                if (submitting || googleLoading) return@SolidAuthButton
                 error = when {
                     fullName.trim().length < 2 -> "Enter your full name."
                     !email.contains("@") -> "Enter a valid email address."
-                    university.isBlank() -> "Select your university."
                     !com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(birthday) ->
                         "Enter a valid birthday (YYYY-MM-DD)."
                     !isStrongBlinkPassword(password) -> "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
@@ -746,8 +760,7 @@ fun BlinkReferenceCreateAccountScreen(
                 } else if (error == null) {
                     // Save only this campus choice for the existing onboarding screen;
                     // passwords stay with the current Supabase sign-up callback.
-                    SignupCampusPreference.set(context, university)
-                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id, birthday.trim())
+                    submitAccount()
                 }
             }
             OrSeparator()
@@ -758,7 +771,7 @@ fun BlinkReferenceCreateAccountScreen(
             ) {
                 AuthSocialCircle(
                     tag = "create_account_google",
-                    enabled = !googleLoading,
+                    enabled = !googleLoading && !submitting,
                     onClick = { onGoogle("") }
                 ) {
                     if (googleLoading) CircularProgressIndicator(Modifier.size(22.dp), color = Ink, strokeWidth = 2.dp)
@@ -777,7 +790,9 @@ fun BlinkReferenceCreateAccountScreen(
                 ) { Icon(Icons.Default.MailOutline, contentDescription = "Sign up with email") }
             }
             Spacer(Modifier.height(13.dp))
-            AuthAccountSwitcher("Already have an account?", "Log In", onLogin)
+            AuthAccountSwitcher("Already have an account?", "Log In") {
+                if (!submitting && !googleLoading) onLogin()
+            }
         }
     }
     }
@@ -790,8 +805,7 @@ fun BlinkReferenceCreateAccountScreen(
                 TextButton(onClick = {
                     acceptedTerms = true
                     confirmTerms = false
-                    SignupCampusPreference.set(context, university)
-                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id, birthday.trim())
+                    submitAccount()
                 }) { Text("Agree & Create Account", color = Ink) }
             },
             dismissButton = {
