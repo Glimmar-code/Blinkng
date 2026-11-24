@@ -15,7 +15,7 @@ import com.blinkng.shared.broadcast.BlinkBroadcastRepository
 
 class DesktopAppState(
     val client: DesktopSupabaseClient = DesktopSupabaseClient(),
-    val broadcastRepository: BlinkBroadcastRepository = DesktopBroadcastRepository(),
+    val broadcastRepository: BlinkBroadcastRepository = DesktopBroadcastRepository(client),
 ) {
     var initialized by mutableStateOf(false)
         private set
