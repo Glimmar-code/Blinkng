@@ -376,7 +376,7 @@ class BlinkBroadcastSupabaseRepository(
         }
     }
 
-    private fun claimState(row: JSONObject?): BroadcastClaimState {
+    private fun claimStateFromMetadata(row: JSONObject?): BroadcastClaimState {
         val status = row?.optString("last_status").orEmpty().uppercase()
         return when (status) {
             "CLAIMED" -> BroadcastClaimState.CLAIMED
@@ -387,7 +387,7 @@ class BlinkBroadcastSupabaseRepository(
         }
     }
 
-    private fun claimState(result: JSONObject): BroadcastClaimState = claimState(result).let { current ->
+    private fun claimStateFromResult(result: JSONObject): BroadcastClaimState = claimStateFromMetadata(result).let { current ->
         when (result.optString("status").uppercase()) {
             "CLAIMED" -> BroadcastClaimState.CLAIMED
             "LIMIT_REACHED" -> BroadcastClaimState.LIMIT_REACHED
