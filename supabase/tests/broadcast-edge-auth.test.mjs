@@ -70,7 +70,7 @@ test("OAuth exchange errors and missing tokens fail closed", async () => {
     ["sign", "verify"],
   );
   const der = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
-  const pem = "-----BEGIN PRIVATE KEY-----\\n" + Buffer.from(der).toString("base64") + "\\n-----END PRIVATE KEY-----";
+  const pem = "-----BEGIN PRIVATE KEY-----\n" + Buffer.from(der).toString("base64") + "\n-----END PRIVATE KEY-----";
   await assert.rejects(
     fcmAccessToken({ client_email: "a", private_key: pem }, async () => new Response("", { status: 401 })),
     /FCM_OAUTH_FAILED/,
