@@ -1,0 +1,2394 @@
+# Broadcast Catalog Metadata Snapshot
+
+Read-only export from the deployed production Supabase catalog.
+
+- Project ID: jhwgifrlxwspoedxjaly
+- Captured: 2026-11-24
+- Contains exact columns, constraints, indexes, RLS policies, triggers, cron, realtime membership and Storage metadata/policies.
+- **Not a migration. Do not replay.** Reconstruct and test migrations separately.
+
+{
+  "columns": [
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "id",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "maintenance_enabled",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "maintenance_message",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "min_app_version",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "store_url",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "updated_by",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "actor_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "action",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "before",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "after",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "ip",
+      "data_type": "inet",
+      "udt_name": "inet",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "column_name": "surface",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "broadcast_daily_rollups",
+      "column_name": "day",
+      "data_type": "date",
+      "udt_name": "date",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_daily_rollups",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_daily_rollups",
+      "column_name": "impressions",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_daily_rollups",
+      "column_name": "clicks",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "channel",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_channel",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "status",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_delivery_status",
+      "is_nullable": "NO",
+      "column_default": "'queued'::broadcast_delivery_status",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "attempts",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "last_error",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "column_name": "sent_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "broadcast_dismissals",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_dismissals",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_dismissals",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "column_name": "surface",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "broadcast_rate_limits",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_rate_limits",
+      "column_name": "action",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_rate_limits",
+      "column_name": "window_started_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcast_rate_limits",
+      "column_name": "count",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcast_reads",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcast_reads",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcast_reads",
+      "column_name": "read_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "type",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_type",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "status",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_status",
+      "is_nullable": "NO",
+      "column_default": "'draft'::broadcast_status",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "title",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "body",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "image_url",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "cta_label",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "deep_link",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "priority",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "starts_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "ends_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "timezone",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'Africa/Lagos'::text",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "dismissible",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "is_blocking",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "block_kind",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_block_kind",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "min_app_version",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "store_url",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "audience",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'{\"kind\": \"everyone\"}'::jsonb",
+      "ordinal_position": 18
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "channels",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'{\"push\": false, \"email\": false, \"in_app\": true, \"website\": false, \"frequency_cap\": 1, \"quiet_hours_respect\": true}'::jsonb",
+      "ordinal_position": 19
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "created_by",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 20
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "updated_by",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 21
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "ordinal_position": 22
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "deleted_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 23
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 24
+    },
+    {
+      "table_name": "broadcasts",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 25
+    },
+    {
+      "table_name": "broadcasts_changed",
+      "column_name": "signal_id",
+      "data_type": "smallint",
+      "udt_name": "int2",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "broadcasts_changed",
+      "column_name": "changed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "joined_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "progress",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "completed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "reward_claimed_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "campaign_participants",
+      "column_name": "reward_tier",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "source_type",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "source_id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "delta",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "campaign_rules",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "campaign_rules",
+      "column_name": "goal_type",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_goal_type",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "campaign_rules",
+      "column_name": "target",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "campaign_rules",
+      "column_name": "tiers",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'[]'::jsonb",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "campaign_rules",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "campaign_rules",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "token",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "platform",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "app_version",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "last_seen_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "disabled_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "device_tokens",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "push_enabled",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "announcements",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "campaigns",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "offers",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "email",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "quiet_start",
+      "data_type": "time without time zone",
+      "udt_name": "time",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "quiet_end",
+      "data_type": "time without time zone",
+      "udt_name": "time",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "timezone",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'Africa/Lagos'::text",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "notification_prefs",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "status",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_claim_status",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "reward",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'{}'::jsonb",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "idempotency_key",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "promo_claims",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "broadcast_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "reward_type",
+      "data_type": "USER-DEFINED",
+      "udt_name": "broadcast_reward_type",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "reward_amount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": null,
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "per_user_limit",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "total_budget_cap",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "budget_used",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "min_purchase",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "reward_text",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "placement",
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "promo_rules",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "ordinal_position": 11
+    }
+  ],
+  "constraints": [
+    {
+      "table_name": "broadcast_app_config",
+      "conname": "broadcast_app_config_id_check",
+      "contype": "c",
+      "definition": "CHECK (id)"
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "conname": "broadcast_app_config_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "broadcast_app_config",
+      "conname": "broadcast_app_config_updated_by_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (updated_by) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "conname": "broadcast_audit_log_actor_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (actor_id) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "conname": "broadcast_audit_log_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "conname": "broadcast_audit_log_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "conname": "broadcast_clicks_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "conname": "broadcast_clicks_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "conname": "broadcast_clicks_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_daily_rollups",
+      "conname": "broadcast_daily_rollups_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_daily_rollups",
+      "conname": "broadcast_daily_rollups_day_broadcast_id_key",
+      "contype": "u",
+      "definition": "UNIQUE (day, broadcast_id)"
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "conname": "broadcast_deliveries_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "conname": "broadcast_deliveries_broadcast_id_user_id_channel_key",
+      "contype": "u",
+      "definition": "UNIQUE (broadcast_id, user_id, channel)"
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "conname": "broadcast_deliveries_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "broadcast_deliveries",
+      "conname": "broadcast_deliveries_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_dismissals",
+      "conname": "broadcast_dismissals_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_dismissals",
+      "conname": "broadcast_dismissals_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (user_id, broadcast_id)"
+    },
+    {
+      "table_name": "broadcast_dismissals",
+      "conname": "broadcast_dismissals_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "conname": "broadcast_impressions_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "conname": "broadcast_impressions_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "conname": "broadcast_impressions_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_rate_limits",
+      "conname": "broadcast_rate_limits_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (user_id, action)"
+    },
+    {
+      "table_name": "broadcast_rate_limits",
+      "conname": "broadcast_rate_limits_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_reads",
+      "conname": "broadcast_reads_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcast_reads",
+      "conname": "broadcast_reads_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (user_id, broadcast_id)"
+    },
+    {
+      "table_name": "broadcast_reads",
+      "conname": "broadcast_reads_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_block_check",
+      "contype": "c",
+      "definition": "CHECK ((((is_blocking = false) AND (block_kind IS NULL)) OR ((is_blocking = true) AND (block_kind IS NOT NULL))))"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_body_check",
+      "contype": "c",
+      "definition": "CHECK ((length(body) <= 240))"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_created_by_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (created_by) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_link_check",
+      "contype": "c",
+      "definition": "CHECK (((deep_link IS NULL) OR (deep_link ~ '^blink://(spin|market|contest|campaign/[0-9a-fA-F-]{36}|promo/[0-9a-fA-F-]{36}|wallet|profile/[0-9a-fA-F-]{36})$'::text)))"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_store_url_check",
+      "contype": "c",
+      "definition": "CHECK (((store_url IS NULL) OR (store_url ~ '^https://'::text)))"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_title_check",
+      "contype": "c",
+      "definition": "CHECK ((length(title) <= 60))"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_updated_by_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (updated_by) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "broadcasts",
+      "conname": "broadcasts_window",
+      "contype": "c",
+      "definition": "CHECK (((ends_at IS NULL) OR (starts_at IS NULL) OR (ends_at > starts_at)))"
+    },
+    {
+      "table_name": "broadcasts_changed",
+      "conname": "broadcasts_changed_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (signal_id)"
+    },
+    {
+      "table_name": "broadcasts_changed",
+      "conname": "broadcasts_changed_signal_id_check",
+      "contype": "c",
+      "definition": "CHECK ((signal_id = 1))"
+    },
+    {
+      "table_name": "campaign_participants",
+      "conname": "campaign_participants_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "campaign_participants",
+      "conname": "campaign_participants_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (broadcast_id, user_id)"
+    },
+    {
+      "table_name": "campaign_participants",
+      "conname": "campaign_participants_progress_check",
+      "contype": "c",
+      "definition": "CHECK ((progress >= 0))"
+    },
+    {
+      "table_name": "campaign_participants",
+      "conname": "campaign_participants_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "conname": "campaign_progress_events_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "conname": "campaign_progress_events_broadcast_id_source_type_source_id_key",
+      "contype": "u",
+      "definition": "UNIQUE (broadcast_id, source_type, source_id)"
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "conname": "campaign_progress_events_delta_check",
+      "contype": "c",
+      "definition": "CHECK ((delta > 0))"
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "conname": "campaign_progress_events_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "campaign_progress_events",
+      "conname": "campaign_progress_events_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "campaign_rules",
+      "conname": "campaign_rules_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "campaign_rules",
+      "conname": "campaign_rules_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (broadcast_id)"
+    },
+    {
+      "table_name": "campaign_rules",
+      "conname": "campaign_rules_target_check",
+      "contype": "c",
+      "definition": "CHECK (((target > 0) AND (target <= 10000000)))"
+    },
+    {
+      "table_name": "campaign_rules",
+      "conname": "campaign_rules_tiers_check",
+      "contype": "c",
+      "definition": "CHECK ((jsonb_typeof(tiers) = 'array'::text))"
+    },
+    {
+      "table_name": "device_tokens",
+      "conname": "device_tokens_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "device_tokens",
+      "conname": "device_tokens_platform_check",
+      "contype": "c",
+      "definition": "CHECK ((platform = ANY (ARRAY['android'::text, 'ios'::text, 'web'::text])))"
+    },
+    {
+      "table_name": "device_tokens",
+      "conname": "device_tokens_token_key",
+      "contype": "u",
+      "definition": "UNIQUE (token)"
+    },
+    {
+      "table_name": "device_tokens",
+      "conname": "device_tokens_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "notification_prefs",
+      "conname": "notification_prefs_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (user_id)"
+    },
+    {
+      "table_name": "notification_prefs",
+      "conname": "notification_prefs_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "promo_claims",
+      "conname": "promo_claims_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "promo_claims",
+      "conname": "promo_claims_broadcast_id_user_id_idempotency_key_key",
+      "contype": "u",
+      "definition": "UNIQUE (broadcast_id, user_id, idempotency_key)"
+    },
+    {
+      "table_name": "promo_claims",
+      "conname": "promo_claims_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "promo_claims",
+      "conname": "promo_claims_user_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_broadcast_id_fkey",
+      "contype": "f",
+      "definition": "FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_budget_used_check",
+      "contype": "c",
+      "definition": "CHECK ((budget_used >= (0)::numeric))"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_min_purchase_check",
+      "contype": "c",
+      "definition": "CHECK ((min_purchase >= (0)::numeric))"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_per_user_limit_check",
+      "contype": "c",
+      "definition": "CHECK (((per_user_limit >= 1) AND (per_user_limit <= 1000)))"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_pkey",
+      "contype": "p",
+      "definition": "PRIMARY KEY (broadcast_id)"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_reward_amount_check",
+      "contype": "c",
+      "definition": "CHECK (((reward_amount >= (0)::numeric) AND (reward_amount <= (100000000)::numeric)))"
+    },
+    {
+      "table_name": "promo_rules",
+      "conname": "promo_rules_total_budget_cap_check",
+      "contype": "c",
+      "definition": "CHECK (((total_budget_cap IS NULL) OR (total_budget_cap >= (0)::numeric)))"
+    }
+  ],
+  "indexes": [
+    {
+      "tablename": "broadcast_app_config",
+      "indexname": "broadcast_app_config_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_app_config_pkey ON public.broadcast_app_config USING btree (id)"
+    },
+    {
+      "tablename": "broadcast_audit_log",
+      "indexname": "broadcast_audit_log_actor_idx",
+      "indexdef": "CREATE INDEX broadcast_audit_log_actor_idx ON public.broadcast_audit_log USING btree (actor_id, created_at DESC)"
+    },
+    {
+      "tablename": "broadcast_audit_log",
+      "indexname": "broadcast_audit_log_broadcast_idx",
+      "indexdef": "CREATE INDEX broadcast_audit_log_broadcast_idx ON public.broadcast_audit_log USING btree (broadcast_id, created_at DESC)"
+    },
+    {
+      "tablename": "broadcast_audit_log",
+      "indexname": "broadcast_audit_log_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_audit_log_pkey ON public.broadcast_audit_log USING btree (id)"
+    },
+    {
+      "tablename": "broadcast_clicks",
+      "indexname": "broadcast_clicks_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_clicks_pkey ON public.broadcast_clicks USING btree (id)"
+    },
+    {
+      "tablename": "broadcast_clicks",
+      "indexname": "broadcast_clicks_user_broadcast_idx",
+      "indexdef": "CREATE INDEX broadcast_clicks_user_broadcast_idx ON public.broadcast_clicks USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "broadcast_daily_rollups",
+      "indexname": "broadcast_daily_rollups_day_broadcast_id_key",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_daily_rollups_day_broadcast_id_key ON public.broadcast_daily_rollups USING btree (day, broadcast_id)"
+    },
+    {
+      "tablename": "broadcast_deliveries",
+      "indexname": "broadcast_deliveries_broadcast_id_user_id_channel_key",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_deliveries_broadcast_id_user_id_channel_key ON public.broadcast_deliveries USING btree (broadcast_id, user_id, channel)"
+    },
+    {
+      "tablename": "broadcast_deliveries",
+      "indexname": "broadcast_deliveries_broadcast_status_idx",
+      "indexdef": "CREATE INDEX broadcast_deliveries_broadcast_status_idx ON public.broadcast_deliveries USING btree (broadcast_id, status)"
+    },
+    {
+      "tablename": "broadcast_deliveries",
+      "indexname": "broadcast_deliveries_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_deliveries_pkey ON public.broadcast_deliveries USING btree (id)"
+    },
+    {
+      "tablename": "broadcast_dismissals",
+      "indexname": "broadcast_dismissals_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_dismissals_pkey ON public.broadcast_dismissals USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "broadcast_impressions",
+      "indexname": "broadcast_impressions_daily_dedupe",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_impressions_daily_dedupe ON public.broadcast_impressions USING btree (user_id, broadcast_id, date((created_at AT TIME ZONE 'UTC'::text)))"
+    },
+    {
+      "tablename": "broadcast_impressions",
+      "indexname": "broadcast_impressions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_impressions_pkey ON public.broadcast_impressions USING btree (id)"
+    },
+    {
+      "tablename": "broadcast_impressions",
+      "indexname": "broadcast_impressions_user_broadcast_idx",
+      "indexdef": "CREATE INDEX broadcast_impressions_user_broadcast_idx ON public.broadcast_impressions USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "broadcast_rate_limits",
+      "indexname": "broadcast_rate_limits_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_rate_limits_pkey ON public.broadcast_rate_limits USING btree (user_id, action)"
+    },
+    {
+      "tablename": "broadcast_reads",
+      "indexname": "broadcast_reads_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcast_reads_pkey ON public.broadcast_reads USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "broadcasts",
+      "indexname": "broadcasts_audience_gin_idx",
+      "indexdef": "CREATE INDEX broadcasts_audience_gin_idx ON public.broadcasts USING gin (audience)"
+    },
+    {
+      "tablename": "broadcasts",
+      "indexname": "broadcasts_live_priority_idx",
+      "indexdef": "CREATE INDEX broadcasts_live_priority_idx ON public.broadcasts USING btree (priority DESC, starts_at) WHERE ((status = 'live'::broadcast_status) AND (deleted_at IS NULL))"
+    },
+    {
+      "tablename": "broadcasts",
+      "indexname": "broadcasts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcasts_pkey ON public.broadcasts USING btree (id)"
+    },
+    {
+      "tablename": "broadcasts",
+      "indexname": "broadcasts_status_window_idx",
+      "indexdef": "CREATE INDEX broadcasts_status_window_idx ON public.broadcasts USING btree (status, starts_at, ends_at) WHERE (deleted_at IS NULL)"
+    },
+    {
+      "tablename": "broadcasts_changed",
+      "indexname": "broadcasts_changed_pkey",
+      "indexdef": "CREATE UNIQUE INDEX broadcasts_changed_pkey ON public.broadcasts_changed USING btree (signal_id)"
+    },
+    {
+      "tablename": "campaign_participants",
+      "indexname": "campaign_participants_pkey",
+      "indexdef": "CREATE UNIQUE INDEX campaign_participants_pkey ON public.campaign_participants USING btree (broadcast_id, user_id)"
+    },
+    {
+      "tablename": "campaign_participants",
+      "indexname": "campaign_participants_user_idx",
+      "indexdef": "CREATE INDEX campaign_participants_user_idx ON public.campaign_participants USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "campaign_progress_events",
+      "indexname": "campaign_progress_events_broadcast_id_source_type_source_id_key",
+      "indexdef": "CREATE UNIQUE INDEX campaign_progress_events_broadcast_id_source_type_source_id_key ON public.campaign_progress_events USING btree (broadcast_id, source_type, source_id)"
+    },
+    {
+      "tablename": "campaign_progress_events",
+      "indexname": "campaign_progress_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX campaign_progress_events_pkey ON public.campaign_progress_events USING btree (id)"
+    },
+    {
+      "tablename": "campaign_progress_events",
+      "indexname": "campaign_progress_events_user_idx",
+      "indexdef": "CREATE INDEX campaign_progress_events_user_idx ON public.campaign_progress_events USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "campaign_rules",
+      "indexname": "campaign_rules_pkey",
+      "indexdef": "CREATE UNIQUE INDEX campaign_rules_pkey ON public.campaign_rules USING btree (broadcast_id)"
+    },
+    {
+      "tablename": "device_tokens",
+      "indexname": "device_tokens_pkey",
+      "indexdef": "CREATE UNIQUE INDEX device_tokens_pkey ON public.device_tokens USING btree (id)"
+    },
+    {
+      "tablename": "device_tokens",
+      "indexname": "device_tokens_token_key",
+      "indexdef": "CREATE UNIQUE INDEX device_tokens_token_key ON public.device_tokens USING btree (token)"
+    },
+    {
+      "tablename": "device_tokens",
+      "indexname": "device_tokens_user_active_idx",
+      "indexdef": "CREATE INDEX device_tokens_user_active_idx ON public.device_tokens USING btree (user_id) WHERE (disabled_at IS NULL)"
+    },
+    {
+      "tablename": "notification_prefs",
+      "indexname": "notification_prefs_pkey",
+      "indexdef": "CREATE UNIQUE INDEX notification_prefs_pkey ON public.notification_prefs USING btree (user_id)"
+    },
+    {
+      "tablename": "promo_claims",
+      "indexname": "promo_claims_broadcast_id_user_id_idempotency_key_key",
+      "indexdef": "CREATE UNIQUE INDEX promo_claims_broadcast_id_user_id_idempotency_key_key ON public.promo_claims USING btree (broadcast_id, user_id, idempotency_key)"
+    },
+    {
+      "tablename": "promo_claims",
+      "indexname": "promo_claims_pkey",
+      "indexdef": "CREATE UNIQUE INDEX promo_claims_pkey ON public.promo_claims USING btree (id)"
+    },
+    {
+      "tablename": "promo_claims",
+      "indexname": "promo_claims_user_broadcast_idx",
+      "indexdef": "CREATE INDEX promo_claims_user_broadcast_idx ON public.promo_claims USING btree (user_id, broadcast_id)"
+    },
+    {
+      "tablename": "promo_rules",
+      "indexname": "promo_rules_pkey",
+      "indexdef": "CREATE UNIQUE INDEX promo_rules_pkey ON public.promo_rules USING btree (broadcast_id)"
+    }
+  ],
+  "policies": [
+    {
+      "tablename": "broadcast_app_config",
+      "policyname": "admin_config_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_audit_log",
+      "policyname": "admin_audit_read",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_clicks",
+      "policyname": "admin_analytics_clicks_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_daily_rollups",
+      "policyname": "admin_rollups_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_deliveries",
+      "policyname": "admin_deliveries_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_dismissals",
+      "policyname": "dismiss_insert_own",
+      "cmd": "INSERT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": null,
+      "with_check": "(user_id = auth.uid())"
+    },
+    {
+      "tablename": "broadcast_dismissals",
+      "policyname": "dismiss_own",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "(user_id = auth.uid())",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_impressions",
+      "policyname": "admin_analytics_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_rate_limits",
+      "policyname": "admin_rate_limits_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcast_reads",
+      "policyname": "reads_insert_own",
+      "cmd": "INSERT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": null,
+      "with_check": "(user_id = auth.uid())"
+    },
+    {
+      "tablename": "broadcast_reads",
+      "policyname": "reads_own",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "(user_id = auth.uid())",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcasts",
+      "policyname": "broadcast_admin_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": "broadcast_admin_check()"
+    },
+    {
+      "tablename": "broadcasts",
+      "policyname": "broadcast_user_live_read",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "((status = 'live'::broadcast_status) AND (deleted_at IS NULL) AND ((starts_at IS NULL) OR (starts_at <= now())) AND ((ends_at IS NULL) OR (ends_at > now())) AND broadcast_audience_match_self(audience))",
+      "with_check": null
+    },
+    {
+      "tablename": "broadcasts_changed",
+      "policyname": "broadcast_signal_read",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "true",
+      "with_check": null
+    },
+    {
+      "tablename": "campaign_participants",
+      "policyname": "admin_participants_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": "broadcast_admin_check()"
+    },
+    {
+      "tablename": "campaign_participants",
+      "policyname": "own_participants_select",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "(user_id = auth.uid())",
+      "with_check": null
+    },
+    {
+      "tablename": "campaign_progress_events",
+      "policyname": "admin_events_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": "broadcast_admin_check()"
+    },
+    {
+      "tablename": "campaign_rules",
+      "policyname": "broadcast_admin_rules_campaign",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": "broadcast_admin_check()"
+    },
+    {
+      "tablename": "device_tokens",
+      "policyname": "own_device_tokens_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "(user_id = auth.uid())",
+      "with_check": "(user_id = auth.uid())"
+    },
+    {
+      "tablename": "notification_prefs",
+      "policyname": "own_prefs_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "(user_id = auth.uid())",
+      "with_check": "(user_id = auth.uid())"
+    },
+    {
+      "tablename": "promo_claims",
+      "policyname": "admin_claim_all",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": "broadcast_admin_check()"
+    },
+    {
+      "tablename": "promo_claims",
+      "policyname": "own_claim_select",
+      "cmd": "SELECT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "(user_id = auth.uid())",
+      "with_check": null
+    },
+    {
+      "tablename": "promo_rules",
+      "policyname": "broadcast_admin_rules_promo",
+      "cmd": "ALL",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "broadcast_admin_check()",
+      "with_check": "broadcast_admin_check()"
+    }
+  ],
+  "triggers": [
+    {
+      "table_name": "broadcast_audit_log",
+      "trigger_name": "broadcast_audit_no_mutation",
+      "event_manipulation": "DELETE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_audit_immutable()"
+    },
+    {
+      "table_name": "broadcast_audit_log",
+      "trigger_name": "broadcast_audit_no_mutation",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_audit_immutable()"
+    },
+    {
+      "table_name": "broadcast_clicks",
+      "trigger_name": "broadcast_click_rollup",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_rollup_trigger()"
+    },
+    {
+      "table_name": "broadcast_impressions",
+      "trigger_name": "broadcast_impression_rollup",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_rollup_trigger()"
+    },
+    {
+      "table_name": "broadcasts",
+      "trigger_name": "broadcast_lifecycle_audit",
+      "event_manipulation": "UPDATE",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_lifecycle_audit_trigger()"
+    },
+    {
+      "table_name": "broadcasts",
+      "trigger_name": "broadcast_signal_update",
+      "event_manipulation": "DELETE",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_signal_trigger()"
+    },
+    {
+      "table_name": "broadcasts",
+      "trigger_name": "broadcast_signal_update",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_signal_trigger()"
+    },
+    {
+      "table_name": "broadcasts",
+      "trigger_name": "broadcast_signal_update",
+      "event_manipulation": "UPDATE",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_signal_trigger()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "broadcast_market_order_campaign_progress",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_order_campaign_trigger()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "broadcast_market_order_campaign_progress",
+      "event_manipulation": "UPDATE",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_order_campaign_trigger()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "market_order_requires_active_seller_trigger",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION market_order_requires_active_seller()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "market_require_approved_seller_for_order_trigger",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION market_require_approved_seller_for_order()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "trg_activity_marketplace_order",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION activity_from_marketplace_order()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "trg_activity_marketplace_order_status",
+      "event_manipulation": "UPDATE",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION activity_from_marketplace_order_status()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "normalize_profile_identity_trigger",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION normalize_profile_identity()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "normalize_profile_identity_trigger",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION normalize_profile_identity()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "profiles_broadcast_last_active",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION broadcast_last_active_trigger()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_enforce_blink_profile_university_id",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION enforce_blink_profile_university_id()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_enforce_blink_profile_university_id",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION enforce_blink_profile_university_id()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_ensure_profile_username",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION ensure_profile_username()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_ensure_profile_username",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION ensure_profile_username()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_guard_market_seller_privileged_fields",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION guard_market_seller_privileged_fields()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_guard_market_seller_privileged_fields",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION guard_market_seller_privileged_fields()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_guard_profile_daily_streak",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION private.guard_profile_daily_streak()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_guard_profile_privileged_fields",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION guard_profile_privileged_fields()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_guard_profile_privileged_fields",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION guard_profile_privileged_fields()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_normalize_profile_username",
+      "event_manipulation": "INSERT",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION normalize_profile_username()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_normalize_profile_username",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION normalize_profile_username()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_profiles_ensure_user_balance",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION private.ensure_user_balance_row()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "trg_protect_blink_owner_verification",
+      "event_manipulation": "UPDATE",
+      "action_timing": "BEFORE",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION private.protect_blink_owner_verification()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "zz_blink_notify_referral_on_profile",
+      "event_manipulation": "INSERT",
+      "action_timing": "AFTER",
+      "action_orientation": "ROW",
+      "action_condition": null,
+      "action_statement": "EXECUTE FUNCTION blink_notify_confirmed_referral_profile()"
+    }
+  ],
+  "cron": [
+    {
+      "jobid": 54,
+      "jobname": "blink_broadcast_lifecycle_minutely",
+      "schedule": "* * * * *",
+      "command": "select public.broadcast_lifecycle_tick()",
+      "active": true
+    },
+    {
+      "jobid": 55,
+      "jobname": "blink_broadcast_purge_daily",
+      "schedule": "15 3 * * *",
+      "command": "select public.broadcast_purge_old_events()",
+      "active": true
+    }
+  ],
+  "realtime": [
+    {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "broadcast_dismissals"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "broadcast_reads"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "broadcasts_changed"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "schemaname": "public",
+      "tablename": "campaign_participants"
+    }
+  ],
+  "bucket": [
+    {
+      "id": "broadcast-images",
+      "name": "broadcast-images",
+      "public": true,
+      "file_size_limit": 8388608,
+      "allowed_mime_types": [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif"
+      ]
+    }
+  ],
+  "storage_policies": [
+    {
+      "schemaname": "storage",
+      "tablename": "objects",
+      "policyname": "broadcast_images_admin_delete",
+      "cmd": "DELETE",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "((bucket_id = 'broadcast-images'::text) AND broadcast_admin_check())",
+      "with_check": null
+    },
+    {
+      "schemaname": "storage",
+      "tablename": "objects",
+      "policyname": "broadcast_images_admin_update",
+      "cmd": "UPDATE",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": "((bucket_id = 'broadcast-images'::text) AND broadcast_admin_check())",
+      "with_check": "((bucket_id = 'broadcast-images'::text) AND broadcast_admin_check() AND (name ~ '^broadcasts/[0-9a-fA-F-]{36}/[^/]+$'::text))"
+    },
+    {
+      "schemaname": "storage",
+      "tablename": "objects",
+      "policyname": "broadcast_images_admin_upload",
+      "cmd": "INSERT",
+      "roles": [
+        "authenticated"
+      ],
+      "qual": null,
+      "with_check": "((bucket_id = 'broadcast-images'::text) AND broadcast_admin_check() AND (name ~ '^broadcasts/[0-9a-fA-F-]{36}/[^/]+$'::text))"
+    },
+    {
+      "schemaname": "storage",
+      "tablename": "objects",
+      "policyname": "broadcast_images_public_read",
+      "cmd": "SELECT",
+      "roles": [
+        "anon",
+        "authenticated"
+      ],
+      "qual": "(bucket_id = 'broadcast-images'::text)",
+      "with_check": null
+    }
+  ]
+}
