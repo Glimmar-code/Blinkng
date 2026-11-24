@@ -145,3 +145,13 @@ verify_jwt = false
 # Contact matching requires valid Supabase Auth sessions and server-side consent.
 [functions.blink-contact-discovery]
 verify_jwt = true
+
+# Broadcast endpoints use JWT for admin calls; worker/unsubscribe use secret/token gates.
+[functions.send-broadcast]
+verify_jwt = true
+[functions.send-test]
+verify_jwt = true
+[functions.broadcast-dispatch-worker]
+verify_jwt = false
+[functions.broadcast-unsubscribe]
+verify_jwt = false
