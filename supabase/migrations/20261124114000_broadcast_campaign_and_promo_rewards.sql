@@ -96,7 +96,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.broadcast_campaign_reward(p_broadcast_id uuid,p_user uuid,p_progress integer)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE participant public.campaign_participants%rowtype; rule public.campaign_rules%rowtype; tier jsonb; claim_id uuid; reward jsonb; threshold integer; reward_type public.broadcast_reward_type; amount numeric; max_tier integer:=0; awarded boolean:=false;
+DECLARE participant public.campaign_participants%rowtype; rule public.campaign_rules%rowtype; tier jsonb; claim_id uuid; v_reward_result jsonb; threshold integer; reward_type public.broadcast_reward_type; amount numeric; max_tier integer:=0; awarded boolean:=false;
 BEGIN
   SELECT * INTO participant FROM public.campaign_participants WHERE broadcast_id=p_broadcast_id AND user_id=p_user FOR UPDATE;
   IF NOT FOUND THEN RETURN false; END IF;
@@ -112,12 +112,12 @@ BEGIN
       VALUES(p_broadcast_id,p_user,threshold,jsonb_build_object('type',reward_type,'amount',amount))
       ON CONFLICT(broadcast_id,user_id,reward_tier) DO NOTHING RETURNING id INTO claim_id;
     IF claim_id IS NOT NULL THEN
-      reward:=public.broadcast_apply_reward(p_user,p_broadcast_id,claim_id,reward_type,amount,'Broadcast campaign tier reward');
-      UPDATE public.broadcast_campaign_reward_claims SET reward=reward||jsonb_build_object('result',reward) WHERE id=claim_id;
+      v_reward_result:=public.broadcast_apply_reward(p_user,p_broadcast_id,claim_id,reward_type,amount,'Broadcast campaign tier reward');
+      UPDATE public.broadcast_campaign_reward_claims rc SET reward=rc.reward||jsonb_build_object('result',v_reward_result) WHERE rc.id=claim_id;
       INSERT INTO public.activities(recipient_id,actor_id,activity_type,entity_type,entity_id,message,is_read)
         VALUES(p_user,null,'broadcast_campaign_reward','broadcast',p_broadcast_id,'You earned a BLINK Broadcast campaign reward.',false);
       INSERT INTO public.notifications(user_id,actor_id,type,text,sub_text,is_read,target_type,target_id,metadata)
-        VALUES(p_user,null,'system'::public.notification_type_enum,'Campaign reward earned','Your BLINK Broadcast campaign reward is ready.',false,'broadcast',p_broadcast_id,jsonb_build_object('broadcast_id',p_broadcast_id,'reward_tier',threshold,'reward',reward));
+        VALUES(p_user,null,'system'::public.notification_type_enum,'Campaign reward earned','Your BLINK Broadcast campaign reward is ready.',false,'broadcast',p_broadcast_id,jsonb_build_object('broadcast_id',p_broadcast_id,'reward_tier',threshold,'reward',v_reward_result));
       awarded:=true;
     END IF;
     max_tier:=greatest(max_tier,threshold); claim_id:=null;
@@ -147,7 +147,7 @@ BEGIN
       UPDATE public.campaign_participants SET progress=progress+p_delta,
         completed_at=case when progress+p_delta>=c.target then coalesce(completed_at,now()) else completed_at end
       WHERE broadcast_id=c.broadcast_id AND user_id=p_user RETURNING progress INTO total;
-      IF total>=c.target THEN PERFORM public.broadcast_campaign_reward(c.broadcast_id,p_user,total); END IF;
+      PERFORM public.broadcast_campaign_reward(c.broadcast_id,p_user,total);
     END IF;
     inserted_id:=null;
   END LOOP;
@@ -583,3 +583,16 @@ $function$
 
 
 -- Idempotent backfill may be run after migration, under admin/service-role only.
+
+-- Explicit execution grants for reward handlers and the backfill utility.
+REVOKE EXECUTE ON FUNCTION public.broadcast_apply_reward(uuid,uuid,uuid,public.broadcast_reward_type,numeric,text) FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.broadcast_campaign_reward(uuid,uuid,integer) FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.record_broadcast_campaign_event(public.broadcast_goal_type,uuid,text,text,integer,timestamptz) FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.broadcast_coin_purchase_campaign_trigger() FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.broadcast_backfill_campaign_progress() FROM PUBLIC,anon;
+REVOKE EXECUTE ON FUNCTION public.redeem_broadcast_fee_voucher(uuid,numeric,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.broadcast_apply_reward(uuid,uuid,uuid,public.broadcast_reward_type,numeric,text),
+  public.broadcast_campaign_reward(uuid,uuid,integer),public.record_broadcast_campaign_event(public.broadcast_goal_type,uuid,text,text,integer,timestamptz),
+  public.broadcast_coin_purchase_campaign_trigger(),public.redeem_broadcast_fee_voucher(uuid,numeric,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.broadcast_backfill_campaign_progress() TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.spin_connect_match(text,text,text,text,text,text,boolean) TO authenticated,service_role;
