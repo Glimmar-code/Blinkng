@@ -163,6 +163,7 @@ object BlinkBroadcastValidation {
         if (draft.body.isBlank() || draft.body.length > 240) add("body")
         if (draft.endsAt <= draft.startsAt) add("schedule")
         if (draft.channels.isEmpty()) add("channel")
+        if (draft.isBlocking) add("blocking_unsupported")
         if (draft.audience.kind == BroadcastAudienceKind.EVERYONE && audienceConfirm != "CONFIRM") {
             add("confirm_everyone")
         }
