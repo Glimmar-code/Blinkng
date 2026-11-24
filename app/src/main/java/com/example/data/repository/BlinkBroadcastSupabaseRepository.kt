@@ -64,9 +64,13 @@ class BlinkBroadcastSupabaseRepository(
     override suspend fun dismiss(id: String) { rpcBoolean("dismiss_broadcast", JSONObject().put("p_broadcast_id", id)) }
     override suspend fun markRead(id: String) {
         val userId = authenticatedUserId()
-        call("/rest/v1/broadcast_reads?on_conflict=broadcast_id,user_id", "POST",
-            JSONArray().put(JSONObject().put("broadcast_id", id).put("user_id", userId)).toString(), true,
-            prefer = "resolution=merge-duplicates,return=minimal")
+        try {
+            call("/rest/v1/broadcast_reads", "POST",
+                JSONArray().put(JSONObject().put("broadcast_id", id).put("user_id", userId)).toString(), true,
+                prefer = "return=minimal")
+        } catch (error: IllegalStateException) {
+            if (error.message?.contains("(409)") != true) throw error
+        }
     }
     override suspend fun markAllRead() { getInbox().filterNot { it.read }.forEach { markRead(it.broadcast.id) } }
     override suspend fun trackImpression(id: String) { rpcBoolean("track_broadcast_impression", JSONObject().put("p_broadcast_id", id).put("p_surface", "in_app")) }
@@ -509,6 +513,6 @@ class BlinkBroadcastSupabaseRepository(
 
     private fun apiError(code: Int, raw: String): IllegalStateException {
         val message = runCatching { JSONObject(raw).optString("message").ifBlank { JSONObject(raw).optString("error") } }.getOrNull()
-        return IllegalStateException(message?.takeIf(String::isNotBlank) ?: "Broadcast request failed ($code).")
+        return IllegalStateException((message?.takeIf(String::isNotBlank) ?: "Broadcast request failed") + " ($code)")
     }
 }
