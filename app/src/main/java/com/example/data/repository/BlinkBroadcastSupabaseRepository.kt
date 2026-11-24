@@ -1,6 +1,5 @@
 package com.example.data.repository
 
-import android.util.Base64
 import com.blinkng.shared.broadcast.*
 import com.example.auth.SupabaseSessionRefresher
 import com.example.data.supabase.SupabaseConfig
@@ -47,15 +46,28 @@ class BlinkBroadcastSupabaseRepository(
                 val mapped = parseBroadcast(b, campaign, promo).copy(
                     isDismissed = item.optBoolean("dismissed"),
                     isRead = item.optBoolean("read"),
-                    claimState = claimState(item.optJSONObject("claim_state")),
+                    claimState = claimStateFromMetadata(item.optJSONObject("claim_state")),
                 )
-                add(mapped)
+                if (mapped.type == BroadcastType.CAMPAIGN) {
+                    val participant = rpcObjectOrNull("get_campaign_progress", JSONObject().put("p_broadcast_id", mapped.id))
+                    val participantRow = participant?.optJSONObject("participant")
+                    add(mapped.copy(
+                        joined = participantRow != null,
+                        progress = participantRow?.optInt("progress", 0) ?: 0,
+                        completed = participantRow?.optString("completed_at")?.isNotBlank() == true,
+                    ))
+                } else add(mapped)
             }
         }
     }
 
     override suspend fun dismiss(id: String) { rpcBoolean("dismiss_broadcast", JSONObject().put("p_broadcast_id", id)) }
-    override suspend fun markRead(id: String) { rpcBoolean("mark_broadcast_read", JSONObject().put("p_broadcast_id", id)) }
+    override suspend fun markRead(id: String) {
+        val userId = authenticatedUserId()
+        call("/rest/v1/broadcast_reads?on_conflict=broadcast_id,user_id", "POST",
+            JSONArray().put(JSONObject().put("broadcast_id", id).put("user_id", userId)).toString(), true,
+            prefer = "resolution=merge-duplicates,return=minimal")
+    }
     override suspend fun markAllRead() { getInbox().filterNot { it.read }.forEach { markRead(it.broadcast.id) } }
     override suspend fun trackImpression(id: String) { rpcBoolean("track_broadcast_impression", JSONObject().put("p_broadcast_id", id).put("p_surface", "in_app")) }
     override suspend fun trackClick(id: String) { rpcBoolean("track_broadcast_click", JSONObject().put("p_broadcast_id", id).put("p_surface", "in_app")) }
@@ -96,7 +108,7 @@ class BlinkBroadcastSupabaseRepository(
             .put("p_broadcast_id", id)
             .put("p_idempotency_key", UUID.randomUUID().toString())
             .put("p_purchase_amount", 0))
-        return claimState(result)
+        return claimStateFromResult(result)
     }
 
     override suspend fun getInbox(): List<BroadcastInboxItem> {
@@ -141,10 +153,10 @@ class BlinkBroadcastSupabaseRepository(
     }
 
     override suspend fun registerDeviceToken(token: String) {
-        rpcObject("register_broadcast_device_token", JSONObject()
+        call("/rest/v1/rpc/register_broadcast_device_token", "POST", JSONObject()
             .put("p_token", token)
             .put("p_platform", "android")
-            .put("p_app_version", runCatching { com.example.BuildConfig.VERSION_NAME }.getOrDefault("")))
+            .put("p_app_version", runCatching { com.example.BuildConfig.VERSION_NAME }.getOrDefault("")).toString(), true)
     }
 
     override suspend fun uploadBroadcastImage(imageBytes: ByteArray, mimeType: String): String {
@@ -203,8 +215,8 @@ class BlinkBroadcastSupabaseRepository(
             .put("p_patch", JSONObject().put("status", "scheduled")))
     }
 
-    override suspend fun endBroadcast(id: String) { rpcObject("admin_end_broadcast", JSONObject().put("p_id", id)) }
-    override suspend fun deleteDraft(id: String) { rpcObject("admin_delete_broadcast", JSONObject().put("p_id", id)) }
+    override suspend fun endBroadcast(id: String) { call("/rest/v1/rpc/admin_end_broadcast", "POST", JSONObject().put("p_id", id).toString(), true) }
+    override suspend fun deleteDraft(id: String) { call("/rest/v1/rpc/admin_delete_broadcast", "POST", JSONObject().put("p_id", id).toString(), true) }
 
     override suspend fun estimateAudience(filters: BroadcastAudienceFilter): BroadcastAudienceEstimate {
         val audience = audienceJson(filters)
@@ -402,6 +414,22 @@ class BlinkBroadcastSupabaseRepository(
 
     private fun parseInstant(value: String?): Instant? = value?.takeIf { it.isNotBlank() && it != "null" }?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
+    private fun campaignTiers(tiers: List<BroadcastRewardTier>): JSONArray = JSONArray().apply {
+        tiers.forEach { tier ->
+            put(JSONObject().put("threshold", tier.threshold).put("reward_type", "coins")
+                .put("amount", tier.amount).put("reward_text", tier.reward))
+        }
+    }
+
+    private suspend fun authenticatedUserId(): String {
+        val response = execute(request("/auth/v1/user", "GET", null, true))
+        val raw = response.body?.string().orEmpty()
+        if (!response.isSuccessful) throw apiError(response.code, raw)
+        response.close()
+        return JSONObject(raw).optString("id").takeIf(String::isNotBlank)
+            ?: throw IllegalStateException("Unable to identify the signed-in account.")
+    }
+
     private suspend fun rpcArray(name: String, args: JSONObject): JSONArray = JSONArray(call("/rest/v1/rpc/$name", "POST", args.toString(), true))
     private suspend fun rpcObject(name: String, args: JSONObject): JSONObject = JSONObject(call("/rest/v1/rpc/$name", "POST", args.toString(), true))
     private suspend fun rpcObjectOrNull(name: String, args: JSONObject): JSONObject? = call("/rest/v1/rpc/$name", "POST", args.toString(), true).takeIf { it.isNotBlank() && it != "null" }?.let(::JSONObject)
@@ -409,8 +437,8 @@ class BlinkBroadcastSupabaseRepository(
     private suspend fun rpcScalar(name: String, args: JSONObject): Long = call("/rest/v1/rpc/$name", "POST", args.toString(), true).trim('"').toLongOrNull() ?: 0
     private suspend fun restArray(path: String): JSONArray = JSONArray(call(path, "GET", null, true))
 
-    private suspend fun call(path: String, method: String, body: String?, authenticated: Boolean): String {
-        val req = request(path, method, body?.toRequestBody(jsonType), authenticated)
+    private suspend fun call(path: String, method: String, body: String?, authenticated: Boolean, prefer: String? = null): String {
+        val req = request(path, method, body?.toRequestBody(jsonType), authenticated, prefer = prefer)
         val response = execute(req)
         val raw = response.body?.string().orEmpty()
         if (!response.isSuccessful) throw apiError(response.code, raw)
@@ -424,6 +452,7 @@ class BlinkBroadcastSupabaseRepository(
         body: okhttp3.RequestBody?,
         authenticated: Boolean,
         extraHeaders: Map<String, String> = emptyMap(),
+        prefer: String? = null,
     ): Request {
         val token = if (authenticated) SupabaseService.accessToken()?.takeIf(String::isNotBlank) ?: anonKey else anonKey
         val builder = Request.Builder().url(if (path.startsWith("http")) path else baseUrl + path)
@@ -431,6 +460,7 @@ class BlinkBroadcastSupabaseRepository(
             .header("Accept", "application/json")
         if (body != null) builder.header("Content-Type", if (body.contentType()?.toString()?.startsWith("image/") == true) body.contentType().toString() else "application/json")
         extraHeaders.forEach { (k, v) -> builder.header(k, v) }
+        prefer?.let { builder.header("Prefer", it) }
         builder.method(method, body)
         return builder.build()
     }
