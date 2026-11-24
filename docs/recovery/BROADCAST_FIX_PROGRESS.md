@@ -9,6 +9,14 @@
 - Added regression test coverage for FCM helper; wired into existing Supabase test suite.
 - Production DB and Edge deployments have not been changed in this recovery work.
 
+## Completed additional integration on this branch
+- Android ViewModel now defaults to a Supabase Broadcast repository (active list, inbox, read/dismiss, campaign join/progress/leaderboard, promo claim, preferences, admin create/edit/schedule/end/delete, analytics/audit, image upload, and test push).
+- Android FCM token lifecycle registers a separate Broadcast device token and disables it on logout.
+- Broadcast FCM uses data-only recipient-scoped messages and routes notification taps through the Broadcast deep-link handler.
+- Website RPC banner is wired with safe DOM text rendering, URL validation and local dismissals.
+- Campaign reward tiers support coin amounts; unsupported non-coin promo rewards and purchase thresholds are guarded in client validation.
+- Added Testlab migrations to restore missing admin-edit fields and allow clearing quiet-hours preferences. Migrations have not been applied to any database.
+
 ## Still required before calling Broadcast fully fixed
 1. Supply/configure the FCM service-account secret securely in Supabase (not in source).
 2. Test Edge function auth, targeting, token handling, retries, push cap, delivery audit and invalid-token cleanup against disposable Testlab data.
@@ -18,7 +26,7 @@
 6. Integrate email dispatch (or explicitly close it as a future feature).
 7. Implement verified-purchase promo minimums and non-coin campaign reward handlers or reject those options at admin UI validation.
 8. Reconstruct a complete migration baseline/history with safe drift reconciliation, then run a disposable local Supabase rebuild, migration lint, integration tests and security checks.
-9. Verify concurrency and idempotency (promo claims, campaign rewards, publish dispatch, delivery retries) and document results.
+8. Verify concurrency and idempotency (promo claims, campaign rewards, publish dispatch, delivery retries) and document results.
 
 ## Important boundary
 This is source recovery and Testlab implementation only. Do not deploy to production or merge to main until every required verification gate passes.
