@@ -1,12 +1,12 @@
 /** Shared FCM OAuth helper, runtime-neutral for Deno Edge Functions and Node tests. */
-export function base64UrlEncodeBytes(data: Uint8Array): string {
+export function base64UrlEncodeBytes(data) {
   return btoa(String.fromCharCode(...data))
     .replace(/=/g, "")
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
 }
 
-export function normalizePrivateKeyPem(pem: string): Uint8Array {
+export function normalizePrivateKeyPem(pem) {
   const normalized = pem
     .replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----/g, "")
     .replace(/\s/g, "");
@@ -14,10 +14,10 @@ export function normalizePrivateKeyPem(pem: string): Uint8Array {
 }
 
 export async function fcmAccessToken(
-  serviceAccount: { client_email: string; private_key: string },
-  fetcher: typeof fetch = fetch,
+  serviceAccount,
+  fetcher = fetch,
   nowSeconds = Math.floor(Date.now() / 1000),
-): Promise<string> {
+) {
   const header = base64UrlEncodeBytes(new TextEncoder().encode(JSON.stringify({
     alg: "RS256", typ: "JWT",
   })));
@@ -47,7 +47,7 @@ export async function fcmAccessToken(
     }),
   });
   if (!response.ok) throw new Error("FCM_OAUTH_FAILED");
-  const result = await response.json() as { access_token?: string };
+  const result = await response.json();
   if (!result.access_token) throw new Error("FCM_OAUTH_TOKEN_MISSING");
   return result.access_token;
 }
