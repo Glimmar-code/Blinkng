@@ -52,17 +52,17 @@ Internal: `broadcast_admin_check`, `broadcast_audience_match`, `broadcast_audien
 ## Known gaps (not yet resolved)
 - FCM service-account secret is not configured; push cannot be live-tested until a secure secret is supplied. Do not commit secrets.
 - Email dispatch is not integrated.
-- Publish/schedule-to-push dispatch wiring is not yet connected.
-- Non-coin campaign rewards and verified purchase-based promo requirements remain incomplete.
-- Website integration with `get_website_broadcasts()` remains pending.
-- Android/Windows production repository adapters are still unavailable placeholders.
+- Immediate publish dispatch is wired to the push Edge Function; scheduled activation still lacks a safe automatic dispatcher.
+- Campaign coin reward tiers are wired. Non-coin promo rewards and purchase-threshold promos are blocked in client validation; server-side enforcement remains to be added.
+- Website integration with `get_website_broadcasts()` is wired through `web/broadcasts.js` with safe text and URL handling.
+- Android and Windows/Desktop repositories are wired to Supabase on this Testlab branch; compile and runtime checks are still required.
 - Migration history has not been reconciled and a complete safe replay baseline has not been built.
 - Full runtime, concurrency/race, and client integration tests remain pending.
 
 ## Corrective work in recovery branch
 - Fixed FCM JWT base64url conversion and PEM whitespace parsing by extracting the OAuth helper into a testable shared module.
 - Added Node regression tests for base64url encoding, PEM normalization, JWT claim content, signature verification, OAuth error handling and missing-token failure.
-- Tests have not yet been run in GitHub CI; branch review and CI are still required.
+- FCM OAuth helper tests passed locally (4/4). GitHub CI and client compile/runtime checks remain pending.
 
 ## Recovery steps
 1. Export catalog (columns, constraints, indexes, RLS, triggers, complete function definitions, cron, Realtime, Storage) using the read-only SQL exporter.
