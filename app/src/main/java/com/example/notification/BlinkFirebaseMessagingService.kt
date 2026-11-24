@@ -387,6 +387,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 BlinkInAppNotificationDestination.PROFILE
             targetType.equals("channel", ignoreCase = true) -> BlinkInAppNotificationDestination.CHANNEL
             targetType.equals("contest", ignoreCase = true) -> BlinkInAppNotificationDestination.CONTEST
+            targetType.equals("broadcast", ignoreCase = true) -> BlinkInAppNotificationDestination.BROADCASTS
             targetType.equals("giveaway", ignoreCase = true) -> BlinkInAppNotificationDestination.DROPS
             targetType.equals("boost", ignoreCase = true) -> BlinkInAppNotificationDestination.BOOST
             else -> when (type) {
