@@ -267,4 +267,5 @@
     <string name="broadcast_duplicate_title_format">%1$s copy</string>
     <string name="broadcast_reward_unlocked">Reward unlocked</string>
     <string name="broadcast_reward_locked">Reward locked</string>
+  <string name="broadcast_blocking_unsupported">Blocking broadcasts are not supported yet; turn off blocking before publishing.</string>
 </resources>
