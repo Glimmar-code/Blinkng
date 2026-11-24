@@ -144,10 +144,6 @@ class BlinkBroadcastSupabaseRepository(
     }
 
     override suspend fun updatePrefs(prefs: BroadcastNotificationPrefs) {
-        val current = getPrefs()
-        if (!prefs.quietHoursEnabled && current.quietHoursEnabled) {
-            throw IllegalStateException("The deployed preferences RPC cannot clear quiet-hours values yet. Other settings were not changed.")
-        }
         val patch = JSONObject()
             .put("push_enabled", prefs.pushEnabled)
             .put("announcements", prefs.announcements)
@@ -155,7 +151,8 @@ class BlinkBroadcastSupabaseRepository(
             .put("offers", prefs.offers)
             .put("email", prefs.emailEnabled)
             .put("timezone", "Africa/Lagos")
-        if (prefs.quietHoursEnabled) patch.put("quiet_start", prefs.quietHoursStart).put("quiet_end", prefs.quietHoursEnd)
+        patch.put("quiet_start", if (prefs.quietHoursEnabled) prefs.quietHoursStart else JSONObject.NULL)
+            .put("quiet_end", if (prefs.quietHoursEnabled) prefs.quietHoursEnd else JSONObject.NULL)
         rpcObject("update_broadcast_prefs", JSONObject().put("p_patch", patch))
     }
 
