@@ -33,10 +33,19 @@ class BlinkBroadcastContractTest {
     @Test
     fun campaignAndPromotionRulesAreValidated() {
         assertTrue("campaign_rules" in BlinkBroadcastValidation.validate(validDraft(BroadcastType.CAMPAIGN)))
-        val campaignRules = BroadcastRules(goalType = CampaignGoalType.INVITES, target = 5)
+        val campaignRules = BroadcastRules(
+            goalType = CampaignGoalType.INVITES,
+            target = 5,
+            rewardTiers = listOf(BroadcastRewardTier(3, "3 friends", 20)),
+        )
         assertTrue(BlinkBroadcastValidation.validate(
             validDraft(BroadcastType.CAMPAIGN, rules = campaignRules)
         ).isEmpty())
+        assertTrue("campaign_rules" in BlinkBroadcastValidation.validate(
+            validDraft(BroadcastType.CAMPAIGN, rules = campaignRules.copy(
+                rewardTiers = listOf(BroadcastRewardTier(3, "3 friends", 0))
+            ))
+        ))
 
         assertTrue("promo_rules" in BlinkBroadcastValidation.validate(validDraft(BroadcastType.PROMO)))
         val promoRules = BroadcastRules(
@@ -47,6 +56,12 @@ class BlinkBroadcastContractTest {
         assertTrue(BlinkBroadcastValidation.validate(
             validDraft(BroadcastType.PROMO, rules = promoRules)
         ).isEmpty())
+        assertTrue("promo_rules" in BlinkBroadcastValidation.validate(
+            validDraft(BroadcastType.PROMO, rules = promoRules.copy(rewardType = PromotionRewardType.FREE_SPIN))
+        ))
+        assertTrue("promo_rules" in BlinkBroadcastValidation.validate(
+            validDraft(BroadcastType.PROMO, rules = promoRules.copy(minimumPurchase = 100))
+        ))
     }
 
     @Test
