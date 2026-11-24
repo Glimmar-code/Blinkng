@@ -19,6 +19,7 @@ ALTER TABLE public.broadcast_dispatch_queue ENABLE ROW LEVEL SECURITY;
 CREATE POLICY broadcast_dispatch_queue_admin_read ON public.broadcast_dispatch_queue FOR SELECT TO authenticated USING(public.broadcast_admin_check());
 GRANT SELECT ON public.broadcast_dispatch_queue TO authenticated;
 GRANT ALL ON public.broadcast_dispatch_queue TO service_role;
+GRANT ALL ON public.broadcast_dispatch_config TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.broadcast_dispatch_config (
   id boolean PRIMARY KEY DEFAULT true CHECK(id),
@@ -166,39 +167,6 @@ BEGIN
   RETURN (SELECT to_jsonb(c) FROM public.broadcast_dispatch_config c WHERE id=true);
 END
 $$;
-
-CREATE OR REPLACE FUNCTION public.broadcast_dispatch_cron_tick()
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE v_url text; v_secret text;
-BEGIN
-  SELECT worker_url INTO v_url FROM public.broadcast_dispatch_config WHERE id=true AND enabled=true;
-  IF v_url IS NULL THEN RETURN; END IF;
-  SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name='broadcast_worker_secret' LIMIT 1;
-  IF v_secret IS NULL OR length(v_secret)<32 THEN RETURN; END IF;
-  PERFORM net.http_post(url:=v_url,headers:=jsonb_build_object('content-type','application/json','x-broadcast-worker-secret',v_secret),body:=jsonb_build_object('source','pg_cron'));
-END
-$$;
-
--- Daily counters: raw impression/click rollup trigger remains; these add dismissals/claims/completions.
-CREATE OR REPLACE FUNCTION public.broadcast_daily_counter_trigger()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE v_kind text; v_bid uuid; v_day date;
-BEGIN
-  v_bid:=NEW.broadcast_id; v_day:=(NEW.created_at AT TIME ZONE 'UTC')::date;
-  IF TG_TABLE_NAME='broadcast_dismissals' THEN v_kind:='dismissals';
-  ELSIF TG_TABLE_NAME='promo_claims' THEN v_kind:='claims';
-  ELSE v_kind:='conversions'; END IF;
-  EXECUTE format('INSERT INTO public.broadcast_daily_rollups(day,broadcast_id,%I) VALUES($1,$2,1) ON CONFLICT(day,broadcast_id) DO UPDATE SET %I=public.broadcast_daily_rollups.%I+1,updated_at=now()',v_kind,v_kind,v_kind)
-    USING v_day,v_bid;
-  RETURN NEW;
-END
-$$;
-DROP TRIGGER IF EXISTS broadcast_daily_dismissal_rollup ON public.broadcast_dismissals;
-CREATE TRIGGER broadcast_daily_dismissal_rollup AFTER INSERT ON public.broadcast_dismissals FOR EACH ROW EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
-DROP TRIGGER IF EXISTS broadcast_daily_claim_rollup ON public.promo_claims;
-CREATE TRIGGER broadcast_daily_claim_rollup AFTER INSERT ON public.promo_claims FOR EACH ROW WHEN (NEW.status='claimed') EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
-DROP TRIGGER IF EXISTS broadcast_daily_conversion_rollup ON public.campaign_participants;
-CREATE TRIGGER broadcast_daily_conversion_rollup AFTER UPDATE OF completed_at ON public.campaign_participants FOR EACH ROW WHEN (OLD.completed_at IS NULL AND NEW.completed_at IS NOT NULL) EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
 
 CREATE EXTENSION IF NOT EXISTS pg_net;
 CREATE OR REPLACE FUNCTION public.broadcast_dispatch_cron_tick()
