@@ -24,6 +24,11 @@ class BlinkBroadcastContractTest {
     )
 
     @Test
+    fun blockingBroadcastsAreRejectedUntilBlockKindIsImplemented() {
+        assertTrue("blocking_unsupported" in BlinkBroadcastValidation.validate(validDraft().copy(isBlocking = true)))
+    }
+
+    @Test
     fun everyoneAudienceRequiresExplicitConfirmation() {
         val draft = validDraft(audience = BroadcastAudienceFilter(BroadcastAudienceKind.EVERYONE))
         assertEquals(listOf("confirm_everyone"), BlinkBroadcastValidation.validate(draft))
