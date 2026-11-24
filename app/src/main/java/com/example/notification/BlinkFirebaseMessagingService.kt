@@ -133,6 +133,23 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     if (!it.isSuccessful) {
                         Log.w(TAG, "FCM token unregister failed: ${it.code}")
                     } else {
+                        val encodedToken = java.net.URLEncoder.encode(token, "UTF-8")
+                        val disableBroadcast = Request.Builder()
+                            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/device_tokens?token=eq.$encodedToken&disabled_at=is.null")
+                            .addHeader("apikey", SupabaseConfig.anonKey)
+                            .addHeader("Authorization", "Bearer $accessToken")
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader("Prefer", "return=minimal")
+                            .patch(JSONObject().put("disabled_at", java.time.Instant.now().toString())
+                                .toString().toRequestBody("application/json".toMediaType()))
+                            .build()
+                        val disabled = client.newCall(disableBroadcast).execute()
+                        if (!disabled.isSuccessful) {
+                            Log.w(TAG, "Broadcast FCM token disable failed: ${disabled.code}")
+                            disabled.close()
+                            return@withContext false
+                        }
+                        disabled.close()
                         appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
                             .edit().remove(REGISTERED_TOKEN).remove(REGISTERED_ACCOUNT).apply()
                     }
@@ -208,6 +225,24 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                             .putString(REGISTERED_ACCOUNT, currentUid)
                             .apply()
                         Log.d(TAG, "FCM token registered with Supabase.")
+                        val broadcastBody = JSONObject()
+                            .put("p_token", token)
+                            .put("p_platform", "android")
+                            .put("p_app_version", BuildConfig.VERSION_NAME)
+                            .toString()
+                            .toRequestBody("application/json".toMediaType())
+                        val broadcastRequest = Request.Builder()
+                            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/register_broadcast_device_token")
+                            .addHeader("apikey", SupabaseConfig.anonKey)
+                            .addHeader("Authorization", "Bearer $accessToken")
+                            .addHeader("Content-Type", "application/json")
+                            .post(broadcastBody)
+                            .build()
+                        client.newCall(broadcastRequest).execute().use { broadcastResponse ->
+                            if (!broadcastResponse.isSuccessful) {
+                                Log.w(TAG, "Broadcast FCM token registration failed: ${broadcastResponse.code} ${broadcastResponse.body?.string()?.take(160)}")
+                            }
+                        }
                         NotificationPreferenceStore.refreshFromServerAsync(appContext)
                     }
                 }
