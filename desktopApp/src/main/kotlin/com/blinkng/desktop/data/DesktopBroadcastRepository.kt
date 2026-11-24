@@ -270,13 +270,30 @@ class DesktopBroadcastRepository(
             "app_version" -> BroadcastAudienceFilter(BroadcastAudienceKind.APP_VERSION, appVersion = aud?.optString("min_app_version").orEmpty())
             else -> BroadcastAudienceFilter()
         }
-        return Broadcast(row.optString("id"), type, row.optString("title"), row.optString("body"),
-            row.optString("image_url").takeUnless { it.isBlank() || it == "null" }, row.optString("cta_label"), row.optString("deep_link"),
-            row.optInt("priority"), parseInstant(row.optString("starts_at")) ?: Instant.now(),
-            parseInstant(row.optString("ends_at")) ?: Instant.now().plusSeconds(86400), row.optBoolean("dismissible",true),
-            row.optBoolean("is_blocking"), rules.target, promo?.optString("reward_text").orEmpty(), claimStateFromMetadata(null),
-            enumValueOr(row.optString("status"), BroadcastStatus.LIVE), filter, channels, rules,
-            isRead = row.optBoolean("is_read"), isDismissed = row.optBoolean("dismissed"), placement = placement)
+        return Broadcast(
+            id = row.optString("id"),
+            type = type,
+            title = row.optString("title"),
+            body = row.optString("body"),
+            imageUrl = row.optString("image_url").takeUnless { it.isBlank() || it == "null" },
+            ctaLabel = row.optString("cta_label"),
+            deepLink = row.optString("deep_link"),
+            priority = row.optInt("priority"),
+            startsAt = parseInstant(row.optString("starts_at")) ?: Instant.now(),
+            endsAt = parseInstant(row.optString("ends_at")) ?: Instant.now().plusSeconds(86400),
+            dismissible = row.optBoolean("dismissible", true),
+            isBlocking = row.optBoolean("is_blocking"),
+            target = rules.target,
+            rewardText = promo?.optString("reward_text").orEmpty(),
+            claimState = claimStateFromMetadata(null),
+            status = enumValueOr(row.optString("status"), BroadcastStatus.LIVE),
+            audience = filter,
+            channels = channels,
+            rules = rules,
+            isRead = row.optBoolean("is_read"),
+            isDismissed = row.optBoolean("dismissed"),
+            placement = placement,
+        )
     }
 
     private fun claimStateFromMetadata(row: JSONObject?): BroadcastClaimState = when (row?.optString("last_status").orEmpty().uppercase()) {
