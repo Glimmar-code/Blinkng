@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.getValue
 import com.blinkng.shared.broadcast.*
-import com.example.data.repository.BlinkBroadcastUnavailableRepository
+import com.example.data.repository.BlinkBroadcastSupabaseRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,7 +37,7 @@ data class BlinkCampaignDetails(
 )
 
 class BlinkBroadcastViewModel(
-    val repository: BlinkBroadcastRepository = BlinkBroadcastUnavailableRepository(),
+    val repository: BlinkBroadcastRepository = BlinkBroadcastSupabaseRepository(),
 ) : ViewModel() {
     var draft by androidx.compose.runtime.mutableStateOf(BroadcastDraft())
         private set

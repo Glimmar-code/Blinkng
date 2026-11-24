@@ -4069,6 +4069,36 @@ class DesktopSupabaseClient(
 
     private fun saveAuthResponse(response: JSONObject, fallbackEmail: String) = saveAuthResponseBlocking(response, fallbackEmail)
 
+    // Public authenticated primitives used by the desktop Broadcast adapter.
+    suspend fun broadcastRpc(name: String, args: JSONObject): Any = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/$name", args)
+    }
+
+    suspend fun broadcastGetArray(path: String): JSONArray = withContext(Dispatchers.IO) { getArray(path) }
+
+    suspend fun broadcastPostArray(path: String, body: JSONObject, prefer: String = "return=representation"): JSONArray =
+        withContext(Dispatchers.IO) { postArray(path, body, prefer) }
+
+    suspend fun broadcastPatch(path: String, body: JSONObject): Unit = withContext(Dispatchers.IO) { patch(path, body) }
+
+    suspend fun broadcastDelete(path: String): Unit = withContext(Dispatchers.IO) { delete(path) }
+
+    suspend fun broadcastInvoke(name: String, body: JSONObject): String = withContext(Dispatchers.IO) {
+        execute(authenticatedRequest("/functions/v1/$name")
+            .post(body.toString().toRequestBody(jsonMedia)).build())
+    }
+
+    suspend fun broadcastUpload(path: String, bytes: ByteArray, mimeType: String): String = withContext(Dispatchers.IO) {
+        val encoded = path.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+        execute(authenticatedRequest("/storage/v1/object/broadcast-images/$encoded")
+            .header("Content-Type", mimeType)
+            .header("x-upsert", "false")
+            .post(bytes.toRequestBody(mimeType.toMediaType())).build())
+        "$baseUrl/storage/v1/object/public/broadcast-images/$encoded"
+    }
+
+    val broadcastCurrentUserId: String? get() = session?.userId
+
     private fun authenticatedRequest(path: String): Request.Builder {
         ensureFreshSession()
         return Request.Builder()

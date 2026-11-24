@@ -12,7 +12,7 @@ enum class CampaignGoalType { INVITES, PURCHASES, ORDERS, VOTES }
 enum class PromotionRewardType { COINS, FREE_SPIN, FEE_DISCOUNT, BOOST }
 enum class BroadcastChannel { IN_APP, PUSH, EMAIL, WEBSITE }
 
-data class BroadcastRewardTier(val threshold: Int, val reward: String)
+data class BroadcastRewardTier(val threshold: Int, val reward: String, val amount: Int = 0)
 data class BroadcastAudienceFilter(
     val kind: BroadcastAudienceKind = BroadcastAudienceKind.EVERYONE,
     val campuses: Set<String> = emptySet(),
@@ -163,13 +163,14 @@ object BlinkBroadcastValidation {
         if (draft.body.isBlank() || draft.body.length > 240) add("body")
         if (draft.endsAt <= draft.startsAt) add("schedule")
         if (draft.channels.isEmpty()) add("channel")
+        if (draft.isBlocking) add("blocking_unsupported")
         if (draft.audience.kind == BroadcastAudienceKind.EVERYONE && audienceConfirm != "CONFIRM") {
             add("confirm_everyone")
         }
         when (draft.type) {
-            BroadcastType.CAMPAIGN -> if ((draft.rules.target ?: 0) <= 0 || draft.rules.goalType == null) add("campaign_rules")
-            BroadcastType.PROMO -> if ((draft.rules.rewardAmount ?: 0) <= 0 || draft.rules.rewardType == null ||
-                (draft.rules.perUserLimit ?: 0) <= 0) add("promo_rules")
+            BroadcastType.CAMPAIGN -> if ((draft.rules.target ?: 0) <= 0 || draft.rules.goalType == null || draft.rules.rewardTiers.any { it.threshold <= 0 || it.amount <= 0 }) add("campaign_rules")
+            BroadcastType.PROMO -> if ((draft.rules.rewardAmount ?: 0) <= 0 || draft.rules.rewardType != PromotionRewardType.COINS ||
+                (draft.rules.perUserLimit ?: 0) <= 0 || (draft.rules.minimumPurchase ?: 0) > 0) add("promo_rules")
             BroadcastType.ANNOUNCEMENT -> Unit
         }
     }
