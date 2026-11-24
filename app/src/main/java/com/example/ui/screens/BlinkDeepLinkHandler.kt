@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.R
 import android.content.Intent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*

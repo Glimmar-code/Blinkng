@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing

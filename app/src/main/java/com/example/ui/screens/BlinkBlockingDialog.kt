@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.R
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
