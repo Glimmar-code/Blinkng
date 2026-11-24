@@ -320,7 +320,7 @@ class BlinkBroadcastSupabaseRepository(
             BroadcastType.CAMPAIGN -> {
                 payload.put("goal_type", d.rules.goalType?.name?.lowercase() ?: "invites")
                 payload.put("target", d.rules.target ?: 1)
-                // Current shared model has reward text but no reward amount; keep tiers empty rather than minting invalid rewards.
+                // Campaign tiers now carry explicit coin amounts; never invent an amount.
                 payload.put("tiers", campaignTiers(d.rules.rewardTiers))
             }
             BroadcastType.PROMO -> {
@@ -358,7 +358,7 @@ class BlinkBroadcastSupabaseRepository(
         val rewardTiers = buildList {
             for (i in 0 until tiers.length()) {
                 val tier = tiers.optJSONObject(i) ?: continue
-                add(BroadcastRewardTier(tier.optInt("threshold"), tier.optString("reward_text").ifBlank { tier.optString("reward") }))
+                add(BroadcastRewardTier(tier.optInt("threshold"), tier.optString("reward_text").ifBlank { tier.optString("reward") }, tier.optInt("amount", 0)))
             }
         }
         val placement = promo?.optJSONArray("placement")?.let { arr ->
