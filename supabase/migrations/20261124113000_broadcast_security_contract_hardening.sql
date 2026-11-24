@@ -36,8 +36,12 @@ BEGIN
    ORDER BY priority DESC,starts_at DESC LIMIT 1;
   IF coalesce(v_min,'')='' AND coalesce(v_force_min,'')='' THEN RETURN true; END IF;
   IF v_version IS NULL THEN RETURN false; END IF;
-  IF v_min IS NOT NULL AND v_min<>'' AND public.broadcast_semver_compare(v_version,v_min)<0 THEN RETURN false; END IF;
-  IF v_force_min IS NOT NULL AND v_force_min<>'' AND public.broadcast_semver_compare(v_version,v_force_min)<0 THEN RETURN false; END IF;
+  IF v_min IS NOT NULL AND v_min<>'' THEN
+    IF public.broadcast_semver_compare(v_version,v_min) IS NULL OR public.broadcast_semver_compare(v_version,v_min)<0 THEN RETURN false; END IF;
+  END IF;
+  IF v_force_min IS NOT NULL AND v_force_min<>'' THEN
+    IF public.broadcast_semver_compare(v_version,v_force_min) IS NULL OR public.broadcast_semver_compare(v_version,v_force_min)<0 THEN RETURN false; END IF;
+  END IF;
   RETURN true;
 END
 $$;
@@ -338,7 +342,10 @@ BEGIN
     ends_at=case when p_patch ? 'ends_at' then (p_patch->>'ends_at')::timestamptz else ends_at end,
     timezone=coalesce(p_patch->>'timezone',timezone),dismissible=coalesce((p_patch->>'dismissible')::boolean,dismissible),
     is_blocking=coalesce((p_patch->>'is_blocking')::boolean,is_blocking),
-    block_kind=case when p_patch ? 'block_kind' then (p_patch->>'block_kind')::public.broadcast_block_kind else block_kind end,
+    block_kind=case
+      when coalesce((p_patch->>'is_blocking')::boolean,is_blocking)=false then null
+      when p_patch ? 'block_kind' then (p_patch->>'block_kind')::public.broadcast_block_kind
+      else block_kind end,
     min_app_version=case when p_patch ? 'min_app_version' then p_patch->>'min_app_version' else min_app_version end,
     store_url=case when p_patch ? 'store_url' then p_patch->>'store_url' else store_url end,
     audience=aud,channels=ch,version=version+1,updated_by=actor,updated_at=now()
@@ -587,6 +594,9 @@ REVOKE EXECUTE ON FUNCTION public.broadcast_admin_check() FROM PUBLIC,anon;
 REVOKE EXECUTE ON FUNCTION public.broadcast_audience_match_self(jsonb) FROM PUBLIC,anon;
 REVOKE EXECUTE ON FUNCTION public.broadcast_app_version_allowed(text) FROM PUBLIC,anon;
 REVOKE EXECUTE ON FUNCTION public.broadcast_require_current_app() FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.broadcast_admin_publish_reserve(integer) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.broadcast_app_version_allowed(text) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.broadcast_admin_publish_reserve(integer) TO service_role;
 
 GRANT EXECUTE ON FUNCTION public.broadcast_admin_check() TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.broadcast_audience_match(uuid,jsonb,text) TO service_role;
