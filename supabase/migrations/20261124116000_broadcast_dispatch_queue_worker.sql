@@ -188,6 +188,30 @@ CREATE TRIGGER broadcast_daily_claim_rollup AFTER INSERT ON public.promo_claims 
 DROP TRIGGER IF EXISTS broadcast_daily_conversion_rollup ON public.campaign_participants;
 CREATE TRIGGER broadcast_daily_conversion_rollup AFTER UPDATE OF completed_at ON public.campaign_participants FOR EACH ROW WHEN (OLD.completed_at IS NULL AND NEW.completed_at IS NOT NULL) EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
 
+CREATE OR REPLACE FUNCTION public.defer_broadcast_delivery(p_broadcast_id uuid,p_user_id uuid,p_channel public.broadcast_channel,p_until timestamptz)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+DECLARE v_id uuid;
+BEGIN
+  IF p_until<=now() OR p_until>now()+interval '24 hours' THEN p_until:=now()+interval '15 minutes'; END IF;
+  INSERT INTO public.broadcast_deliveries(broadcast_id,user_id,channel,status,attempts,next_retry_at,last_error)
+    VALUES(p_broadcast_id,p_user_id,p_channel,'queued',0,p_until,'quiet_hours')
+  ON CONFLICT(broadcast_id,user_id,channel) DO UPDATE SET status='queued',next_retry_at=excluded.next_retry_at,locked_at=null,last_error='quiet_hours',updated_at=now()
+    WHERE public.broadcast_deliveries.status IN ('queued','failed')
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END
+$;
+
+CREATE OR REPLACE FUNCTION public.requeue_broadcast_dispatch(p_id uuid,p_until timestamptz DEFAULT NULL)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+BEGIN
+  UPDATE public.broadcast_dispatch_queue SET status='pending',attempts=greatest(attempts-1,0),locked_at=null,
+    next_attempt_at=coalesce(p_until,now()+interval '5 minutes'),updated_at=now()
+    WHERE id=p_id AND status IN ('processing','pending');
+  RETURN FOUND;
+END
+$;
+
 CREATE EXTENSION IF NOT EXISTS pg_net;
 CREATE OR REPLACE FUNCTION public.broadcast_dispatch_cron_tick()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
@@ -214,4 +238,5 @@ REVOKE EXECUTE ON FUNCTION public.admin_update_broadcast_dispatch_config(boolean
 GRANT EXECUTE ON FUNCTION public.admin_update_broadcast_dispatch_config(boolean,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_broadcast_dispatch_batch(integer),public.complete_broadcast_dispatch(uuid,boolean,text),
   public.claim_broadcast_delivery(uuid,uuid,public.broadcast_channel),public.complete_broadcast_delivery(uuid,boolean,text),
-  public.broadcast_user_frequency_ok(uuid,public.broadcast_channel,integer,integer),public.broadcast_dispatch_audience(uuid,public.broadcast_channel,uuid,integer) TO service_role;
+  public.broadcast_user_frequency_ok(uuid,public.broadcast_channel,integer,integer),public.broadcast_dispatch_audience(uuid,public.broadcast_channel,uuid,integer),
+  public.defer_broadcast_delivery(uuid,uuid,public.broadcast_channel,timestamptz),public.requeue_broadcast_dispatch(uuid,timestamptz) TO service_role;
