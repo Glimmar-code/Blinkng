@@ -19,8 +19,6 @@ ALTER TABLE public.broadcast_dispatch_queue ENABLE ROW LEVEL SECURITY;
 CREATE POLICY broadcast_dispatch_queue_admin_read ON public.broadcast_dispatch_queue FOR SELECT TO authenticated USING(public.broadcast_admin_check());
 GRANT SELECT ON public.broadcast_dispatch_queue TO authenticated;
 GRANT ALL ON public.broadcast_dispatch_queue TO service_role;
-GRANT ALL ON public.broadcast_dispatch_config TO service_role;
-
 CREATE TABLE IF NOT EXISTS public.broadcast_dispatch_config (
   id boolean PRIMARY KEY DEFAULT true CHECK(id),
   enabled boolean NOT NULL DEFAULT false,
@@ -167,6 +165,28 @@ BEGIN
   RETURN (SELECT to_jsonb(c) FROM public.broadcast_dispatch_config c WHERE id=true);
 END
 $$;
+
+-- Daily aggregate counters for dismissals, claims and campaign completions.
+CREATE OR REPLACE FUNCTION public.broadcast_daily_counter_trigger()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+DECLARE v_kind text; v_bid uuid; v_day date;
+BEGIN
+  v_bid:=NEW.broadcast_id;
+  IF TG_TABLE_NAME='campaign_participants' THEN v_day:=(NEW.completed_at AT TIME ZONE 'UTC')::date; v_kind:='conversions';
+  ELSE v_day:=(NEW.created_at AT TIME ZONE 'UTC')::date;
+    IF TG_TABLE_NAME='broadcast_dismissals' THEN v_kind:='dismissals'; ELSE v_kind:='claims'; END IF;
+  END IF;
+  EXECUTE format('INSERT INTO public.broadcast_daily_rollups(day,broadcast_id,%I) VALUES($1,$2,1) ON CONFLICT(day,broadcast_id) DO UPDATE SET %I=public.broadcast_daily_rollups.%I+1,updated_at=now()',v_kind,v_kind,v_kind)
+    USING v_day,v_bid;
+  RETURN NEW;
+END
+$;
+DROP TRIGGER IF EXISTS broadcast_daily_dismissal_rollup ON public.broadcast_dismissals;
+CREATE TRIGGER broadcast_daily_dismissal_rollup AFTER INSERT ON public.broadcast_dismissals FOR EACH ROW EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
+DROP TRIGGER IF EXISTS broadcast_daily_claim_rollup ON public.promo_claims;
+CREATE TRIGGER broadcast_daily_claim_rollup AFTER INSERT ON public.promo_claims FOR EACH ROW WHEN (NEW.status='claimed') EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
+DROP TRIGGER IF EXISTS broadcast_daily_conversion_rollup ON public.campaign_participants;
+CREATE TRIGGER broadcast_daily_conversion_rollup AFTER UPDATE OF completed_at ON public.campaign_participants FOR EACH ROW WHEN (OLD.completed_at IS NULL AND NEW.completed_at IS NOT NULL) EXECUTE FUNCTION public.broadcast_daily_counter_trigger();
 
 CREATE EXTENSION IF NOT EXISTS pg_net;
 CREATE OR REPLACE FUNCTION public.broadcast_dispatch_cron_tick()
