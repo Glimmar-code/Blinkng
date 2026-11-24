@@ -216,7 +216,10 @@ internal fun BlinkWalletPremiumContent(
     onClaimMission: (String) -> Unit,
     onVerifyCoins: () -> Unit,
     onOpenVerification: () -> Unit,
-    onBuyPack: (BlinkCoinPack) -> Unit
+    onBuyPack: (BlinkCoinPack) -> Unit,
+    broadcastPromos: List<com.blinkng.shared.broadcast.Broadcast> = emptyList(),
+    broadcastViewModel: com.example.viewmodel.BlinkBroadcastViewModel? = null,
+    onOpenBroadcastRoute: (String) -> Unit = {},
 ) {
     var page by remember(accountId) { mutableIntStateOf(0) }
     var filter by remember(accountId) { mutableIntStateOf(0) }
@@ -263,6 +266,14 @@ internal fun BlinkWalletPremiumContent(
                 if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = violet) }
                 when (current) {
                     0 -> {
+                        if (broadcastViewModel != null && broadcastPromos.isNotEmpty()) item(key = "broadcast_promo_coins") {
+                            BlinkPromoStrip(
+                                promos = broadcastPromos,
+                                placement = "coins",
+                                viewModel = broadcastViewModel,
+                                onOpenPromo = { onOpenBroadcastRoute("broadcasts/promo/$it") },
+                            )
+                        }
                         item {
                             NeonCard(hero = true) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {

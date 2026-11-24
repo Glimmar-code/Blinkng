@@ -98,7 +98,10 @@ fun MarketScreen(
     isLoadingMore: Boolean = false,
     hasMore: Boolean = false,
     errorMessage: String? = null,
-    isDark: Boolean
+    isDark: Boolean,
+    broadcastPromos: List<com.blinkng.shared.broadcast.Broadcast> = emptyList(),
+    broadcastViewModel: com.example.viewmodel.BlinkBroadcastViewModel? = null,
+    onOpenBroadcastRoute: (String) -> Unit = {},
 ) {
     val marketAccessService = remember { com.example.data.supabase.SupabaseService() }
     val marketViewService = remember { com.example.data.supabase.SupabaseService() }
@@ -186,6 +189,16 @@ fun MarketScreen(
             .fillMaxSize()
             .testTag("market_screen")
     ) {
+        if (broadcastViewModel != null && broadcastPromos.isNotEmpty()) {
+            item(key = "broadcast_promo_market") {
+                BlinkPromoStrip(
+                    promos = broadcastPromos,
+                    placement = "market",
+                    viewModel = broadcastViewModel,
+                    onOpenPromo = { onOpenBroadcastRoute("broadcasts/promo/$it") },
+                )
+            }
+        }
         item {
             Column(
                 modifier = Modifier

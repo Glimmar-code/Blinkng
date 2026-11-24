@@ -65,6 +65,7 @@ import com.example.sharing.ContestVoteTarget
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
+import com.blinkng.shared.broadcast.BlinkBroadcastRoutes
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
 import com.example.update.WebsiteApkDownloadCoordinator
@@ -112,6 +113,8 @@ private fun messageInteractionActions(viewModel: BlinkViewModel): ChatInteractio
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
+    private val broadcastViewModel: com.example.viewmodel.BlinkBroadcastViewModel by viewModels()
+    private var pendingBroadcastRoute by mutableStateOf<String?>(null)
     private lateinit var rewardedAdManager: BlinkRewardedAdManager
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
@@ -370,6 +373,13 @@ class MainActivity : ComponentActivity() {
             intent?.data = null
             return
         }
+        val incomingBroadcastLink = intent?.data
+        if (incomingBroadcastLink?.scheme.equals("blink", ignoreCase = true) &&
+            incomingBroadcastLink?.host?.lowercase() in setOf("campaign", "promo", "spin", "contest", "wallet", "market")) {
+            pendingBroadcastRoute = BlinkDeepLinkHandler.route(incomingBroadcastLink.toString())
+            intent?.data = null
+            return
+        }
         DeepLinkRouter.parse(intent?.data)?.let { deepLink ->
             viewModel.handleDeepLink(deepLink)
             intent?.data = null
@@ -377,9 +387,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleNotificationIntent(intent: Intent?) {
+        val broadcastLink = intent?.getStringExtra(BlinkNotificationHelper.EXTRA_BROADCAST_DEEP_LINK)
+        if (!broadcastLink.isNullOrBlank()) {
+            pendingBroadcastRoute = BlinkDeepLinkHandler.route(broadcastLink)
+            intent.removeExtra(BlinkNotificationHelper.EXTRA_BROADCAST_DEEP_LINK)
+            intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
+            return
+        }
         val action = intent?.getStringExtra(BlinkNotificationHelper.EXTRA_ACTION) ?: return
 
         when (action) {
+            BlinkNotificationHelper.ACTION_OPEN_BROADCAST -> {
+                pendingBroadcastRoute = BlinkBroadcastRoutes.INBOX
+            }
             BlinkNotificationHelper.ACTION_OPEN_CHANNEL -> {
                 val id = intent.getStringExtra(BlinkNotificationHelper.EXTRA_CHANNEL_ID).orEmpty()
                 if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
@@ -458,6 +478,7 @@ class MainActivity : ComponentActivity() {
         }
 
         intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
+        intent.removeExtra(BlinkNotificationHelper.EXTRA_BROADCAST_DEEP_LINK)
     }
 
     private fun handleInAppNotification(event: BlinkInAppNotification) {
@@ -1098,6 +1119,9 @@ class MainActivity : ComponentActivity() {
                                     MainAppContent(
                                         uiState = uiState,
                                         viewModel = viewModel,
+                                        broadcastViewModel = broadcastViewModel,
+                                        initialBroadcastRoute = pendingBroadcastRoute,
+                                        onConsumeBroadcastRoute = { pendingBroadcastRoute = null },
                                         contestTarget = pendingContestTarget,
                                         onContestTargetOpened = {
                                             ContestVoteRoute.clear(this@MainActivity)
@@ -1286,6 +1310,9 @@ class MainActivity : ComponentActivity() {
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel,
+    broadcastViewModel: com.example.viewmodel.BlinkBroadcastViewModel,
+    initialBroadcastRoute: String? = null,
+    onConsumeBroadcastRoute: () -> Unit = {},
     contestTarget: ContestVoteTarget? = null,
     onContestTargetOpened: () -> Unit = {},
     onWatchAdForCoins: () -> Unit,
@@ -1301,6 +1328,14 @@ fun MainAppContent(
     onCheckForWebsiteUpdate: () -> Unit = {},
     onOpenWebsiteUpdate: () -> Unit = {}
 ) {
+    val broadcastState by broadcastViewModel.uiState.collectAsStateWithLifecycle()
+    var broadcastRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(initialBroadcastRoute) {
+        if (initialBroadcastRoute != null) {
+            broadcastRoute = initialBroadcastRoute
+            onConsumeBroadcastRoute()
+        }
+    }
     LaunchedEffect(contestTarget, uiState.destination, uiState.myProfile.id) {
         if (contestTarget != null && uiState.destination == AppDestination.MAIN &&
             uiState.myProfile.id.isNotBlank()) {
@@ -1858,6 +1893,10 @@ fun MainAppContent(
                         followingPosts = uiState.followingPosts,
                         hiddenFeedPostIds = uiState.hiddenFeedPostIds,
                         mutedFeedAuthors = uiState.mutedUsers,
+                        broadcastState = broadcastState,
+                        broadcastViewModel = broadcastViewModel,
+                        isBroadcastAdmin = canOpenAdmin,
+                        onOpenBroadcastRoute = { broadcastRoute = it },
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
@@ -2063,7 +2102,11 @@ fun MainAppContent(
                         isLoadingMore = uiState.isLoadingMoreMarket,
                         hasMore = uiState.marketHasMore,
                         errorMessage = uiState.marketErrorMessage,
-                        isDark = uiState.isDarkMode
+                        isDark = uiState.isDarkMode,
+                        broadcastPromos = (broadcastState as? com.example.viewmodel.BlinkBroadcastUiState.Success)
+                            ?.broadcasts.orEmpty(),
+                        broadcastViewModel = broadcastViewModel,
+                        onOpenBroadcastRoute = { broadcastRoute = it },
                     )
                 }
 
@@ -3683,7 +3726,11 @@ fun MainAppContent(
                         Intent(context, BlinkStoreActivity::class.java),
                         "Unable to open BLINK Store."
                     )
-                }
+                },
+                broadcastPromos = (broadcastState as? com.example.viewmodel.BlinkBroadcastUiState.Success)
+                    ?.broadcasts.orEmpty(),
+                broadcastViewModel = broadcastViewModel,
+                onOpenBroadcastRoute = { broadcastRoute = it },
             )
         }
 
@@ -3714,5 +3761,21 @@ fun MainAppContent(
                 isDark = uiState.isDarkMode
             )
         }
+        BackHandler(enabled = broadcastRoute != null) { broadcastRoute = null }
+        BlinkBroadcastNavigationHost(
+            route = broadcastRoute,
+            viewModel = broadcastViewModel,
+            isAdmin = canOpenAdmin,
+            onNavigate = { broadcastRoute = it },
+            onExternalRoute = { route ->
+                when {
+                    route == "market" -> viewModel.setTab(MainTab.MARKET)
+                    route == "contest" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                    route == "spin" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 3)
+                    route == "wallet" -> { walletOpenedFromMenu = false; showWallet = true }
+                    else -> viewModel.setTab(MainTab.HOME)
+                }
+            },
+        )
     }
 }

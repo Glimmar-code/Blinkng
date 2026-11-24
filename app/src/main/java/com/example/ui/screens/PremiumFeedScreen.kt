@@ -97,6 +97,10 @@ import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.blinkng.shared.broadcast.Broadcast
+import com.blinkng.shared.broadcast.BroadcastType
+import com.example.viewmodel.BlinkBroadcastUiState
+import com.example.viewmodel.BlinkBroadcastViewModel
 import com.example.data.network.NetworkMonitor
 import com.blinkng.shared.BlinkFeedScrollMotion
 import com.example.data.repository.FollowStateStore
@@ -141,6 +145,7 @@ private sealed interface PremiumHomeRow {
     data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
     data class SponsoredRow(val slot: Int) : PremiumHomeRow
     data class DropDiscoveryRow(val item: BlinkDropDiscovery, val slot: Int) : PremiumHomeRow
+    data class InlineCampaignRow(val campaign: Broadcast) : PremiumHomeRow
 }
 
 private fun premiumHomeRowKey(row: PremiumHomeRow): String =
@@ -151,6 +156,7 @@ private fun premiumHomeRowKey(row: PremiumHomeRow): String =
         is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
         is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
         is PremiumHomeRow.DropDiscoveryRow -> "drop_discovery:${row.item.dropId}:${row.slot}"
+        is PremiumHomeRow.InlineCampaignRow -> "inline_campaign:${row.campaign.id}"
     }
 
 private fun buildPremiumHomeRows(
@@ -370,7 +376,11 @@ fun PremiumFeedScreen(
     routedReelId: String? = null,
     isInteractionOverlayOpen: Boolean = false,
     hiddenFeedPostIds: Set<String> = emptySet(),
-    mutedFeedAuthors: Set<String> = emptySet()
+    mutedFeedAuthors: Set<String> = emptySet(),
+    broadcastState: BlinkBroadcastUiState? = null,
+    broadcastViewModel: BlinkBroadcastViewModel? = null,
+    isBroadcastAdmin: Boolean = false,
+    onOpenBroadcastRoute: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -449,6 +459,10 @@ fun PremiumFeedScreen(
             followedAuthorKeys = followedAuthorKeys,
             hiddenFeedPostIds = hiddenFeedPostIds,
             mutedFeedAuthors = mutedFeedAuthors,
+            currentSubTab = currentSubTab,
+            broadcastState = broadcastState,
+            broadcastViewModel = broadcastViewModel,
+            isBroadcastAdmin = isBroadcastAdmin,
             isLoading = if (feedLane == 1) (isRefreshingFollowing || isLoading) && followingPosts.isEmpty() else isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
@@ -498,7 +512,8 @@ fun PremiumFeedScreen(
             onBottomBarTravelChange = onBottomBarTravelChange,
             onGameClick = onGameClick,
             onReelClick = { openReelsAt() },
-            onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
+            onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) },
+            onOpenBroadcastRoute = onOpenBroadcastRoute
         )
 
         1 -> FeedScreen(
@@ -664,6 +679,10 @@ private fun PremiumHomeFeed(
     followedAuthorKeys: Set<String>,
     hiddenFeedPostIds: Set<String>,
     mutedFeedAuthors: Set<String>,
+    currentSubTab: Int,
+    broadcastState: BlinkBroadcastUiState?,
+    broadcastViewModel: BlinkBroadcastViewModel?,
+    isBroadcastAdmin: Boolean,
     isLoading: Boolean,
     isRefreshing: Boolean,
     refreshRevision: Int,
@@ -713,7 +732,8 @@ private fun PremiumHomeFeed(
     onBottomBarTravelChange: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
-    onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
+    onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit,
+    onOpenBroadcastRoute: (String) -> Unit
 ) {
     val homeBackground = if (isDark) MaterialTheme.colorScheme.background else Color.White
     val context = LocalContext.current
@@ -1074,8 +1094,12 @@ private fun PremiumHomeFeed(
             )
         }
     }
-    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed, filter) {
-        if (filter != PremiumFeedFilter.ALL) {
+    val liveCampaign = (broadcastState as? BlinkBroadcastUiState.Success)?.broadcasts
+        ?.firstOrNull { it.type == BroadcastType.CAMPAIGN && it.status == com.blinkng.shared.broadcast.BroadcastStatus.LIVE &&
+            !it.completed && !it.startsAt.isAfter(java.time.Instant.now()) && it.endsAt.isAfter(java.time.Instant.now()) }
+    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed,
+        dropDiscovery, reelMixSeed, filter, liveCampaign, laneIndex, currentSubTab) {
+        val original = if (filter != PremiumFeedFilter.ALL) {
             // Filters show only matching organic posts: no native ads or paid modules
             // should be mixed into a Photos/Polls-only result.
             filteredPosts.mapIndexed { index, post -> PremiumHomeRow.PostRow(post, index) }
@@ -1084,6 +1108,18 @@ private fun PremiumHomeFeed(
                 filteredPosts, rankedInlineReels, visiblePromotedFeed,
                 marketSponsoredFeed, dropDiscovery, reelMixSeed
             )
+        }
+        if (filter != PremiumFeedFilter.ALL || currentSubTab != 0 || laneIndex != 0 || liveCampaign == null) {
+            original
+        } else {
+            buildList {
+                original.forEach { row ->
+                    add(row)
+                    if (row is PremiumHomeRow.PostRow && (row.sourceIndex + 1) % 6 == 0) {
+                        add(PremiumHomeRow.InlineCampaignRow(liveCampaign))
+                    }
+                }
+            }
         }
     }
     val homeRowKeys = remember(homeRows) { homeRows.map(::premiumHomeRowKey) }
@@ -1724,6 +1760,32 @@ private fun PremiumHomeFeed(
                             bottom = feedContentBottomClearance
                         )
                     ) {
+                        if (currentSubTab == 0 && laneIndex == 0 &&
+                            broadcastState != null && broadcastViewModel != null) {
+                            item(key = "blink_broadcast_feed_header") {
+                                BlinkBroadcastFeedHeader(
+                                    state = broadcastState,
+                                    viewModel = broadcastViewModel,
+                                    isAdmin = isBroadcastAdmin,
+                                    onInbox = { onOpenBroadcastRoute("broadcasts/inbox") },
+                                    onAdmin = { onOpenBroadcastRoute("broadcasts/admin") },
+                                    onDeepLink = { onOpenBroadcastRoute(com.blinkng.shared.broadcast.BlinkBroadcastRoutes.resolveDeepLink(it)) },
+                                )
+                            }
+                        }
+                        if (currentSubTab == 3 && laneIndex == 0 && broadcastViewModel != null) {
+                            val spinPromos = (broadcastState as? BlinkBroadcastUiState.Success)
+                                ?.broadcasts.orEmpty()
+                            if (spinPromos.isNotEmpty()) item(key = "broadcast_promo_spin") {
+                                BlinkPromoStrip(
+                                    promos = spinPromos,
+                                    placement = "spin",
+                                    viewModel = broadcastViewModel,
+                                    onOpenPromo = { onOpenBroadcastRoute("broadcasts/promo/$it") },
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                )
+                            }
+                        }
                         if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
                                 PremiumFeedRefreshNotice(errorMessage, onRetry)
@@ -1814,10 +1876,16 @@ private fun PremiumHomeFeed(
                                             is PremiumHomeRow.ReelPreviewRow -> 16
                                             is PremiumHomeRow.SponsoredRow -> 17
                                             is PremiumHomeRow.DropDiscoveryRow -> 19
+                                            is PremiumHomeRow.InlineCampaignRow -> 23
                                         }
                                     }
                                 ) { index ->
                                     when (val row = homeRows[index]) {
+                                        is PremiumHomeRow.InlineCampaignRow -> BlinkInlineCampaignCard(
+                                            campaign = row.campaign,
+                                            onClick = { onOpenBroadcastRoute("broadcasts/campaign/${row.campaign.id}") },
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        )
                                         is PremiumHomeRow.PostRow -> {
                                             val post = row.post
                                             val profile = authorProfileFor(post)

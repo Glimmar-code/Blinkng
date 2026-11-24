@@ -80,6 +80,9 @@ fun BlinkWalletScreen(
     isVerified: Boolean = false,
     onVerifyCoins: () -> Unit = {},
     onBuyPack: (com.blinkng.shared.BlinkCoinPack) -> Unit = {},
+    broadcastPromos: List<com.blinkng.shared.broadcast.Broadcast> = emptyList(),
+    broadcastViewModel: com.example.viewmodel.BlinkBroadcastViewModel? = null,
+    onOpenBroadcastRoute: (String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val service = remember(accountId) { BlinkEconomyService() }
@@ -145,7 +148,10 @@ fun BlinkWalletScreen(
         onClaimMission = onClaimMission,
         onVerifyCoins = onVerifyCoins,
         onOpenVerification = onOpenVerification,
-        onBuyPack = onBuyPack
+        onBuyPack = onBuyPack,
+        broadcastPromos = broadcastPromos,
+        broadcastViewModel = broadcastViewModel,
+        onOpenBroadcastRoute = onOpenBroadcastRoute,
     )
 }
 
