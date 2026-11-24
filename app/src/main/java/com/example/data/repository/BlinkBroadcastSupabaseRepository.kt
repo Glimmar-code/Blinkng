@@ -140,16 +140,19 @@ class BlinkBroadcastSupabaseRepository(
     }
 
     override suspend fun updatePrefs(prefs: BroadcastNotificationPrefs) {
-        rpcObject("update_broadcast_prefs", JSONObject()
-            .put("p_patch", JSONObject()
-                .put("push_enabled", prefs.pushEnabled)
-                .put("announcements", prefs.announcements)
-                .put("campaigns", prefs.campaigns)
-                .put("offers", prefs.offers)
-                .put("email", prefs.emailEnabled)
-                .put("quiet_start", if (prefs.quietHoursEnabled) prefs.quietHoursStart else JSONObject.NULL)
-                .put("quiet_end", if (prefs.quietHoursEnabled) prefs.quietHoursEnd else JSONObject.NULL)
-                .put("timezone", "Africa/Lagos")))
+        val current = getPrefs()
+        if (!prefs.quietHoursEnabled && current.quietHoursEnabled) {
+            throw IllegalStateException("The deployed preferences RPC cannot clear quiet-hours values yet. Other settings were not changed.")
+        }
+        val patch = JSONObject()
+            .put("push_enabled", prefs.pushEnabled)
+            .put("announcements", prefs.announcements)
+            .put("campaigns", prefs.campaigns)
+            .put("offers", prefs.offers)
+            .put("email", prefs.emailEnabled)
+            .put("timezone", "Africa/Lagos")
+        if (prefs.quietHoursEnabled) patch.put("quiet_start", prefs.quietHoursStart).put("quiet_end", prefs.quietHoursEnd)
+        rpcObject("update_broadcast_prefs", JSONObject().put("p_patch", patch))
     }
 
     override suspend fun registerDeviceToken(token: String) {
@@ -205,14 +208,37 @@ class BlinkBroadcastSupabaseRepository(
         patch.remove("confirm_everyone")
         val updated = rpcObject("admin_update_broadcast", JSONObject()
             .put("p_id", id).put("p_version", row.optInt("version")).put("p_patch", patch))
+        when (draft.type) {
+            BroadcastType.CAMPAIGN -> call("/rest/v1/campaign_rules?broadcast_id=eq.$id", "PATCH",
+                JSONObject().put("goal_type", draft.rules.goalType?.name?.lowercase())
+                    .put("target", draft.rules.target ?: 1).put("tiers", campaignTiers(draft.rules.rewardTiers)).toString(), true,
+                prefer = "return=minimal")
+            BroadcastType.PROMO -> call("/rest/v1/promo_rules?broadcast_id=eq.$id", "PATCH",
+                JSONObject().put("reward_type", draft.rules.rewardType?.name?.lowercase() ?: "coins")
+                    .put("reward_amount", draft.rules.rewardAmount ?: 0).put("per_user_limit", draft.rules.perUserLimit ?: 1)
+                    .put("total_budget_cap", draft.rules.totalBudget ?: JSONObject.NULL)
+                    .put("min_purchase", draft.rules.minimumPurchase ?: 0)
+                    .put("reward_text", "${draft.rules.rewardAmount ?: 0} coins")
+                    .put("placement", JSONArray(draft.rules.placement.toList())).toString(), true, prefer = "return=minimal")
+            BroadcastType.ANNOUNCEMENT -> Unit
+        }
         return parseBroadcast(updated)
     }
 
     override suspend fun scheduleBroadcast(id: String) {
-        val row = restArray("/rest/v1/broadcasts?select=version&id=eq.$id").optJSONObject(0)
+        val row = restArray("/rest/v1/broadcasts?select=version,starts_at,channels&id=eq.$id").optJSONObject(0)
             ?: throw IllegalStateException("Broadcast not found.")
+        val start = parseInstant(row.optString("starts_at"))
+        val publishNow = start == null || !start.isAfter(Instant.now())
         rpcObject("admin_update_broadcast", JSONObject().put("p_id", id).put("p_version", row.optInt("version"))
-            .put("p_patch", JSONObject().put("status", "scheduled")))
+            .put("p_patch", JSONObject().put("status", if (publishNow) "live" else "scheduled")))
+        if (publishNow && row.optJSONObject("channels")?.optBoolean("push") == true) {
+            val response = execute(request("/functions/v1/send-broadcast", "POST",
+                JSONObject().put("broadcast_id", id).toString().toRequestBody(jsonType), true))
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw apiError(response.code, raw)
+            response.close()
+        }
     }
 
     override suspend fun endBroadcast(id: String) { call("/rest/v1/rpc/admin_end_broadcast", "POST", JSONObject().put("p_id", id).toString(), true) }
@@ -295,7 +321,7 @@ class BlinkBroadcastSupabaseRepository(
                 payload.put("goal_type", d.rules.goalType?.name?.lowercase() ?: "invites")
                 payload.put("target", d.rules.target ?: 1)
                 // Current shared model has reward text but no reward amount; keep tiers empty rather than minting invalid rewards.
-                payload.put("tiers", JSONArray())
+                payload.put("tiers", campaignTiers(d.rules.rewardTiers))
             }
             BroadcastType.PROMO -> {
                 payload.put("reward_type", d.rules.rewardType?.name?.lowercase() ?: "coins")
@@ -303,7 +329,7 @@ class BlinkBroadcastSupabaseRepository(
                 payload.put("per_user_limit", d.rules.perUserLimit ?: 1)
                 payload.put("total_budget_cap", d.rules.totalBudget ?: JSONObject.NULL)
                 payload.put("min_purchase", d.rules.minimumPurchase ?: 0)
-                payload.put("reward_text", d.rewardText)
+                payload.put("reward_text", "${d.rules.rewardAmount ?: 0} coins")
                 payload.put("placement", JSONArray(d.rules.placement.toList()))
             }
             BroadcastType.ANNOUNCEMENT -> Unit
