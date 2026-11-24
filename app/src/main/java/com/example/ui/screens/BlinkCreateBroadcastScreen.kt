@@ -309,6 +309,7 @@ private fun BroadcastValidationErrors(errors: List<String>) {
         "confirm_everyone" to R.string.broadcast_invalid_confirm,
         "campaign_rules" to R.string.broadcast_goal_rules_required,
         "promo_rules" to R.string.broadcast_promo_rules_required,
+        "blocking_unsupported" to R.string.broadcast_blocking_unsupported,
     )
     errors.forEach { error ->
         labels[error]?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
