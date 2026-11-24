@@ -43,8 +43,8 @@ class DesktopBroadcastRepository(
     override suspend fun markRead(id: String) {
         val user = client.broadcastCurrentUserId ?: error("Desktop session is not signed in.")
         runCatching {
-            client.broadcastPostArray("/rest/v1/broadcast_reads", JSONArray().put(JSONObject()
-                .put("broadcast_id", id).put("user_id", user)), "return=minimal")
+            client.broadcastPostArray("/rest/v1/broadcast_reads", JSONObject()
+                .put("broadcast_id", id).put("user_id", user), "return=minimal")
         }.onFailure { if (!it.message.orEmpty().contains("409")) throw it }
     }
     override suspend fun markAllRead() { getInbox().filterNot { it.read }.forEach { markRead(it.broadcast.id) } }
