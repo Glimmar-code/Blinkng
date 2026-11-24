@@ -563,6 +563,10 @@ class MainActivity : ComponentActivity() {
                 itemsOpenSignal += 1
             }
 
+            BlinkInAppNotificationDestination.BROADCASTS -> {
+                pendingBroadcastRoute = BlinkBroadcastRoutes.INBOX
+            }
+
             BlinkInAppNotificationDestination.NOTIFICATIONS -> {
                 viewModel.openActivity(true)
             }

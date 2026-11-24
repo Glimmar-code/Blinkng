@@ -48,17 +48,22 @@ fun BlinkCampaignGoalForm(rules: BroadcastRules, onChange: (BroadcastRules) -> U
                     onChange(rules.copy(rewardTiers = rules.rewardTiers.toMutableList().apply {
                         this[index] = tier.copy(threshold = it.toIntOrNull()?.coerceAtLeast(1) ?: tier.threshold)
                     }))
-                }, label = { Text(stringResource(R.string.broadcast_target)) }, modifier = Modifier.weight(.35f), singleLine = true)
+                }, label = { Text(stringResource(R.string.broadcast_target)) }, modifier = Modifier.weight(.28f), singleLine = true)
+                OutlinedTextField(tier.amount.toString(), {
+                    onChange(rules.copy(rewardTiers = rules.rewardTiers.toMutableList().apply {
+                        this[index] = tier.copy(amount = it.toIntOrNull()?.coerceAtLeast(0) ?: tier.amount)
+                    }))
+                }, label = { Text("Coins") }, modifier = Modifier.weight(.28f), singleLine = true)
                 OutlinedTextField(tier.reward, {
                     onChange(rules.copy(rewardTiers = rules.rewardTiers.toMutableList().apply {
                         this[index] = tier.copy(reward = it.take(100))
                     }))
-                }, label = { Text(stringResource(R.string.broadcast_reward)) }, modifier = Modifier.weight(.65f), singleLine = true)
+                }, label = { Text(stringResource(R.string.broadcast_reward)) }, modifier = Modifier.weight(.44f), singleLine = true)
             }
         }
         TextButton(onClick = {
             onChange(rules.copy(rewardTiers = rules.rewardTiers + BroadcastRewardTier(
-                threshold = (rules.rewardTiers.lastOrNull()?.threshold ?: 0) + 1, reward = ""
+                threshold = (rules.rewardTiers.lastOrNull()?.threshold ?: 0) + 1, reward = "", amount = 0
             )))
         }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.broadcast_add_tier)) }
     }

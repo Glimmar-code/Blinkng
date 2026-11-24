@@ -850,6 +850,40 @@ object BlinkNotificationHelper {
     // SOCIAL NOTIFICATION
     // ================================================================
 
+    fun showBroadcastNotification(
+        context: Context,
+        title: String,
+        body: String,
+        deepLink: String,
+        broadcastId: String,
+    ) {
+        if (!hasNotificationPermission(context)) return
+        createNotificationChannels(context)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_BROADCAST)
+            putExtra(EXTRA_BROADCAST_DEEP_LINK, deepLink)
+        }
+        val pending = PendingIntent.getActivity(
+            context,
+            positiveHash("broadcast:$broadcastId"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_SOCIAL)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setColor(PURPLE_COLOR)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .build()
+        notifySafely(context, positiveHash("blink_broadcast_$broadcastId"), notification)
+    }
+
     fun showSocialNotification(
         context: Context,
         title: String,
