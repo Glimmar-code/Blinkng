@@ -7,5 +7,5 @@ DROP TRIGGER IF EXISTS broadcast_daily_conversion_rollup ON public.campaign_part
 REVOKE EXECUTE ON FUNCTION public.claim_broadcast_dispatch_batch(integer),public.complete_broadcast_dispatch(uuid,boolean,text),
   public.claim_broadcast_delivery(uuid,uuid,public.broadcast_channel),public.complete_broadcast_delivery(uuid,boolean,text),
   public.broadcast_user_frequency_ok(uuid,public.broadcast_channel,integer,integer),public.broadcast_dispatch_audience(uuid,public.broadcast_channel,uuid,integer),
-  public.broadcast_dispatch_cron_tick() FROM PUBLIC,anon,authenticated;
+  public.broadcast_dispatch_cron_tick(),public.defer_broadcast_delivery(uuid,uuid,public.broadcast_channel,timestamptz),public.requeue_broadcast_dispatch(uuid,timestamptz),public.broadcast_daily_counter_trigger() FROM PUBLIC,anon,authenticated;
 -- Keep queue and delivery data for forensic/retry safety; do not drop tables or delivery columns.

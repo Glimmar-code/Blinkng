@@ -9,3 +9,5 @@ REVOKE EXECUTE ON FUNCTION public.admin_broadcast_analytics(uuid),public.admin_g
   public.get_broadcast_inbox(text,timestamptz,integer),public.get_broadcast_inbox_keyset(text,timestamptz,uuid,integer),
   public.get_broadcast_prefs(),public.update_broadcast_prefs(jsonb),public.register_broadcast_device_token(text,text,text),
   public.get_broadcast_blocking_state(),public.get_website_broadcasts() FROM PUBLIC,anon,authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.broadcast_writes_allowed() FROM PUBLIC,anon,authenticated;

@@ -46,19 +46,22 @@ BEGIN
 END
 $$;
 
+CREATE OR REPLACE FUNCTION public.broadcast_writes_allowed()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $
+  SELECT public.broadcast_app_version_allowed(NULL)
+    AND NOT coalesce((public.get_broadcast_blocking_state()->>'maintenance')::boolean,false)
+$;
 CREATE OR REPLACE FUNCTION public.broadcast_require_current_app()
-RETURNS void
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path=''
-AS $$
+RETURNS void LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $
 BEGIN
+  IF coalesce((public.get_broadcast_blocking_state()->>'maintenance')::boolean,false) THEN
+    RAISE EXCEPTION 'MAINTENANCE_MODE' USING ERRCODE='55000';
+  END IF;
   IF NOT public.broadcast_app_version_allowed(NULL) THEN
     RAISE EXCEPTION 'FORCE_UPDATE_REQUIRED' USING ERRCODE='55000';
   END IF;
 END
-$$;
+$;
 
 CREATE OR REPLACE FUNCTION public.broadcast_audience_match(p_user uuid,p_audience jsonb,p_app_version text DEFAULT NULL)
 RETURNS boolean
@@ -130,35 +133,28 @@ AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_broadcast_blocking_state()
-RETURNS jsonb
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path=''
-AS $$
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $
   SELECT jsonb_build_object(
-    'maintenance',coalesce(c.maintenance_enabled,false),
-    'message',c.maintenance_message,
-    'min_app_version',c.min_app_version,
-    'store_url',c.store_url,
-    'force_update',coalesce(f.force_update,false),
-    'force_update_message',f.body,
-    'blocking_broadcast_id',f.id,
-    'force_update_min_app_version',f.min_app_version,
-    'force_update_store_url',f.store_url
-  )
+    'maintenance',coalesce(c.maintenance_enabled,false) OR m.id IS NOT NULL,
+    'message',coalesce(m.body,c.maintenance_message),'maintenance_broadcast_id',m.id,
+    'min_app_version',c.min_app_version,'store_url',c.store_url,
+    'force_update',coalesce(f.force_update,false),'force_update_message',f.body,
+    'blocking_broadcast_id',f.id,'force_update_min_app_version',f.min_app_version,'force_update_store_url',f.store_url)
   FROM public.broadcast_app_config c
   LEFT JOIN LATERAL (
-    SELECT b.id,b.body,b.min_app_version,b.store_url,true force_update
-      FROM public.broadcasts b
-     WHERE b.status='live' AND b.deleted_at IS NULL AND b.is_blocking=true
-       AND b.block_kind='force_update'
-       AND (b.starts_at IS NULL OR b.starts_at<=now())
-       AND (b.ends_at IS NULL OR b.ends_at>now())
-     ORDER BY b.priority DESC,b.starts_at DESC LIMIT 1
+    SELECT b.id,b.body FROM public.broadcasts b
+    WHERE b.status='live' AND b.deleted_at IS NULL AND b.is_blocking=true AND b.block_kind='maintenance'
+      AND (b.starts_at IS NULL OR b.starts_at<=now()) AND (b.ends_at IS NULL OR b.ends_at>now())
+    ORDER BY b.priority DESC,b.starts_at DESC LIMIT 1
+  ) m ON true
+  LEFT JOIN LATERAL (
+    SELECT b.id,b.body,b.min_app_version,b.store_url,true force_update FROM public.broadcasts b
+    WHERE b.status='live' AND b.deleted_at IS NULL AND b.is_blocking=true AND b.block_kind='force_update'
+      AND (b.starts_at IS NULL OR b.starts_at<=now()) AND (b.ends_at IS NULL OR b.ends_at>now())
+    ORDER BY b.priority DESC,b.starts_at DESC LIMIT 1
   ) f ON true
   WHERE c.id=true
-$$;
+$;
 
 CREATE OR REPLACE FUNCTION public.broadcast_log(p_actor uuid,p_action text,p_broadcast uuid,p_before jsonb,p_after jsonb)
 RETURNS void
@@ -593,9 +589,10 @@ REVOKE EXECUTE ON FUNCTION public.broadcast_semver_at_least(text,text) FROM PUBL
 REVOKE EXECUTE ON FUNCTION public.broadcast_admin_check() FROM PUBLIC,anon;
 REVOKE EXECUTE ON FUNCTION public.broadcast_audience_match_self(jsonb) FROM PUBLIC,anon;
 REVOKE EXECUTE ON FUNCTION public.broadcast_app_version_allowed(text) FROM PUBLIC,anon;
-REVOKE EXECUTE ON FUNCTION public.broadcast_require_current_app() FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.broadcast_require_current_app(),public.broadcast_writes_allowed() FROM PUBLIC,anon;
+REVOKE EXECUTE ON FUNCTION public.broadcast_require_current_app() FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.broadcast_admin_publish_reserve(integer) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.broadcast_app_version_allowed(text) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.broadcast_app_version_allowed(text),public.broadcast_writes_allowed() TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.broadcast_admin_publish_reserve(integer) TO service_role;
 
 GRANT EXECUTE ON FUNCTION public.broadcast_admin_check() TO authenticated,service_role;
@@ -627,14 +624,14 @@ REVOKE INSERT,UPDATE,DELETE ON public.user_balances,public.blink_coin_transactio
 -- App-version enforcement also protects direct owner-row writes that bypass RPCs.
 DROP POLICY IF EXISTS dismiss_insert_own ON public.broadcast_dismissals;
 CREATE POLICY dismiss_insert_own ON public.broadcast_dismissals FOR INSERT TO authenticated
-  WITH CHECK(user_id=auth.uid() AND public.broadcast_app_version_allowed(NULL));
+  WITH CHECK(user_id=auth.uid() AND public.broadcast_writes_allowed());
 DROP POLICY IF EXISTS reads_insert_own ON public.broadcast_reads;
 CREATE POLICY reads_insert_own ON public.broadcast_reads FOR INSERT TO authenticated
   WITH CHECK(user_id=auth.uid() AND public.broadcast_app_version_allowed(NULL));
 DROP POLICY IF EXISTS own_prefs_all ON public.notification_prefs;
 CREATE POLICY own_prefs_all ON public.notification_prefs FOR ALL TO authenticated
-  USING(user_id=auth.uid() AND public.broadcast_app_version_allowed(NULL))
-  WITH CHECK(user_id=auth.uid() AND public.broadcast_app_version_allowed(NULL));
+  USING(user_id=auth.uid() AND public.broadcast_writes_allowed())
+  WITH CHECK(user_id=auth.uid() AND public.broadcast_writes_allowed());
 DROP POLICY IF EXISTS own_device_tokens_all ON public.device_tokens;
 CREATE POLICY own_device_tokens_all ON public.device_tokens FOR ALL TO authenticated
   USING(user_id=auth.uid() AND public.broadcast_app_version_allowed(NULL))
