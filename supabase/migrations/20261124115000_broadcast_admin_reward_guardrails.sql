@@ -166,5 +166,7 @@ $$;
 
 -- Legacy admin aliases bypass confirmation/rules payload shape; use the repository contract RPCs only.
 REVOKE EXECUTE ON FUNCTION public.create_broadcast(jsonb),public.update_broadcast(uuid,integer,jsonb),public.end_broadcast(uuid),
-  public.delete_broadcast(uuid),public.duplicate_broadcast(uuid),public.estimate_broadcast_audience(jsonb,text) FROM PUBLIC,anon,authenticated;
+  public.delete_broadcast(uuid),public.duplicate_broadcast(uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_create_broadcast(jsonb),public.admin_update_broadcast(uuid,integer,jsonb) TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.broadcast_validate_row(),public.broadcast_reward_config_guard() FROM PUBLIC,anon,authenticated;
