@@ -28,6 +28,12 @@ class BlinkNotificationTypeTest {
     }
 
     @Test
+    fun `broadcast payload maps to admin notification category`() {
+        assertEquals(BlinkNotificationType.ADMIN, BlinkNotificationType.fromWire("broadcast"))
+        assertEquals(BlinkNotificationType.ADMIN, BlinkNotificationType.fromWire("announcement"))
+    }
+
+    @Test
     fun `future unknown payloads stay visible as safe fallback`() {
         assertEquals(BlinkNotificationType.UNKNOWN, BlinkNotificationType.fromWire("future_notification_type"))
         assertEquals(BlinkNotificationType.SOCIAL, BlinkNotificationType.fromWire(null))
