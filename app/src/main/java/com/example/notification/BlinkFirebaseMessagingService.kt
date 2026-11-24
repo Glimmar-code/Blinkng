@@ -596,7 +596,15 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 body = body
             )
 
-            else -> BlinkNotificationHelper.showSocialNotification(
+            else -> if (type == BlinkNotificationType.ADMIN && targetType.equals("broadcast", ignoreCase = true)) {
+                BlinkNotificationHelper.showBroadcastNotification(
+                    context = this,
+                    title = title,
+                    body = body,
+                    deepLink = data["deep_link"].orEmpty(),
+                    broadcastId = data["broadcast_id"].orEmpty(),
+                )
+            } else BlinkNotificationHelper.showSocialNotification(
                 context = this,
                 title = title,
                 body = body,
