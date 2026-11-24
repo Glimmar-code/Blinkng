@@ -64,17 +64,17 @@ test("OAuth JWT is correctly signed and exchanged through injected fetch", async
 });
 
 test("OAuth exchange errors and missing tokens fail closed", async () => {
-  await assert.rejects(
-    fcmAccessToken({ client_email: "a", private_key: "bad" }, async () => new Response("", { status: 401 })),
-    /FCM_OAUTH_FAILED/,
-  );
   const pair = await crypto.subtle.generateKey(
     { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
     true,
     ["sign", "verify"],
   );
   const der = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
-  const pem = "-----BEGIN PRIVATE KEY-----\n" + Buffer.from(der).toString("base64") + "\n-----END PRIVATE KEY-----";
+  const pem = "-----BEGIN PRIVATE KEY-----\\n" + Buffer.from(der).toString("base64") + "\\n-----END PRIVATE KEY-----";
+  await assert.rejects(
+    fcmAccessToken({ client_email: "a", private_key: pem }, async () => new Response("", { status: 401 })),
+    /FCM_OAUTH_FAILED/,
+  );
   await assert.rejects(
     fcmAccessToken({ client_email: "a", private_key: pem }, async () => new Response("{}", { status: 200 })),
     /FCM_OAUTH_TOKEN_MISSING/,
