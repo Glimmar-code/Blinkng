@@ -75,10 +75,10 @@ fun BlinkInlineCampaignCard(
     }
     if (campaign.completed || !campaign.endsAt.isAfter(now) || campaign.startsAt.isAfter(now)) return
     Surface(
-        modifier.fillMaxWidth().heightIn(min = 70.dp),
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().heightIn(min = 70.dp),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        onClick = onClick,
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {

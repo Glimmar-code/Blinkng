@@ -11,6 +11,7 @@ import com.blinkng.shared.broadcast.BroadcastRewardTier
 import com.blinkng.shared.broadcast.BroadcastRules
 import com.blinkng.shared.broadcast.CampaignGoalType
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlinkCampaignGoalForm(rules: BroadcastRules, onChange: (BroadcastRules) -> Unit) {
     val goalLabels = mapOf(

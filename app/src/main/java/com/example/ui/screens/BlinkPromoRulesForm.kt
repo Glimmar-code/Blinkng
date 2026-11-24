@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import com.blinkng.shared.broadcast.BroadcastRules
 import com.blinkng.shared.broadcast.PromotionRewardType
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlinkPromoRulesForm(rules: BroadcastRules, onChange: (BroadcastRules) -> Unit) {
     val rewardLabels = mapOf(

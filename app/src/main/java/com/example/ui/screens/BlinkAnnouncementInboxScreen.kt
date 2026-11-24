@@ -104,7 +104,8 @@ private fun BroadcastInboxRow(
 ) {
     var drag by remember(item.broadcast.id) { mutableFloatStateOf(0f) }
     Surface(
-        Modifier.fillMaxWidth().pointerInput(item.broadcast.id) {
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().pointerInput(item.broadcast.id) {
             detectHorizontalDragGestures(
                 onHorizontalDrag = { _, amount -> drag += amount },
                 onDragEnd = { if (kotlin.math.abs(drag) > 90f) onDismiss(); drag = 0f },
@@ -114,7 +115,6 @@ private fun BroadcastInboxRow(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
-        onClick = onClick,
     ) {
         Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
