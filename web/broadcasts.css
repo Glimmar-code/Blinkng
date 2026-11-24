@@ -1,0 +1,11 @@
+.blink-website-broadcast-host{position:relative;z-index:5;display:grid;gap:10px;width:min(100% - 24px,960px);margin:14px auto 0}
+.blink-website-broadcast{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid #34343a;border-radius:18px;background:#111;color:#f7f7f8;box-shadow:0 10px 28px rgba(0,0,0,.22)}
+.blink-website-broadcast>img{width:76px;height:76px;object-fit:cover;border-radius:12px;flex:0 0 auto}
+.blink-website-broadcast-content{min-width:0;flex:1}
+.blink-website-broadcast-kind{display:inline-block;margin-bottom:5px;color:#a4a4ab;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.blink-website-broadcast h2{margin:0;font-size:15px;line-height:1.3}
+.blink-website-broadcast p{margin:5px 0 0;color:#c3c3c9;font-size:13px;line-height:1.45}
+.blink-website-broadcast-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.blink-website-broadcast-cta{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 13px;border-radius:999px;background:#fff;color:#111;text-decoration:none;font-size:12px;font-weight:800}
+.blink-website-broadcast-dismiss{width:34px;height:34px;border:1px solid #38383e;border-radius:50%;background:transparent;color:#eee;font-size:22px;line-height:1;cursor:pointer}
+@media(max-width:600px){.blink-website-broadcast{align-items:flex-start;gap:10px;padding:12px}.blink-website-broadcast>img{width:56px;height:56px}.blink-website-broadcast-actions{flex-direction:column;align-items:flex-end}.blink-website-broadcast-cta{padding:0 10px;font-size:11px}.blink-website-broadcast p{font-size:12px}}
