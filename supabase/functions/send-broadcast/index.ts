@@ -1,7 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { fcmAccessToken } from "../_shared/fcm-auth.mjs";
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL")!,SERVICE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,FCM_JSON=Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
-function b64url(data:Uint8Array){return btoa(String.fromCharCode(...data)).replace(/=/g,"").replace(/\+/g,"-").replace(/\///g,"_")}
 async function rest(path:string,method="GET",body?:unknown,token=SERVICE_KEY){const r=await fetch(SUPABASE_URL+"/rest/v1/"+path,{method,headers:{apikey:SERVICE_KEY,Authorization:"Bearer "+token,"content-type":"application/json",Prefer:"return=representation"},body:body===undefined?undefined:JSON.stringify(body)});const txt=await r.text();if(!r.ok)throw Error("DB_"+r.status+":"+txt.slice(0,200));return txt?JSON.parse(txt):null}
 async function rpc(name:string,args:unknown,token=SERVICE_KEY){const r=await fetch(SUPABASE_URL+"/rest/v1/rpc/"+name,{method:"POST",headers:{apikey:SERVICE_KEY,Authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify(args)});if(!r.ok)throw Error("RPC_"+name+"_"+r.status);return r.json()}
 function quiet(p:any){if(!p?.quiet_start||!p?.quiet_end)return false;try{const z=p.timezone||"Africa/Lagos",hm=new Intl.DateTimeFormat("en-GB",{timeZone:z,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date()),s=p.quiet_start.slice(0,5),e=p.quiet_end.slice(0,5);return s<e?hm>=s&&hm<e:hm>=s||hm<e}catch{return false}}
