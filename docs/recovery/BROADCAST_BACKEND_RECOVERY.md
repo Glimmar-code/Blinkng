@@ -1,9 +1,9 @@
 # BLINK Broadcast Backend — Production Recovery Record
 
-**Status:** Production backend deployed directly to Supabase; source recovery in progress.
+**Status:** Production catalog and 64 public Broadcast/campaign/promo function definitions recovered; deployed Edge Function sources recovered; Testlab recovery work in progress.
 **Supabase project:** `jhwgifrlxwspoedxjaly`
 **Repository:** `Glimmar-code/Blinkng`
-**Recovery branch:** `testlab/broadcast-backend-recovery`
+**Recovery branch:** `feature/broadcast-recovery-correction` (based on the recovery snapshot branch)
 
 ## Safety and migration status
 - Broadcast backend was deployed directly to production before migration source was committed.
@@ -12,6 +12,7 @@
 - **Do not run a reconstructed baseline against production.** Existing tables/functions are deployed; an incomplete baseline could overwrite behavior.
 - Recovery branch requires review and disposable/local testing before merge to main.
 - Migration history has not been reconciled. No claim is made that migration history matches the live schema.
+- Production remains unchanged throughout this recovery.
 - No broadcast seeds inserted.
 
 ## Verified tables
@@ -42,13 +43,26 @@ Internal: `broadcast_admin_check`, `broadcast_audience_match`, `broadcast_audien
 - Realtime publication: `broadcast_dismissals`, `broadcast_reads`, `broadcasts_changed`, `campaign_participants`.
 - Bucket `broadcast-images` is public-read, 8 MiB limit, JPEG/PNG/WebP/GIF. Write policies must remain admin-only; catalog exporter retrieves current policy definitions.
 
-## Known gaps
-- FCM secret not configured; push is not operational.
-- Email not integrated; automatic dispatch on broadcast publish not wired.
-- Non-coin campaign rewards and verified purchase-based promo requirements incomplete.
-- Website must integrate the website-broadcast RPC.
-- No physical client or concurrency/race tests completed.
-- Edge Function deployed source is not yet recovered into repo; the deployment management tool does not offer source retrieval in this session.
+## Source recovery files
+- `supabase/recovery/broadcast_function_catalog_snapshot.sql`: 64 exact deployed public function definitions (read-only recovery snapshot; not a migration).
+- `supabase/recovery/broadcast_catalog_metadata_snapshot.json`: 132 columns, 67 constraints, 35 indexes, 23 policies, 31 trigger definitions, 2 cron jobs, 4 Realtime tables, bucket metadata and 4 Storage policies.
+- `supabase/functions/send-broadcast/index.ts` and `supabase/functions/send-test/index.ts`: exact deployed Edge sources recovered.
+- `supabase/functions/_shared/fcm-auth.mjs`: shared OAuth helper, with regression tests.
+
+## Known gaps (not yet resolved)
+- FCM service-account secret is not configured; push cannot be live-tested until a secure secret is supplied. Do not commit secrets.
+- Email dispatch is not integrated.
+- Publish/schedule-to-push dispatch wiring is not yet connected.
+- Non-coin campaign rewards and verified purchase-based promo requirements remain incomplete.
+- Website integration with `get_website_broadcasts()` remains pending.
+- Android/Windows production repository adapters are still unavailable placeholders.
+- Migration history has not been reconciled and a complete safe replay baseline has not been built.
+- Full runtime, concurrency/race, and client integration tests remain pending.
+
+## Corrective work in recovery branch
+- Fixed FCM JWT base64url conversion and PEM whitespace parsing by extracting the OAuth helper into a testable shared module.
+- Added Node regression tests for base64url encoding, PEM normalization, JWT claim content, signature verification, OAuth error handling and missing-token failure.
+- Tests have not yet been run in GitHub CI; branch review and CI are still required.
 
 ## Recovery steps
 1. Export catalog (columns, constraints, indexes, RLS, triggers, complete function definitions, cron, Realtime, Storage) using the read-only SQL exporter.
